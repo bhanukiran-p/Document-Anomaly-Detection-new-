@@ -1,0 +1,31 @@
+# Google Vision API Check Extraction Requirements
+
+# Core dependencies
+google-cloud-vision==3.7.0
+google-auth==2.29.0
+google-auth-oauthlib==1.2.0
+
+# Image processing
+Pillow==10.3.0
+
+# Data handling
+pandas==2.2.2
+numpy==1.26.4
+
+# Streamlit for web interface
+streamlit==1.33.0
+
+# Utilities
+python-dateutil==2.9.0
+requests==2.31.0
+
+# Optional - for enhanced functionality
+opencv-python==4.9.0.80  # Additional image processing
+pytesseract==0.3.10  # Fallback OCR
+pdf2image==1.16.3  # PDF to image conversion
+PyMuPDF==1.23.26  # PDF processing
+
+# Development dependencies (optional)
+pytest==8.1.1
+black==24.3.0
+flake8==7.0.0

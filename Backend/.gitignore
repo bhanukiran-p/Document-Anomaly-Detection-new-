@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+
+# Temporary uploads
+temp_uploads/
+temp_*.jpeg
+temp_*.jpg
+temp_*.png
+temp_*.pdf
+
+# Logs
+*.log
+
+# Credentials - IMPORTANT!
+# Uncomment this line if you DON'T want to commit credentials
+# check-ocr-project-*.json
+
+# OS
+.DS_Store
+Thumbs.db
+

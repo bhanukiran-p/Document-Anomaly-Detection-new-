@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Temporary files
+temp_*/
+*.log
+*.tmp
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+
+# Credentials (IMPORTANT - Don't commit sensitive files)
+# check-ocr-project-*.json
+*.json.backup
+
+# Environment
+.env
+.env.local
+
