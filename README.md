@@ -58,9 +58,20 @@ XFORIA DAD is a professional document extraction system that uses Google Cloud V
 ### Prerequisites
 - Node.js 16+ and npm
 - Python 3.13+
-- Google Cloud Vision API credentials
+- **Google Cloud Vision API credentials** (see setup below)
 
-### Backend Setup
+### Step 1: Set Up Google Cloud Credentials
+
+**IMPORTANT:** You must add your own credentials before running the application.
+
+1. Get credentials from [Google Cloud Console](https://console.cloud.google.com/)
+2. Download the JSON key file
+3. Rename it to: `check-ocr-project-469619-d18e1cdc414d.json`
+4. Place it in the `Backend/` directory
+
+📖 **Detailed instructions:** See `Backend/CREDENTIALS_SETUP.md`
+
+### Step 2: Install Backend Dependencies
 
 ```bash
 cd Backend
@@ -163,15 +174,19 @@ XFORIA-DAD/
 
 ## 🔒 Security Note
 
-**IMPORTANT:** The Google Cloud credentials file (`check-ocr-project-*.json`) contains sensitive information.
+**IMPORTANT:** Google Cloud credentials are NOT included in this repository for security.
 
-**Before pushing to GitHub:**
-1. Review the `.gitignore` files
-2. If you want to keep credentials private, uncomment this line in `Backend/.gitignore`:
-   ```
-   check-ocr-project-*.json
-   ```
-3. Store credentials securely (use environment variables in production)
+**To run this application:**
+1. You must add your own credentials file to `Backend/`
+2. See `Backend/CREDENTIALS_SETUP.md` for detailed setup instructions
+3. Use `Backend/credentials.example.json` as a template
+
+**The `.gitignore` is configured to exclude:**
+- `check-ocr-project-*.json`
+- All other credential JSON files
+- Sensitive configuration
+
+**Never commit real credentials to public repositories!**
 
 ---
 
