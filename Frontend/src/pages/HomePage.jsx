@@ -33,9 +33,15 @@ const HomePage = () => {
   
   const cardsContainerStyle = {
     display: 'grid',
+<<<<<<< Updated upstream
     gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
     gap: '2rem',
     marginBottom: '3rem',
+=======
+    gridTemplateColumns: 'repeat(2, 1fr)',
+    gap: '1.5rem',
+    marginBottom: '2rem',
+>>>>>>> Stashed changes
   };
   
   const cardStyle = {
@@ -165,6 +171,65 @@ const HomePage = () => {
             Analyze Paystubs
           </button>
         </div>
+<<<<<<< Updated upstream
+=======
+
+        <div
+          style={cardStyle}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-4px)';
+            e.currentTarget.style.boxShadow = '0 8px 12px rgba(0,0,0,0.15)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+          }}
+        >
+          <div>
+            <h2 style={cardTitleStyle}>Money Order Analysis</h2>
+            <p style={cardDescStyle}>
+              Identify issuers, extract serial numbers, amounts, and detect fraud with high amount alerts
+            </p>
+          </div>
+
+          <button
+            style={buttonStyle}
+            onMouseEnter={(e) => e.target.style.backgroundColor = colors.accent.redDark}
+            onMouseLeave={(e) => e.target.style.backgroundColor = colors.accent.red}
+            onClick={() => navigate('/money-order-analysis')}
+          >
+            Analyze Money Orders
+          </button>
+        </div>
+
+        <div
+          style={cardStyle}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-4px)';
+            e.currentTarget.style.boxShadow = '0 8px 12px rgba(0,0,0,0.15)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+          }}
+        >
+          <div>
+            <h2 style={cardTitleStyle}>Bank Statement Analysis</h2>
+            <p style={cardDescStyle}>
+              Extract transactions, balances, account details, and statement periods from bank statements
+            </p>
+          </div>
+
+          <button
+            style={buttonStyle}
+            onMouseEnter={(e) => e.target.style.backgroundColor = colors.accent.redDark}
+            onMouseLeave={(e) => e.target.style.backgroundColor = colors.accent.red}
+            onClick={() => navigate('/statement-analysis')}
+          >
+            Analyze Statements
+          </button>
+        </div>
+>>>>>>> Stashed changes
       </div>
       
       <div style={{
@@ -173,6 +238,7 @@ const HomePage = () => {
         borderRadius: '12px',
         marginBottom: '2rem',
       }}>
+<<<<<<< Updated upstream
         <h3 style={{ color: colors.primary.navy, marginBottom: '1rem' }}>About XFORIA DAD</h3>
         <div style={{ color: colors.neutral.gray700, lineHeight: '1.6' }}>
           <p><strong>Supported Document Types:</strong></p>
@@ -189,6 +255,16 @@ const HomePage = () => {
             <li>Export results as JSON</li>
             <li>PDF and Image file support</li>
           </ul>
+=======
+        <h3 style={{ color: colors.primary.navy, marginBottom: '0.75rem', fontSize: '1.125rem' }}>About XFORIA DAD</h3>
+        <div style={{ color: colors.neutral.gray700, lineHeight: '1.5', fontSize: '0.9rem' }}>
+          <p style={{ marginBottom: '0.5rem' }}>
+            <strong>Supported:</strong> Checks (Axis, BOA, ICICI, HDFC, Chase, Wells Fargo) • Paystubs (US & International) • Money Orders (Western Union, MoneyGram, USPS) • Bank Statements (Checking, Savings, Credit Card)
+          </p>
+          <p>
+            <strong>Features:</strong> Real-time OCR • AI-powered extraction • High accuracy scoring • Transaction parsing • CSV/JSON export • PDF & Image support
+          </p>
+>>>>>>> Stashed changes
         </div>
       </div>
     </div>
