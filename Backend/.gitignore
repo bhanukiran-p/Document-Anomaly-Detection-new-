@@ -18,7 +18,7 @@ temp_*.pdf
 *.log
 
 # Credentials - IMPORTANT! Never commit real credentials
-check-ocr-project-*.json
+check-ocr-project-469619-d18e1cdc414d.json
 !credentials.example.json
 
 # OS
