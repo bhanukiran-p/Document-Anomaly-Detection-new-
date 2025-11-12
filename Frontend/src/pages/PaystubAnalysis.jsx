@@ -166,8 +166,8 @@ const PaystubAnalysis = () => {
   return (
     <div style={containerStyle}>
       <div style={headerStyle}>
-        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Paystub Extraction</h1>
-        <p>Extract detailed information from paystubs using Google Vision API</p>
+        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Paystub Analysis</h1>
+        <p>Analyze paystubs for payroll verification</p>
       </div>
       
       <div style={gridStyle}>
@@ -177,9 +177,21 @@ const PaystubAnalysis = () => {
             Upload Paystub Document
           </h2>
           
+          <div style={{
+            backgroundColor: '#FFF3CD',
+            border: '1px solid #FFC107',
+            borderRadius: '8px',
+            padding: '1rem',
+            marginBottom: '1rem',
+          }}>
+            <p style={{ color: '#856404', fontSize: '0.875rem', margin: 0, fontWeight: '500' }}>
+              ⚠️ Only upload paystub documents (payslips or salary statements)
+            </p>
+          </div>
+          
           <div {...getRootProps()} style={dropzoneStyle}>
             <input {...getInputProps()} />
-            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📄</div>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>💰</div>
             {isDragActive ? (
               <p style={{ color: colors.primary.blue, fontWeight: '500' }}>
                 Drop the paystub here...
@@ -190,7 +202,7 @@ const PaystubAnalysis = () => {
                   Drop your paystub here or click to browse
                 </p>
                 <p style={{ color: colors.neutral.gray500, fontSize: '0.875rem' }}>
-                  Supports JPG, JPEG, PNG, PDF files
+                  Paystubs Only - JPG, JPEG, PNG, PDF
                 </p>
               </div>
             )}
@@ -251,7 +263,7 @@ const PaystubAnalysis = () => {
         {/* Results Section */}
         <div style={cardStyle}>
           <h2 style={{ color: colors.primary.navy, marginBottom: '1.5rem' }}>
-            Extraction Results
+            Analysis Results
           </h2>
           
           {!results && !loading && (
@@ -270,7 +282,7 @@ const PaystubAnalysis = () => {
             <div style={{ textAlign: 'center', padding: '3rem' }}>
               <div className="spin" style={{ fontSize: '3rem', color: colors.primary.blue }}>⚙️</div>
               <p style={{ marginTop: '1rem', color: colors.neutral.gray600 }}>
-                Processing with Google Vision API...
+                Analyzing paystub...
               </p>
             </div>
           )}

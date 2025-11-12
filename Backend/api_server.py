@@ -9,6 +9,7 @@ import os
 import sys
 from werkzeug.utils import secure_filename
 import importlib.util
+import re
 
 # Load the production extractor
 spec = importlib.util.spec_from_file_location(
@@ -33,6 +34,38 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def detect_document_type(text):
+    """
+    Detect document type based on text content
+    Returns: 'check', 'paystub', 'money_order', or 'unknown'
+    """
+    text_lower = text.lower()
+    
+    # Check for check-specific keywords
+    check_keywords = ['pay to the order of', 'routing number', 'account number', 'memo', 'dollars', 'date', 'check number', 'micr', 'void']
+    check_count = sum(1 for keyword in check_keywords if keyword in text_lower)
+    
+    # Check for paystub-specific keywords
+    paystub_keywords = ['gross pay', 'net pay', 'earnings', 'deductions', 'ytd', 'federal tax', 'state tax', 'social security', 'medicare', 'employee', 'employer', 'pay period', 'paycheck']
+    paystub_count = sum(1 for keyword in paystub_keywords if keyword in text_lower)
+    
+    # Check for money order keywords
+    money_order_keywords = ['money order', 'western union', 'moneygram', 'usps', 'purchaser', 'serial number', 'receipt', 'remitter', 'payee']
+    money_order_count = sum(1 for keyword in money_order_keywords if keyword in text_lower)
+    
+    # Determine document type based on keyword matches
+    max_count = max(check_count, paystub_count, money_order_count)
+    
+    if max_count == 0:
+        return 'unknown'
+    
+    if check_count == max_count:
+        return 'check'
+    elif paystub_count == max_count:
+        return 'paystub'
+    else:
+        return 'money_order'
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -81,8 +114,31 @@ def analyze_check():
                 os.remove(filepath)
                 filepath = new_filepath
             
-            # Initialize extractor and analyze
+            # Initialize extractor and get text for validation
             extractor = ProductionCheckExtractor(CREDENTIALS_PATH)
+            
+            # Get raw text for document type detection
+            from google.cloud import vision
+            client = vision.ImageAnnotatorClient.from_service_account_file(CREDENTIALS_PATH)
+            with open(filepath, 'rb') as image_file:
+                content = image_file.read()
+            image = vision.Image(content=content)
+            response = client.text_detection(image=image)
+            raw_text = response.text_annotations[0].description if response.text_annotations else ""
+            
+            # Validate document type
+            detected_type = detect_document_type(raw_text)
+            if detected_type != 'check' and detected_type != 'unknown':
+                # Clean up
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+                return jsonify({
+                    'success': False,
+                    'error': f'Wrong document type detected. This appears to be a {detected_type}, not a check. Please upload a bank check.',
+                    'message': 'Document type mismatch'
+                }), 400
+            
+            # Analyze check details
             details = extractor.extract_check_details(filepath)
             
             # Clean up temp file
@@ -139,9 +195,23 @@ def analyze_paystub():
             # Determine file type
             file_type = 'application/pdf' if filename.lower().endswith('.pdf') else 'image'
             
-            # Extract text and analyze
+            # Extract text for validation
             extractor = PaystubExtractor(CREDENTIALS_PATH)
             text = extractor.extract_text(file_bytes, file_type)
+            
+            # Validate document type
+            detected_type = detect_document_type(text)
+            if detected_type != 'paystub' and detected_type != 'unknown':
+                # Clean up
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+                return jsonify({
+                    'success': False,
+                    'error': f'Wrong document type detected. This appears to be a {detected_type}, not a paystub. Please upload a paystub document.',
+                    'message': 'Document type mismatch'
+                }), 400
+            
+            # Extract and analyze
             details = extractor.extract_paystub(text)
             
             # Clean up
@@ -205,6 +275,27 @@ def analyze_money_order():
 
             # Import money order extractor
             from money_order_extractor import MoneyOrderExtractor
+
+            # Get raw text for document type detection
+            from google.cloud import vision
+            client = vision.ImageAnnotatorClient.from_service_account_file(CREDENTIALS_PATH)
+            with open(filepath, 'rb') as image_file:
+                content = image_file.read()
+            image = vision.Image(content=content)
+            response = client.text_detection(image=image)
+            raw_text = response.text_annotations[0].description if response.text_annotations else ""
+            
+            # Validate document type
+            detected_type = detect_document_type(raw_text)
+            if detected_type != 'money_order' and detected_type != 'unknown':
+                # Clean up
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+                return jsonify({
+                    'success': False,
+                    'error': f'Wrong document type detected. This appears to be a {detected_type}, not a money order. Please upload a money order document.',
+                    'message': 'Document type mismatch'
+                }), 400
 
             # Initialize extractor and analyze
             extractor = MoneyOrderExtractor(CREDENTIALS_PATH)

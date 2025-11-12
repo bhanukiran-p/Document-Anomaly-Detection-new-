@@ -152,8 +152,8 @@ const CheckAnalysis = () => {
   return (
     <div style={containerStyle}>
       <div style={headerStyle}>
-        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Check Extraction</h1>
-        <p>Extract information from bank checks using Google Vision API</p>
+        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Check Analysis</h1>
+        <p>Analyze bank checks for fraud detection</p>
       </div>
       
       <div style={gridStyle}>
@@ -163,9 +163,21 @@ const CheckAnalysis = () => {
             Upload Check Image
           </h2>
           
+          <div style={{
+            backgroundColor: '#FFF3CD',
+            border: '1px solid #FFC107',
+            borderRadius: '8px',
+            padding: '1rem',
+            marginBottom: '1rem',
+          }}>
+            <p style={{ color: '#856404', fontSize: '0.875rem', margin: 0, fontWeight: '500' }}>
+              ⚠️ Only upload bank check images (personal or business checks)
+            </p>
+          </div>
+          
           <div {...getRootProps()} style={dropzoneStyle}>
             <input {...getInputProps()} />
-            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📄</div>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🏦</div>
             {isDragActive ? (
               <p style={{ color: colors.primary.blue, fontWeight: '500' }}>
                 Drop the check image here...
@@ -176,7 +188,7 @@ const CheckAnalysis = () => {
                   Drop your check image here or click to browse
                 </p>
                 <p style={{ color: colors.neutral.gray500, fontSize: '0.875rem' }}>
-                  Supports JPG, JPEG, PNG, PDF files
+                  Bank Checks Only - JPG, JPEG, PNG, PDF
                 </p>
               </div>
             )}
@@ -237,7 +249,7 @@ const CheckAnalysis = () => {
         {/* Results Section */}
         <div style={cardStyle}>
           <h2 style={{ color: colors.primary.navy, marginBottom: '1.5rem' }}>
-            Extraction Results
+            Analysis Results
           </h2>
           
           {!results && !loading && (
@@ -259,7 +271,7 @@ const CheckAnalysis = () => {
                 color: colors.primary.blue,
               }}>⚙️</div>
               <p style={{ marginTop: '1rem', color: colors.neutral.gray600 }}>
-                Processing with Google Vision API...
+                Analyzing check...
               </p>
             </div>
           )}
@@ -312,7 +324,6 @@ const CheckAnalysis = () => {
               <div style={resultCardStyle}>
                 <p><strong>Signature Detected:</strong> {results.signature_detected ? 'Yes' : 'No'}</p>
                 <p><strong>Extraction Time:</strong> {results.extraction_timestamp}</p>
-                <p><strong>API Used:</strong> {results.api_used || 'Google Cloud Vision API'}</p>
               </div>
               
               <button 
