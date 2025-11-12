@@ -30,7 +30,7 @@ export const analyzeCheck = async (file) => {
 export const analyzePaystub = async (file) => {
   const formData = new FormData();
   formData.append('file', file);
-  
+
   try {
     const response = await axios.post(`${API_BASE_URL}/paystub/analyze`, formData, {
       headers: {
@@ -40,6 +40,23 @@ export const analyzePaystub = async (file) => {
     return response.data;
   } catch (error) {
     throw error.response?.data || { error: 'Failed to analyze paystub' };
+  }
+};
+
+// Money Order Analysis API
+export const analyzeMoneyOrder = async (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const response = await axios.post(`${API_BASE_URL}/money-order/analyze`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { error: 'Failed to analyze money order' };
   }
 };
 

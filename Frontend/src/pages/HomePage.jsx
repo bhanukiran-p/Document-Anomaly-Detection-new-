@@ -156,13 +156,48 @@ const HomePage = () => {
             <li style={featureItemStyle}>• YTD Totals Tracking</li>
           </ul>
           
-          <button 
+          <button
             style={buttonStyle}
             onMouseEnter={(e) => e.target.style.backgroundColor = colors.accent.redDark}
             onMouseLeave={(e) => e.target.style.backgroundColor = colors.accent.red}
             onClick={() => navigate('/paystub-analysis')}
           >
             Analyze Paystubs
+          </button>
+        </div>
+
+        <div
+          style={cardStyle}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-4px)';
+            e.currentTarget.style.boxShadow = '0 8px 12px rgba(0,0,0,0.15)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+          }}
+        >
+          <h2 style={cardTitleStyle}>Money Order Detection</h2>
+          <p style={cardDescStyle}>
+            Extract information and detect anomalies in money order documents
+          </p>
+
+          <ul style={featureListStyle}>
+            <li style={featureItemStyle}>• Issuer Identification (Western Union, MoneyGram, USPS)</li>
+            <li style={featureItemStyle}>• Serial & Receipt Number Extraction</li>
+            <li style={featureItemStyle}>• Amount & Payee Information</li>
+            <li style={featureItemStyle}>• Purchaser Details</li>
+            <li style={featureItemStyle}>• Fraud Detection & Anomaly Analysis</li>
+            <li style={featureItemStyle}>• High Amount Alerts</li>
+          </ul>
+
+          <button
+            style={buttonStyle}
+            onMouseEnter={(e) => e.target.style.backgroundColor = colors.accent.redDark}
+            onMouseLeave={(e) => e.target.style.backgroundColor = colors.accent.red}
+            onClick={() => navigate('/money-order-analysis')}
+          >
+            Analyze Money Orders
           </button>
         </div>
       </div>
@@ -179,6 +214,7 @@ const HomePage = () => {
           <ul style={{ marginLeft: '2rem', marginTop: '0.5rem' }}>
             <li>Checks: Axis Bank, Bank of America, ICICI, HDFC, Chase, Wells Fargo</li>
             <li>Paystubs: US and International formats</li>
+            <li>Money Orders: Western Union, MoneyGram, USPS, and more</li>
           </ul>
           
           <p style={{ marginTop: '1rem' }}><strong>Features:</strong></p>

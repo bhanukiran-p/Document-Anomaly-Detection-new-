@@ -1,6 +1,6 @@
 """
 Flask API Server for XFORIA DAD
-Handles Check and Paystub Analysis
+Handles Check, Paystub, and Money Order Analysis
 """
 
 from flask import Flask, request, jsonify
@@ -166,16 +166,84 @@ def analyze_paystub():
             'message': 'Failed to analyze paystub'
         }), 500
 
+@app.route('/api/money-order/analyze', methods=['POST'])
+def analyze_money_order():
+    """Analyze money order document endpoint"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+
+        file = request.files['file']
+
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+
+        if not allowed_file(file.filename):
+            return jsonify({'error': 'Invalid file type. Allowed: JPG, JPEG, PNG, PDF'}), 400
+
+        # Save file temporarily
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(filepath)
+
+        try:
+            # Handle PDF conversion if needed
+            if filename.lower().endswith('.pdf'):
+                import fitz
+                pdf_document = fitz.open(filepath)
+                page = pdf_document[0]
+                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+                img_bytes = pix.tobytes("png")
+                pdf_document.close()
+
+                # Save as PNG
+                new_filepath = filepath.replace('.pdf', '.png')
+                with open(new_filepath, 'wb') as f:
+                    f.write(img_bytes)
+                os.remove(filepath)
+                filepath = new_filepath
+
+            # Import money order extractor
+            from money_order_extractor import MoneyOrderExtractor
+
+            # Initialize extractor and analyze
+            extractor = MoneyOrderExtractor(CREDENTIALS_PATH)
+            result = extractor.extract_money_order(filepath)
+
+            # Clean up temp file
+            if os.path.exists(filepath):
+                os.remove(filepath)
+
+            return jsonify({
+                'success': True,
+                'data': result,
+                'message': 'Money order analyzed successfully'
+            })
+
+        except Exception as e:
+            # Clean up on error
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            raise e
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to analyze money order'
+        }), 500
+
 if __name__ == '__main__':
     print("=" * 60)
     print("XFORIA DAD API Server")
     print("=" * 60)
-    print(f"Server running on: http://localhost:5000")
+    print(f"Server running on: http://localhost:5001")
     print(f"API Endpoints:")
     print(f"  - GET  /api/health")
     print(f"  - POST /api/check/analyze")
     print(f"  - POST /api/paystub/analyze")
+    print(f"  - POST /api/money-order/analyze")
     print("=" * 60)
-    
-    app.run(debug=True, host='0.0.0.0', port=5000)
+
+    app.run(debug=True, host='0.0.0.0', port=5001)
 

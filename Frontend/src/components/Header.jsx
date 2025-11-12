@@ -61,23 +61,29 @@ const Header = () => {
       </Link>
       
       <nav style={navStyle}>
-        <Link 
-          to="/" 
+        <Link
+          to="/"
           style={linkStyle(location.pathname === '/')}
         >
           Home
         </Link>
-        <Link 
-          to="/check-analysis" 
+        <Link
+          to="/check-analysis"
           style={linkStyle(location.pathname === '/check-analysis')}
         >
           Check Analysis
         </Link>
-        <Link 
-          to="/paystub-analysis" 
+        <Link
+          to="/paystub-analysis"
           style={linkStyle(location.pathname === '/paystub-analysis')}
         >
           Paystub Analysis
+        </Link>
+        <Link
+          to="/money-order-analysis"
+          style={linkStyle(location.pathname === '/money-order-analysis')}
+        >
+          Money Order Analysis
         </Link>
       </nav>
     </header>
