@@ -338,15 +338,17 @@ const MoneyOrderAnalysis = () => {
                 Transaction Information
               </h3>
               <div style={resultCardStyle}>
-                <p><strong>Amount:</strong>
+                <p><strong>Amount (Numeric):</strong>
                   <span style={{ color: colors.status.success, fontSize: '1.2rem', fontWeight: '600', marginLeft: '0.5rem' }}>
                     {results.extracted_data?.amount || 'N/A'}
                   </span>
                 </p>
+                <p><strong>Amount (Written):</strong> {results.extracted_data?.amount_in_words || 'N/A'}</p>
                 <p><strong>Payee:</strong> {results.extracted_data?.payee || 'N/A'}</p>
                 <p><strong>Purchaser:</strong> {results.extracted_data?.purchaser || 'N/A'}</p>
                 <p><strong>Date:</strong> {results.extracted_data?.date || 'N/A'}</p>
                 <p><strong>Location:</strong> {results.extracted_data?.location || 'N/A'}</p>
+                <p><strong>Signature:</strong> {results.extracted_data?.signature || 'N/A'}</p>
               </div>
 
               <button
