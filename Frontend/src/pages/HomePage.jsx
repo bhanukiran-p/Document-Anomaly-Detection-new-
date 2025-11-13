@@ -6,91 +6,119 @@ const HomePage = () => {
   const navigate = useNavigate();
   
   const containerStyle = {
-    maxWidth: '1200px',
+    maxWidth: '1300px',
     margin: '0 auto',
-    padding: '2rem',
+    padding: '1.5rem',
   };
   
   const headerStyle = {
     background: `linear-gradient(135deg, ${colors.primary.navy} 0%, ${colors.primary.blue} 100%)`,
-    padding: '3rem',
+    padding: '2rem',
     borderRadius: '12px',
     color: colors.neutral.white,
     textAlign: 'center',
-    marginBottom: '3rem',
+    marginBottom: '1.5rem',
   };
   
   const titleStyle = {
-    fontSize: '2.5rem',
+    fontSize: '2rem',
     fontWeight: '700',
-    marginBottom: '1rem',
+    marginBottom: '0.5rem',
   };
   
   const subtitleStyle = {
-    fontSize: '1.25rem',
+    fontSize: '1.125rem',
     opacity: 0.9,
   };
   
   const cardsContainerStyle = {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
-    gap: '2rem',
-    marginBottom: '3rem',
+    gridTemplateColumns: 'repeat(2, 1fr)',
+    gap: '1.5rem',
+    marginBottom: '2rem',
+    maxWidth: '900px',
+    margin: '0 auto 2rem auto',
   };
   
   const cardStyle = {
     backgroundColor: colors.background.card,
     borderRadius: '12px',
-    padding: '2rem',
+    padding: '1.5rem',
     boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-    borderLeft: `5px solid ${colors.primary.navy}`,
+    borderTop: `4px solid ${colors.primary.navy}`,
     transition: 'transform 0.2s, box-shadow 0.2s',
     cursor: 'pointer',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    textAlign: 'center',
+    minHeight: '220px',
+    justifyContent: 'space-between',
   };
   
   const cardTitleStyle = {
-    fontSize: '1.5rem',
+    fontSize: '1.25rem',
     fontWeight: '600',
     color: colors.primary.navy,
-    marginBottom: '1rem',
+    marginBottom: '0.75rem',
   };
   
   const cardDescStyle = {
     color: colors.neutral.gray600,
-    lineHeight: '1.6',
-    marginBottom: '1.5rem',
+    lineHeight: '1.5',
+    marginBottom: 'auto',
+    fontSize: '0.9rem',
+    flex: 1,
+    paddingBottom: '1.5rem',
   };
   
   const buttonStyle = {
     backgroundColor: colors.accent.red,
     color: colors.neutral.white,
-    padding: '0.75rem 2rem',
+    padding: '0.75rem 1.5rem',
     borderRadius: '0.5rem',
-    fontSize: '1rem',
+    fontSize: '0.95rem',
     fontWeight: '600',
     border: 'none',
     cursor: 'pointer',
     width: '100%',
     transition: 'background-color 0.2s',
+    marginTop: 'auto',
   };
   
-  const featureListStyle = {
-    listStyle: 'none',
-    padding: 0,
-    margin: '1.5rem 0',
-  };
-  
-  const featureItemStyle = {
-    padding: '0.5rem 0',
-    color: colors.neutral.gray700,
+  const backButtonStyle = {
+    backgroundColor: 'transparent',
+    color: colors.primary.navy,
+    border: `2px solid ${colors.primary.navy}`,
+    padding: '0.625rem 1.5rem',
+    borderRadius: '0.5rem',
+    fontSize: '0.95rem',
+    fontWeight: '600',
+    cursor: 'pointer',
+    marginBottom: '1.5rem',
+    transition: 'all 0.2s',
   };
   
   return (
     <div style={containerStyle}>
+      <button 
+        style={backButtonStyle}
+        onMouseEnter={(e) => {
+          e.target.style.backgroundColor = colors.primary.navy;
+          e.target.style.color = colors.neutral.white;
+        }}
+        onMouseLeave={(e) => {
+          e.target.style.backgroundColor = 'transparent';
+          e.target.style.color = colors.primary.navy;
+        }}
+        onClick={() => navigate('/transaction-type')}
+      >
+        ← Back to Transaction Types
+      </button>
+      
       <div style={headerStyle}>
-        <h1 style={titleStyle}>Document Extraction System</h1>
-        <p style={subtitleStyle}>Powered by Google Cloud Vision API</p>
-        <p style={{ opacity: 0.8, marginTop: '0.5rem' }}>
+        <h1 style={titleStyle}>Document Analysis</h1>
+        <p style={subtitleStyle}>
           Where Innovation Meets Security
         </p>
       </div>
@@ -107,19 +135,12 @@ const HomePage = () => {
             e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
           }}
         >
-          <h2 style={cardTitleStyle}>Check Extraction</h2>
-          <p style={cardDescStyle}>
-            Extract detailed information from bank checks with AI-powered OCR
-          </p>
-          
-          <ul style={featureListStyle}>
-            <li style={featureItemStyle}>• Payee Name & Amount Detection</li>
-            <li style={featureItemStyle}>• Date & Check Number Extraction</li>
-            <li style={featureItemStyle}>• Bank Information Identification</li>
-            <li style={featureItemStyle}>• Account & Routing Numbers</li>
-            <li style={featureItemStyle}>• MICR/IFSC Code Extraction</li>
-            <li style={featureItemStyle}>• Signature Detection</li>
-          </ul>
+          <div>
+            <h2 style={cardTitleStyle}>Check Analysis</h2>
+            <p style={cardDescStyle}>
+              Extract payee, amount, bank details, routing numbers, and signatures from checks with AI-powered OCR
+            </p>
+          </div>
           
           <button 
             style={buttonStyle}
@@ -142,19 +163,12 @@ const HomePage = () => {
             e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
           }}
         >
-          <h2 style={cardTitleStyle}>Paystub Extraction</h2>
-          <p style={cardDescStyle}>
-            Extract comprehensive payroll information from paystubs and payslips
-          </p>
-          
-          <ul style={featureListStyle}>
-            <li style={featureItemStyle}>• Employee Information Extraction</li>
-            <li style={featureItemStyle}>• Gross & Net Pay Calculation</li>
-            <li style={featureItemStyle}>• Pay Period & Date Detection</li>
-            <li style={featureItemStyle}>• Tax Withholding Details</li>
-            <li style={featureItemStyle}>• Earnings & Deductions Breakdown</li>
-            <li style={featureItemStyle}>• YTD Totals Tracking</li>
-          </ul>
+          <div>
+            <h2 style={cardTitleStyle}>Paystub Analysis</h2>
+            <p style={cardDescStyle}>
+              Extract employee information, gross & net pay, tax details, and YTD totals from paystubs
+            </p>
+          </div>
           
           <button
             style={buttonStyle}
@@ -177,19 +191,12 @@ const HomePage = () => {
             e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
           }}
         >
-          <h2 style={cardTitleStyle}>Money Order Detection</h2>
-          <p style={cardDescStyle}>
-            Extract information and detect anomalies in money order documents
-          </p>
-
-          <ul style={featureListStyle}>
-            <li style={featureItemStyle}>• Issuer Identification (Western Union, MoneyGram, USPS)</li>
-            <li style={featureItemStyle}>• Serial & Receipt Number Extraction</li>
-            <li style={featureItemStyle}>• Amount & Payee Information</li>
-            <li style={featureItemStyle}>• Purchaser Details</li>
-            <li style={featureItemStyle}>• Fraud Detection & Anomaly Analysis</li>
-            <li style={featureItemStyle}>• High Amount Alerts</li>
-          </ul>
+          <div>
+            <h2 style={cardTitleStyle}>Money Order Analysis</h2>
+            <p style={cardDescStyle}>
+              Identify issuers, extract serial numbers, amounts, and detect fraud with high amount alerts
+            </p>
+          </div>
 
           <button
             style={buttonStyle}
@@ -200,31 +207,50 @@ const HomePage = () => {
             Analyze Money Orders
           </button>
         </div>
+
+        <div
+          style={cardStyle}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-4px)';
+            e.currentTarget.style.boxShadow = '0 8px 12px rgba(0,0,0,0.15)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+          }}
+        >
+          <div>
+            <h2 style={cardTitleStyle}>Bank Statement Analysis</h2>
+            <p style={cardDescStyle}>
+              Extract account details, balances, transaction history, and financial summaries from bank statements
+            </p>
+          </div>
+
+          <button
+            style={buttonStyle}
+            onMouseEnter={(e) => e.target.style.backgroundColor = colors.accent.redDark}
+            onMouseLeave={(e) => e.target.style.backgroundColor = colors.accent.red}
+            onClick={() => navigate('/bank-statement-analysis')}
+          >
+            Analyze Bank Statements
+          </button>
+        </div>
       </div>
       
       <div style={{
         backgroundColor: colors.primary.lightBlue,
-        padding: '2rem',
+        padding: '1.5rem',
         borderRadius: '12px',
-        marginBottom: '2rem',
+        marginBottom: '1rem',
       }}>
-        <h3 style={{ color: colors.primary.navy, marginBottom: '1rem' }}>About XFORIA DAD</h3>
-        <div style={{ color: colors.neutral.gray700, lineHeight: '1.6' }}>
-          <p><strong>Supported Document Types:</strong></p>
-          <ul style={{ marginLeft: '2rem', marginTop: '0.5rem' }}>
-            <li>Checks: Axis Bank, Bank of America, ICICI, HDFC, Chase, Wells Fargo</li>
-            <li>Paystubs: US and International formats</li>
-            <li>Money Orders: Western Union, MoneyGram, USPS, and more</li>
-          </ul>
-          
-          <p style={{ marginTop: '1rem' }}><strong>Features:</strong></p>
-          <ul style={{ marginLeft: '2rem', marginTop: '0.5rem' }}>
-            <li>Real-time OCR with Google Vision API</li>
-            <li>AI-powered data extraction</li>
-            <li>High accuracy confidence scoring</li>
-            <li>Export results as JSON</li>
-            <li>PDF and Image file support</li>
-          </ul>
+        <h3 style={{ color: colors.primary.navy, marginBottom: '0.75rem', fontSize: '1.125rem' }}>About XFORIA DAD</h3>
+        <div style={{ color: colors.neutral.gray700, lineHeight: '1.5', fontSize: '0.9rem' }}>
+          <p style={{ marginBottom: '0.5rem' }}>
+            <strong>Supported:</strong> Checks (Axis, BOA, ICICI, HDFC, Chase, Wells Fargo) • Paystubs (US & International) • Money Orders (Western Union, MoneyGram, USPS) • Bank Statements (All major banks)
+          </p>
+          <p>
+            <strong>Features:</strong> Real-time OCR • AI-powered extraction • Transaction history parsing • High accuracy scoring • JSON export • PDF & Image support
+          </p>
         </div>
       </div>
     </div>

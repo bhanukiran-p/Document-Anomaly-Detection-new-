@@ -176,8 +176,8 @@ const MoneyOrderAnalysis = () => {
   return (
     <div style={containerStyle}>
       <div style={headerStyle}>
-        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Money Order Extraction</h1>
-        <p>Extract information and detect anomalies in money order documents</p>
+        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Money Order Analysis</h1>
+        <p>Analyze money orders for fraud and anomaly detection</p>
       </div>
 
       <div style={gridStyle}>
@@ -186,6 +186,18 @@ const MoneyOrderAnalysis = () => {
           <h2 style={{ color: colors.primary.navy, marginBottom: '1.5rem' }}>
             Upload Money Order Image
           </h2>
+
+          <div style={{
+            backgroundColor: '#FFF3CD',
+            border: '1px solid #FFC107',
+            borderRadius: '8px',
+            padding: '1rem',
+            marginBottom: '1rem',
+          }}>
+            <p style={{ color: '#856404', fontSize: '0.875rem', margin: 0, fontWeight: '500' }}>
+              ⚠️ Only upload money order documents (Western Union, MoneyGram, USPS, etc.)
+            </p>
+          </div>
 
           <div {...getRootProps()} style={dropzoneStyle}>
             <input {...getInputProps()} />
@@ -200,7 +212,7 @@ const MoneyOrderAnalysis = () => {
                   Drop your money order image here or click to browse
                 </p>
                 <p style={{ color: colors.neutral.gray500, fontSize: '0.875rem' }}>
-                  Supports JPG, JPEG, PNG, PDF files
+                  Money Orders Only - JPG, JPEG, PNG, PDF
                 </p>
               </div>
             )}
@@ -283,7 +295,7 @@ const MoneyOrderAnalysis = () => {
                 color: colors.primary.blue,
               }}>⚙️</div>
               <p style={{ marginTop: '1rem', color: colors.neutral.gray600 }}>
-                Processing with Google Vision API...
+                Analyzing money order...
               </p>
             </div>
           )}
