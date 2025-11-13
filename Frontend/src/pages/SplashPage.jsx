@@ -80,10 +80,10 @@ const SplashPage = () => {
   };
   
   const dadLogoStyle = {
-    height: '120px',
+    height: '110px',
     width: 'auto',
-    marginBottom: '1rem',
-    padding: '1rem',
+    marginBottom: '0.85rem',
+    padding: '0.75rem',
     backgroundColor: '#F5F5F5',
     borderRadius: '8px',
   };
@@ -105,11 +105,13 @@ const SplashPage = () => {
   };
   
   const featureCardStyle = {
+    backgroundColor: colors.neutral.white,
     textAlign: 'center',
     padding: '1.5rem',
+    borderRadius: '12px',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
     transition: 'transform 0.3s ease, box-shadow 0.3s ease',
     cursor: 'pointer',
-    borderRadius: '12px',
   };
   
   const featureIconStyle = {
@@ -360,14 +362,12 @@ const SplashPage = () => {
           <div 
             style={featureCardStyle}
             onMouseEnter={(e) => {
-              e.currentTarget.style.transform = 'translateY(-8px)';
-              e.currentTarget.style.boxShadow = '0 12px 24px rgba(0,0,0,0.15)';
-              e.currentTarget.style.backgroundColor = colors.neutral.white;
+              e.currentTarget.style.transform = 'translateY(-6px)';
+              e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.15)';
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = 'none';
-              e.currentTarget.style.backgroundColor = 'transparent';
+              e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
             }}
           >
             <FaFileAlt style={featureIconStyle} />
@@ -383,14 +383,12 @@ const SplashPage = () => {
           <div 
             style={featureCardStyle}
             onMouseEnter={(e) => {
-              e.currentTarget.style.transform = 'translateY(-8px)';
-              e.currentTarget.style.boxShadow = '0 12px 24px rgba(0,0,0,0.15)';
-              e.currentTarget.style.backgroundColor = colors.neutral.white;
+              e.currentTarget.style.transform = 'translateY(-6px)';
+              e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.15)';
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = 'none';
-              e.currentTarget.style.backgroundColor = 'transparent';
+              e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
             }}
           >
             <FaBolt style={featureIconStyle} />
@@ -406,14 +404,12 @@ const SplashPage = () => {
           <div 
             style={featureCardStyle}
             onMouseEnter={(e) => {
-              e.currentTarget.style.transform = 'translateY(-8px)';
-              e.currentTarget.style.boxShadow = '0 12px 24px rgba(0,0,0,0.15)';
-              e.currentTarget.style.backgroundColor = colors.neutral.white;
+              e.currentTarget.style.transform = 'translateY(-6px)';
+              e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.15)';
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = 'none';
-              e.currentTarget.style.backgroundColor = 'transparent';
+              e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
             }}
           >
             <FaSearch style={featureIconStyle} />
