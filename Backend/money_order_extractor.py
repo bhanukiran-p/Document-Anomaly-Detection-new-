@@ -79,11 +79,13 @@ class MoneyOrderExtractor:
             'issuer': self._extract_issuer(text),
             'serial_number': self._extract_serial_number(text),
             'amount': self._extract_amount(text),
+            'amount_in_words': self._extract_amount_in_words(text),
             'payee': self._extract_payee(text),
             'purchaser': self._extract_purchaser(text),
             'date': self._extract_date(text),
             'location': self._extract_location(text),
             'receipt_number': self._extract_receipt_number(text),
+            'signature': self._extract_signature(text),
         }
 
         # Perform anomaly detection
@@ -102,15 +104,28 @@ class MoneyOrderExtractor:
 
     def _extract_issuer(self, text: str) -> Optional[str]:
         """Extract money order issuer (Western Union, MoneyGram, USPS, etc.)"""
-        issuers = [
-            'Western Union', 'MoneyGram', 'USPS', 'U.S. Postal Service',
-            '7-Eleven', 'Walmart', 'CVS', 'Moneygram', 'ACE Cash Express'
-        ]
-
         text_upper = text.upper()
-        for issuer in issuers:
-            if issuer.upper() in text_upper:
-                return issuer
+
+        # Check for USPS patterns (most common)
+        if 'UNITED STATES POSTAL' in text_upper or 'U.S. POSTAL' in text_upper or 'USPS' in text_upper:
+            if 'MONEY ORDER' in text_upper:
+                return 'USPS'
+
+        # Check for other issuers
+        issuers = {
+            'WESTERN UNION': 'Western Union',
+            'MONEYGRAM': 'MoneyGram',
+            '7-ELEVEN': '7-Eleven',
+            'WALMART': 'Walmart',
+            'CVS': 'CVS',
+            'ACE CASH EXPRESS': 'ACE Cash Express',
+            'MONEY MART': 'Money Mart',
+            'CHECK INTO CASH': 'Check Into Cash'
+        }
+
+        for key, value in issuers.items():
+            if key in text_upper:
+                return value
 
         return None
 
@@ -131,18 +146,36 @@ class MoneyOrderExtractor:
         return None
 
     def _extract_amount(self, text: str) -> Optional[str]:
-        """Extract money order amount"""
-        # Look for currency amounts
+        """Extract money order amount (numeric)"""
+        # Look for currency amounts - prioritize amounts near "AMOUNT" label
         patterns = [
-            r'\$\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)',
-            r'AMOUNT[:\s]*\$?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)',
-            r'(?:USD|US\$)\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)',
+            r'AMOUNT[:\s]*\$?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2}))',
+            r'\$\s*(\d{1,3}(?:,\d{3})*\.\d{2})',
+            r'(?:USD|US\$)\s*(\d{1,3}(?:,\d{3})*\.\d{2})',
         ]
 
         for pattern in patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 return f"${match.group(1)}"
+
+        return None
+
+    def _extract_amount_in_words(self, text: str) -> Optional[str]:
+        """Extract written amount (e.g., 'SEVEN HUNDRED FIFTY AND 00/100 DOLLARS')"""
+        # Pattern for written amounts like on checks/money orders
+        patterns = [
+            r'([A-Z][A-Za-z\s]+(?:HUNDRED|THOUSAND|MILLION)\s+[A-Za-z\s]+AND\s+\d{1,2}/\d{2,3}\s+DOLLARS)',
+            r'([A-Z][A-Z\s]+AND\s+\d{1,2}/\d{2,3}\s+DOLLARS)',
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                written_amount = match.group(1).strip()
+                # Clean up extra spaces
+                written_amount = ' '.join(written_amount.split())
+                return written_amount
 
         return None
 
@@ -226,79 +259,81 @@ class MoneyOrderExtractor:
 
         return None
 
+    def _extract_signature(self, text: str) -> Optional[str]:
+        """Extract signature information or detect signature field presence"""
+        text_upper = text.upper()
+
+        # Common signature-related terms that indicate a signature is present
+        signature_indicators = [
+            'POSTAL CLERK',
+            'CLERK',
+            'AGENT',
+            'AUTHORIZED',
+            'SIGNATURE',
+            'SIGNED',
+            'SIGN HERE',
+        ]
+
+        # Check for signature field labels with values
+        signature_patterns = [
+            r'(?:AGENT\s+)?AUTHORIZED\s+SIGNATURE[:\s]*([A-Z][A-Za-z\s\.\,\-]+?)(?:\n|\s{3,}|$)',
+            r'SIGNATURE[:\s]*([A-Z][A-Za-z\s\.\,\-]+?)(?:\n|\s{3,}|$)',
+            r'PURCHASER\s+SIGNATURE[:\s]*([A-Z][A-Za-z\s\.\,\-]+?)(?:\n|\s{3,}|$)',
+            r'POSTAL\s+CLERK[:\s]*([A-Z][A-Za-z\s\.\,\-]+?)(?:\n|\s{3,}|$)',
+        ]
+
+        # Try to extract signature with label
+        for pattern in signature_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                signature_value = match.group(1).strip()
+                # Clean up and validate
+                if len(signature_value) > 2 and signature_value.upper() not in ['N/A', 'NA', 'NONE']:
+                    return signature_value
+
+        # Look for standalone signature indicators (like "POSTAL CLERK" appearing as signature)
+        for indicator in signature_indicators:
+            if indicator in text_upper:
+                # Check if it appears near the end of the document (common for signatures)
+                lines = text.split('\n')
+                for i, line in enumerate(lines):
+                    if indicator in line.upper():
+                        # Check if this might be a signature (not part of header/title)
+                        if i > len(lines) / 2:  # In bottom half of document
+                            # Try to extract the text on that line
+                            signature_match = re.search(r'\b([A-Z][A-Za-z\s]+(?:CLERK|AGENT))\b', line, re.IGNORECASE)
+                            if signature_match:
+                                return signature_match.group(1).strip()
+
+                # If we found the indicator but couldn't extract a specific value
+                if indicator == 'SIGNATURE' or 'SIGNATURE' in indicator:
+                    return "Signature field present"
+
+        return None
+
     def _detect_anomalies(self, data: Dict, text: str) -> list:
         """
         Detect potential anomalies or fraud indicators
+        (Disabled - returns empty list for clean data extraction)
         """
-        anomalies = []
-
-        # Check for missing critical fields
-        if not data.get('amount'):
-            anomalies.append({
-                'type': 'missing_field',
-                'field': 'amount',
-                'severity': 'high',
-                'message': 'Amount not detected'
-            })
-
-        if not data.get('serial_number'):
-            anomalies.append({
-                'type': 'missing_field',
-                'field': 'serial_number',
-                'severity': 'high',
-                'message': 'Serial number not detected'
-            })
-
-        if not data.get('payee'):
-            anomalies.append({
-                'type': 'missing_field',
-                'field': 'payee',
-                'severity': 'medium',
-                'message': 'Payee information not detected'
-            })
-
-        # Check for suspiciously high amounts
-        if data.get('amount'):
-            amount_str = data['amount'].replace('$', '').replace(',', '')
-            try:
-                amount_val = float(amount_str)
-                if amount_val > 1000:
-                    anomalies.append({
-                        'type': 'high_amount',
-                        'field': 'amount',
-                        'severity': 'medium',
-                        'message': f'High amount detected: {data["amount"]} (typical limit is $1,000)'
-                    })
-            except ValueError:
-                pass
-
-        # Check for alterations keywords
-        alteration_keywords = ['VOID', 'ALTERED', 'COUNTERFEIT', 'COPY', 'SPECIMEN']
-        text_upper = text.upper()
-        for keyword in alteration_keywords:
-            if keyword in text_upper:
-                anomalies.append({
-                    'type': 'alteration_indicator',
-                    'field': 'document',
-                    'severity': 'critical',
-                    'message': f'Potential alteration keyword detected: {keyword}'
-                })
-
-        return anomalies
+        # Return empty list - no anomaly detection
+        return []
 
     def _calculate_confidence(self, data: Dict) -> float:
         """
         Calculate confidence score based on extracted fields
         """
         weights = {
-            'issuer': 20,
-            'serial_number': 25,
-            'amount': 20,
-            'payee': 15,
-            'purchaser': 10,
-            'date': 5,
-            'location': 3,
-            'receipt_number': 2
+            'issuer': 18,
+            'serial_number': 20,
+            'amount': 17,
+            'amount_in_words': 14,
+            'payee': 12,
+            'purchaser': 8,
+            'signature': 6,
+            'date': 3,
+            'location': 1,
+            'receipt_number': 1
         }
 
         score = 0

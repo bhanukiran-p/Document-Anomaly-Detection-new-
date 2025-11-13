@@ -1,9 +1,9 @@
 import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { analyzeMoneyOrder } from '../services/api';
+import { analyzeBankStatement } from '../services/api';
 import { colors } from '../styles/colors';
 
-const MoneyOrderAnalysis = () => {
+const BankStatementAnalysis = () => {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -39,7 +39,7 @@ const MoneyOrderAnalysis = () => {
 
   const handleAnalyze = async () => {
     if (!file) {
-      setError('Please upload a money order image first');
+      setError('Please upload a bank statement image first');
       return;
     }
 
@@ -47,10 +47,10 @@ const MoneyOrderAnalysis = () => {
     setError(null);
 
     try {
-      const response = await analyzeMoneyOrder(file);
+      const response = await analyzeBankStatement(file);
       setResults(response.data);
     } catch (err) {
-      setError(err.error || 'Failed to analyze money order. Please try again.');
+      setError(err.error || 'Failed to analyze bank statement. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -62,7 +62,7 @@ const MoneyOrderAnalysis = () => {
     const url = URL.createObjectURL(dataBlob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `money_order_analysis_${new Date().getTime()}.json`;
+    link.download = `bank_statement_analysis_${new Date().getTime()}.json`;
     link.click();
   };
 
@@ -125,30 +125,6 @@ const MoneyOrderAnalysis = () => {
     marginBottom: '1rem',
   };
 
-  const anomalyCardStyle = (severity) => {
-    let bgColor = colors.status.infoLight;
-    let borderColor = colors.status.info;
-
-    if (severity === 'critical') {
-      bgColor = colors.accent.redLight;
-      borderColor = colors.accent.red;
-    } else if (severity === 'high') {
-      bgColor = colors.status.warningLight;
-      borderColor = colors.status.warning;
-    } else if (severity === 'medium') {
-      bgColor = colors.status.infoLight;
-      borderColor = colors.status.info;
-    }
-
-    return {
-      backgroundColor: bgColor,
-      padding: '1rem',
-      borderRadius: '8px',
-      borderLeft: `4px solid ${borderColor}`,
-      marginBottom: '0.75rem',
-    };
-  };
-
   const confidenceStyle = (confidence) => {
     let bgColor = colors.accent.redLight;
     let textColor = colors.accent.red;
@@ -173,18 +149,30 @@ const MoneyOrderAnalysis = () => {
     };
   };
 
+  const transactionRowStyle = (isDebit) => ({
+    display: 'grid',
+    gridTemplateColumns: '80px 1fr 120px 120px',
+    gap: '1rem',
+    padding: '0.75rem',
+    backgroundColor: colors.background.card,
+    borderRadius: '6px',
+    marginBottom: '0.5rem',
+    fontSize: '0.9rem',
+    borderLeft: `3px solid ${isDebit ? colors.accent.red : colors.status.success}`,
+  });
+
   return (
     <div style={containerStyle}>
       <div style={headerStyle}>
-        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Money Order Analysis</h1>
-        <p>Analyze money orders for fraud and anomaly detection</p>
+        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Bank Statement Analysis</h1>
+        <p>Extract and analyze bank statement details with transaction history</p>
       </div>
 
       <div style={gridStyle}>
         {/* Upload Section */}
         <div style={cardStyle}>
           <h2 style={{ color: colors.primary.navy, marginBottom: '1.5rem' }}>
-            Upload Money Order Image
+            Upload Bank Statement
           </h2>
 
           <div style={{
@@ -195,24 +183,24 @@ const MoneyOrderAnalysis = () => {
             marginBottom: '1rem',
           }}>
             <p style={{ color: '#856404', fontSize: '0.875rem', margin: 0, fontWeight: '500' }}>
-              ⚠️ Only upload money order documents (Western Union, MoneyGram, USPS, etc.)
+              ⚠️ Only upload bank statement documents (checking/savings account statements)
             </p>
           </div>
 
           <div {...getRootProps()} style={dropzoneStyle}>
             <input {...getInputProps()} />
-            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>💵</div>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🏦</div>
             {isDragActive ? (
               <p style={{ color: colors.primary.blue, fontWeight: '500' }}>
-                Drop the money order image here...
+                Drop the bank statement here...
               </p>
             ) : (
               <div>
                 <p style={{ color: colors.neutral.gray700, marginBottom: '0.5rem' }}>
-                  Drop your money order image here or click to browse
+                  Drop your bank statement here or click to browse
                 </p>
                 <p style={{ color: colors.neutral.gray500, fontSize: '0.875rem' }}>
-                  Money Orders Only - JPG, JPEG, PNG, PDF
+                  Bank Statements Only - JPG, JPEG, PNG, PDF
                 </p>
               </div>
             )}
@@ -234,7 +222,7 @@ const MoneyOrderAnalysis = () => {
                 <div style={{ marginTop: '1rem' }}>
                   <img
                     src={preview}
-                    alt="Money order preview"
+                    alt="Bank statement preview"
                     style={{
                       width: '100%',
                       borderRadius: '8px',
@@ -253,7 +241,7 @@ const MoneyOrderAnalysis = () => {
             onMouseEnter={(e) => !loading && (e.target.style.backgroundColor = colors.accent.redDark)}
             onMouseLeave={(e) => !loading && (e.target.style.backgroundColor = colors.accent.red)}
           >
-            {loading ? 'Analyzing...' : 'Analyze Money Order'}
+            {loading ? 'Analyzing...' : 'Analyze Bank Statement'}
           </button>
 
           {error && (
@@ -284,7 +272,7 @@ const MoneyOrderAnalysis = () => {
               textAlign: 'center',
               color: colors.primary.navy,
             }}>
-              <p>Upload a money order image on the left to begin analysis</p>
+              <p>Upload a bank statement on the left to begin analysis</p>
             </div>
           )}
 
@@ -295,61 +283,148 @@ const MoneyOrderAnalysis = () => {
                 color: colors.primary.blue,
               }}>⚙️</div>
               <p style={{ marginTop: '1rem', color: colors.neutral.gray600 }}>
-                Analyzing money order...
+                Analyzing bank statement...
               </p>
             </div>
           )}
 
-          {results && results.status === 'success' && (
+          {results && (
             <div className="fade-in">
-              <div style={confidenceStyle(results.confidence_score || 0)}>
-                [{results.confidence_score >= 80 ? 'HIGH' : results.confidence_score >= 60 ? 'MEDIUM' : 'LOW'}]
-                Confidence: {results.confidence_score?.toFixed(1)}%
-              </div>
-
-              {/* Anomalies Section - Show first if present */}
-              {results.anomalies && results.anomalies.length > 0 && (
-                <div style={{ marginBottom: '2rem' }}>
-                  <h3 style={{ color: colors.accent.red, marginBottom: '1rem' }}>
-                    ⚠️ Anomalies Detected ({results.anomalies.length})
-                  </h3>
-                  {results.anomalies.map((anomaly, index) => (
-                    <div key={index} style={anomalyCardStyle(anomaly.severity)}>
-                      <strong style={{ textTransform: 'uppercase' }}>
-                        [{anomaly.severity}] {anomaly.type}:
-                      </strong>
-                      <br />
-                      {anomaly.message}
-                    </div>
-                  ))}
+              {results.summary?.confidence && (
+                <div style={confidenceStyle(results.summary.confidence)}>
+                  [{results.summary.confidence >= 80 ? 'HIGH' : results.summary.confidence >= 60 ? 'MEDIUM' : 'LOW'}]
+                  Confidence: {results.summary.confidence?.toFixed(1)}%
                 </div>
               )}
 
               <h3 style={{ color: colors.primary.navy, marginBottom: '1rem' }}>
-                Issuer Information
+                Account Information
               </h3>
               <div style={resultCardStyle}>
-                <p><strong>Issuer:</strong> {results.extracted_data?.issuer || 'N/A'}</p>
-                <p><strong>Serial Number:</strong> {results.extracted_data?.serial_number || 'N/A'}</p>
-                <p><strong>Receipt Number:</strong> {results.extracted_data?.receipt_number || 'N/A'}</p>
+                <p><strong>Bank Name:</strong> {results.bank_name || 'N/A'}</p>
+                <p><strong>Account Holder:</strong> {results.account_holder || 'N/A'}</p>
+                <p><strong>Account Number:</strong> {results.account_number ? `****${results.account_number}` : 'N/A'}</p>
+                <p><strong>Statement Period:</strong> {results.statement_period || 'N/A'}</p>
               </div>
 
               <h3 style={{ color: colors.primary.navy, marginBottom: '1rem', marginTop: '1.5rem' }}>
-                Transaction Information
+                Balance Summary
               </h3>
               <div style={resultCardStyle}>
-                <p><strong>Amount (Numeric):</strong>
-                  <span style={{ color: colors.status.success, fontSize: '1.2rem', fontWeight: '600', marginLeft: '0.5rem' }}>
-                    {results.extracted_data?.amount || 'N/A'}
+                <p><strong>Opening Balance:</strong>
+                  <span style={{ color: colors.primary.navy, fontSize: '1.1rem', fontWeight: '600', marginLeft: '0.5rem' }}>
+                    {results.balances?.opening_balance || 'N/A'}
                   </span>
                 </p>
-                <p><strong>Amount (Written):</strong> {results.extracted_data?.amount_in_words || 'N/A'}</p>
-                <p><strong>Payee:</strong> {results.extracted_data?.payee || 'N/A'}</p>
-                <p><strong>Purchaser:</strong> {results.extracted_data?.purchaser || 'N/A'}</p>
-                <p><strong>Date:</strong> {results.extracted_data?.date || 'N/A'}</p>
-                <p><strong>Location:</strong> {results.extracted_data?.location || 'N/A'}</p>
-                <p><strong>Signature:</strong> {results.extracted_data?.signature || 'N/A'}</p>
+                <p><strong>Ending Balance:</strong>
+                  <span style={{ color: colors.status.success, fontSize: '1.1rem', fontWeight: '600', marginLeft: '0.5rem' }}>
+                    {results.balances?.ending_balance || 'N/A'}
+                  </span>
+                </p>
+                {results.balances?.available_balance && (
+                  <p><strong>Available Balance:</strong> {results.balances.available_balance}</p>
+                )}
+                {results.balances?.current_balance && (
+                  <p><strong>Current Balance:</strong> {results.balances.current_balance}</p>
+                )}
               </div>
+
+              {results.summary && (
+                <>
+                  <h3 style={{ color: colors.primary.navy, marginBottom: '1rem', marginTop: '1.5rem' }}>
+                    Transaction Summary
+                  </h3>
+                  <div style={resultCardStyle}>
+                    <p><strong>Total Transactions:</strong> {results.summary.transaction_count || 0}</p>
+                    <p><strong>Total Credits:</strong>
+                      <span style={{ color: colors.status.success, fontWeight: '600', marginLeft: '0.5rem' }}>
+                        {results.summary.total_credits !== null && results.summary.total_credits !== undefined
+                          ? `$${results.summary.total_credits.toFixed(2)}`
+                          : 'N/A'}
+                      </span>
+                    </p>
+                    <p><strong>Total Debits:</strong>
+                      <span style={{ color: colors.accent.red, fontWeight: '600', marginLeft: '0.5rem' }}>
+                        {results.summary.total_debits !== null && results.summary.total_debits !== undefined
+                          ? `$${Math.abs(results.summary.total_debits).toFixed(2)}`
+                          : 'N/A'}
+                      </span>
+                    </p>
+                    <p><strong>Net Activity:</strong>
+                      <span style={{
+                        color: results.summary.net_activity >= 0 ? colors.status.success : colors.accent.red,
+                        fontWeight: '600',
+                        marginLeft: '0.5rem'
+                      }}>
+                        {results.summary.net_activity !== null && results.summary.net_activity !== undefined
+                          ? `$${results.summary.net_activity.toFixed(2)}`
+                          : 'N/A'}
+                      </span>
+                    </p>
+                  </div>
+                </>
+              )}
+
+              {results.transactions && results.transactions.length > 0 && (
+                <>
+                  <h3 style={{ color: colors.primary.navy, marginBottom: '1rem', marginTop: '1.5rem' }}>
+                    Recent Transactions ({Math.min(results.transactions.length, 10)} shown)
+                  </h3>
+                  <div style={{
+                    backgroundColor: colors.background.main,
+                    padding: '1rem',
+                    borderRadius: '8px',
+                    maxHeight: '400px',
+                    overflowY: 'auto'
+                  }}>
+                    {/* Header */}
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: '80px 1fr 120px 120px',
+                      gap: '1rem',
+                      padding: '0.75rem',
+                      fontWeight: '600',
+                      color: colors.primary.navy,
+                      borderBottom: `2px solid ${colors.neutral.gray300}`,
+                      marginBottom: '0.5rem',
+                      fontSize: '0.9rem',
+                    }}>
+                      <div>Date</div>
+                      <div>Description</div>
+                      <div>Amount</div>
+                      <div>Balance</div>
+                    </div>
+
+                    {/* Transaction rows */}
+                    {results.transactions.slice(0, 10).map((txn, index) => (
+                      <div key={index} style={transactionRowStyle(txn.amount_value < 0)}>
+                        <div style={{ fontWeight: '500' }}>{txn.date || 'N/A'}</div>
+                        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {txn.description || 'No description'}
+                        </div>
+                        <div style={{
+                          fontWeight: '600',
+                          color: txn.amount_value < 0 ? colors.accent.red : colors.status.success
+                        }}>
+                          {txn.amount || 'N/A'}
+                        </div>
+                        <div style={{ fontWeight: '500' }}>{txn.balance || 'N/A'}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {results.transactions.length > 10 && (
+                    <p style={{
+                      color: colors.neutral.gray600,
+                      fontSize: '0.875rem',
+                      marginTop: '0.5rem',
+                      fontStyle: 'italic'
+                    }}>
+                      + {results.transactions.length - 10} more transactions (download JSON for full list)
+                    </p>
+                  )}
+                </>
+              )}
 
               <button
                 style={{
@@ -371,4 +446,4 @@ const MoneyOrderAnalysis = () => {
   );
 };
 
-export default MoneyOrderAnalysis;
+export default BankStatementAnalysis;

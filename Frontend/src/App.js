@@ -9,6 +9,7 @@ import HomePage from './pages/HomePage';
 import CheckAnalysis from './pages/CheckAnalysis';
 import PaystubAnalysis from './pages/PaystubAnalysis';
 import MoneyOrderAnalysis from './pages/MoneyOrderAnalysis';
+import BankStatementAnalysis from './pages/BankStatementAnalysis';
 import './styles/GlobalStyles.css';
 
 function AppContent() {
@@ -38,6 +39,7 @@ function AppContent() {
           <Route path="/check-analysis" element={<CheckAnalysis />} />
           <Route path="/paystub-analysis" element={<PaystubAnalysis />} />
           <Route path="/money-order-analysis" element={<MoneyOrderAnalysis />} />
+          <Route path="/bank-statement-analysis" element={<BankStatementAnalysis />} />
         </Routes>
       </main>
       {!isCustomLayout && <Footer />}

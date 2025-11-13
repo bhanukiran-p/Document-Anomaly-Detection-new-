@@ -33,9 +33,11 @@ const HomePage = () => {
   
   const cardsContainerStyle = {
     display: 'grid',
-    gridTemplateColumns: 'repeat(3, 1fr)',
+    gridTemplateColumns: 'repeat(2, 1fr)',
     gap: '1.5rem',
     marginBottom: '2rem',
+    maxWidth: '900px',
+    margin: '0 auto 2rem auto',
   };
   
   const cardStyle = {
@@ -205,6 +207,34 @@ const HomePage = () => {
             Analyze Money Orders
           </button>
         </div>
+
+        <div
+          style={cardStyle}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-4px)';
+            e.currentTarget.style.boxShadow = '0 8px 12px rgba(0,0,0,0.15)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+          }}
+        >
+          <div>
+            <h2 style={cardTitleStyle}>Bank Statement Analysis</h2>
+            <p style={cardDescStyle}>
+              Extract account details, balances, transaction history, and financial summaries from bank statements
+            </p>
+          </div>
+
+          <button
+            style={buttonStyle}
+            onMouseEnter={(e) => e.target.style.backgroundColor = colors.accent.redDark}
+            onMouseLeave={(e) => e.target.style.backgroundColor = colors.accent.red}
+            onClick={() => navigate('/bank-statement-analysis')}
+          >
+            Analyze Bank Statements
+          </button>
+        </div>
       </div>
       
       <div style={{
@@ -216,10 +246,10 @@ const HomePage = () => {
         <h3 style={{ color: colors.primary.navy, marginBottom: '0.75rem', fontSize: '1.125rem' }}>About XFORIA DAD</h3>
         <div style={{ color: colors.neutral.gray700, lineHeight: '1.5', fontSize: '0.9rem' }}>
           <p style={{ marginBottom: '0.5rem' }}>
-            <strong>Supported:</strong> Checks (Axis, BOA, ICICI, HDFC, Chase, Wells Fargo) • Paystubs (US & International) • Money Orders (Western Union, MoneyGram, USPS)
+            <strong>Supported:</strong> Checks (Axis, BOA, ICICI, HDFC, Chase, Wells Fargo) • Paystubs (US & International) • Money Orders (Western Union, MoneyGram, USPS) • Bank Statements (All major banks)
           </p>
           <p>
-            <strong>Features:</strong> Real-time OCR • AI-powered extraction • High accuracy scoring • JSON export • PDF & Image support
+            <strong>Features:</strong> Real-time OCR • AI-powered extraction • Transaction history parsing • High accuracy scoring • JSON export • PDF & Image support
           </p>
         </div>
       </div>
