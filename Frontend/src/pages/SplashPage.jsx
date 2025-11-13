@@ -80,11 +80,11 @@ const SplashPage = () => {
   };
   
   const dadLogoStyle = {
-    height: '110px',
+    height: '220px',
     width: 'auto',
-    marginBottom: '0.85rem',
-    padding: '0.75rem',
-    backgroundColor: '#F5F5F5',
+    marginBottom: '1.5rem',
+    padding: '1rem',
+    backgroundColor: 'transparent',
     borderRadius: '8px',
   };
   
@@ -352,7 +352,7 @@ const SplashPage = () => {
       
       {/* Hero Section */}
       <section style={heroSectionStyle}>
-        <img src="/dad-logo.png" alt="DAD Logo" style={dadLogoStyle} />
+        <img src="/DAD_red_black.png" alt="DAD Logo" style={dadLogoStyle} />
         <p style={heroTaglineStyle}>The Intelligence That Safeguards Your Next Move</p>
       </section>
       
