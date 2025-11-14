@@ -35,7 +35,7 @@ CORS(app)  # Enable CORS for React frontend
 # Configuration
 UPLOAD_FOLDER = 'temp_uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'pdf'}
-CREDENTIALS_PATH = os.getenv('GOOGLE_CREDENTIALS_PATH', 'check-ocr-project-469619-d18e1cdc414d.json')
+CREDENTIALS_PATH = os.getenv('GOOGLE_CREDENTIALS_PATH', 'google-credentials.json')
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
