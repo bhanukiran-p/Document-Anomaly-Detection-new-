@@ -18,7 +18,7 @@ temp_*.pdf
 *.log
 
 # Credentials - IMPORTANT! Never commit real credentials
-check-ocr-project-469619-d18e1cdc414d.json
+#check-ocr-project-469619-d18e1cdc414d.json
 google-credentials.json
 !credentials.example.json
 
