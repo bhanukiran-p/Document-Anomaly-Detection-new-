@@ -1,0 +1,8 @@
+{
+  "test@example.com": {
+    "user_id": "0b04e16daaa12acb",
+    "email": "test@example.com",
+    "password_hash": "e376077b1a259e88b4adda654cb422e1$8625be6df07c11316b2836e66d6e25b7d057f6e12554e48305acbcc6d4bd87b6",
+    "created_at": "2025-11-16T18:32:55.844179"
+  }
+}

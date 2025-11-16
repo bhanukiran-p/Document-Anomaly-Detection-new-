@@ -20,6 +20,7 @@ streamlit==1.33.0
 # Utilities
 python-dateutil==2.9.0
 requests==2.31.0
+PyJWT==2.10.1  # JWT token handling for authentication
 
 # Optional - for enhanced functionality
 opencv-python==4.9.0.80  # Additional image processing
