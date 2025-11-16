@@ -13,6 +13,7 @@ import importlib.util
 import re
 import fitz
 from google.cloud import vision
+from auth import login_user, register_user, token_required
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -96,6 +97,42 @@ def health_check():
         'service': 'XFORIA DAD API',
         'version': '1.0.0'
     })
+
+@app.route('/api/auth/login', methods=['POST'])
+def api_login():
+    """Login endpoint"""
+    try:
+        data = request.get_json()
+
+        if not data or not data.get('email') or not data.get('password'):
+            return jsonify({'error': 'Email and password required'}), 400
+
+        result, status_code = login_user(data['email'], data['password'])
+        return jsonify(result), status_code
+
+    except Exception as e:
+        return jsonify({
+            'error': str(e),
+            'message': 'Login failed'
+        }), 500
+
+@app.route('/api/auth/register', methods=['POST'])
+def api_register():
+    """Register endpoint"""
+    try:
+        data = request.get_json()
+
+        if not data or not data.get('email') or not data.get('password'):
+            return jsonify({'error': 'Email and password required'}), 400
+
+        result, status_code = register_user(data['email'], data['password'])
+        return jsonify(result), status_code
+
+    except Exception as e:
+        return jsonify({
+            'error': str(e),
+            'message': 'Registration failed'
+        }), 500
 
 @app.route('/api/check/analyze', methods=['POST'])
 def analyze_check():
