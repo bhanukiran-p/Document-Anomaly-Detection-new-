@@ -110,6 +110,12 @@ class ProductionCheckExtractor:
             details = self._extract_icici_check(full_text, annotations)
         elif bank_type == "HDFC":
             details = self._extract_hdfc_check(full_text, annotations)
+        elif bank_type == "CHASE":
+            details = self._extract_chase_check(full_text, annotations)
+        elif bank_type == "WELLS_FARGO":
+            details = self._extract_wells_fargo_check(full_text, annotations)
+        elif bank_type == "CITIBANK":
+            details = self._extract_citibank_check(full_text, annotations)
         else:
             details = self._extract_generic_check(full_text, annotations)
         
@@ -131,17 +137,19 @@ class ProductionCheckExtractor:
         
         bank_patterns = {
             'AXIS': ['AXIS BANK', 'AXIS'],
-            'BANK_OF_AMERICA': ['BANK OF AMERICA', 'BANKOFAMERICA', 'BOA'],
+            'BANK_OF_AMERICA': ['BANK OF AMERICA', 'BANKOFAMERICA', 'BOA', 'B OF A'],
             'ICICI': ['ICICI BANK', 'ICICI'],
             'HDFC': ['HDFC BANK', 'HDFC'],
-            'CHASE': ['CHASE BANK', 'JPMORGAN CHASE'],
-            'WELLS_FARGO': ['WELLS FARGO'],
+            'CHASE': ['CHASE BANK', 'JPMORGAN CHASE', 'CHASE', 'JPMORGAN'],
+            'WELLS_FARGO': ['WELLS FARGO', 'WELLS'],
             'CITIBANK': ['CITIBANK', 'CITI']
         }
         
+        # Check patterns in order of specificity (most specific first)
         for bank, patterns in bank_patterns.items():
-            if any(pattern in text_upper for pattern in patterns):
-                return bank
+            for pattern in patterns:
+                if pattern in text_upper:
+                    return bank
         
         return "UNKNOWN"
     
@@ -216,10 +224,75 @@ class ProductionCheckExtractor:
             'currency': 'INR'
         }
     
+    def _extract_chase_check(self, text: str, annotations: List) -> Dict:
+        """Extract Chase Bank check (US format)"""
+        return {
+            'bank_name': 'JPMorgan Chase Bank, N.A.',
+            'country': 'USA',
+            'payee_name': self._extract_payee_us(text),
+            'amount_numeric': self._extract_amount_numeric_usd(text),
+            'amount_words': self._extract_amount_words(text, 'DOLLARS'),
+            'date': self._extract_date(text),
+            'check_number': self._extract_check_number_us(text),
+            'routing_number': self._extract_routing_number(text),
+            'account_number': self._extract_account_number_us(text),
+            'memo': self._extract_memo(text),
+            'signature_detected': self._has_signature(annotations),
+            'currency': 'USD'
+        }
+    
+    def _extract_wells_fargo_check(self, text: str, annotations: List) -> Dict:
+        """Extract Wells Fargo check (US format)"""
+        return {
+            'bank_name': 'Wells Fargo Bank, N.A.',
+            'country': 'USA',
+            'payee_name': self._extract_payee_us(text),
+            'amount_numeric': self._extract_amount_numeric_usd(text),
+            'amount_words': self._extract_amount_words(text, 'DOLLARS'),
+            'date': self._extract_date(text),
+            'check_number': self._extract_check_number_us(text),
+            'routing_number': self._extract_routing_number(text),
+            'account_number': self._extract_account_number_us(text),
+            'memo': self._extract_memo(text),
+            'signature_detected': self._has_signature(annotations),
+            'currency': 'USD'
+        }
+    
+    def _extract_citibank_check(self, text: str, annotations: List) -> Dict:
+        """Extract Citibank check (US format)"""
+        return {
+            'bank_name': 'Citibank, N.A.',
+            'country': 'USA',
+            'payee_name': self._extract_payee_us(text),
+            'amount_numeric': self._extract_amount_numeric_usd(text),
+            'amount_words': self._extract_amount_words(text, 'DOLLARS'),
+            'date': self._extract_date(text),
+            'check_number': self._extract_check_number_us(text),
+            'routing_number': self._extract_routing_number(text),
+            'account_number': self._extract_account_number_us(text),
+            'memo': self._extract_memo(text),
+            'signature_detected': self._has_signature(annotations),
+            'currency': 'USD'
+        }
+    
     def _extract_generic_check(self, text: str, annotations: List) -> Dict:
         """Generic extraction for unknown banks"""
+        bank_name = self._extract_bank_name(text)
+        # If we couldn't extract bank name, try to detect from text
+        if not bank_name:
+            detected_type = self._detect_bank_type(text)
+            if detected_type != "UNKNOWN":
+                # Map detected type to bank name
+                bank_name_map = {
+                    'CHASE': 'JPMorgan Chase Bank',
+                    'BANK_OF_AMERICA': 'Bank of America',
+                    'WELLS_FARGO': 'Wells Fargo Bank',
+                    'CITIBANK': 'Citibank',
+                }
+                bank_name = bank_name_map.get(detected_type, None)
+        
         return {
-            'bank_name': self._extract_bank_name(text),
+            'bank_name': bank_name,
             'payee_name': self._extract_payee_generic(text),
             'amount_numeric': self._extract_amount_generic(text),
             'amount_words': self._extract_amount_words(text, 'DOLLARS|RUPEES'),
@@ -377,12 +450,42 @@ class ProductionCheckExtractor:
     
     def _extract_bank_name(self, text: str) -> Optional[str]:
         """Extract bank name"""
+        text_upper = text.upper()
+        
+        # First, try to detect known banks and return proper name
+        detected_type = self._detect_bank_type(text)
+        bank_name_map = {
+            'CHASE': 'JPMorgan Chase Bank, N.A.',
+            'BANK_OF_AMERICA': 'Bank of America, N.A.',
+            'WELLS_FARGO': 'Wells Fargo Bank, N.A.',
+            'CITIBANK': 'Citibank, N.A.',
+            'AXIS': 'AXIS BANK LTD',
+            'ICICI': 'ICICI BANK LIMITED',
+            'HDFC': 'HDFC BANK LTD',
+        }
+        
+        if detected_type in bank_name_map:
+            return bank_name_map[detected_type]
+        
+        # Fallback: Look for bank name in first few lines
         lines = text.split('\n')
-        for line in lines[:5]:  # Check first 5 lines
-            if line and 'BANK' in line.upper():
-                stripped = line.strip()
-                if stripped:
-                    return stripped
+        for line in lines[:10]:  # Check first 10 lines
+            if line:
+                line_upper = line.upper().strip()
+                # Skip common non-bank words
+                skip_words = ['EMPLOYEE', 'PAY', 'SSN', 'DATE', 'CHECK', 'NUMBER', 
+                             'ROUTING', 'ACCOUNT', 'MEMO', 'SIGNATURE', 'PAYEE', 'PAY TO']
+                if any(word in line_upper for word in skip_words):
+                    continue
+                
+                # Look for bank indicators
+                if ('BANK' in line_upper or 'CHASE' in line_upper or 
+                    'WELLS' in line_upper or 'CITI' in line_upper or
+                    'JPMORGAN' in line_upper):
+                    stripped = line.strip()
+                    if stripped and len(stripped) > 3:
+                        return stripped
+        
         return None
     
     def _has_signature(self, annotations: List) -> bool:
