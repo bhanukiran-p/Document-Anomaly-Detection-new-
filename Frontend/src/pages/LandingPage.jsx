@@ -38,22 +38,7 @@ const LandingPage = () => {
     fontWeight: '500',
     color: colors.accent.red,
   };
-  
-  const loginButtonStyle = {
-    backgroundColor: colors.primary.blue,
-    color: colors.neutral.white,
-    padding: '0.625rem 1.5rem',
-    borderRadius: '0.375rem',
-    border: 'none',
-    cursor: 'pointer',
-    fontSize: '1rem',
-    fontWeight: '600',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.5rem',
-    transition: 'background-color 0.2s',
-  };
-  
+
   const mainContentStyle = {
     flex: 1,
     display: 'flex',
@@ -194,15 +179,6 @@ const LandingPage = () => {
           <img src="/logo.png" alt="XFORIA DAD Logo" style={logoImageStyle} />
           <div style={taglineStyle}>Your Guardian against Fraud</div>
         </div>
-        
-        <button
-          style={loginButtonStyle}
-          onMouseEnter={(e) => e.target.style.backgroundColor = colors.primary.navy}
-          onMouseLeave={(e) => e.target.style.backgroundColor = colors.primary.blue}
-          onClick={() => navigate('/login')}
-        >
-          Login →
-        </button>
       </header>
       
       <main style={mainContentStyle}>
