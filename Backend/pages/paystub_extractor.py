@@ -73,55 +73,83 @@ class PaystubExtractor:
         
         lines = text.split('\n')
         
-        # Extract company name
-        for line in lines[:15]:
-            line = line.strip()
-            if not line or len(line) < 3:
-                continue
-            
-            skip_words = ['EMPLOYEE', 'PAY', 'SSN', 'DESCRIPTION', 'EARNINGS', 'DEDUCTIONS', 
-                         'DATE', 'HOURS', 'RATE', 'CURRENT', 'YTD', 'FEDERAL', 'STATE']
-            if any(word in line.upper() for word in skip_words):
-                continue
-            
-            if any(keyword in line.upper() for keyword in ['INC', 'CORP', 'LLC', 'SYSTEMS', 
-                                                            'COMPANY', 'GROUP', 'CORPORATION', 
-                                                            'LIMITED', 'LTD', 'CO.']):
-                details['company_name'] = line
-                break
-            
-            if len(line) > 5 and not line.isupper() and any(c.isupper() for c in line):
-                details['company_name'] = line
-                break
+        # Extract company name - improved logic
+        company_patterns = [
+            r'^([A-Z][a-zA-Z\s&,\.]+(?:INC|CORP|LLC|SYSTEMS|COMPANY|GROUP|CORPORATION|LIMITED|LTD|CO\.?))',
+            r'^([A-Z][a-zA-Z\s&,\.]+(?:INC|CORP|LLC|SYSTEMS|COMPANY|GROUP|CORPORATION|LIMITED|LTD|CO\.?))',
+        ]
         
-        # Extract employee name
+        for pattern in company_patterns:
+            match = re.search(pattern, text, re.MULTILINE | re.IGNORECASE)
+            if match:
+                company = match.group(1).strip()
+                if len(company) > 3:
+                    details['company_name'] = company
+                    break
+        
+        # Fallback: check first few lines
+        if not details['company_name']:
+            for line in lines[:20]:
+                line = line.strip()
+                if not line or len(line) < 3:
+                    continue
+                
+                skip_words = ['EMPLOYEE', 'PAY', 'SSN', 'DESCRIPTION', 'EARNINGS', 'DEDUCTIONS', 
+                             'DATE', 'HOURS', 'RATE', 'CURRENT', 'YTD', 'FEDERAL', 'STATE', 'PERIOD',
+                             'PAYSTUB', 'PAYCHECK', 'STATEMENT']
+                if any(word in line.upper() for word in skip_words):
+                    continue
+                
+                if any(keyword in line.upper() for keyword in ['INC', 'CORP', 'LLC', 'SYSTEMS', 
+                                                                'COMPANY', 'GROUP', 'CORPORATION', 
+                                                                'LIMITED', 'LTD', 'CO.', 'ENTERPRISES']):
+                    details['company_name'] = line
+                    break
+                
+                # If line looks like a company name (has proper case, length > 5)
+                if (len(line) > 5 and not line.isupper() and 
+                    any(c.isupper() for c in line) and 
+                    not any(char.isdigit() for char in line[:5])):
+                    details['company_name'] = line
+                    break
+        
+        # Extract employee name - more flexible patterns
         employee_patterns = [
+            r'(?:EMPLOYEE\s+NAME|NAME|EMPLOYEE)[:\s]*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
             r'(?:EMPLOYEE\s+NAME|NAME)[:\s]*([A-Z][a-z]+(?:\s+[A-Z]\.?\s*)?[A-Z][a-z]+)',
-            r'(?:^|\n)([A-Z][a-z]+\s+[A-Z][a-z]+)(?:\s*\n|\s+(?:EMPLOYEE|ID|SSN))',
+            r'(?:^|\n)([A-Z][a-z]+\s+[A-Z][a-z]+)(?:\s*\n|\s+(?:EMPLOYEE|ID|SSN|EMP))',
+            r'([A-Z][a-z]+\s+[A-Z][a-z]+)(?:\s+EMPLOYEE|EMPLOYEE\s+ID)',
+            r'NAME[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
         ]
         
         for pattern in employee_patterns:
-            match = re.search(pattern, text, re.MULTILINE)
+            match = re.search(pattern, text, re.MULTILINE | re.IGNORECASE)
             if match:
                 name = match.group(1).strip()
-                if len(name.split()) >= 2 and not any(word in name.upper() for word in 
-                    ['EMPLOYEE', 'COMPANY', 'ADDRESS', 'DEPARTMENT', 'POSITION']):
+                name_parts = name.split()
+                if (len(name_parts) >= 2 and 
+                    not any(word in name.upper() for word in 
+                    ['EMPLOYEE', 'COMPANY', 'ADDRESS', 'DEPARTMENT', 'POSITION', 'PAY', 'PERIOD', 'DATE']) and
+                    all(part[0].isupper() for part in name_parts if part)):
                     details['employee_name'] = name
                     break
         
-        # Extract employee ID
+        # Extract employee ID - more flexible patterns
         empid_patterns = [
-            r'EMPLOYEE\s*(?:ID|NUMBER)[:\s]*\n?\s*([A-Z0-9\-]{3,})',
+            r'EMPLOYEE\s*(?:ID|NUMBER|#)[:\s]*\n?\s*([A-Z0-9\-]{3,})',
             r'(?:EMP\s*)?ID[:\s]*([A-Z]{2,}-[A-Z0-9\-]{3,})',
             r'(?:^|\n)([A-Z]{2,3}-\d{4,})(?:\n|$)',
+            r'EMP\s*ID[:\s]*([A-Z0-9\-]{4,})',
+            r'EMPLOYEE\s+#[:\s]*([A-Z0-9\-]{3,})',
+            r'ID[:\s]+([A-Z0-9\-]{4,})',
         ]
         for pattern in empid_patterns:
             empid_match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
-            if empid_match:
+            if empid_match and empid_match.group(1):
                 emp_id = empid_match.group(1).strip()
-                if (len(emp_id) >= 4 and 
-                    not any(word in emp_id.upper() for word in ['EMPLOYEE', 'NAME', 'SSN', 'FEDERAL']) and
-                    (any(c.isdigit() for c in emp_id) or '-' in emp_id)):
+                if (len(emp_id) >= 3 and 
+                    not any(word in emp_id.upper() for word in ['EMPLOYEE', 'NAME', 'SSN', 'FEDERAL', 'STATE', 'PAY']) and
+                    (any(c.isdigit() for c in emp_id) or '-' in emp_id or any(c.isalpha() for c in emp_id))):
                     details['employee_id'] = emp_id
                     break
         
@@ -137,67 +165,124 @@ class PaystubExtractor:
                 details['pay_period_end'] = period_match.group(2)
                 break
         
-        # Extract pay date
+        # Extract pay date - more flexible patterns
         date_patterns = [
-            r'PAY\s+DATE[:\s]*\n?\s*(\d{1,2}/\d{1,2}/\d{2,4})',
-            r'CHECK\s+DATE[:\s]*(\d{1,2}/\d{1,2}/\d{2,4})',
-            r'(?:^|\n)DATE[:\s]*\n?\s*(\d{1,2}/\d{1,2}/\d{2,4})',
+            r'PAY\s+DATE[:\s]*\n?\s*(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4})',
+            r'CHECK\s+DATE[:\s]*(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4})',
+            r'PAID\s+DATE[:\s]*(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4})',
+            r'PAY\s+DATE[:\s]+(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4})',
+            r'(?:^|\n)PAY\s+DATE[:\s]*(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4})',
         ]
         for pattern in date_patterns:
             date_match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
-            if date_match:
+            if date_match and date_match.group(1):
                 details['pay_date'] = date_match.group(1)
                 break
         
-        # Extract gross pay
+        # Extract gross pay - more flexible patterns
         gross_patterns = [
-            r'GROSS\s+(?:PAY|EARNINGS)[:\s]*\n?\s*\$?\s*([\d,]+\.?\d{0,2})',
+            r'GROSS\s+(?:PAY|EARNINGS|WAGES)[:\s]*\n?\s*\$?\s*([\d,]+\.?\d{0,2})',
             r'TOTAL\s+GROSS[:\s]*\n?\s*\$?\s*([\d,]+\.?\d{0,2})',
+            r'GROSS[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+            r'CURRENT\s+GROSS[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+            r'GROSS\s+EARNINGS[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
         ]
         for pattern in gross_patterns:
-            gross_match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
-            if gross_match:
-                details['gross_pay'] = gross_match.group(1)
+            gross_match = re.search(pattern, text, re.IGNORECASE | re.DOTALL | re.MULTILINE)
+            if gross_match and gross_match.group(1):
+                details['gross_pay'] = gross_match.group(1).replace(',', '')
                 break
         
-        # Extract net pay
+        # Extract net pay - more flexible patterns
         net_patterns = [
             r'NET\s+PAY[:\s]*\n?\s*\$?\s*([\d,]+\.?\d{0,2})',
             r'TAKE\s+HOME[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+            r'NET[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+            r'CURRENT\s+NET[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+            r'NET\s+PAY\s+AMOUNT[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
         ]
         for pattern in net_patterns:
-            net_match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
-            if net_match:
-                details['net_pay'] = net_match.group(1)
+            net_match = re.search(pattern, text, re.IGNORECASE | re.DOTALL | re.MULTILINE)
+            if net_match and net_match.group(1):
+                details['net_pay'] = net_match.group(1).replace(',', '')
                 break
         
-        # Extract taxes
+        # Extract taxes - more flexible patterns
         tax_patterns = {
-            'federal_tax': r'FEDERAL\s+(?:INCOME\s+)?TAX[:\s]*\n?\s*\$?\s*([\d,]+\.\d{2})',
-            'state_tax': r'(?:STATE|CA\s+SDI)\s+(?:INCOME\s+)?(?:TAX)?[:\s]*\n?\s*\$?\s*([\d,]+\.\d{2})',
-            'social_security': r'SOCIAL\s+SECURITY\s+TAX[:\s]*\n?\s*\$?\s*([\d,]+\.\d{2})',
-            'medicare': r'MEDICARE\s+TAX[:\s]*\n?\s*\$?\s*([\d,]+\.\d{2})'
+            'federal_tax': [
+                r'FEDERAL\s+(?:INCOME\s+)?TAX[:\s]*\n?\s*\$?\s*([\d,]+\.?\d{0,2})',
+                r'FEDERAL\s+WITHHOLDING[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+                r'FED\s+TAX[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+                r'FEDERAL[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+            ],
+            'state_tax': [
+                r'(?:STATE|CA\s+SDI)\s+(?:INCOME\s+)?(?:TAX|WITHHOLDING)?[:\s]*\n?\s*\$?\s*([\d,]+\.?\d{0,2})',
+                r'STATE\s+TAX[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+                r'STATE\s+WITHHOLDING[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+            ],
+            'social_security': [
+                r'SOCIAL\s+SECURITY\s+TAX[:\s]*\n?\s*\$?\s*([\d,]+\.?\d{0,2})',
+                r'SS\s+TAX[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+                r'SOCIAL\s+SECURITY[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+                r'OASDI[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+            ],
+            'medicare': [
+                r'MEDICARE\s+TAX[:\s]*\n?\s*\$?\s*([\d,]+\.?\d{0,2})',
+                r'MED\s+TAX[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+                r'MEDICARE[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+            ]
         }
         
-        for field, pattern in tax_patterns.items():
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                details[field] = match.group(1)
+        for field, patterns in tax_patterns.items():
+            for pattern in patterns:
+                match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
+                if match and match.group(1):
+                    details[field] = match.group(1).replace(',', '')
+                    break
         
-        # Calculate confidence
+        # Extract YTD values if available
+        ytd_patterns = {
+            'ytd_gross': [
+                r'YTD\s+GROSS[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+                r'YEAR\s+TO\s+DATE\s+GROSS[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+            ],
+            'ytd_net': [
+                r'YTD\s+NET[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+                r'YEAR\s+TO\s+DATE\s+NET[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+            ]
+        }
+        
+        for field, patterns in ytd_patterns.items():
+            for pattern in patterns:
+                match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
+                if match and match.group(1):
+                    details[field] = match.group(1).replace(',', '')
+                    break
+        
+        # Calculate confidence - improved scoring
         critical_fields = ['company_name', 'employee_name', 'pay_date']
         important_fields = ['gross_pay', 'net_pay', 'employee_id']
-        optional_fields = ['federal_tax', 'state_tax', 'social_security', 'medicare']
+        optional_fields = ['federal_tax', 'state_tax', 'social_security', 'medicare', 'ytd_gross', 'ytd_net']
         
         critical_filled = sum(1 for k in critical_fields if details.get(k))
         important_filled = sum(1 for k in important_fields if details.get(k))
         optional_filled = sum(1 for k in optional_fields if details.get(k))
         
-        confidence = (
-            (critical_filled / len(critical_fields)) * 50 +
-            (important_filled / len(important_fields)) * 30 +
+        # More lenient scoring - if we have at least 2 critical fields, boost score
+        critical_bonus = 10 if critical_filled >= 2 else 0
+        
+        # Base confidence calculation
+        base_confidence = (
+            (critical_filled / len(critical_fields)) * 45 +
+            (important_filled / len(important_fields)) * 35 +
             (optional_filled / len(optional_fields)) * 20
         )
+        
+        # Add bonus for having key fields
+        if details.get('gross_pay') and details.get('net_pay'):
+            base_confidence += 5
+        
+        confidence = min(base_confidence + critical_bonus, 100.0)
         
         details['confidence_score'] = round(confidence, 2)
         details['extraction_timestamp'] = datetime.now().isoformat()
