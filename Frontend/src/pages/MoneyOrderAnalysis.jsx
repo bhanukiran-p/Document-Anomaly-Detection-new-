@@ -1,22 +1,22 @@
 import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { analyzeCheck } from '../services/api';
+import { analyzeMoneyOrder } from '../services/api';
 import { colors } from '../styles/colors';
 
-const CheckAnalysis = () => {
+const MoneyOrderAnalysis = () => {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
-  
+
   const onDrop = useCallback((acceptedFiles) => {
     const selectedFile = acceptedFiles[0];
     if (selectedFile) {
       setFile(selectedFile);
       setError(null);
       setResults(null);
-      
+
       // Create preview for images
       if (selectedFile.type.startsWith('image/')) {
         const reader = new FileReader();
@@ -27,7 +27,7 @@ const CheckAnalysis = () => {
       }
     }
   }, []);
-  
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
@@ -36,42 +36,42 @@ const CheckAnalysis = () => {
     },
     multiple: false
   });
-  
+
   const handleAnalyze = async () => {
     if (!file) {
-      setError('Please upload a check image first');
+      setError('Please upload a money order image first');
       return;
     }
-    
+
     setLoading(true);
     setError(null);
-    
+
     try {
-      const response = await analyzeCheck(file);
+      const response = await analyzeMoneyOrder(file);
       setResults(response.data);
     } catch (err) {
-      setError(err.error || 'Failed to analyze check. Please try again.');
+      setError(err.error || 'Failed to analyze money order. Please try again.');
     } finally {
       setLoading(false);
     }
   };
-  
+
   const downloadJSON = () => {
     const dataStr = JSON.stringify(results, null, 2);
     const dataBlob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(dataBlob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `check_analysis_${new Date().getTime()}.json`;
+    link.download = `money_order_analysis_${new Date().getTime()}.json`;
     link.click();
   };
-  
+
   // Styles
   const containerStyle = {
     maxWidth: '1400px',
     margin: '0 auto',
   };
-  
+
   const headerStyle = {
     background: `linear-gradient(135deg, ${colors.primary.navy} 0%, ${colors.primary.blue} 100%)`,
     padding: '2rem',
@@ -80,20 +80,20 @@ const CheckAnalysis = () => {
     textAlign: 'center',
     marginBottom: '2rem',
   };
-  
+
   const gridStyle = {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(500px, 1fr))',
     gap: '2rem',
   };
-  
+
   const cardStyle = {
     backgroundColor: colors.background.card,
     borderRadius: '12px',
     padding: '2rem',
     boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
   };
-  
+
   const dropzoneStyle = {
     border: `2px dashed ${isDragActive ? colors.primary.blue : colors.neutral.gray300}`,
     borderRadius: '12px',
@@ -103,7 +103,7 @@ const CheckAnalysis = () => {
     cursor: 'pointer',
     transition: 'all 0.2s',
   };
-  
+
   const buttonStyle = {
     backgroundColor: colors.accent.red,
     color: colors.neutral.white,
@@ -116,7 +116,7 @@ const CheckAnalysis = () => {
     cursor: loading ? 'not-allowed' : 'pointer',
     opacity: loading ? 0.6 : 1,
   };
-  
+
   const resultCardStyle = {
     backgroundColor: colors.background.main,
     padding: '1.5rem',
@@ -124,11 +124,35 @@ const CheckAnalysis = () => {
     borderLeft: `4px solid ${colors.primary.blue}`,
     marginBottom: '1rem',
   };
-  
+
+  const anomalyCardStyle = (severity) => {
+    let bgColor = colors.status.infoLight;
+    let borderColor = colors.status.info;
+
+    if (severity === 'critical') {
+      bgColor = colors.accent.redLight;
+      borderColor = colors.accent.red;
+    } else if (severity === 'high') {
+      bgColor = colors.status.warningLight;
+      borderColor = colors.status.warning;
+    } else if (severity === 'medium') {
+      bgColor = colors.status.infoLight;
+      borderColor = colors.status.info;
+    }
+
+    return {
+      backgroundColor: bgColor,
+      padding: '1rem',
+      borderRadius: '8px',
+      borderLeft: `4px solid ${borderColor}`,
+      marginBottom: '0.75rem',
+    };
+  };
+
   const confidenceStyle = (confidence) => {
     let bgColor = colors.accent.redLight;
     let textColor = colors.accent.red;
-    
+
     if (confidence >= 80) {
       bgColor = colors.status.successLight;
       textColor = colors.status.success;
@@ -136,7 +160,7 @@ const CheckAnalysis = () => {
       bgColor = colors.status.warningLight;
       textColor = colors.status.warning;
     }
-    
+
     return {
       backgroundColor: bgColor,
       color: textColor,
@@ -148,21 +172,21 @@ const CheckAnalysis = () => {
       textAlign: 'center',
     };
   };
-  
+
   return (
     <div style={containerStyle}>
       <div style={headerStyle}>
-        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Check Analysis</h1>
-        <p>Analyze bank checks for fraud detection</p>
+        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Money Order Analysis</h1>
+        <p>Analyze money orders for fraud and anomaly detection</p>
       </div>
-      
+
       <div style={gridStyle}>
         {/* Upload Section */}
         <div style={cardStyle}>
           <h2 style={{ color: colors.primary.navy, marginBottom: '1.5rem' }}>
-            Upload Check Image
+            Upload Money Order Image
           </h2>
-          
+
           <div style={{
             backgroundColor: '#FFF3CD',
             border: '1px solid #FFC107',
@@ -171,29 +195,29 @@ const CheckAnalysis = () => {
             marginBottom: '1rem',
           }}>
             <p style={{ color: '#856404', fontSize: '0.875rem', margin: 0, fontWeight: '500' }}>
-              ⚠️ Only upload bank check images (personal or business checks)
+              ⚠️ Only upload money order documents (Western Union, MoneyGram, USPS, etc.)
             </p>
           </div>
-          
+
           <div {...getRootProps()} style={dropzoneStyle}>
             <input {...getInputProps()} />
-            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🏦</div>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>💵</div>
             {isDragActive ? (
               <p style={{ color: colors.primary.blue, fontWeight: '500' }}>
-                Drop the check image here...
+                Drop the money order image here...
               </p>
             ) : (
               <div>
                 <p style={{ color: colors.neutral.gray700, marginBottom: '0.5rem' }}>
-                  Drop your check image here or click to browse
+                  Drop your money order image here or click to browse
                 </p>
                 <p style={{ color: colors.neutral.gray500, fontSize: '0.875rem' }}>
-                  Bank Checks Only - JPG, JPEG, PNG, PDF
+                  Money Orders Only - JPG, JPEG, PNG, PDF
                 </p>
               </div>
             )}
           </div>
-          
+
           {file && (
             <div style={{ marginTop: '1.5rem' }}>
               <div style={{
@@ -205,33 +229,33 @@ const CheckAnalysis = () => {
                 <strong>Size:</strong> {(file.size / 1024).toFixed(2)} KB<br />
                 <strong>Type:</strong> {file.type || 'Unknown'}
               </div>
-              
+
               {preview && (
                 <div style={{ marginTop: '1rem' }}>
-                  <img 
-                    src={preview} 
-                    alt="Check preview" 
-                    style={{ 
-                      width: '100%', 
+                  <img
+                    src={preview}
+                    alt="Money order preview"
+                    style={{
+                      width: '100%',
                       borderRadius: '8px',
                       boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                    }} 
+                    }}
                   />
                 </div>
               )}
             </div>
           )}
-          
-          <button 
+
+          <button
             style={buttonStyle}
             onClick={handleAnalyze}
             disabled={loading || !file}
             onMouseEnter={(e) => !loading && (e.target.style.backgroundColor = colors.accent.redDark)}
             onMouseLeave={(e) => !loading && (e.target.style.backgroundColor = colors.accent.red)}
           >
-            {loading ? 'Analyzing...' : 'Analyze Check'}
+            {loading ? 'Analyzing...' : 'Analyze Money Order'}
           </button>
-          
+
           {error && (
             <div style={{
               backgroundColor: colors.accent.redLight,
@@ -245,13 +269,13 @@ const CheckAnalysis = () => {
             </div>
           )}
         </div>
-        
+
         {/* Results Section */}
         <div style={cardStyle}>
           <h2 style={{ color: colors.primary.navy, marginBottom: '1.5rem' }}>
             Analysis Results
           </h2>
-          
+
           {!results && !loading && (
             <div style={{
               backgroundColor: colors.primary.lightBlue,
@@ -260,73 +284,74 @@ const CheckAnalysis = () => {
               textAlign: 'center',
               color: colors.primary.navy,
             }}>
-              <p>Upload a check image on the left to begin analysis</p>
+              <p>Upload a money order image on the left to begin analysis</p>
             </div>
           )}
-          
+
           {loading && (
             <div style={{ textAlign: 'center', padding: '3rem' }}>
-              <div className="spin" style={{ 
+              <div className="spin" style={{
                 fontSize: '3rem',
                 color: colors.primary.blue,
               }}>⚙️</div>
               <p style={{ marginTop: '1rem', color: colors.neutral.gray600 }}>
-                Analyzing check...
+                Analyzing money order...
               </p>
             </div>
           )}
-          
-          {results && (
+
+          {results && results.status === 'success' && (
             <div className="fade-in">
               <div style={confidenceStyle(results.confidence_score || 0)}>
-                [{results.confidence_score >= 80 ? 'HIGH' : results.confidence_score >= 60 ? 'MEDIUM' : 'LOW'}] 
+                [{results.confidence_score >= 80 ? 'HIGH' : results.confidence_score >= 60 ? 'MEDIUM' : 'LOW'}]
                 Confidence: {results.confidence_score?.toFixed(1)}%
               </div>
-              
+
+              {/* Anomalies Section - Show first if present */}
+              {results.anomalies && results.anomalies.length > 0 && (
+                <div style={{ marginBottom: '2rem' }}>
+                  <h3 style={{ color: colors.accent.red, marginBottom: '1rem' }}>
+                    ⚠️ Anomalies Detected ({results.anomalies.length})
+                  </h3>
+                  {results.anomalies.map((anomaly, index) => (
+                    <div key={index} style={anomalyCardStyle(anomaly.severity)}>
+                      <strong style={{ textTransform: 'uppercase' }}>
+                        [{anomaly.severity}] {anomaly.type}:
+                      </strong>
+                      <br />
+                      {anomaly.message}
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <h3 style={{ color: colors.primary.navy, marginBottom: '1rem' }}>
-                Bank Information
+                Issuer Information
               </h3>
               <div style={resultCardStyle}>
-                <p><strong>Bank Name:</strong> {results.bank_name || 'N/A'}</p>
-                <p><strong>Bank Type:</strong> {results.bank_type || 'N/A'}</p>
-                {results.country && <p><strong>Country:</strong> {results.country}</p>}
-                {results.check_type && <p><strong>Check Type:</strong> {results.check_type}</p>}
+                <p><strong>Issuer:</strong> {results.extracted_data?.issuer || 'N/A'}</p>
+                <p><strong>Serial Number:</strong> {results.extracted_data?.serial_number || 'N/A'}</p>
+                <p><strong>Receipt Number:</strong> {results.extracted_data?.receipt_number || 'N/A'}</p>
               </div>
-              
+
               <h3 style={{ color: colors.primary.navy, marginBottom: '1rem', marginTop: '1.5rem' }}>
-                Payment Information
+                Transaction Information
               </h3>
               <div style={resultCardStyle}>
-                <p><strong>Payee Name:</strong> {results.payee_name || 'N/A'}</p>
-                <p><strong>Amount:</strong> 
+                <p><strong>Amount (Numeric):</strong>
                   <span style={{ color: colors.status.success, fontSize: '1.2rem', fontWeight: '600', marginLeft: '0.5rem' }}>
-                    {results.currency} {results.amount_numeric || 'N/A'}
+                    {results.extracted_data?.amount || 'N/A'}
                   </span>
                 </p>
-                <p><strong>Amount in Words:</strong> {results.amount_words || 'N/A'}</p>
-                <p><strong>Date:</strong> {results.date || 'N/A'}</p>
+                <p><strong>Amount (Written):</strong> {results.extracted_data?.amount_in_words || 'N/A'}</p>
+                <p><strong>Payee:</strong> {results.extracted_data?.payee || 'N/A'}</p>
+                <p><strong>Purchaser:</strong> {results.extracted_data?.purchaser || 'N/A'}</p>
+                <p><strong>Date:</strong> {results.extracted_data?.date || 'N/A'}</p>
+                <p><strong>Location:</strong> {results.extracted_data?.location || 'N/A'}</p>
+                <p><strong>Signature:</strong> {results.extracted_data?.signature || 'N/A'}</p>
               </div>
-              
-              <h3 style={{ color: colors.primary.navy, marginBottom: '1rem', marginTop: '1.5rem' }}>
-                Account & Check Details
-              </h3>
-              <div style={resultCardStyle}>
-                <p><strong>Check Number:</strong> {results.check_number || 'N/A'}</p>
-                <p><strong>Account Number:</strong> {results.account_number || 'N/A'}</p>
-                {results.routing_number && <p><strong>Routing Number:</strong> {results.routing_number}</p>}
-                {results.micr_code && <p><strong>MICR Code:</strong> {results.micr_code}</p>}
-                {results.ifsc_code && <p><strong>IFSC Code:</strong> {results.ifsc_code}</p>}
-              </div>
-              
-              <h3 style={{ color: colors.primary.navy, marginBottom: '1rem', marginTop: '1.5rem' }}>
-                Verification
-              </h3>
-              <div style={resultCardStyle}>
-                <p><strong>Signature Detected:</strong> {results.signature_detected ? 'Yes' : 'No'}</p>
-                <p><strong>Extraction Time:</strong> {results.extraction_timestamp}</p>
-              </div>
-              
-              <button 
+
+              <button
                 style={{
                   ...buttonStyle,
                   backgroundColor: colors.primary.navy,
@@ -346,5 +371,4 @@ const CheckAnalysis = () => {
   );
 };
 
-export default CheckAnalysis;
-
+export default MoneyOrderAnalysis;
