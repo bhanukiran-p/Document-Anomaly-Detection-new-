@@ -455,9 +455,9 @@ if __name__ == "__main__":
     # Example usage
     print("Google Vision API Check Extractor - Production Version")
     print("=" * 60)
-    
+
     # Set your credentials path
-    credentials_path = "check-ocr-project-469619-d18e1cdc414d.json"
+    credentials_path = "google-credentials.json"
     
     # Or use environment variable
     # os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_path
