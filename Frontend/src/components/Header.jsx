@@ -1,11 +1,21 @@
 import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { colors } from '../styles/colors';
 import { FaBars, FaTimes } from 'react-icons/fa';
 
 const Header = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+  // eslint-disable-next-line no-unused-vars
+  const { user, logout } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  const handleLogout = () => {
+    logout();
+    setIsMenuOpen(false);
+    navigate('/');
+  };
   
   const headerStyle = {
     backgroundColor: colors.neutral.white,
@@ -98,6 +108,23 @@ const Header = () => {
     textDecoration: 'none',
     display: 'block',
   });
+
+  // eslint-disable-next-line no-unused-vars
+  const logoutButtonStyle = {
+    padding: '0.75rem 1rem',
+    borderRadius: '0.375rem',
+    fontWeight: '500',
+    backgroundColor: colors.accent.red,
+    color: colors.neutral.white,
+    border: 'none',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+    width: '100%',
+    textAlign: 'left',
+    marginTop: '2rem',
+    borderTop: `1px solid ${colors.neutral.gray200}`,
+    paddingTop: '2rem'
+  };
   
   return (
     <>
@@ -183,6 +210,13 @@ const Header = () => {
             Money Order Analysis
           </Link>
         </nav>
+
+        <button
+          style={logoutButtonStyle}
+          onClick={handleLogout}
+        >
+          🚪 Logout
+        </button>
       </div>
     </>
   );
