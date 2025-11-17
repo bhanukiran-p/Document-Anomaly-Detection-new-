@@ -1,7 +1,18 @@
-const OptionalAuthRoute = ({ children }) => {
-  // Routes are accessible with or without authentication
-  // Login is optional - users can access features without logging in
+import { Navigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+
+const ProtectedRoute = ({ children }) => {
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>Loading...</div>;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
   return children;
 };
 
-export default OptionalAuthRoute;
+export default ProtectedRoute;
