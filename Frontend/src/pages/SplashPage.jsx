@@ -2,10 +2,27 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { colors } from '../styles/colors';
 import { FaShieldAlt, FaFileAlt, FaBolt, FaSearch, FaDollarSign, FaLock, FaChartLine, FaClock, FaBrain, FaCheckCircle, FaPlug, FaBullseye, FaArrowLeft } from 'react-icons/fa';
+import { useAuth } from '../context/AuthContext';
 
 const SplashPage = () => {
   const navigate = useNavigate();
-  
+  const { isAuthenticated, logout } = useAuth();
+
+  const logoutButtonStyle = {
+    backgroundColor: colors.accent.red,
+    color: colors.neutral.white,
+    padding: '0.625rem 1.5rem',
+    borderRadius: '0.375rem',
+    border: 'none',
+    cursor: 'pointer',
+    fontSize: '1rem',
+    fontWeight: '600',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    transition: 'background-color 0.2s',
+  };
+
   const pageStyle = {
     minHeight: '100vh',
     backgroundColor: '#F5F5F5',
@@ -344,6 +361,7 @@ const SplashPage = () => {
             style={loginButtonStyle}
             onMouseEnter={(e) => e.target.style.backgroundColor = colors.primary.navy}
             onMouseLeave={(e) => e.target.style.backgroundColor = colors.primary.blue}
+            onClick={() => navigate('/login')}
           >
             Login →
           </button>
