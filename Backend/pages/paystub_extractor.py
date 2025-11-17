@@ -113,24 +113,26 @@ class PaystubExtractor:
                     details['company_name'] = line
                     break
         
-        # Extract employee name - more flexible patterns
+        # Extract employee name - more flexible patterns, stop at SOCIAL SEC or ID
         employee_patterns = [
-            r'(?:EMPLOYEE\s+NAME|NAME|EMPLOYEE)[:\s]*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
-            r'(?:EMPLOYEE\s+NAME|NAME)[:\s]*([A-Z][a-z]+(?:\s+[A-Z]\.?\s*)?[A-Z][a-z]+)',
-            r'(?:^|\n)([A-Z][a-z]+\s+[A-Z][a-z]+)(?:\s*\n|\s+(?:EMPLOYEE|ID|SSN|EMP))',
-            r'([A-Z][a-z]+\s+[A-Z][a-z]+)(?:\s+EMPLOYEE|EMPLOYEE\s+ID)',
-            r'NAME[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
+            r'(?:EMPLOYEE\s+NAME|NAME)[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+?)(?:\s+(?:SOCIAL|SEC|ID|EMPLOYEE|SSN))',
+            r'(?:EMPLOYEE\s+NAME|NAME)[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
+            r'EMPLOYEE\s+NAME[:\s]+([A-Z][a-z]+\s+[A-Z][a-z]+)',
+            r'(?:^|\n)NAME[:\s]+([A-Z][a-z]+\s+[A-Z][a-z]+)(?:\s+(?:SOCIAL|SEC|ID|EMPLOYEE|SSN))',
+            r'([A-Z][a-z]+\s+[A-Z][a-z]+)(?:\s+(?:SOCIAL\s+SEC|EMPLOYEE\s+ID|SSN))',
         ]
         
         for pattern in employee_patterns:
             match = re.search(pattern, text, re.MULTILINE | re.IGNORECASE)
             if match:
                 name = match.group(1).strip()
+                # Clean up name - remove any trailing words that shouldn't be there
+                name = re.sub(r'\s+(SOCIAL|SEC|ID|EMPLOYEE|SSN).*$', '', name, flags=re.IGNORECASE)
                 name_parts = name.split()
                 if (len(name_parts) >= 2 and 
                     not any(word in name.upper() for word in 
-                    ['EMPLOYEE', 'COMPANY', 'ADDRESS', 'DEPARTMENT', 'POSITION', 'PAY', 'PERIOD', 'DATE']) and
-                    all(part[0].isupper() for part in name_parts if part)):
+                    ['EMPLOYEE', 'COMPANY', 'ADDRESS', 'DEPARTMENT', 'POSITION', 'PAY', 'PERIOD', 'DATE', 'SOCIAL']) and
+                    all(part[0].isupper() for part in name_parts if part and len(part) > 0)):
                     details['employee_name'] = name
                     break
         
@@ -179,57 +181,73 @@ class PaystubExtractor:
                 details['pay_date'] = date_match.group(1)
                 break
         
-        # Extract gross pay - more flexible patterns
+        # Extract gross pay - CURRENT period only (exclude YTD)
+        # Look for GROSS WAGES followed by CURRENT TOTAL value
         gross_patterns = [
-            r'GROSS\s+(?:PAY|EARNINGS|WAGES)[:\s]*\n?\s*\$?\s*([\d,]+\.?\d{0,2})',
-            r'TOTAL\s+GROSS[:\s]*\n?\s*\$?\s*([\d,]+\.?\d{0,2})',
-            r'GROSS[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-            r'CURRENT\s+GROSS[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-            r'GROSS\s+EARNINGS[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+            r'GROSS\s+WAGES[:\s]*CURRENT\s+TOTAL[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+            r'GROSS\s+(?:PAY|EARNINGS|WAGES)[:\s]*CURRENT\s+TOTAL[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+            r'CURRENT\s+TOTAL[:\s]*\$?\s*([\d,]+\.?\d{0,2})(?=\s*(?:YTD|DEDUCTIONS|NET|YEAR))',
+            r'GROSS\s+(?:PAY|EARNINGS|WAGES)[:\s]*\$?\s*([\d,]+\.?\d{0,2})(?!\s*(?:YTD|YEAR\s+TO\s+DATE))',
+            r'(?<!YTD\s)(?<!YEAR\s+TO\s+DATE\s)GROSS\s+(?:PAY|EARNINGS|WAGES)[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
         ]
         for pattern in gross_patterns:
             gross_match = re.search(pattern, text, re.IGNORECASE | re.DOTALL | re.MULTILINE)
             if gross_match and gross_match.group(1):
-                details['gross_pay'] = gross_match.group(1).replace(',', '')
-                break
+                # Make sure it's not a YTD value by checking context
+                match_text = gross_match.group(0)
+                # Get surrounding context to verify
+                start_pos = max(0, gross_match.start() - 50)
+                end_pos = min(len(text), gross_match.end() + 50)
+                context = text[start_pos:end_pos].upper()
+                if 'YTD' not in context and 'YEAR TO DATE' not in context:
+                    details['gross_pay'] = gross_match.group(1).replace(',', '')
+                    break
         
-        # Extract net pay - more flexible patterns
+        # Extract net pay - CURRENT period only (exclude YTD)
         net_patterns = [
-            r'NET\s+PAY[:\s]*\n?\s*\$?\s*([\d,]+\.?\d{0,2})',
+            r'NET\s+PAY[:\s]*\$?\s*([\d,]+\.?\d{0,2})(?!\s*(?:YTD|YEAR\s+TO\s+DATE))',
+            r'NET\s+PAY[:\s]*(?:CURRENT)?[:\s]*\$?\s*([\d,]+\.?\d{0,2})(?=\s*(?:YTD|$|\n))',
             r'TAKE\s+HOME[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-            r'NET[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-            r'CURRENT\s+NET[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-            r'NET\s+PAY\s+AMOUNT[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+            r'(?<!YTD\s)(?<!YEAR\s+TO\s+DATE\s)NET\s+PAY[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
         ]
         for pattern in net_patterns:
             net_match = re.search(pattern, text, re.IGNORECASE | re.DOTALL | re.MULTILINE)
             if net_match and net_match.group(1):
-                details['net_pay'] = net_match.group(1).replace(',', '')
-                break
+                # Make sure it's not a YTD value by checking context
+                match_text = net_match.group(0)
+                # Get surrounding context to verify
+                start_pos = max(0, net_match.start() - 50)
+                end_pos = min(len(text), net_match.end() + 50)
+                context = text[start_pos:end_pos].upper()
+                if 'YTD' not in context and 'YEAR TO DATE' not in context:
+                    details['net_pay'] = net_match.group(1).replace(',', '')
+                    break
         
-        # Extract taxes - more flexible patterns
+        # Extract taxes - CURRENT period only (exclude YTD)
         tax_patterns = {
             'federal_tax': [
-                r'FEDERAL\s+(?:INCOME\s+)?TAX[:\s]*\n?\s*\$?\s*([\d,]+\.?\d{0,2})',
-                r'FEDERAL\s+WITHHOLDING[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-                r'FED\s+TAX[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-                r'FEDERAL[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+                r'FED\s+TAX[:\s]*(?:CURRENT\s+TOTAL)?[:\s]*\$?\s*([\d,]+\.?\d{0,2})(?!\s*YTD)',
+                r'FEDERAL\s+(?:INCOME\s+)?TAX[:\s]*(?:CURRENT\s+TOTAL)?[:\s]*\$?\s*([\d,]+\.?\d{0,2})(?!\s*YTD)',
+                r'FEDERAL\s+WITHHOLDING[:\s]*CURRENT\s+TOTAL[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+                r'FED\s+TAX[:\s]*CURRENT[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
             ],
             'state_tax': [
-                r'(?:STATE|CA\s+SDI)\s+(?:INCOME\s+)?(?:TAX|WITHHOLDING)?[:\s]*\n?\s*\$?\s*([\d,]+\.?\d{0,2})',
-                r'STATE\s+TAX[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-                r'STATE\s+WITHHOLDING[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+                r'STATE\s+(?:INCOME\s+)?(?:TAX|WITHHOLDING)?[:\s]*(?:CURRENT\s+TOTAL)?[:\s]*\$?\s*([\d,]+\.?\d{0,2})(?!\s*YTD)',
+                r'STATE\s+TAX[:\s]*CURRENT\s+TOTAL[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+                r'STATE\s+WITHHOLDING[:\s]*CURRENT[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+                r'CA\s+SDI[:\s]*CURRENT[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
             ],
             'social_security': [
-                r'SOCIAL\s+SECURITY\s+TAX[:\s]*\n?\s*\$?\s*([\d,]+\.?\d{0,2})',
-                r'SS\s+TAX[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-                r'SOCIAL\s+SECURITY[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-                r'OASDI[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+                r'FICA\s+SS\s+TAX[:\s]*(?:CURRENT\s+TOTAL)?[:\s]*\$?\s*([\d,]+\.?\d{0,2})(?!\s*YTD)',
+                r'SOCIAL\s+SECURITY\s+TAX[:\s]*(?:CURRENT\s+TOTAL)?[:\s]*\$?\s*([\d,]+\.?\d{0,2})(?!\s*YTD)',
+                r'SS\s+TAX[:\s]*CURRENT[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+                r'OASDI[:\s]*CURRENT[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
             ],
             'medicare': [
-                r'MEDICARE\s+TAX[:\s]*\n?\s*\$?\s*([\d,]+\.?\d{0,2})',
-                r'MED\s+TAX[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-                r'MEDICARE[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+                r'FICA\s+MED\s+TAX[:\s]*(?:CURRENT\s+TOTAL)?[:\s]*\$?\s*([\d,]+\.?\d{0,2})(?!\s*YTD)',
+                r'MEDICARE\s+TAX[:\s]*(?:CURRENT\s+TOTAL)?[:\s]*\$?\s*([\d,]+\.?\d{0,2})(?!\s*YTD)',
+                r'MED\s+TAX[:\s]*CURRENT[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+                r'MEDICARE[:\s]*CURRENT[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
             ]
         }
         
@@ -237,18 +255,25 @@ class PaystubExtractor:
             for pattern in patterns:
                 match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
                 if match and match.group(1):
-                    details[field] = match.group(1).replace(',', '')
-                    break
+                    # Make sure it's not a YTD value
+                    match_text = match.group(0)
+                    if 'YTD' not in match_text.upper() and 'YEAR TO DATE' not in match_text.upper():
+                        details[field] = match.group(1).replace(',', '')
+                        break
         
-        # Extract YTD values if available
+        # Extract YTD values if available - must explicitly be YTD
         ytd_patterns = {
             'ytd_gross': [
                 r'YTD\s+GROSS[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
                 r'YEAR\s+TO\s+DATE\s+GROSS[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+                r'YTD\s+GROSS\s+WAGES[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+                r'YTD\s+EARNINGS[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
             ],
             'ytd_net': [
+                r'YTD\s+NET\s+PAY[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
                 r'YTD\s+NET[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-                r'YEAR\s+TO\s+DATE\s+NET[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+                r'YEAR\s+TO\s+DATE\s+NET\s+PAY[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+                r'YTD\s+NET\s+AMOUNT[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
             ]
         }
         
