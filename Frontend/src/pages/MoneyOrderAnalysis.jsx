@@ -307,11 +307,162 @@ const MoneyOrderAnalysis = () => {
                 Confidence: {results.confidence_score?.toFixed(1)}%
               </div>
 
-              {/* Anomalies Section - Show first if present */}
+              {/* ML Risk Analysis Section */}
+              {results.ml_analysis && (
+                <div style={{
+                  marginBottom: '2rem',
+                  padding: '1.5rem',
+                  backgroundColor: results.ml_analysis.risk_level === 'LOW' ? '#e8f5e9' :
+                                   results.ml_analysis.risk_level === 'MEDIUM' ? '#fff8e1' :
+                                   results.ml_analysis.risk_level === 'HIGH' ? '#ffe0b2' : '#ffebee',
+                  border: `2px solid ${results.ml_analysis.risk_level === 'LOW' ? '#4caf50' :
+                                        results.ml_analysis.risk_level === 'MEDIUM' ? '#ff9800' :
+                                        results.ml_analysis.risk_level === 'HIGH' ? '#ff5722' : '#f44336'}`,
+                  borderRadius: '8px'
+                }}>
+                  <h3 style={{
+                    color: results.ml_analysis.risk_level === 'LOW' ? '#2e7d32' :
+                           results.ml_analysis.risk_level === 'MEDIUM' ? '#e65100' :
+                           results.ml_analysis.risk_level === 'HIGH' ? '#d84315' : '#c62828',
+                    marginBottom: '1rem',
+                    fontSize: '1.4rem'
+                  }}>
+                    🤖 ML Fraud Risk Analysis
+                  </h3>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '2rem', marginBottom: '1rem' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '0.9rem', color: colors.neutral.gray600, marginBottom: '0.3rem' }}>
+                        Fraud Risk Score
+                      </div>
+                      <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: colors.primary.navy }}>
+                        {(results.ml_analysis.fraud_risk_score * 100).toFixed(1)}%
+                      </div>
+                      <div style={{ fontSize: '1.1rem', fontWeight: '600', marginTop: '0.3rem' }}>
+                        Risk Level: {results.ml_analysis.risk_level}
+                      </div>
+                    </div>
+
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '0.9rem', color: colors.neutral.gray600, marginBottom: '0.3rem' }}>
+                        Model Confidence
+                      </div>
+                      <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: colors.status.success }}>
+                        {(results.ml_analysis.model_confidence * 100).toFixed(1)}%
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Model Scores Breakdown */}
+                  {results.ml_analysis.model_scores && (
+                    <div style={{ marginTop: '1rem', fontSize: '0.85rem', color: colors.neutral.gray700 }}>
+                      <strong>Model Ensemble:</strong>
+                      <span style={{ marginLeft: '1rem' }}>
+                        Random Forest: {(results.ml_analysis.model_scores.random_forest * 100).toFixed(1)}%
+                      </span>
+                      <span style={{ marginLeft: '1rem' }}>
+                        XGBoost: {(results.ml_analysis.model_scores.xgboost * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* AI Recommendation Section */}
+              {results.ai_analysis && (
+                <div style={{ marginBottom: '2rem' }}>
+                  <div style={{
+                    padding: '1.5rem',
+                    backgroundColor: results.ai_analysis.recommendation === 'APPROVE' ? '#e8f5e9' :
+                                     results.ai_analysis.recommendation === 'REJECT' ? '#ffebee' : '#fff8e1',
+                    border: `3px solid ${results.ai_analysis.recommendation === 'APPROVE' ? '#4caf50' :
+                                          results.ai_analysis.recommendation === 'REJECT' ? '#f44336' : '#ff9800'}`,
+                    borderRadius: '10px',
+                    marginBottom: '1rem'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: '0.9rem', color: colors.neutral.gray600, marginBottom: '0.5rem' }}>
+                          🧠 AI Recommendation
+                        </div>
+                        <div style={{
+                          fontSize: '2rem',
+                          fontWeight: 'bold',
+                          color: results.ai_analysis.recommendation === 'APPROVE' ? '#2e7d32' :
+                                 results.ai_analysis.recommendation === 'REJECT' ? '#c62828' : '#e65100'
+                        }}>
+                          {results.ai_analysis.recommendation}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '0.9rem', color: colors.neutral.gray600 }}>
+                          Confidence
+                        </div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
+                          {(results.ai_analysis.confidence * 100).toFixed(0)}%
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* AI Summary */}
+                    {results.ai_analysis.summary && (
+                      <div style={{
+                        marginTop: '1rem',
+                        padding: '1rem',
+                        backgroundColor: 'rgba(255,255,255,0.7)',
+                        borderRadius: '6px',
+                        fontSize: '0.95rem',
+                        fontStyle: 'italic'
+                      }}>
+                        {results.ai_analysis.summary}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* AI Reasoning */}
+                  {results.ai_analysis.reasoning && (
+                    <div style={{
+                      padding: '1.5rem',
+                      backgroundColor: colors.neutral.gray100,
+                      borderRadius: '8px',
+                      marginBottom: '1rem'
+                    }}>
+                      <h4 style={{ color: colors.primary.navy, marginBottom: '0.8rem' }}>
+                        📊 Analysis Reasoning
+                      </h4>
+                      <div style={{ whiteSpace: 'pre-wrap', fontSize: '0.9rem', lineHeight: '1.6' }}>
+                        {results.ai_analysis.reasoning}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Key Indicators */}
+                  {results.ai_analysis.key_indicators && results.ai_analysis.key_indicators.length > 0 && (
+                    <div style={{
+                      padding: '1.5rem',
+                      backgroundColor: colors.neutral.gray100,
+                      borderRadius: '8px'
+                    }}>
+                      <h4 style={{ color: colors.primary.navy, marginBottom: '0.8rem' }}>
+                        🔍 Key Indicators
+                      </h4>
+                      <ul style={{ paddingLeft: '1.5rem', margin: 0 }}>
+                        {results.ai_analysis.key_indicators.map((indicator, index) => (
+                          <li key={index} style={{ marginBottom: '0.5rem', fontSize: '0.9rem' }}>
+                            {indicator}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Anomalies Section - Show if present */}
               {results.anomalies && results.anomalies.length > 0 && (
                 <div style={{ marginBottom: '2rem' }}>
                   <h3 style={{ color: colors.accent.red, marginBottom: '1rem' }}>
-                    ⚠️ Anomalies Detected ({results.anomalies.length})
+                    ⚠️ Detailed Anomalies ({results.anomalies.length})
                   </h3>
                   {results.anomalies.map((anomaly, index) => (
                     <div key={index} style={anomalyCardStyle(anomaly.severity)}>
@@ -326,7 +477,7 @@ const MoneyOrderAnalysis = () => {
               )}
 
               <h3 style={{ color: colors.primary.navy, marginBottom: '1rem' }}>
-                Issuer Information
+                📄 Issuer Information
               </h3>
               <div style={resultCardStyle}>
                 <p><strong>Issuer:</strong> {results.extracted_data?.issuer || 'N/A'}</p>
