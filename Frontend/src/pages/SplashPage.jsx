@@ -343,21 +343,6 @@ const SplashPage = () => {
         
         <div style={headerButtonsStyle}>
           <button 
-            style={backButtonStyle}
-            onMouseEnter={(e) => {
-              e.target.style.backgroundColor = colors.primary.navy;
-              e.target.style.color = colors.neutral.white;
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.backgroundColor = 'transparent';
-              e.target.style.color = colors.primary.navy;
-            }}
-            onClick={() => navigate('/')}
-          >
-            <FaArrowLeft /> Back
-          </button>
-          
-          <button 
             style={loginButtonStyle}
             onMouseEnter={(e) => e.target.style.backgroundColor = colors.primary.navy}
             onMouseLeave={(e) => e.target.style.backgroundColor = colors.primary.blue}
