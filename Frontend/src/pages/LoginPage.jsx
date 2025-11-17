@@ -18,7 +18,7 @@ const LoginPage = () => {
 
     try {
       await login(email, password);
-      navigate('/finance');
+      navigate('/transaction-type');
     } catch (err) {
       setError(err.message);
     } finally {
