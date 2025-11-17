@@ -291,7 +291,9 @@ class ProductionCheckExtractor:
         """Extract amount in words"""
         pattern = f'{currency_word}\\s+(.+?)(?:\\s+ONLY|\\s+[$₹]|\\n|$)'
         match = re.search(pattern, text, re.IGNORECASE)
-        return match.group(1).strip() if match else None
+        if match and match.group(1):
+            return match.group(1).strip()
+        return None
     
     def _extract_date(self, text: str) -> Optional[str]:
         """Extract date in various formats"""
@@ -339,13 +341,17 @@ class ProductionCheckExtractor:
         """Extract US account number from MICR"""
         pattern = r'⑆\d{9}⑆\s*(\d{8,12})⑆'
         match = re.search(pattern, text)
-        return match.group(1) if match else None
+        if match and match.group(1):
+            return match.group(1)
+        return None
     
     def _extract_routing_number(self, text: str) -> Optional[str]:
         """Extract routing number (US)"""
         pattern = r'⑆(\d{9})⑆'
         match = re.search(pattern, text)
-        return match.group(1) if match else None
+        if match and match.group(1):
+            return match.group(1)
+        return None
     
     def _extract_micr_code(self, text: str) -> Optional[str]:
         """Extract MICR code (Indian banks)"""
@@ -357,20 +363,26 @@ class ProductionCheckExtractor:
         """Extract IFSC code (Indian banks)"""
         pattern = r'\b([A-Z]{4}0[A-Z0-9]{6})\b'
         match = re.search(pattern, text)
-        return match.group(1) if match else None
+        if match and match.group(1):
+            return match.group(1)
+        return None
     
     def _extract_memo(self, text: str) -> Optional[str]:
         """Extract memo field"""
         pattern = r'MEMO\s+([A-Za-z0-9\s]+)'
         match = re.search(pattern, text, re.IGNORECASE)
-        return match.group(1).strip() if match else None
+        if match and match.group(1):
+            return match.group(1).strip()
+        return None
     
     def _extract_bank_name(self, text: str) -> Optional[str]:
         """Extract bank name"""
         lines = text.split('\n')
         for line in lines[:5]:  # Check first 5 lines
-            if 'BANK' in line.upper():
-                return line.strip()
+            if line and 'BANK' in line.upper():
+                stripped = line.strip()
+                if stripped:
+                    return stripped
         return None
     
     def _has_signature(self, annotations: List) -> bool:
@@ -390,8 +402,10 @@ class ProductionCheckExtractor:
         """Try multiple regex patterns"""
         for pattern in patterns:
             match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                return match.group(1).strip()
+            if match and match.group(1):
+                result = match.group(1).strip()
+                if result:  # Only return non-empty strings
+                    return result
         return None
     
     def _calculate_confidence(self, details: Dict) -> float:
