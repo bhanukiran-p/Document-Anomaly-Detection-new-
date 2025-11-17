@@ -58,20 +58,40 @@ def detect_document_type(text):
     """
     text_lower = text.lower()
 
+    # Priority check: Strong identifiers that definitively indicate document type
+    # Check for money order FIRST with strong keywords
+    if 'money order' in text_lower or 'western union' in text_lower or 'moneygram' in text_lower:
+        return 'money_order'
+
+    # Check for bank statement strong indicators
+    if ('statement period' in text_lower or 'account summary' in text_lower or
+        'beginning balance' in text_lower or 'transaction detail' in text_lower):
+        return 'bank_statement'
+
+    # Check for paystub strong indicators
+    if ('gross pay' in text_lower or 'net pay' in text_lower or
+        ('ytd' in text_lower and 'earnings' in text_lower)):
+        return 'paystub'
+
+    # Check for check strong indicators
+    if 'routing number' in text_lower or 'micr' in text_lower or 'check number' in text_lower:
+        return 'check'
+
+    # Fallback: Use keyword counting for less obvious cases
     # Check for check-specific keywords
-    check_keywords = ['pay to the order of', 'routing number', 'account number', 'memo', 'dollars', 'date', 'check number', 'micr', 'void']
+    check_keywords = ['pay to the order of', 'account number', 'memo', 'void', 'dollars']
     check_count = sum(1 for keyword in check_keywords if keyword in text_lower)
 
     # Check for paystub-specific keywords
-    paystub_keywords = ['gross pay', 'net pay', 'earnings', 'deductions', 'ytd', 'federal tax', 'state tax', 'social security', 'medicare', 'employee', 'employer', 'pay period', 'paycheck']
+    paystub_keywords = ['earnings', 'deductions', 'federal tax', 'state tax', 'social security', 'medicare', 'employee', 'employer', 'pay period', 'paycheck']
     paystub_count = sum(1 for keyword in paystub_keywords if keyword in text_lower)
 
     # Check for money order keywords
-    money_order_keywords = ['money order', 'western union', 'moneygram', 'usps', 'purchaser', 'serial number', 'receipt', 'remitter', 'payee']
+    money_order_keywords = ['purchaser', 'serial number', 'receipt', 'remitter']
     money_order_count = sum(1 for keyword in money_order_keywords if keyword in text_lower)
 
     # Check for bank statement keywords
-    bank_statement_keywords = ['statement period', 'beginning balance', 'ending balance', 'transaction detail', 'checking summary', 'account summary', 'deposits', 'withdrawals', 'daily balance']
+    bank_statement_keywords = ['ending balance', 'checking summary', 'deposits', 'withdrawals', 'daily balance']
     bank_statement_count = sum(1 for keyword in bank_statement_keywords if keyword in text_lower)
 
     # Determine document type based on keyword matches
