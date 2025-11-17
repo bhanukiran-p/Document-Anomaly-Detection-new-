@@ -226,7 +226,7 @@ const LoginPage = () => {
             onMouseEnter={() => setButtonHovered(true)}
             onMouseLeave={() => setButtonHovered(false)}
           >
-            {loading ? '🔄 Logging in...' : '✓ Login'}
+            {loading ? '🔄 Logging in...' : 'Login'}
           </button>
         </form>
 
