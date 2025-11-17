@@ -203,41 +203,70 @@ class PaystubExtractor:
                     break
         
         # Extract net pay - CURRENT period only (exclude YTD)
-        # Try to find NET PAY that comes before YTD NET PAY
+        # Strategy: Find NET PAY that appears AFTER DEDUCTIONS but BEFORE any YTD section
+        best_net_match = None
+        
+        # First, find where YTD section starts (if it exists)
+        ytd_section_start = None
+        ytd_markers = [
+            r'YTD\s+GROSS',
+            r'YTD\s+DEDCTIONS',
+            r'YTD\s+DEDUCTIONS',
+            r'YEAR\s+TO\s+DATE',
+        ]
+        for marker in ytd_markers:
+            ytd_match = re.search(marker, text, re.IGNORECASE | re.MULTILINE)
+            if ytd_match:
+                ytd_section_start = ytd_match.start()
+                break
+        
+        # Find NET PAY that comes before YTD section
         net_patterns = [
-            r'NET\s+PAY[:\s]*(?:CURRENT\s+TOTAL)?[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-            r'NET\s+PAY[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-            r'TAKE\s+HOME[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+            r'NET\s+PAY[:\s]+([\d,]+\.\d{2})',
+            r'NET\s+PAY\s*:\s*([\d,]+\.\d{2})',
+            r'NET\s+PAY\s+([\d,]+\.\d{2})',
+            r'DEDUCTIONS[:\s]+[\d,]+\.?\d{0,2}.*?NET\s+PAY[:\s]*([\d,]+\.\d{2})',
+            r'TOTAL[:\s]+DEDUCTIONS.*?NET\s+PAY[:\s]*([\d,]+\.\d{2})',
         ]
         
-        # Find all NET PAY matches and pick the one that's not YTD
-        best_net_match = None
+        all_matches = []
         for pattern in net_patterns:
             for match in re.finditer(pattern, text, re.IGNORECASE | re.DOTALL | re.MULTILINE):
                 if match and match.group(1):
-                    # Get surrounding context to verify
-                    start_pos = max(0, match.start() - 100)
-                    end_pos = min(len(text), match.end() + 100)
-                    context = text[start_pos:end_pos].upper()
-                    
-                    # Check if this is a YTD value
-                    before_context = text[max(0, match.start() - 20):match.start()].upper()
-                    after_context = text[match.end():min(len(text), match.end() + 20)].upper()
-                    
-                    # Skip if it's clearly YTD
-                    if ('YTD' in before_context or 'YEAR TO DATE' in before_context or 
-                        'YTD NET' in context or re.search(r'YTD\s+NET', context)):
-                        continue
-                    
-                    # This looks like a current period NET PAY
-                    best_net_match = match
-                    break
-            
-            if best_net_match:
-                break
+                    # Must be before YTD section if YTD section exists
+                    if ytd_section_start is None or match.start() < ytd_section_start:
+                        # Check context to ensure it's not YTD
+                        before_text = text[max(0, match.start() - 15):match.start()].upper()
+                        if 'YTD' not in before_text and 'YEAR TO DATE' not in before_text:
+                            all_matches.append(match)
+        
+        # Sort by position (earlier = more likely current period)
+        all_matches.sort(key=lambda m: m.start())
+        
+        # Take the last match before YTD section (most likely to be current period NET PAY)
+        if all_matches:
+            # Get the match closest to YTD section but before it
+            if ytd_section_start:
+                valid_matches = [m for m in all_matches if m.start() < ytd_section_start]
+                if valid_matches:
+                    best_net_match = valid_matches[-1]  # Last one before YTD
+                else:
+                    best_net_match = all_matches[0]  # Fallback to first
+            else:
+                best_net_match = all_matches[-1]  # Last match if no YTD section
         
         if best_net_match:
-            details['net_pay'] = best_net_match.group(1).replace(',', '')
+            details['net_pay'] = best_net_match.group(1).replace(',', '').strip()
+        else:
+            # Final fallback: Look for NET PAY that's clearly not YTD
+            net_label_match = re.search(r'NET\s+PAY(?!\s+YTD)', text, re.IGNORECASE | re.MULTILINE)
+            if net_label_match:
+                after_text = text[net_label_match.end():net_label_match.end() + 30]
+                number_match = re.search(r'([\d,]+\.\d{2})', after_text)
+                if number_match:
+                    before_num = after_text[:number_match.start()].upper()
+                    if 'YTD' not in before_num:
+                        details['net_pay'] = number_match.group(1).replace(',', '').strip()
         
         # Extract taxes - CURRENT period only (exclude YTD)
         tax_patterns = {
@@ -248,10 +277,12 @@ class PaystubExtractor:
                 r'FED\s+TAX[:\s]*CURRENT[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
             ],
             'state_tax': [
+                r'(?:[A-Z]{2}\s+)?ST\s+TAX[:\s]*(?:CURRENT\s+TOTAL)?[:\s]*\$?\s*([\d,]+\.?\d{0,2})(?!\s*YTD)',
                 r'STATE\s+(?:INCOME\s+)?(?:TAX|WITHHOLDING)?[:\s]*(?:CURRENT\s+TOTAL)?[:\s]*\$?\s*([\d,]+\.?\d{0,2})(?!\s*YTD)',
                 r'STATE\s+TAX[:\s]*CURRENT\s+TOTAL[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
                 r'STATE\s+WITHHOLDING[:\s]*CURRENT[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
                 r'CA\s+SDI[:\s]*CURRENT[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+                r'NY\s+ST\s+TAX[:\s]*CURRENT[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
             ],
             'social_security': [
                 r'FICA\s+SS\s+TAX[:\s]*(?:CURRENT\s+TOTAL)?[:\s]*\$?\s*([\d,]+\.?\d{0,2})(?!\s*YTD)',
@@ -278,27 +309,175 @@ class PaystubExtractor:
                         break
         
         # Extract YTD values if available - must explicitly be YTD
+        # Use very flexible patterns to handle OCR variations
         ytd_patterns = {
             'ytd_gross': [
-                r'YTD\s+GROSS[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-                r'YEAR\s+TO\s+DATE\s+GROSS[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-                r'YTD\s+GROSS\s+WAGES[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-                r'YTD\s+EARNINGS[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+                # Most common formats first - be very flexible
+                r'YTD\s+GROSS[:\s]*([\d,]+\.\d{2})',
+                r'YTD\s+GROSS\s*:\s*([\d,]+\.\d{2})',
+                r'YTD\s+GROSS\s+([\d,]+\.\d{2})',
+                r'YTD\s+GROSS[:\s]*([\d,]+\.?\d{0,2})',
+                r'YTD\s+GROSS[:\s]*\$?\s*([\d,]+\.\d{2})',
+                r'YEAR\s+TO\s+DATE\s+GROSS[:\s]*\$?\s*([\d,]+\.\d{2})',
+                r'YTD\s+GROSS\s+WAGES[:\s]*\$?\s*([\d,]+\.\d{2})',
+                r'YTD\s+EARNINGS[:\s]*\$?\s*([\d,]+\.\d{2})',
             ],
             'ytd_net': [
-                r'YTD\s+NET\s+PAY[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-                r'YTD\s+NET[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-                r'YEAR\s+TO\s+DATE\s+NET\s+PAY[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-                r'YTD\s+NET\s+AMOUNT[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+                # Most common formats first - MUST have NET PAY, not just NET
+                r'YTD\s+NET\s+PAY[:\s]+([\d,]+\.\d{2})',
+                r'YTD\s+NET\s+PAY\s*:\s*([\d,]+\.\d{2})',
+                r'YTD\s+NET\s+PAY\s+([\d,]+\.\d{2})',
+                r'YTD\s+NET\s+PAY[:\s]*\$?\s*([\d,]+\.\d{2})',
+                r'YEAR\s+TO\s+DATE\s+NET\s+PAY[:\s]*\$?\s*([\d,]+\.\d{2})',
+                r'YTD\s+NET\s+AMOUNT[:\s]*\$?\s*([\d,]+\.\d{2})',
+                # Only use YTD NET (without PAY) if we're sure it's not GROSS
+                r'YTD\s+NET[:\s]+([\d,]+\.\d{2})(?!.*GROSS)',
             ]
         }
         
         for field, patterns in ytd_patterns.items():
+            found = False
             for pattern in patterns:
-                match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
+                match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE | re.DOTALL)
                 if match and match.group(1):
-                    details[field] = match.group(1).replace(',', '')
-                    break
+                    value = match.group(1).replace(',', '').strip()
+                    if value and value != '0' and len(value) > 0:
+                        details[field] = value
+                        found = True
+                        break
+            
+            # Enhanced Fallback: Look for YTD label and find number nearby with multiple strategies
+            if not found:
+                ytd_label = None
+                if field == 'ytd_gross':
+                    # Try multiple label patterns
+                    label_patterns = [
+                        r'YTD\s+GROSS',
+                        r'YTD\s+GROSS\s+WAGES',
+                        r'YTD\s+EARNINGS',
+                    ]
+                    for lp in label_patterns:
+                        ytd_label = re.search(lp, text, re.IGNORECASE | re.MULTILINE)
+                        if ytd_label:
+                            break
+                elif field == 'ytd_net':
+                    # Try multiple label patterns - MUST have NET PAY, not just NET
+                    label_patterns = [
+                        r'YTD\s+NET\s+PAY',
+                        r'YTD\s+NET\s+PAY\s*:',
+                        r'YTD\s+NET\s+PAY\s+',
+                    ]
+                    for lp in label_patterns:
+                        ytd_label = re.search(lp, text, re.IGNORECASE | re.MULTILINE | re.DOTALL)
+                        if ytd_label:
+                            break
+                    
+                    # If still not found, look for YTD NET PAY that appears after YTD GROSS or YTD DEDCTIONS
+                    if not ytd_label:
+                        # Find the summary section and search after it
+                        summary_match = re.search(r'YTD\s+(?:GROSS|DEDCTIONS|DEDUCTIONS)', text, re.IGNORECASE | re.MULTILINE)
+                        if summary_match:
+                            # Look for YTD NET PAY in the text after summary (within 200 chars)
+                            after_summary_text = text[summary_match.end():summary_match.end() + 200]
+                            net_match = re.search(r'YTD\s+NET\s+PAY', after_summary_text, re.IGNORECASE | re.MULTILINE)
+                            if net_match:
+                                # Create a match object with adjusted positions
+                                class AdjustedMatch:
+                                    def __init__(self, original_match, offset):
+                                        self._original = original_match
+                                        self._offset = offset
+                                    def start(self):
+                                        return self._original.start() + self._offset
+                                    def end(self):
+                                        return self._original.end() + self._offset
+                                    def group(self, n=0):
+                                        return self._original.group(n)
+                                
+                                ytd_label = AdjustedMatch(net_match, summary_match.end())
+                
+                if ytd_label:
+                    # Get the line containing the YTD label
+                    line_start = text.rfind('\n', 0, ytd_label.start()) + 1
+                    line_end = text.find('\n', ytd_label.end())
+                    if line_end == -1:
+                        line_end = len(text)
+                    line_text = text[line_start:line_end]
+                    
+                    # Look for number on the same line, after the label
+                    after_label = line_text[ytd_label.end() - line_start:]
+                    # Try multiple number patterns - prefer exact decimal format
+                    number_patterns = [
+                        r'([\d,]+\.\d{2})',  # Standard format: 5,000.00
+                        r'([\d,]+\.\d{1,2})',  # Allow 1-2 decimals
+                        r'([\d,]+)',  # Just numbers with commas
+                    ]
+                    for np in number_patterns:
+                        number_match = re.search(np, after_label)
+                        if number_match:
+                            value = number_match.group(1).replace(',', '').strip()
+                            # Validate it's a reasonable amount (not too small, has digits)
+                            if value and value != '0' and len(value) > 0 and value.replace('.', '').isdigit():
+                                value_float = float(value)
+                                # Make sure it's not part of a date or other number
+                                if value_float > 10:  # Reasonable minimum for YTD values
+                                    # For YTD Net, validate it's less than YTD Gross (if we have it)
+                                    if field == 'ytd_net' and details.get('ytd_gross'):
+                                        try:
+                                            ytd_gross_val = float(details['ytd_gross'].replace(',', ''))
+                                            if value_float > ytd_gross_val:
+                                                # This might be wrong - skip it
+                                                continue
+                                        except:
+                                            pass
+                                    details[field] = value
+                                    found = True
+                                    break
+                    if found:
+                        break
+            
+            # Final fallback: Search line by line for YTD values
+            if not found:
+                lines = text.split('\n')
+                for i, line in enumerate(lines):
+                    line_upper = line.upper().strip()
+                    if field == 'ytd_gross':
+                        # Must have YTD and GROSS, but NOT NET
+                        if 'YTD' in line_upper and 'GROSS' in line_upper and 'NET' not in line_upper:
+                            # Extract number from this line
+                            numbers = re.findall(r'([\d,]+\.\d{2})', line)
+                            if numbers:
+                                value = numbers[0].replace(',', '').strip()
+                                if value and float(value) > 10:
+                                    details[field] = value
+                                    found = True
+                                    break
+                    elif field == 'ytd_net':
+                        # Must have YTD and NET PAY (or NET), but NOT GROSS
+                        if ('YTD' in line_upper and 'NET' in line_upper and 
+                            'GROSS' not in line_upper and 
+                            ('PAY' in line_upper or 'NET PAY' in line_upper)):
+                            # Extract number from this line
+                            numbers = re.findall(r'([\d,]+\.\d{2})', line)
+                            if numbers:
+                                value = numbers[0].replace(',', '').strip()
+                                value_float = float(value)
+                                if value_float > 10:
+                                    # Validate it's less than YTD Gross if we have it
+                                    if details.get('ytd_gross'):
+                                        try:
+                                            ytd_gross_val = float(details['ytd_gross'].replace(',', ''))
+                                            if value_float <= ytd_gross_val:
+                                                details[field] = value
+                                                found = True
+                                                break
+                                        except:
+                                            details[field] = value
+                                            found = True
+                                            break
+                                    else:
+                                        details[field] = value
+                                        found = True
+                                        break
         
         # Calculate confidence - improved scoring
         critical_fields = ['company_name', 'employee_name', 'pay_date']
