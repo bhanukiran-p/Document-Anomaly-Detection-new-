@@ -187,8 +187,7 @@ class PaystubExtractor:
             r'GROSS\s+WAGES[:\s]*CURRENT\s+TOTAL[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
             r'GROSS\s+(?:PAY|EARNINGS|WAGES)[:\s]*CURRENT\s+TOTAL[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
             r'CURRENT\s+TOTAL[:\s]*\$?\s*([\d,]+\.?\d{0,2})(?=\s*(?:YTD|DEDUCTIONS|NET|YEAR))',
-            r'GROSS\s+(?:PAY|EARNINGS|WAGES)[:\s]*\$?\s*([\d,]+\.?\d{0,2})(?!\s*(?:YTD|YEAR\s+TO\s+DATE))',
-            r'(?<!YTD\s)(?<!YEAR\s+TO\s+DATE\s)GROSS\s+(?:PAY|EARNINGS|WAGES)[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+            r'GROSS\s+(?:PAY|EARNINGS|WAGES)[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
         ]
         for pattern in gross_patterns:
             gross_match = re.search(pattern, text, re.IGNORECASE | re.DOTALL | re.MULTILINE)
@@ -204,24 +203,41 @@ class PaystubExtractor:
                     break
         
         # Extract net pay - CURRENT period only (exclude YTD)
+        # Try to find NET PAY that comes before YTD NET PAY
         net_patterns = [
-            r'NET\s+PAY[:\s]*\$?\s*([\d,]+\.?\d{0,2})(?!\s*(?:YTD|YEAR\s+TO\s+DATE))',
-            r'NET\s+PAY[:\s]*(?:CURRENT)?[:\s]*\$?\s*([\d,]+\.?\d{0,2})(?=\s*(?:YTD|$|\n))',
+            r'NET\s+PAY[:\s]*(?:CURRENT\s+TOTAL)?[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
+            r'NET\s+PAY[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
             r'TAKE\s+HOME[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-            r'(?<!YTD\s)(?<!YEAR\s+TO\s+DATE\s)NET\s+PAY[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
         ]
+        
+        # Find all NET PAY matches and pick the one that's not YTD
+        best_net_match = None
         for pattern in net_patterns:
-            net_match = re.search(pattern, text, re.IGNORECASE | re.DOTALL | re.MULTILINE)
-            if net_match and net_match.group(1):
-                # Make sure it's not a YTD value by checking context
-                match_text = net_match.group(0)
-                # Get surrounding context to verify
-                start_pos = max(0, net_match.start() - 50)
-                end_pos = min(len(text), net_match.end() + 50)
-                context = text[start_pos:end_pos].upper()
-                if 'YTD' not in context and 'YEAR TO DATE' not in context:
-                    details['net_pay'] = net_match.group(1).replace(',', '')
+            for match in re.finditer(pattern, text, re.IGNORECASE | re.DOTALL | re.MULTILINE):
+                if match and match.group(1):
+                    # Get surrounding context to verify
+                    start_pos = max(0, match.start() - 100)
+                    end_pos = min(len(text), match.end() + 100)
+                    context = text[start_pos:end_pos].upper()
+                    
+                    # Check if this is a YTD value
+                    before_context = text[max(0, match.start() - 20):match.start()].upper()
+                    after_context = text[match.end():min(len(text), match.end() + 20)].upper()
+                    
+                    # Skip if it's clearly YTD
+                    if ('YTD' in before_context or 'YEAR TO DATE' in before_context or 
+                        'YTD NET' in context or re.search(r'YTD\s+NET', context)):
+                        continue
+                    
+                    # This looks like a current period NET PAY
+                    best_net_match = match
                     break
+            
+            if best_net_match:
+                break
+        
+        if best_net_match:
+            details['net_pay'] = best_net_match.group(1).replace(',', '')
         
         # Extract taxes - CURRENT period only (exclude YTD)
         tax_patterns = {
