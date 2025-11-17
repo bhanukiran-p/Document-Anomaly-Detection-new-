@@ -2,10 +2,27 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { colors } from '../styles/colors';
 import { FaChartLine, FaFileUpload } from 'react-icons/fa';
+import { useAuth } from '../context/AuthContext';
 
 const TransactionTypePage = () => {
   const navigate = useNavigate();
-  
+  const { isAuthenticated, logout } = useAuth();
+
+  const logoutButtonStyle = {
+    backgroundColor: colors.accent.red,
+    color: colors.neutral.white,
+    padding: '0.625rem 1.5rem',
+    borderRadius: '0.375rem',
+    border: 'none',
+    cursor: 'pointer',
+    fontSize: '1rem',
+    fontWeight: '600',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    transition: 'background-color 0.2s',
+  };
+
   const pageStyle = {
     minHeight: '100vh',
     backgroundColor: colors.neutral.white,
@@ -190,13 +207,28 @@ const TransactionTypePage = () => {
           <div style={taglineStyle}>Your Guardian against Fraud</div>
         </div>
         
-        <button 
-          style={loginButtonStyle}
-          onMouseEnter={(e) => e.target.style.backgroundColor = colors.primary.navy}
-          onMouseLeave={(e) => e.target.style.backgroundColor = colors.primary.blue}
-        >
-          Login →
-        </button>
+        {!isAuthenticated ? (
+          <button
+            style={loginButtonStyle}
+            onMouseEnter={(e) => e.target.style.backgroundColor = colors.primary.navy}
+            onMouseLeave={(e) => e.target.style.backgroundColor = colors.primary.blue}
+            onClick={() => navigate('/login')}
+          >
+            Login →
+          </button>
+        ) : (
+          <button
+            style={logoutButtonStyle}
+            onMouseEnter={(e) => e.target.style.backgroundColor = colors.accent.redDark}
+            onMouseLeave={(e) => e.target.style.backgroundColor = colors.accent.red}
+            onClick={() => {
+              logout();
+              navigate('/');
+            }}
+          >
+            Logout
+          </button>
+        )}
       </header>
       
       {/* Main Content */}
