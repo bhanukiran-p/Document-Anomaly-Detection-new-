@@ -344,6 +344,7 @@ const SplashPage = () => {
             style={loginButtonStyle}
             onMouseEnter={(e) => e.target.style.backgroundColor = colors.primary.navy}
             onMouseLeave={(e) => e.target.style.backgroundColor = colors.primary.blue}
+            onClick={() => navigate('/login')}
           >
             Login →
           </button>
