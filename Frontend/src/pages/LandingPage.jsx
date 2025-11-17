@@ -38,7 +38,7 @@ const LandingPage = () => {
     fontWeight: '500',
     color: colors.accent.red,
   };
-
+  
   const mainContentStyle = {
     flex: 1,
     display: 'flex',
