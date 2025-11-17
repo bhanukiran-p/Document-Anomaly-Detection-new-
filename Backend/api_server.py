@@ -14,6 +14,8 @@ import re
 import fitz
 from google.cloud import vision
 from auth import login_user, register_user, token_required
+from supabase_client import get_supabase, check_connection as check_supabase_connection
+from auth_supabase import login_user_supabase, register_user_supabase, verify_token
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -47,6 +49,15 @@ try:
 except Exception as e:
     logger.warning(f"Failed to load Vision API credentials: {e}")
     vision_client = None
+
+# Initialize Supabase client
+try:
+    supabase = get_supabase()
+    supabase_status = check_supabase_connection()
+    logger.info(f"Supabase initialization: {supabase_status['message']}")
+except Exception as e:
+    logger.warning(f"Failed to initialize Supabase: {e}")
+    supabase = None
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -112,25 +123,33 @@ def detect_document_type(text):
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
+    supabase_status = check_supabase_connection() if supabase else {'status': 'disconnected', 'message': 'Supabase not initialized'}
+
     return jsonify({
         'status': 'healthy',
         'service': 'XFORIA DAD API',
-        'version': '1.0.0'
+        'version': '1.0.0',
+        'database': {
+            'supabase': supabase_status['status'],
+            'message': supabase_status['message']
+        }
     })
 
 @app.route('/api/auth/login', methods=['POST'])
 def api_login():
-    """Login endpoint"""
+    """Login endpoint - Uses Supabase for user authentication"""
     try:
         data = request.get_json()
 
         if not data or not data.get('email') or not data.get('password'):
             return jsonify({'error': 'Email and password required'}), 400
 
-        result, status_code = login_user(data['email'], data['password'])
+        # Try Supabase auth first, fallback to JSON auth if needed
+        result, status_code = login_user_supabase(data['email'], data['password'])
         return jsonify(result), status_code
 
     except Exception as e:
+        logger.error(f"Login error: {str(e)}")
         return jsonify({
             'error': str(e),
             'message': 'Login failed'
@@ -138,17 +157,19 @@ def api_login():
 
 @app.route('/api/auth/register', methods=['POST'])
 def api_register():
-    """Register endpoint"""
+    """Register endpoint - Uses Supabase for user registration"""
     try:
         data = request.get_json()
 
         if not data or not data.get('email') or not data.get('password'):
             return jsonify({'error': 'Email and password required'}), 400
 
-        result, status_code = register_user(data['email'], data['password'])
+        # Try Supabase auth first
+        result, status_code = register_user_supabase(data['email'], data['password'])
         return jsonify(result), status_code
 
     except Exception as e:
+        logger.error(f"Register error: {str(e)}")
         return jsonify({
             'error': str(e),
             'message': 'Registration failed'

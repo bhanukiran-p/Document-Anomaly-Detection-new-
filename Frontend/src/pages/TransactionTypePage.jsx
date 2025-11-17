@@ -9,18 +9,20 @@ const TransactionTypePage = () => {
   const { isAuthenticated, logout } = useAuth();
 
   const logoutButtonStyle = {
-    backgroundColor: colors.accent.red,
-    color: colors.neutral.white,
-    padding: '0.625rem 1.5rem',
-    borderRadius: '0.375rem',
+    backgroundColor: 'transparent',
     border: 'none',
     cursor: 'pointer',
-    fontSize: '1rem',
-    fontWeight: '600',
+    padding: '0.5rem',
     display: 'flex',
     alignItems: 'center',
-    gap: '0.5rem',
-    transition: 'background-color 0.2s',
+    justifyContent: 'center',
+    transition: 'transform 0.2s',
+  };
+
+  const logoutImageStyle = {
+    width: '40px',
+    height: '40px',
+    borderRadius: '50%',
   };
 
   const pageStyle = {
@@ -219,14 +221,19 @@ const TransactionTypePage = () => {
         ) : (
           <button
             style={logoutButtonStyle}
-            onMouseEnter={(e) => e.target.style.backgroundColor = colors.accent.redDark}
-            onMouseLeave={(e) => e.target.style.backgroundColor = colors.accent.red}
+            onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
+            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
             onClick={() => {
               logout();
               navigate('/');
             }}
+            title="Logout"
           >
-            Logout
+            <img
+              src="/exit-door.png"
+              alt="Logout"
+              style={logoutImageStyle}
+            />
           </button>
         )}
       </header>
