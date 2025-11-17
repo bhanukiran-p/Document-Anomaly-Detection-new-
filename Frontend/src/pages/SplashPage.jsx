@@ -357,28 +357,14 @@ const SplashPage = () => {
             <FaArrowLeft /> Back
           </button>
           
-          {!isAuthenticated ? (
-            <button
-              style={loginButtonStyle}
-              onMouseEnter={(e) => e.target.style.backgroundColor = colors.primary.navy}
-              onMouseLeave={(e) => e.target.style.backgroundColor = colors.primary.blue}
-              onClick={() => navigate('/login')}
-            >
-              Login →
-            </button>
-          ) : (
-            <button
-              style={logoutButtonStyle}
-              onMouseEnter={(e) => e.target.style.backgroundColor = colors.accent.redDark}
-              onMouseLeave={(e) => e.target.style.backgroundColor = colors.accent.red}
-              onClick={() => {
-                logout();
-                navigate('/');
-              }}
-            >
-              Logout
-            </button>
-          )}
+          <button 
+            style={loginButtonStyle}
+            onMouseEnter={(e) => e.target.style.backgroundColor = colors.primary.navy}
+            onMouseLeave={(e) => e.target.style.backgroundColor = colors.primary.blue}
+            onClick={() => navigate('/login')}
+          >
+            Login →
+          </button>
         </div>
       </header>
       
