@@ -24,6 +24,31 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
 
+  const register = async (email, password) => {
+    try {
+      setError(null);
+
+      const response = await axios.post(`${API_BASE_URL}/auth/register`, {
+        email,
+        password
+      });
+
+      const { token, user: userData } = response.data;
+
+      localStorage.setItem('authToken', token);
+      localStorage.setItem('user', JSON.stringify(userData));
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
+      setUser(userData);
+      return response.data;
+    } catch (err) {
+      console.error('Register error:', err);
+      const errorMessage = err.response?.data?.error || err.message || 'Registration failed';
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    }
+  };
+
   const login = async (email, password) => {
     try {
       setError(null);
@@ -62,6 +87,7 @@ export const AuthProvider = ({ children }) => {
     loading,
     error,
     login,
+    register,
     logout,
     isAuthenticated: !!user
   };

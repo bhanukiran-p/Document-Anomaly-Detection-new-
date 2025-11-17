@@ -8,6 +8,7 @@ import LandingPage from './pages/LandingPage';
 import SplashPage from './pages/SplashPage';
 import TransactionTypePage from './pages/TransactionTypePage';
 import LoginPage from './pages/LoginPage'; // eslint-disable-line no-unused-vars
+import RegisterPage from './pages/RegisterPage';
 import HomePage from './pages/HomePage';
 import CheckAnalysis from './pages/CheckAnalysis';
 import PaystubAnalysis from './pages/PaystubAnalysis';
@@ -17,7 +18,7 @@ import './styles/GlobalStyles.css';
 
 function AppContent() {
   const location = useLocation();
-  const isCustomLayout = location.pathname === '/' || location.pathname === '/splash' || location.pathname === '/transaction-type' || location.pathname === '/login';
+  const isCustomLayout = location.pathname === '/' || location.pathname === '/splash' || location.pathname === '/transaction-type' || location.pathname === '/login' || location.pathname === '/register';
 
   const appStyle = {
     display: 'flex',
@@ -39,6 +40,7 @@ function AppContent() {
           <Route path="/splash" element={<SplashPage />} />
           <Route path="/transaction-type" element={<TransactionTypePage />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
           <Route path="/finance" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
           <Route path="/check-analysis" element={<CheckAnalysis />} />
           <Route path="/paystub-analysis" element={<PaystubAnalysis />} />

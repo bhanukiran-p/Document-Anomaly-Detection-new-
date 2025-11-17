@@ -3,21 +3,39 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { colors } from '../styles/colors';
 
-const LoginPage = () => {
+const RegisterPage = () => {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { register } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    // Validate form
+    if (!email || !password || !confirmPassword) {
+      setError('All fields are required');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters long');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      await login(email, password);
+      await register(email, password);
       navigate('/transaction-type');
     } catch (err) {
       setError(err.message);
@@ -170,8 +188,8 @@ const LoginPage = () => {
             alt="DAD Logo"
             style={styles.logo}
           />
-          <h1 style={styles.title}>Login</h1>
-          <p style={styles.subtitle}>Your Guardian against Fraud</p>
+          <h1 style={styles.title}>Create Account</h1>
+          <p style={styles.subtitle}>Join XFORIA to get started</p>
         </div>
 
         {/* Form */}
@@ -210,12 +228,31 @@ const LoginPage = () => {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter your password"
+              placeholder="At least 8 characters"
               style={{
                 ...styles.input,
                 ...(focusedField === 'password' ? styles.inputFocus : {})
               }}
               onFocus={() => setFocusedField('password')}
+              onBlur={() => setFocusedField(null)}
+              disabled={loading}
+            />
+          </div>
+
+          {/* Confirm Password Field */}
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Confirm Password</label>
+            <input
+              type="password"
+              required
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Re-enter your password"
+              style={{
+                ...styles.input,
+                ...(focusedField === 'confirmPassword' ? styles.inputFocus : {})
+              }}
+              onFocus={() => setFocusedField('confirmPassword')}
               onBlur={() => setFocusedField(null)}
               disabled={loading}
             />
@@ -233,21 +270,21 @@ const LoginPage = () => {
             onMouseEnter={() => setButtonHovered(true)}
             onMouseLeave={() => setButtonHovered(false)}
           >
-            {loading ? '🔄 Logging in...' : 'Login'}
+            {loading ? '⏳ Creating account...' : 'Create Account'}
           </button>
         </form>
 
-        {/* Registration Link */}
+        {/* Login Link */}
         <div style={styles.linkSection}>
           <p style={styles.linkText}>
-            Don't have an account?{' '}
+            Already have an account?{' '}
             <Link
-              to="/register"
+              to="/login"
               style={styles.link}
               onMouseEnter={(e) => (e.target.style.color = colors.accent.redDark)}
               onMouseLeave={(e) => (e.target.style.color = colors.accent.red)}
             >
-              Sign up here
+              Login here
             </Link>
           </p>
         </div>
@@ -256,4 +293,4 @@ const LoginPage = () => {
   );
 };
 
-export default LoginPage;
+export default RegisterPage;
