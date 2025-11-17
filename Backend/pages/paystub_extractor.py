@@ -13,7 +13,7 @@ import fitz  # PyMuPDF
 class PaystubExtractor:
     """Extract paystub details using Google Vision API"""
     
-    def __init__(self, credentials_path='check-ocr-project-469619-d18e1cdc414d.json'):
+    def __init__(self, credentials_path='google-credentials.json'):
         """Initialize with credentials"""
         import os
         if os.path.exists(credentials_path):

@@ -26,7 +26,7 @@ app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Initialize the extractor
-CREDENTIALS_PATH = "check-ocr-project-469619-d18e1cdc414d.json"
+CREDENTIALS_PATH = "google-credentials.json"
 try:
     extractor = ProductionCheckExtractor(CREDENTIALS_PATH)
     EXTRACTOR_AVAILABLE = True

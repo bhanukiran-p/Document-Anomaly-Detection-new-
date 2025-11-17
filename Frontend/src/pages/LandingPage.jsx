@@ -195,10 +195,11 @@ const LandingPage = () => {
           <div style={taglineStyle}>Your Guardian against Fraud</div>
         </div>
         
-        <button 
+        <button
           style={loginButtonStyle}
           onMouseEnter={(e) => e.target.style.backgroundColor = colors.primary.navy}
           onMouseLeave={(e) => e.target.style.backgroundColor = colors.primary.blue}
+          onClick={() => navigate('/login')}
         >
           Login →
         </button>
