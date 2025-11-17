@@ -18,7 +18,7 @@ const LoginPage = () => {
 
     try {
       await login(email, password);
-      navigate('/finance');
+      navigate('/transaction-type');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -226,7 +226,7 @@ const LoginPage = () => {
             onMouseEnter={() => setButtonHovered(true)}
             onMouseLeave={() => setButtonHovered(false)}
           >
-            {loading ? '🔄 Logging in...' : '✓ Login'}
+            {loading ? '🔄 Logging in...' : 'Login'}
           </button>
         </form>
 
