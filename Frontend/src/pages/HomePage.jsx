@@ -5,30 +5,38 @@ import { colors } from '../styles/colors';
 const HomePage = () => {
   const navigate = useNavigate();
   
+  // Use primaryColor for new design system red
+  const primary = colors.primaryColor || colors.accent?.red || '#E53935';
+  
   const containerStyle = {
     maxWidth: '1300px',
     margin: '0 auto',
     padding: '1.5rem',
+    backgroundColor: colors.background,
+    minHeight: '100vh',
+    color: colors.foreground,
   };
   
   const headerStyle = {
-    background: `linear-gradient(135deg, ${colors.primary.navy} 0%, ${colors.primary.blue} 100%)`,
+    background: colors.gradients.navy,
     padding: '2rem',
-    borderRadius: '12px',
-    color: colors.neutral.white,
+    borderRadius: '0.75rem',
+    color: colors.foreground,
     textAlign: 'center',
     marginBottom: '1.5rem',
+    border: `1px solid ${colors.border}`,
   };
   
   const titleStyle = {
     fontSize: '2rem',
     fontWeight: '700',
     marginBottom: '0.5rem',
+    color: colors.foreground,
   };
   
   const subtitleStyle = {
     fontSize: '1.125rem',
-    opacity: 0.9,
+    color: colors.mutedForeground,
   };
   
   const cardsContainerStyle = {
@@ -41,11 +49,12 @@ const HomePage = () => {
   };
   
   const cardStyle = {
-    backgroundColor: colors.background.card,
-    borderRadius: '12px',
+    backgroundColor: colors.card,
+    borderRadius: '0.75rem',
     padding: '1.5rem',
-    boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-    borderTop: `4px solid ${colors.primary.navy}`,
+    boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)',
+    border: `1px solid ${colors.border}`,
+    borderTop: `4px solid ${primary}`,
     transition: 'transform 0.2s, box-shadow 0.2s',
     cursor: 'pointer',
     display: 'flex',
@@ -59,12 +68,12 @@ const HomePage = () => {
   const cardTitleStyle = {
     fontSize: '1.25rem',
     fontWeight: '600',
-    color: colors.primary.navy,
+    color: colors.foreground,
     marginBottom: '0.75rem',
   };
   
   const cardDescStyle = {
-    color: colors.neutral.gray600,
+    color: colors.mutedForeground,
     lineHeight: '1.5',
     marginBottom: 'auto',
     fontSize: '0.9rem',
@@ -73,8 +82,8 @@ const HomePage = () => {
   };
   
   const buttonStyle = {
-    backgroundColor: colors.accent.red,
-    color: colors.neutral.white,
+    backgroundColor: primary,
+    color: colors.primaryForeground,
     padding: '0.75rem 1.5rem',
     borderRadius: '0.5rem',
     fontSize: '0.95rem',
@@ -82,14 +91,15 @@ const HomePage = () => {
     border: 'none',
     cursor: 'pointer',
     width: '100%',
-    transition: 'background-color 0.2s',
+    transition: 'all 0.3s',
     marginTop: 'auto',
+    boxShadow: `0 0 20px ${primary}40`,
   };
   
   const backButtonStyle = {
     backgroundColor: 'transparent',
-    color: colors.primary.navy,
-    border: `2px solid ${colors.primary.navy}`,
+    color: colors.foreground,
+    border: `2px solid ${colors.border}`,
     padding: '0.625rem 1.5rem',
     borderRadius: '0.5rem',
     fontSize: '0.95rem',
@@ -104,12 +114,12 @@ const HomePage = () => {
       <button 
         style={backButtonStyle}
         onMouseEnter={(e) => {
-          e.target.style.backgroundColor = colors.primary.navy;
-          e.target.style.color = colors.neutral.white;
+          e.target.style.backgroundColor = colors.muted;
+          e.target.style.borderColor = primary;
         }}
         onMouseLeave={(e) => {
           e.target.style.backgroundColor = 'transparent';
-          e.target.style.color = colors.primary.navy;
+          e.target.style.borderColor = colors.border;
         }}
         onClick={() => navigate('/transaction-type')}
       >
@@ -144,8 +154,14 @@ const HomePage = () => {
           
           <button 
             style={buttonStyle}
-            onMouseEnter={(e) => e.target.style.backgroundColor = colors.accent.redDark}
-            onMouseLeave={(e) => e.target.style.backgroundColor = colors.accent.red}
+            onMouseEnter={(e) => {
+              e.target.style.transform = 'translateY(-2px)';
+              e.target.style.boxShadow = `0 6px 30px ${primary}60`;
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.transform = 'translateY(0)';
+              e.target.style.boxShadow = `0 0 20px ${primary}40`;
+            }}
             onClick={() => navigate('/check-analysis')}
           >
             Analyze Checks
@@ -172,8 +188,14 @@ const HomePage = () => {
           
           <button
             style={buttonStyle}
-            onMouseEnter={(e) => e.target.style.backgroundColor = colors.accent.redDark}
-            onMouseLeave={(e) => e.target.style.backgroundColor = colors.accent.red}
+            onMouseEnter={(e) => {
+              e.target.style.transform = 'translateY(-2px)';
+              e.target.style.boxShadow = `0 6px 30px ${primary}60`;
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.transform = 'translateY(0)';
+              e.target.style.boxShadow = `0 0 20px ${primary}40`;
+            }}
             onClick={() => navigate('/paystub-analysis')}
           >
             Analyze Paystubs
@@ -200,8 +222,14 @@ const HomePage = () => {
 
           <button
             style={buttonStyle}
-            onMouseEnter={(e) => e.target.style.backgroundColor = colors.accent.redDark}
-            onMouseLeave={(e) => e.target.style.backgroundColor = colors.accent.red}
+            onMouseEnter={(e) => {
+              e.target.style.transform = 'translateY(-2px)';
+              e.target.style.boxShadow = `0 6px 30px ${primary}60`;
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.transform = 'translateY(0)';
+              e.target.style.boxShadow = `0 0 20px ${primary}40`;
+            }}
             onClick={() => navigate('/money-order-analysis')}
           >
             Analyze Money Orders
@@ -228,8 +256,14 @@ const HomePage = () => {
 
           <button
             style={buttonStyle}
-            onMouseEnter={(e) => e.target.style.backgroundColor = colors.accent.redDark}
-            onMouseLeave={(e) => e.target.style.backgroundColor = colors.accent.red}
+            onMouseEnter={(e) => {
+              e.target.style.transform = 'translateY(-2px)';
+              e.target.style.boxShadow = `0 6px 30px ${primary}60`;
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.transform = 'translateY(0)';
+              e.target.style.boxShadow = `0 0 20px ${primary}40`;
+            }}
             onClick={() => navigate('/bank-statement-analysis')}
           >
             Analyze Bank Statements
@@ -238,13 +272,14 @@ const HomePage = () => {
       </div>
       
       <div style={{
-        backgroundColor: colors.primary.lightBlue,
+        backgroundColor: colors.card,
         padding: '1.5rem',
-        borderRadius: '12px',
+        borderRadius: '0.75rem',
         marginBottom: '1rem',
+        border: `1px solid ${colors.border}`,
       }}>
-        <h3 style={{ color: colors.primary.navy, marginBottom: '0.75rem', fontSize: '1.125rem' }}>About XFORIA DAD</h3>
-        <div style={{ color: colors.neutral.gray700, lineHeight: '1.5', fontSize: '0.9rem' }}>
+        <h3 style={{ color: colors.foreground, marginBottom: '0.75rem', fontSize: '1.125rem' }}>About XFORIA DAD</h3>
+        <div style={{ color: colors.mutedForeground, lineHeight: '1.5', fontSize: '0.9rem' }}>
           <p style={{ marginBottom: '0.5rem' }}>
             <strong>Supported:</strong> Checks (Axis, BOA, ICICI, HDFC, Chase, Wells Fargo) • Paystubs (US & International) • Money Orders (Western Union, MoneyGram, USPS) • Bank Statements (All major banks)
           </p>
