@@ -188,7 +188,7 @@ def health_check():
 
 @app.route('/api/auth/login', methods=['POST'])
 def api_login():
-    """Login endpoint - Uses Supabase for user authentication"""
+    """Login endpoint - Uses Supabase for user authentication with fallback to local JSON"""
     try:
         data = request.get_json()
 
@@ -217,7 +217,7 @@ def api_login():
 
 @app.route('/api/auth/register', methods=['POST'])
 def api_register():
-    """Register endpoint - Uses Supabase for user registration"""
+    """Register endpoint - Uses Supabase for user registration with fallback to local JSON"""
     try:
         data = request.get_json()
 
