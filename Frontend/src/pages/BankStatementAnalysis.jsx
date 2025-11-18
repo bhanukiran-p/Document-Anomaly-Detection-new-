@@ -67,18 +67,26 @@ const BankStatementAnalysis = () => {
   };
 
   // Styles
+  // Use primaryColor for new design system red
+  const primary = colors.primaryColor || colors.accent?.red || '#E53935';
+
   const containerStyle = {
     maxWidth: '1400px',
     margin: '0 auto',
+    backgroundColor: colors.background,
+    minHeight: '100vh',
+    color: colors.foreground,
+    padding: '1.5rem',
   };
 
   const headerStyle = {
-    background: `linear-gradient(135deg, ${colors.primary.navy} 0%, ${colors.primary.blue} 100%)`,
+    background: colors.gradients.navy,
     padding: '2rem',
-    borderRadius: '12px',
-    color: colors.neutral.white,
+    borderRadius: '0.75rem',
+    color: colors.foreground,
     textAlign: 'center',
     marginBottom: '2rem',
+    border: `1px solid ${colors.border}`,
   };
 
   const gridStyle = {
@@ -88,25 +96,26 @@ const BankStatementAnalysis = () => {
   };
 
   const cardStyle = {
-    backgroundColor: colors.background.card,
-    borderRadius: '12px',
+    backgroundColor: colors.card,
+    borderRadius: '0.75rem',
     padding: '2rem',
-    boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+    boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)',
+    border: `1px solid ${colors.border}`,
   };
 
   const dropzoneStyle = {
-    border: `2px dashed ${isDragActive ? colors.primary.blue : colors.neutral.gray300}`,
-    borderRadius: '12px',
+    border: `2px dashed ${isDragActive ? primary : colors.border}`,
+    borderRadius: '0.75rem',
     padding: '3rem',
     textAlign: 'center',
-    backgroundColor: isDragActive ? colors.primary.lightBlue : colors.background.main,
+    backgroundColor: isDragActive ? colors.muted : colors.secondary,
     cursor: 'pointer',
     transition: 'all 0.2s',
   };
 
   const buttonStyle = {
-    backgroundColor: colors.accent.red,
-    color: colors.neutral.white,
+    backgroundColor: primary,
+    color: colors.primaryForeground,
     padding: '1rem 2rem',
     borderRadius: '0.5rem',
     fontSize: '1rem',
@@ -115,14 +124,17 @@ const BankStatementAnalysis = () => {
     marginTop: '1rem',
     cursor: loading ? 'not-allowed' : 'pointer',
     opacity: loading ? 0.6 : 1,
+    boxShadow: `0 0 20px ${primary}40`,
+    transition: 'all 0.3s',
   };
 
   const resultCardStyle = {
-    backgroundColor: colors.background.main,
+    backgroundColor: colors.secondary,
     padding: '1.5rem',
-    borderRadius: '8px',
-    borderLeft: `4px solid ${colors.primary.blue}`,
+    borderRadius: '0.5rem',
+    borderLeft: `4px solid ${primary}`,
     marginBottom: '1rem',
+    border: `1px solid ${colors.border}`,
   };
 
   const confidenceStyle = (confidence) => {
@@ -171,7 +183,7 @@ const BankStatementAnalysis = () => {
       <div style={gridStyle}>
         {/* Upload Section */}
         <div style={cardStyle}>
-          <h2 style={{ color: colors.primary.navy, marginBottom: '1.5rem' }}>
+          <h2 style={{ color: colors.foreground, marginBottom: '1.5rem' }}>
             Upload Bank Statement
           </h2>
 
@@ -191,15 +203,15 @@ const BankStatementAnalysis = () => {
             <input {...getInputProps()} />
             <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🏦</div>
             {isDragActive ? (
-              <p style={{ color: colors.primary.blue, fontWeight: '500' }}>
+              <p style={{ color: primary, fontWeight: '500' }}>
                 Drop the bank statement here...
               </p>
             ) : (
               <div>
-                <p style={{ color: colors.neutral.gray700, marginBottom: '0.5rem' }}>
+                <p style={{ color: colors.foreground, marginBottom: '0.5rem' }}>
                   Drop your bank statement here or click to browse
                 </p>
-                <p style={{ color: colors.neutral.gray500, fontSize: '0.875rem' }}>
+                <p style={{ color: colors.mutedForeground, fontSize: '0.875rem' }}>
                   Bank Statements Only - JPG, JPEG, PNG, PDF
                 </p>
               </div>
@@ -209,7 +221,7 @@ const BankStatementAnalysis = () => {
           {file && (
             <div style={{ marginTop: '1.5rem' }}>
               <div style={{
-                backgroundColor: colors.primary.lightBlue,
+                backgroundColor: colors.muted,
                 padding: '1rem',
                 borderRadius: '8px',
               }}>
@@ -260,17 +272,17 @@ const BankStatementAnalysis = () => {
 
         {/* Results Section */}
         <div style={cardStyle}>
-          <h2 style={{ color: colors.primary.navy, marginBottom: '1.5rem' }}>
+          <h2 style={{ color: colors.foreground, marginBottom: '1.5rem' }}>
             Analysis Results
           </h2>
 
           {!results && !loading && (
             <div style={{
-              backgroundColor: colors.primary.lightBlue,
+              backgroundColor: colors.muted,
               padding: '2rem',
               borderRadius: '8px',
               textAlign: 'center',
-              color: colors.primary.navy,
+              color: colors.foreground,
             }}>
               <p>Upload a bank statement on the left to begin analysis</p>
             </div>
@@ -280,7 +292,7 @@ const BankStatementAnalysis = () => {
             <div style={{ textAlign: 'center', padding: '3rem' }}>
               <div className="spin" style={{
                 fontSize: '3rem',
-                color: colors.primary.blue,
+                color: primary,
               }}>⚙️</div>
               <p style={{ marginTop: '1rem', color: colors.neutral.gray600 }}>
                 Analyzing bank statement...
@@ -297,7 +309,7 @@ const BankStatementAnalysis = () => {
                 </div>
               )}
 
-              <h3 style={{ color: colors.primary.navy, marginBottom: '1rem' }}>
+              <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>
                 Account Information
               </h3>
               <div style={resultCardStyle}>
@@ -307,12 +319,12 @@ const BankStatementAnalysis = () => {
                 <p><strong>Statement Period:</strong> {results.statement_period || 'N/A'}</p>
               </div>
 
-              <h3 style={{ color: colors.primary.navy, marginBottom: '1rem', marginTop: '1.5rem' }}>
+              <h3 style={{ color: colors.foreground, marginBottom: '1rem', marginTop: '1.5rem' }}>
                 Balance Summary
               </h3>
               <div style={resultCardStyle}>
                 <p><strong>Opening Balance:</strong>
-                  <span style={{ color: colors.primary.navy, fontSize: '1.1rem', fontWeight: '600', marginLeft: '0.5rem' }}>
+                  <span style={{ color: colors.foreground, fontSize: '1.1rem', fontWeight: '600', marginLeft: '0.5rem' }}>
                     {results.balances?.opening_balance || 'N/A'}
                   </span>
                 </p>
@@ -331,7 +343,7 @@ const BankStatementAnalysis = () => {
 
               {results.summary && (
                 <>
-                  <h3 style={{ color: colors.primary.navy, marginBottom: '1rem', marginTop: '1.5rem' }}>
+                  <h3 style={{ color: colors.foreground, marginBottom: '1rem', marginTop: '1.5rem' }}>
                     Transaction Summary
                   </h3>
                   <div style={resultCardStyle}>
@@ -367,7 +379,7 @@ const BankStatementAnalysis = () => {
 
               {results.transactions && results.transactions.length > 0 && (
                 <>
-                  <h3 style={{ color: colors.primary.navy, marginBottom: '1rem', marginTop: '1.5rem' }}>
+                  <h3 style={{ color: colors.foreground, marginBottom: '1rem', marginTop: '1.5rem' }}>
                     Recent Transactions ({Math.min(results.transactions.length, 10)} shown)
                   </h3>
                   <div style={{
@@ -384,7 +396,7 @@ const BankStatementAnalysis = () => {
                       gap: '1rem',
                       padding: '0.75rem',
                       fontWeight: '600',
-                      color: colors.primary.navy,
+                      color: colors.foreground,
                       borderBottom: `2px solid ${colors.neutral.gray300}`,
                       marginBottom: '0.5rem',
                       fontSize: '0.9rem',
@@ -429,12 +441,12 @@ const BankStatementAnalysis = () => {
               <button
                 style={{
                   ...buttonStyle,
-                  backgroundColor: colors.primary.navy,
+                  backgroundColor: primary,
                   marginTop: '1.5rem',
                 }}
                 onClick={downloadJSON}
-                onMouseEnter={(e) => e.target.style.backgroundColor = colors.primary.blue}
-                onMouseLeave={(e) => e.target.style.backgroundColor = colors.primary.navy}
+                onMouseEnter={(e) => e.target.style.backgroundColor = primary}
+                onMouseLeave={(e) => e.target.style.backgroundColor = primary}
               >
                 Download Full Results (JSON)
               </button>

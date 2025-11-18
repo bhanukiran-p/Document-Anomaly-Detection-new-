@@ -3,11 +3,12 @@ import { colors } from '../styles/colors';
 
 const Footer = () => {
   const footerStyle = {
-    backgroundColor: colors.primary.navy,
-    color: colors.neutral.white,
+    backgroundColor: colors.card,
+    color: colors.foreground,
     padding: '1.5rem 2rem',
     textAlign: 'center',
     marginTop: 'auto',
+    borderTop: `1px solid ${colors.border}`,
   };
   
   const textStyle = {
@@ -20,7 +21,7 @@ const Footer = () => {
   };
   
   const separatorStyle = {
-    color: colors.neutral.gray400,
+    color: colors.mutedForeground,
   };
   
   return (
@@ -37,4 +38,3 @@ const Footer = () => {
 };
 
 export default Footer;
-

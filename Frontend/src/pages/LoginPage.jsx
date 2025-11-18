@@ -11,6 +11,9 @@ const LoginPage = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Use primaryColor for new design system red
+  const primary = colors.primaryColor || colors.accent?.red || '#E53935';
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -32,129 +35,122 @@ const LoginPage = () => {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: colors.background.main,
-      padding: '20px'
+      backgroundColor: colors.background,
+      padding: '20px',
+      background: colors.gradients.dark,
     },
     card: {
       width: '100%',
       maxWidth: '450px',
-      backgroundColor: colors.background.card,
-      borderRadius: '12px',
-      boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)',
-      padding: '40px'
+      backgroundColor: colors.card,
+      borderRadius: '0.75rem',
+      boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)',
+      padding: '40px',
+      border: `1px solid ${colors.border}`,
     },
     logoSection: {
       textAlign: 'center',
-      marginBottom: '32px'
+      marginBottom: '32px',
     },
-    logo: {
-      width: '120px',
-      height: '80px',
-      marginBottom: '16px',
-      margin: '0 auto 16px auto',
-      objectFit: 'contain'
+    logoContainer: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: '0.75rem',
+      marginBottom: '24px',
+    },
+    logoText: {
+      fontSize: '1.5rem',
+      fontWeight: 'bold',
+      color: primary,
     },
     title: {
       fontSize: '28px',
       fontWeight: '700',
-      color: colors.primary.navy,
-      margin: '0 0 8px 0'
+      color: colors.foreground,
+      margin: '0 0 8px 0',
     },
     subtitle: {
       fontSize: '14px',
-      color: colors.neutral.gray600,
-      margin: 0
+      color: colors.mutedForeground,
+      margin: 0,
     },
     form: {
       display: 'flex',
       flexDirection: 'column',
-      gap: '20px'
+      gap: '20px',
     },
     formGroup: {
       display: 'flex',
       flexDirection: 'column',
-      gap: '8px'
+      gap: '8px',
     },
     label: {
       fontSize: '14px',
       fontWeight: '500',
-      color: colors.primary.navy
+      color: colors.foreground,
     },
     input: {
       padding: '12px 16px',
       fontSize: '14px',
-      border: `2px solid ${colors.neutral.gray200}`,
-      borderRadius: '8px',
+      border: `2px solid ${colors.border}`,
+      borderRadius: '0.5rem',
       fontFamily: 'inherit',
-      transition: 'border-color 0.3s ease',
-      boxSizing: 'border-box'
+      transition: 'all 0.3s ease',
+      boxSizing: 'border-box',
+      backgroundColor: colors.muted,
+      color: colors.foreground,
     },
     inputFocus: {
-      borderColor: colors.primary.blue
+      borderColor: primary,
+      boxShadow: `0 0 0 3px ${primary}20`,
     },
     errorMessage: {
-      backgroundColor: colors.status.error + '10',
-      border: `1px solid ${colors.status.error}`,
-      color: colors.status.error,
+      backgroundColor: `${colors.destructive}20`,
+      border: `1px solid ${colors.destructive}`,
+      color: colors.destructive,
       padding: '12px 16px',
-      borderRadius: '8px',
-      fontSize: '14px'
+      borderRadius: '0.5rem',
+      fontSize: '14px',
     },
     button: {
       padding: '12px 16px',
       fontSize: '16px',
       fontWeight: '600',
       border: 'none',
-      borderRadius: '8px',
+      borderRadius: '0.5rem',
       cursor: 'pointer',
       transition: 'all 0.3s ease',
-      backgroundColor: colors.accent.red,
-      color: colors.neutral.white
+      backgroundColor: primary,
+      color: colors.primaryForeground,
+      boxShadow: `0 0 20px ${primary}40`,
     },
     buttonHover: {
-      backgroundColor: colors.accent.redDark,
       transform: 'translateY(-2px)',
-      boxShadow: '0 6px 20px rgba(220, 38, 38, 0.3)'
+      boxShadow: `0 6px 30px ${primary}60`,
     },
     buttonDisabled: {
-      backgroundColor: colors.neutral.gray400,
+      backgroundColor: colors.muted,
       cursor: 'not-allowed',
-      transform: 'none'
-    },
-    divider: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '16px',
-      margin: '24px 0'
-    },
-    dividerLine: {
-      flex: 1,
-      height: '1px',
-      backgroundColor: colors.neutral.gray200
-    },
-    dividerText: {
-      color: colors.neutral.gray500,
-      fontSize: '12px',
-      fontWeight: '500'
+      transform: 'none',
+      boxShadow: 'none',
+      opacity: 0.6,
     },
     linkSection: {
       textAlign: 'center',
-      marginTop: '20px'
+      marginTop: '20px',
     },
     linkText: {
       fontSize: '14px',
-      color: colors.neutral.gray600,
-      margin: 0
+      color: colors.mutedForeground,
+      margin: 0,
     },
     link: {
-      color: colors.accent.red,
+      color: primary,
       textDecoration: 'none',
       fontWeight: '600',
-      transition: 'color 0.3s ease'
+      transition: 'color 0.3s ease',
     },
-    linkHover: {
-      color: colors.accent.redDark
-    }
   };
 
   const [focusedField, setFocusedField] = useState(null);
@@ -165,11 +161,23 @@ const LoginPage = () => {
       <div style={styles.card}>
         {/* Logo Section */}
         <div style={styles.logoSection}>
-          <img
-            src="/dad-logo.png"
-            alt="DAD Logo"
-            style={styles.logo}
-          />
+          <div style={styles.logoContainer}>
+            <div style={{
+              width: '40px',
+              height: '40px',
+              backgroundColor: primary,
+              borderRadius: '0.5rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: colors.primaryForeground,
+              fontSize: '1.25rem',
+              fontWeight: 'bold',
+            }}>
+              D
+            </div>
+            <span style={styles.logoText}>DAD</span>
+          </div>
           <h1 style={styles.title}>Login</h1>
           <p style={styles.subtitle}>Your Guardian against Fraud</p>
         </div>
@@ -194,7 +202,7 @@ const LoginPage = () => {
               placeholder="you@example.com"
               style={{
                 ...styles.input,
-                ...(focusedField === 'email' ? styles.inputFocus : {})
+                ...(focusedField === 'email' ? styles.inputFocus : {}),
               }}
               onFocus={() => setFocusedField('email')}
               onBlur={() => setFocusedField(null)}
@@ -213,7 +221,7 @@ const LoginPage = () => {
               placeholder="Enter your password"
               style={{
                 ...styles.input,
-                ...(focusedField === 'password' ? styles.inputFocus : {})
+                ...(focusedField === 'password' ? styles.inputFocus : {}),
               }}
               onFocus={() => setFocusedField('password')}
               onBlur={() => setFocusedField(null)}
@@ -228,7 +236,7 @@ const LoginPage = () => {
             style={{
               ...styles.button,
               ...(loading ? styles.buttonDisabled : {}),
-              ...(buttonHovered && !loading ? styles.buttonHover : {})
+              ...(buttonHovered && !loading ? styles.buttonHover : {}),
             }}
             onMouseEnter={() => setButtonHovered(true)}
             onMouseLeave={() => setButtonHovered(false)}
@@ -244,8 +252,8 @@ const LoginPage = () => {
             <Link
               to="/register"
               style={styles.link}
-              onMouseEnter={(e) => (e.target.style.color = colors.accent.redDark)}
-              onMouseLeave={(e) => (e.target.style.color = colors.accent.red)}
+              onMouseEnter={(e) => (e.target.style.opacity = '0.8')}
+              onMouseLeave={(e) => (e.target.style.opacity = '1')}
             >
               Sign up here
             </Link>
