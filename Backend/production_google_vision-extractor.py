@@ -42,11 +42,20 @@ class ProductionCheckExtractor:
             )
             self.client = vision.ImageAnnotatorClient(credentials=credentials)
         elif 'GOOGLE_APPLICATION_CREDENTIALS' in os.environ:
-            # Use environment variable
+            # Use environment variable (set by api_server.py)
             self.client = vision.ImageAnnotatorClient()
         else:
-            # Try default credentials
-            self.client = vision.ImageAnnotatorClient()
+            # Try to find credentials in the same directory as this file
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            default_creds = os.path.join(script_dir, 'google-credentials.json')
+            if os.path.exists(default_creds):
+                credentials = service_account.Credentials.from_service_account_file(
+                    default_creds
+                )
+                self.client = vision.ImageAnnotatorClient(credentials=credentials)
+            else:
+                # Try default credentials
+                self.client = vision.ImageAnnotatorClient()
     
     def extract_text_from_image(self, image_path: str) -> tuple:
         """
