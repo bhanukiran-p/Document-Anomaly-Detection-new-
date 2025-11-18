@@ -180,16 +180,6 @@ def api_login():
         if not data or not data.get('email') or not data.get('password'):
             return jsonify({'error': 'Email and password required'}), 400
 
-<<<<<<< Updated upstream
-        # Try Supabase auth first, fallback to JSON auth if needed
-        if SUPABASE_AVAILABLE and login_user_supabase:
-            result, status_code = login_user_supabase(data['email'], data['password'])
-            return jsonify(result), status_code
-        else:
-            # Fallback to local auth
-            result, status_code = login_user(data['email'], data['password'])
-            return jsonify(result), status_code
-=======
         # Try Supabase auth first, fallback to local auth
         if SUPABASE_AVAILABLE and login_user_supabase:
             try:
@@ -202,14 +192,13 @@ def api_login():
         # Fallback to local JSON auth
         result, status_code = login_user(data['email'], data['password'])
         return jsonify(result), status_code
->>>>>>> Stashed changes
 
     except Exception as e:
         logger.error(f"Login error: {str(e)}")
         return jsonify({
-            'error': str(e),
+            'error': 'Invalid email or password',
             'message': 'Login failed'
-        }), 500
+        }), 401
 
 @app.route('/api/auth/register', methods=['POST'])
 def api_register():
@@ -222,14 +211,6 @@ def api_register():
 
         # Try Supabase auth first, fallback to local auth
         if SUPABASE_AVAILABLE and register_user_supabase:
-<<<<<<< Updated upstream
-            result, status_code = register_user_supabase(data['email'], data['password'])
-            return jsonify(result), status_code
-        else:
-            # Fallback to local auth
-            result, status_code = register_user(data['email'], data['password'])
-            return jsonify(result), status_code
-=======
             try:
                 result, status_code = register_user_supabase(data['email'], data['password'])
                 if status_code == 201:
@@ -240,13 +221,12 @@ def api_register():
         # Fallback to local JSON auth
         result, status_code = register_user(data['email'], data['password'])
         return jsonify(result), status_code
->>>>>>> Stashed changes
 
     except Exception as e:
         logger.error(f"Register error: {str(e)}")
         return jsonify({
-            'error': str(e),
-            'message': 'Registration failed'
+            'error': 'Registration failed',
+            'message': str(e)
         }), 500
 
 @app.route('/api/check/analyze', methods=['POST'])
