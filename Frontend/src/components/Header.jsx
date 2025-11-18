@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { colors } from '../styles/colors';
-import { FaBars, FaTimes } from 'react-icons/fa';
+import { FaBars, FaTimes, FaSignOutAlt } from 'react-icons/fa';
 
 const Header = () => {
   const location = useLocation();
@@ -10,12 +10,21 @@ const Header = () => {
   // eslint-disable-next-line no-unused-vars
   const { user, logout } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const logoutButtonRef = useRef(null);
 
   const handleLogout = () => {
     logout();
     setIsMenuOpen(false);
     navigate('/');
   };
+
+  // Reset button styles when sidebar opens
+  useEffect(() => {
+    if (isMenuOpen && logoutButtonRef.current) {
+      logoutButtonRef.current.style.backgroundColor = colors.accent.red;
+      logoutButtonRef.current.style.transform = 'none';
+    }
+  }, [isMenuOpen]);
   
   const headerStyle = {
     backgroundColor: colors.neutral.white,
@@ -111,19 +120,23 @@ const Header = () => {
 
   // eslint-disable-next-line no-unused-vars
   const logoutButtonStyle = {
-    padding: '0.75rem 1rem',
-    borderRadius: '0.375rem',
+    padding: '0.5rem 1.25rem',
+    borderRadius: '9999px', // Pill shape
     fontWeight: '500',
     backgroundColor: colors.accent.red,
     color: colors.neutral.white,
     border: 'none',
     cursor: 'pointer',
     transition: 'all 0.2s',
-    width: '100%',
-    textAlign: 'left',
+    width: 'auto',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '0.5rem',
     marginTop: '2rem',
     borderTop: `1px solid ${colors.neutral.gray200}`,
-    paddingTop: '2rem'
+    paddingTop: '2rem',
+    alignSelf: 'center'
   };
   
   return (
@@ -212,10 +225,18 @@ const Header = () => {
         </nav>
 
         <button
+          ref={logoutButtonRef}
           style={logoutButtonStyle}
           onClick={handleLogout}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = colors.accent.redDark;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = colors.accent.red;
+          }}
         >
-          🚪 Logout
+          <FaSignOutAlt style={{ fontSize: '1.1rem', flexShrink: 0 }} />
+          <span>Logout</span>
         </button>
       </div>
     </>
