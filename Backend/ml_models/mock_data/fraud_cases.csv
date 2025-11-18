@@ -1,0 +1,9 @@
+case_id,issuer,amount,fraud_type,description,date_reported
+FRAUD001,USPS,1000.00,Invalid Serial,Serial number format did not match USPS standard pattern,2024-01-10
+FRAUD002,Western Union,500.00,Amount Mismatch,Numeric amount did not match written amount,2024-01-12
+FRAUD003,MoneyGram,750.00,Duplicate Serial,Serial number matched previously cashed money order,2024-01-15
+FRAUD004,Walmart,450.00,Future Date,Money order dated 3 months in the future,2024-01-18
+FRAUD005,USPS,2000.00,Altered Amount,Evidence of amount alteration detected,2024-01-20
+FRAUD006,Western Union,300.00,Stolen Form,Money order serial number reported as stolen,2024-01-22
+FRAUD007,CVS,150.00,Missing Signature,No authorized signature present,2024-01-25
+FRAUD008,7-Eleven,800.00,Counterfeit,Money order determined to be counterfeit,2024-01-28
