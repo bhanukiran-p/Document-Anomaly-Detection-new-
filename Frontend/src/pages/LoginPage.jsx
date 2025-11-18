@@ -101,11 +101,11 @@ const LoginPage = () => {
       fontSize: '14px'
     },
     button: {
-      padding: '12px 16px',
+      padding: '0.5rem 1.25rem',
       fontSize: '16px',
       fontWeight: '600',
       border: 'none',
-      borderRadius: '8px',
+      borderRadius: '9999px', // Pill shape
       cursor: 'pointer',
       transition: 'all 0.3s ease',
       backgroundColor: colors.accent.red,

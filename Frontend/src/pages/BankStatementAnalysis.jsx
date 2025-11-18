@@ -107,8 +107,8 @@ const BankStatementAnalysis = () => {
   const buttonStyle = {
     backgroundColor: colors.accent.red,
     color: colors.neutral.white,
-    padding: '1rem 2rem',
-    borderRadius: '0.5rem',
+    padding: '0.5rem 1.25rem',
+    borderRadius: '9999px', // Pill shape
     fontSize: '1rem',
     fontWeight: '600',
     width: '100%',
