@@ -56,7 +56,7 @@ class ProductionCheckExtractor:
             else:
                 # Try default credentials
                 self.client = vision.ImageAnnotatorClient()
-    
+
     def extract_text_from_image(self, image_path: str) -> tuple:
         """
         Extract text using Google Vision API
@@ -159,7 +159,7 @@ class ProductionCheckExtractor:
             for pattern in patterns:
                 if pattern in text_upper:
                     return bank
-        
+
         return "UNKNOWN"
     
     def _extract_axis_check(self, text: str, annotations: List) -> Dict:
@@ -323,22 +323,109 @@ class ProductionCheckExtractor:
         return self._try_patterns(text, patterns)
     
     def _extract_payee_us(self, text: str) -> Optional[str]:
-        """Extract payee for US banks"""
+        """Extract payee for US banks - improved patterns"""
         patterns = [
-            r'TO\s+THE\s+ORDER\s+OF\s+([A-Za-z\s&,\.]+?)(?:\s+\$|\n)',
-            r'PAY\s+TO\s+THE\s+ORDER\s+OF\s+([A-Za-z\s&,\.]+?)(?:\s+\$|\n)',
-            r'ORDER\s+OF\s+([A-Za-z\s&,\.]+?)(?:\$|\n)',
-            r'PAY\s+TO[:\s]+([A-Za-z\s&,\.]+?)(?:\s+\$|\n)',
-            r'THE\s+ORDER\s+OF[:\s]+([A-Za-z\s&,\.]+?)(?:\s+\$)',
+            # Full "Pay to the Order of" pattern - capture everything until amount or newline
+            r'PAY\s+TO\s+THE\s+ORDER\s+OF[:\s]+([A-Za-z0-9\s&,\.\-]+?)(?:\s+\$|\s+\d|DOLLARS|\n|$)',
+            r'TO\s+THE\s+ORDER\s+OF[:\s]+([A-Za-z0-9\s&,\.\-]+?)(?:\s+\$|\s+\d|DOLLARS|\n|$)',
+            r'ORDER\s+OF[:\s]+([A-Za-z0-9\s&,\.\-]+?)(?:\s+\$|\s+\d|DOLLARS|\n|$)',
+            # Shorter variations
+            r'PAY\s+TO[:\s]+([A-Za-z0-9\s&,\.\-]+?)(?:\s+\$|\s+\d|DOLLARS|\n|$)',
+            # Line-by-line approach: find "PAY TO" and get next line
+            r'PAY\s+TO\s+(?:THE\s+ORDER\s+OF\s+)?([A-Z][A-Za-z0-9\s&,\.\-]{2,})',
         ]
-        return self._try_patterns(text, patterns)
+        
+        result = self._try_patterns(text, patterns)
+        
+        # If we got a result but it's too short or just "the", try line-by-line extraction
+        if result and len(result.strip()) < 5:
+            result = None
+        
+        if not result:
+            # Try line-by-line extraction: find line with "PAY TO" and get the payee from same or next line
+            lines = text.split('\n')
+            for i, line in enumerate(lines):
+                line_upper = line.upper()
+                if 'PAY TO' in line_upper or 'ORDER OF' in line_upper:
+                    # Try to extract from current line
+                    match = re.search(r'(?:PAY\s+TO\s+(?:THE\s+ORDER\s+OF\s+)?|ORDER\s+OF\s+)([A-Z][A-Za-z0-9\s&,\.\-]{3,})', line, re.IGNORECASE)
+                    if match:
+                        payee = match.group(1).strip()
+                        # Clean up common false positives
+                        if payee.upper() not in ['THE', 'OR', 'BEARER', 'ORDER'] and len(payee) > 2:
+                            return payee
+                    
+                    # If not found in current line, check next line
+                    if i + 1 < len(lines):
+                        next_line = lines[i + 1].strip()
+                        # Skip if next line is amount or common words
+                        if next_line and not re.match(r'^\$?\d', next_line) and next_line.upper() not in ['OR', 'BEARER', 'DOLLARS']:
+                            # Check if it looks like a name/company
+                            if re.match(r'^[A-Z][A-Za-z0-9\s&,\.\-]{3,}', next_line):
+                                return next_line.strip()
+        
+        # Clean up the result
+        if result:
+            result = result.strip()
+            # Remove common false positives
+            false_positives = ['THE', 'OR', 'BEARER', 'ORDER', 'OF', 'TO', 'PAY']
+            words = result.split()
+            meaningful_words = [w for w in words if w.upper() not in false_positives]
+            if meaningful_words:
+                result = ' '.join(meaningful_words)
+                if len(result) > 2:
+                    return result
+        
+        return result
     
     def _extract_payee_generic(self, text: str) -> Optional[str]:
-        """Generic payee extraction"""
+        """Generic payee extraction - improved patterns"""
+        # First try US bank patterns
+        result = self._extract_payee_us(text)
+        if result:
+            return result
+        
+        # Generic patterns
         patterns = [
-            r'PAY\s+(?:TO\s+)?(?:THE\s+ORDER\s+OF\s+)?([A-Za-z\s&,\.]+?)(?:\s+[$₹]|\n)',
+            r'PAY\s+TO\s+(?:THE\s+ORDER\s+OF\s+)?([A-Za-z0-9\s&,\.\-]+?)(?:\s+[$₹]|\s+\d|DOLLARS|RUPEES|\n|$)',
+            r'PAY\s+(?:TO\s+)?(?:THE\s+ORDER\s+OF\s+)?([A-Za-z0-9\s&,\.\-]+?)(?:\s+[$₹]|\s+\d|DOLLARS|RUPEES|\n|$)',
+            r'TO\s+(?:THE\s+)?ORDER\s+OF\s+([A-Za-z0-9\s&,\.\-]+?)(?:\s+[$₹]|\s+\d|DOLLARS|RUPEES|\n|$)',
         ]
-        return self._try_patterns(text, patterns)
+        
+        result = self._try_patterns(text, patterns)
+        
+        # If no result, try line-by-line
+        if not result or len(result.strip()) < 3:
+            lines = text.split('\n')
+            for i, line in enumerate(lines):
+                line_upper = line.upper()
+                if 'PAY' in line_upper and ('TO' in line_upper or 'ORDER' in line_upper):
+                    # Extract payee from this line or next
+                    match = re.search(r'(?:PAY\s+TO\s+(?:THE\s+ORDER\s+OF\s+)?|ORDER\s+OF\s+)([A-Z][A-Za-z0-9\s&,\.\-]{3,})', line, re.IGNORECASE)
+                    if match:
+                        payee = match.group(1).strip()
+                        if payee.upper() not in ['THE', 'OR', 'BEARER', 'ORDER']:
+                            return payee
+                    
+                    # Check next line
+                    if i + 1 < len(lines):
+                        next_line = lines[i + 1].strip()
+                        if next_line and not re.match(r'^\$?\d', next_line):
+                            if re.match(r'^[A-Z][A-Za-z0-9\s&,\.\-]{3,}', next_line):
+                                return next_line.strip()
+        
+        # Clean up result
+        if result:
+            result = result.strip()
+            false_positives = ['THE', 'OR', 'BEARER', 'ORDER', 'OF', 'TO', 'PAY']
+            words = result.split()
+            meaningful_words = [w for w in words if w.upper() not in false_positives]
+            if meaningful_words:
+                result = ' '.join(meaningful_words)
+                if len(result) > 2:
+                    return result
+        
+        return result
     
     def _extract_amount_numeric_inr(self, text: str) -> Optional[str]:
         """Extract INR amount"""
@@ -370,11 +457,34 @@ class ProductionCheckExtractor:
         return self._try_patterns(text, patterns)
     
     def _extract_amount_words(self, text: str, currency_word: str) -> Optional[str]:
-        """Extract amount in words"""
-        pattern = f'{currency_word}\\s+(.+?)(?:\\s+ONLY|\\s+[$₹]|\\n|$)'
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match and match.group(1):
-            return match.group(1).strip()
+        """Extract amount in words - improved to avoid picking up memo or other text"""
+        # Split currency word if it contains pipe (for DOLLARS|RUPEES)
+        currency_words = currency_word.split('|')
+        
+        for curr_word in currency_words:
+            # Pattern: Look for written amount before currency word
+            # Examples: "One Thousand Five Hundred Sixty Seven and 89/100 DOLLARS"
+            patterns = [
+                # Amount before currency word
+                r'([A-Z][A-Za-z\s]+(?:HUNDRED|THOUSAND|MILLION|BILLION)\s+[A-Za-z\s]+(?:AND\s+\d{1,2}/\d{2})?\s*(?:ONLY)?)\s+' + re.escape(curr_word),
+                # Amount with fractions before currency
+                r'([A-Z][A-Za-z\s]+AND\s+\d{1,2}/\d{2})\s+' + re.escape(curr_word),
+                # Simpler pattern: text ending with currency word
+                r'([A-Z][A-Za-z\s]{10,}?)\s+' + re.escape(curr_word) + r'(?:\s+ONLY|$|\n)',
+            ]
+            for pattern in patterns:
+                match = re.search(pattern, text, re.IGNORECASE)
+                if match:
+                    amount_text = match.group(1).strip()
+                    # Filter out common false positives
+                    false_positives = ['MEMO', 'PAY', 'TO', 'THE', 'ORDER', 'OF', 'AUTHORIZED', 'SIGNATURE', 
+                                      'VOID', 'AFTER', 'DAYS', 'ORIGINAL', 'DOCUMENT']
+                    # Check if it contains any false positives
+                    if not any(fp in amount_text.upper() for fp in false_positives):
+                        # Should contain number words or fractions
+                        if re.search(r'(HUNDRED|THOUSAND|MILLION|BILLION|AND\s+\d+/\d+)', amount_text, re.IGNORECASE):
+                            return amount_text
+        
         return None
     
     def _extract_date(self, text: str) -> Optional[str]:
@@ -498,17 +608,105 @@ class ProductionCheckExtractor:
         return None
     
     def _has_signature(self, annotations: List) -> bool:
-        """Detect if signature is present (simple heuristic)"""
-        # Check for signature-like patterns or specific keywords
+        """
+        Detect if an actual signature is present (not just a signature line)
+        VERY CONSERVATIVE: Only returns True if we can clearly identify actual signature text
+        """
         if not annotations:
             return False
         
-        # Count annotations in lower portion of image
-        lower_annotations = [a for a in annotations 
-                           if a.get('bounds', {}).get('vertices', [{}])[0].get('y', 0) > 200]
+        # Get all text from annotations
+        all_text = ' '.join([a.get('text', '') for a in annotations])
+        all_text_upper = all_text.upper()
         
-        # If there are sparse annotations in lower portion, likely signature
-        return len(lower_annotations) > 3
+        # CRITICAL: Check for specimen/training data indicators - these mean NO signature
+        specimen_indicators = [
+            'SPECIMEN',
+            'TRAINING DATA',
+            'TRAINING DATA ONLY',
+            'SAMPLE',
+            'VOID',
+            'CANCELLED',
+            'NOT VALID',
+            'FOR TRAINING',
+            'DEMO',
+            'TEST',
+        ]
+        
+        # If we see specimen/training indicators, definitely no signature
+        if any(indicator in all_text_upper for indicator in specimen_indicators):
+            return False
+        
+        # Signature line labels that indicate a BLANK signature area
+        signature_line_labels = [
+            'AUTHORIZED SIGNATURE',
+            'SIGNATURE',
+            'SIGN HERE',
+            'SIGNATURE LINE',
+            'SIGNATURE:',
+            'SIGNATURE AREA',
+            'FOR SIGNATURE',
+            'SIGNATURE FIELD',
+            'SIGNATURE REQUIRED',
+            'PLEASE SIGN',
+            'SIGN BELOW',
+            'SIGN ABOVE',
+        ]
+        
+        # Check if we see signature labels - if so, we need to be VERY strict
+        has_signature_label = any(label in all_text_upper for label in signature_line_labels)
+        
+        if has_signature_label:
+            # STRICT CHECK: Look for text that appears IMMEDIATELY after signature labels
+            # Pattern: "AUTHORIZED SIGNATURE" or "SIGNATURE:" followed by actual text
+            # MUST be very strict - only match if it looks like an actual name
+            signature_patterns = [
+                r'AUTHORIZED\s+SIGNATURE[:\s]+([A-Z][A-Za-z\s\.\,\-]{6,})',  # At least 6 chars (more strict)
+                r'SIGNATURE[:\s]+([A-Z][A-Za-z\s\.\,\-]{6,})',
+                r'SIGN\s+HERE[:\s]+([A-Z][A-Za-z\s\.\,\-]{6,})',
+            ]
+            
+            found_signature_text = False
+            for pattern in signature_patterns:
+                match = re.search(pattern, all_text, re.IGNORECASE)
+                if match:
+                    signature_text = match.group(1).strip()
+                    # Filter out false positives (just labels, not actual signatures)
+                    false_positives = ['LINE', 'REQUIRED', 'HERE', 'BELOW', 'ABOVE', 'AREA', 'FIELD', 
+                                      'BLOCK', 'SPACE', 'BOX', 'SECTION', 'BLANK', 'EMPTY', 'MISSING',
+                                      'AUTHORIZED', 'SIGNATURE', 'SIGN', 'SPECIMEN', 'TRAINING', 'SAMPLE',
+                                      'VOID', 'CANCELLED', 'DEMO', 'TEST', 'DATA', 'ONLY', 'HOME', 'RENOVATION',
+                                      'CONTRACT', 'PAYMENT', 'CONTRACTORS', 'ELITE', 'LLC']
+                    # Also check if signature text contains specimen indicators
+                    if (signature_text.upper() not in false_positives and 
+                        len(signature_text) >= 6 and  # Increased minimum length
+                        not any(ind in signature_text.upper() for ind in specimen_indicators)):
+                        # Additional check: should look like a name (not just one word unless it's long)
+                        words = signature_text.split()
+                        # Must have at least 2 words OR one word that's at least 8 characters
+                        # AND must start with a capital letter (like a name)
+                        if len(words) >= 2 or (len(words) == 1 and len(words[0]) >= 8 and words[0][0].isupper()):
+                            # Final check: should not contain common business terms
+                            business_terms = ['LLC', 'INC', 'CORP', 'LTD', 'CO', 'COMPANY', 'CONTRACTORS', 'SERVICES']
+                            if not any(term in signature_text.upper() for term in business_terms):
+                                found_signature_text = True
+                                break
+            
+            # If we found signature text after labels, return True
+            if found_signature_text:
+                return True
+            
+            # If we have signature labels but no signature text after them,
+            # this means the signature area is BLANK - return False
+            # We should NOT check the lower portion as a fallback because
+            # blank signature lines are common in training/sample checks
+            return False
+        
+        # No signature labels found - be VERY conservative
+        # For training/sample checks, we should default to NO signature
+        # Only return True if we find VERY clear signature-like text
+        # For now, default to False to be safe
+        return False
     
     def _try_patterns(self, text: str, patterns: List[str]) -> Optional[str]:
         """Try multiple regex patterns"""
