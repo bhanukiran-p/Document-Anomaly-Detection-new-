@@ -14,12 +14,24 @@ import re
 import fitz
 from google.cloud import vision
 from auth import login_user, register_user, token_required
-from supabase_client import get_supabase, check_connection as check_supabase_connection
-from auth_supabase import login_user_supabase, register_user_supabase, verify_token
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Optional Supabase imports
+try:
+    from supabase_client import get_supabase, check_connection as check_supabase_connection
+    from auth_supabase import login_user_supabase, register_user_supabase, verify_token
+    SUPABASE_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Supabase modules not available: {e}")
+    SUPABASE_AVAILABLE = False
+    get_supabase = None
+    check_supabase_connection = None
+    login_user_supabase = None
+    register_user_supabase = None
+    verify_token = None
 
 # Load the production extractor
 spec = importlib.util.spec_from_file_location(
@@ -51,13 +63,17 @@ except Exception as e:
     vision_client = None
 
 # Initialize Supabase client
-try:
-    supabase = get_supabase()
-    supabase_status = check_supabase_connection()
-    logger.info(f"Supabase initialization: {supabase_status['message']}")
-except Exception as e:
-    logger.warning(f"Failed to initialize Supabase: {e}")
-    supabase = None
+supabase = None
+if SUPABASE_AVAILABLE:
+    try:
+        supabase = get_supabase()
+        supabase_status = check_supabase_connection()
+        logger.info(f"Supabase initialization: {supabase_status['message']}")
+    except Exception as e:
+        logger.warning(f"Failed to initialize Supabase: {e}")
+        supabase = None
+else:
+    logger.info("Supabase not available - using local auth only")
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -123,7 +139,10 @@ def detect_document_type(text):
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
-    supabase_status = check_supabase_connection() if supabase else {'status': 'disconnected', 'message': 'Supabase not initialized'}
+    if SUPABASE_AVAILABLE and supabase and check_supabase_connection:
+        supabase_status = check_supabase_connection()
+    else:
+        supabase_status = {'status': 'disconnected', 'message': 'Supabase not available'}
 
     return jsonify({
         'status': 'healthy',
@@ -145,8 +164,13 @@ def api_login():
             return jsonify({'error': 'Email and password required'}), 400
 
         # Try Supabase auth first, fallback to JSON auth if needed
-        result, status_code = login_user_supabase(data['email'], data['password'])
-        return jsonify(result), status_code
+        if SUPABASE_AVAILABLE and login_user_supabase:
+            result, status_code = login_user_supabase(data['email'], data['password'])
+            return jsonify(result), status_code
+        else:
+            # Fallback to local auth
+            result, status_code = login_user(data['email'], data['password'])
+            return jsonify(result), status_code
 
     except Exception as e:
         logger.error(f"Login error: {str(e)}")
@@ -164,9 +188,14 @@ def api_register():
         if not data or not data.get('email') or not data.get('password'):
             return jsonify({'error': 'Email and password required'}), 400
 
-        # Try Supabase auth first
-        result, status_code = register_user_supabase(data['email'], data['password'])
-        return jsonify(result), status_code
+        # Try Supabase auth first, fallback to local auth
+        if SUPABASE_AVAILABLE and register_user_supabase:
+            result, status_code = register_user_supabase(data['email'], data['password'])
+            return jsonify(result), status_code
+        else:
+            # Fallback to local auth
+            result, status_code = register_user(data['email'], data['password'])
+            return jsonify(result), status_code
 
     except Exception as e:
         logger.error(f"Register error: {str(e)}")
