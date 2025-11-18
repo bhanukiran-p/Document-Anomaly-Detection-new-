@@ -50,14 +50,31 @@ CORS(app)  # Enable CORS for React frontend
 # Configuration
 UPLOAD_FOLDER = 'temp_uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'pdf'}
-CREDENTIALS_PATH = os.getenv('GOOGLE_CREDENTIALS_PATH', 'google-credentials.json')
+
+# Get the directory where this script is located
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Set up credentials path - check environment variable first, then default location
+CREDENTIALS_PATH = os.getenv('GOOGLE_CREDENTIALS_PATH')
+if not CREDENTIALS_PATH:
+    # Default to google-credentials.json in the Backend directory
+    CREDENTIALS_PATH = os.path.join(BASE_DIR, 'google-credentials.json')
+
+# Also set GOOGLE_APPLICATION_CREDENTIALS environment variable for Google Cloud libraries
+if os.path.exists(CREDENTIALS_PATH):
+    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = CREDENTIALS_PATH
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Initialize Vision API client once
 try:
-    vision_client = vision.ImageAnnotatorClient.from_service_account_file(CREDENTIALS_PATH)
-    logger.info(f"Successfully loaded Google Cloud Vision credentials from {CREDENTIALS_PATH}")
+    if os.path.exists(CREDENTIALS_PATH):
+        vision_client = vision.ImageAnnotatorClient.from_service_account_file(CREDENTIALS_PATH)
+        logger.info(f"Successfully loaded Google Cloud Vision credentials from {CREDENTIALS_PATH}")
+    else:
+        # Try using default credentials from environment
+        vision_client = vision.ImageAnnotatorClient()
+        logger.info("Using default Google Cloud credentials from environment")
 except Exception as e:
     logger.warning(f"Failed to load Vision API credentials: {e}")
     vision_client = None
@@ -163,6 +180,7 @@ def api_login():
         if not data or not data.get('email') or not data.get('password'):
             return jsonify({'error': 'Email and password required'}), 400
 
+<<<<<<< Updated upstream
         # Try Supabase auth first, fallback to JSON auth if needed
         if SUPABASE_AVAILABLE and login_user_supabase:
             result, status_code = login_user_supabase(data['email'], data['password'])
@@ -171,6 +189,20 @@ def api_login():
             # Fallback to local auth
             result, status_code = login_user(data['email'], data['password'])
             return jsonify(result), status_code
+=======
+        # Try Supabase auth first, fallback to local auth
+        if SUPABASE_AVAILABLE and login_user_supabase:
+            try:
+                result, status_code = login_user_supabase(data['email'], data['password'])
+                if status_code == 200:
+                    return jsonify(result), status_code
+            except Exception as supabase_error:
+                logger.warning(f"Supabase login failed: {str(supabase_error)}. Falling back to local auth.")
+
+        # Fallback to local JSON auth
+        result, status_code = login_user(data['email'], data['password'])
+        return jsonify(result), status_code
+>>>>>>> Stashed changes
 
     except Exception as e:
         logger.error(f"Login error: {str(e)}")
@@ -190,12 +222,25 @@ def api_register():
 
         # Try Supabase auth first, fallback to local auth
         if SUPABASE_AVAILABLE and register_user_supabase:
+<<<<<<< Updated upstream
             result, status_code = register_user_supabase(data['email'], data['password'])
             return jsonify(result), status_code
         else:
             # Fallback to local auth
             result, status_code = register_user(data['email'], data['password'])
             return jsonify(result), status_code
+=======
+            try:
+                result, status_code = register_user_supabase(data['email'], data['password'])
+                if status_code == 201:
+                    return jsonify(result), status_code
+            except Exception as supabase_error:
+                logger.warning(f"Supabase registration failed: {str(supabase_error)}. Falling back to local auth.")
+
+        # Fallback to local JSON auth
+        result, status_code = register_user(data['email'], data['password'])
+        return jsonify(result), status_code
+>>>>>>> Stashed changes
 
     except Exception as e:
         logger.error(f"Register error: {str(e)}")
