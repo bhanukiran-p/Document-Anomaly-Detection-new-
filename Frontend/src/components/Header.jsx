@@ -215,7 +215,7 @@ const Header = () => {
           style={logoutButtonStyle}
           onClick={handleLogout}
         >
-          🚪 Logout
+          Logout
         </button>
       </div>
     </>
