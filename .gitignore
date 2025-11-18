@@ -37,3 +37,12 @@ Thumbs.db
 .env
 .env.local
 
+# User Data & Models
+users.json
+ml_models/trained_model.pkl
+ml_models/**/*.pkl
+ml_models/**/*.joblib
+
+# Frontend
+Frontend/node_modules/
+Frontend/build/
