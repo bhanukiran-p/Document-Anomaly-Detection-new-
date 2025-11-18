@@ -75,8 +75,8 @@ const HomePage = () => {
   const buttonStyle = {
     backgroundColor: colors.accent.red,
     color: colors.neutral.white,
-    padding: '0.75rem 1.5rem',
-    borderRadius: '0.5rem',
+    padding: '0.5rem 1.25rem',
+    borderRadius: '9999px', // Pill shape
     fontSize: '0.95rem',
     fontWeight: '600',
     border: 'none',

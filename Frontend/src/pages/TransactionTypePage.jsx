@@ -155,8 +155,8 @@ const TransactionTypePage = () => {
   const activeButtonStyle = {
     backgroundColor: colors.accent.red,
     color: colors.neutral.white,
-    padding: '0.875rem 2rem',
-    borderRadius: '0.5rem',
+    padding: '0.5rem 1.25rem',
+    borderRadius: '9999px', // Pill shape
     border: 'none',
     cursor: 'pointer',
     fontSize: '1rem',

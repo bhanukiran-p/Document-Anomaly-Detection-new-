@@ -14,12 +14,24 @@ import re
 import fitz
 from google.cloud import vision
 from auth import login_user, register_user, token_required
-from supabase_client import get_supabase, check_connection as check_supabase_connection
-from auth_supabase import login_user_supabase, register_user_supabase, verify_token
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Optional Supabase imports
+try:
+    from supabase_client import get_supabase, check_connection as check_supabase_connection
+    from auth_supabase import login_user_supabase, register_user_supabase, verify_token
+    SUPABASE_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Supabase modules not available: {e}")
+    SUPABASE_AVAILABLE = False
+    get_supabase = None
+    check_supabase_connection = None
+    login_user_supabase = None
+    register_user_supabase = None
+    verify_token = None
 
 # Load the production extractor
 spec = importlib.util.spec_from_file_location(
@@ -38,26 +50,47 @@ CORS(app)  # Enable CORS for React frontend
 # Configuration
 UPLOAD_FOLDER = 'temp_uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'pdf'}
-CREDENTIALS_PATH = os.getenv('GOOGLE_CREDENTIALS_PATH', 'google-credentials.json')
+
+# Get the directory where this script is located
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Set up credentials path - check environment variable first, then default location
+CREDENTIALS_PATH = os.getenv('GOOGLE_CREDENTIALS_PATH')
+if not CREDENTIALS_PATH:
+    # Default to google-credentials.json in the Backend directory
+    CREDENTIALS_PATH = os.path.join(BASE_DIR, 'google-credentials.json')
+
+# Also set GOOGLE_APPLICATION_CREDENTIALS environment variable for Google Cloud libraries
+if os.path.exists(CREDENTIALS_PATH):
+    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = CREDENTIALS_PATH
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Initialize Vision API client once
 try:
-    vision_client = vision.ImageAnnotatorClient.from_service_account_file(CREDENTIALS_PATH)
-    logger.info(f"Successfully loaded Google Cloud Vision credentials from {CREDENTIALS_PATH}")
+    if os.path.exists(CREDENTIALS_PATH):
+        vision_client = vision.ImageAnnotatorClient.from_service_account_file(CREDENTIALS_PATH)
+        logger.info(f"Successfully loaded Google Cloud Vision credentials from {CREDENTIALS_PATH}")
+    else:
+        # Try using default credentials from environment
+        vision_client = vision.ImageAnnotatorClient()
+        logger.info("Using default Google Cloud credentials from environment")
 except Exception as e:
     logger.warning(f"Failed to load Vision API credentials: {e}")
     vision_client = None
 
 # Initialize Supabase client
-try:
-    supabase = get_supabase()
-    supabase_status = check_supabase_connection()
-    logger.info(f"Supabase initialization: {supabase_status['message']}")
-except Exception as e:
-    logger.warning(f"Failed to initialize Supabase: {e}")
-    supabase = None
+supabase = None
+if SUPABASE_AVAILABLE:
+    try:
+        supabase = get_supabase()
+        supabase_status = check_supabase_connection()
+        logger.info(f"Supabase initialization: {supabase_status['message']}")
+    except Exception as e:
+        logger.warning(f"Failed to initialize Supabase: {e}")
+        supabase = None
+else:
+    logger.info("Supabase not available - using local auth only")
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -123,7 +156,10 @@ def detect_document_type(text):
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
-    supabase_status = check_supabase_connection() if supabase else {'status': 'disconnected', 'message': 'Supabase not initialized'}
+    if SUPABASE_AVAILABLE and supabase and check_supabase_connection:
+        supabase_status = check_supabase_connection()
+    else:
+        supabase_status = {'status': 'disconnected', 'message': 'Supabase not available'}
 
     return jsonify({
         'status': 'healthy',
@@ -144,15 +180,16 @@ def api_login():
         if not data or not data.get('email') or not data.get('password'):
             return jsonify({'error': 'Email and password required'}), 400
 
-        # Try Supabase auth first
-        try:
-            result, status_code = login_user_supabase(data['email'], data['password'])
-            if status_code == 200:
-                return jsonify(result), status_code
-        except Exception as supabase_error:
-            logger.warning(f"Supabase login failed: {str(supabase_error)}. Falling back to local auth.")
+        # Try Supabase auth first, fallback to local auth
+        if SUPABASE_AVAILABLE and login_user_supabase:
+            try:
+                result, status_code = login_user_supabase(data['email'], data['password'])
+                if status_code == 200:
+                    return jsonify(result), status_code
+            except Exception as supabase_error:
+                logger.warning(f"Supabase login failed: {str(supabase_error)}. Falling back to local auth.")
 
-        # Fallback to local JSON auth if Supabase fails
+        # Fallback to local JSON auth
         result, status_code = login_user(data['email'], data['password'])
         return jsonify(result), status_code
 
@@ -172,15 +209,16 @@ def api_register():
         if not data or not data.get('email') or not data.get('password'):
             return jsonify({'error': 'Email and password required'}), 400
 
-        # Try Supabase auth first
-        try:
-            result, status_code = register_user_supabase(data['email'], data['password'])
-            if status_code == 201:
-                return jsonify(result), status_code
-        except Exception as supabase_error:
-            logger.warning(f"Supabase registration failed: {str(supabase_error)}. Falling back to local auth.")
+        # Try Supabase auth first, fallback to local auth
+        if SUPABASE_AVAILABLE and register_user_supabase:
+            try:
+                result, status_code = register_user_supabase(data['email'], data['password'])
+                if status_code == 201:
+                    return jsonify(result), status_code
+            except Exception as supabase_error:
+                logger.warning(f"Supabase registration failed: {str(supabase_error)}. Falling back to local auth.")
 
-        # Fallback to local JSON auth if Supabase fails
+        # Fallback to local JSON auth
         result, status_code = register_user(data['email'], data['password'])
         return jsonify(result), status_code
 
