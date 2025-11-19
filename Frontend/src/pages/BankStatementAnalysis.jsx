@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { analyzeBankStatement } from '../services/api';
+import { analyzeBankStatement, validatePDFForFraud } from '../services/api';
 import { colors } from '../styles/colors';
 import { FaBuilding, FaSpinner } from 'react-icons/fa';
 
@@ -9,6 +9,7 @@ const BankStatementAnalysis = () => {
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
+  const [fraudResults, setFraudResults] = useState(null);
   const [error, setError] = useState(null);
 
   const onDrop = useCallback((acceptedFiles) => {
@@ -17,6 +18,7 @@ const BankStatementAnalysis = () => {
       setFile(selectedFile);
       setError(null);
       setResults(null);
+      setFraudResults(null);
 
       // Create preview for images
       if (selectedFile.type.startsWith('image/')) {
@@ -48,6 +50,7 @@ const BankStatementAnalysis = () => {
     setError(null);
 
     try {
+      // Analyze bank statement
       const response = await analyzeBankStatement(file);
       console.log('Bank Statement API Response:', response);
       // Response structure from API: { success: true, data: {...details...}, risk_assessment: {...} }
@@ -303,6 +306,105 @@ const BankStatementAnalysis = () => {
 
           {results && (
             <div className="fade-in">
+              {/* Fraud Detection Results */}
+              {fraudResults && (() => {
+                // Determine risk level and colors
+                const riskScore = fraudResults.risk_score;
+                let riskLevel, bgColor, borderColor, textColor, emoji, explanation;
+
+                if (riskScore >= 0.7) {
+                  riskLevel = 'HIGH RISK';
+                  bgColor = '#ffebee';  // Light red
+                  borderColor = '#d32f2f';  // Dark red
+                  textColor = '#d32f2f';
+                  emoji = '🔴';
+                  explanation = 'This document shows multiple high-risk fraud indicators. Manual review recommended.';
+                } else if (riskScore >= 0.45) {
+                  riskLevel = 'MEDIUM RISK';
+                  bgColor = '#fff3e0';  // Light orange
+                  borderColor = '#f57c00';  // Dark orange
+                  textColor = '#f57c00';
+                  emoji = '🟡';
+                  explanation = 'This document has some suspicious patterns. Consider additional verification.';
+                } else if (riskScore >= 0.25) {
+                  riskLevel = 'LOW RISK';
+                  bgColor = '#e3f2fd';  // Light blue
+                  borderColor = '#1976d2';  // Dark blue
+                  textColor = '#1976d2';
+                  emoji = '🔵';
+                  explanation = 'This document has minor concerns. Likely legitimate but worth noting.';
+                } else {
+                  riskLevel = 'CLEAN';
+                  bgColor = '#e8f5e9';  // Light green
+                  borderColor = '#388e3c';  // Dark green
+                  textColor = '#388e3c';
+                  emoji = '🟢';
+                  explanation = 'This document appears to be legitimate with no significant fraud indicators.';
+                }
+
+                return (
+                  <div style={{
+                    backgroundColor: bgColor,
+                    border: `2px solid ${borderColor}`,
+                    borderRadius: '12px',
+                    padding: '1.5rem',
+                    marginBottom: '1.5rem',
+                  }}>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      marginBottom: '1rem',
+                      fontSize: '1.3rem',
+                      fontWeight: '600',
+                    }}>
+                      <span style={{ marginRight: '0.75rem', fontSize: '2rem' }}>
+                        {emoji}
+                      </span>
+                      <span style={{ color: textColor }}>
+                        {riskLevel}
+                      </span>
+                    </div>
+
+                    <div style={{
+                      marginBottom: '1rem',
+                      padding: '1rem',
+                      backgroundColor: 'rgba(255,255,255,0.7)',
+                      borderRadius: '8px',
+                      borderLeft: `4px solid ${borderColor}`,
+                    }}>
+                      <p style={{ margin: '0.5rem 0', color: '#333' }}>
+                        <strong>Risk Score:</strong> {riskScore.toFixed(3)} / 1.000
+                      </p>
+                      <p style={{ margin: '0.5rem 0', color: textColor, fontStyle: 'italic' }}>
+                        {explanation}
+                      </p>
+                    </div>
+
+                    {fraudResults.suspicious_indicators && fraudResults.suspicious_indicators.length > 0 && (
+                      <div style={{ marginBottom: '1rem' }}>
+                        <h4 style={{ color: textColor, marginBottom: '0.5rem' }}>🚫 Suspicious Indicators:</h4>
+                        <ul style={{ margin: '0', paddingLeft: '1.5rem', color: '#333' }}>
+                          {fraudResults.suspicious_indicators.map((indicator, idx) => (
+                            <li key={idx} style={{ marginBottom: '0.35rem' }}>{indicator}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {fraudResults.warnings && fraudResults.warnings.length > 0 && (
+                      <div>
+                        <h4 style={{ color: colors.status.warning, marginBottom: '0.5rem' }}>⚠️ Warnings:</h4>
+                        <ul style={{ margin: '0', paddingLeft: '1.5rem', color: colors.status.warning }}>
+                          {fraudResults.warnings.map((warning, idx) => (
+                            <li key={idx} style={{ marginBottom: '0.35rem' }}>{warning}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {results.summary?.confidence && (
                 <div style={confidenceStyle(results.summary.confidence)}>
                   [{results.summary.confidence >= 80 ? 'HIGH' : results.summary.confidence >= 60 ? 'MEDIUM' : 'LOW'}]
