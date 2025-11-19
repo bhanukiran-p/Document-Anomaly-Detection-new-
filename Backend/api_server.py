@@ -75,6 +75,21 @@ if os.path.exists(CREDENTIALS_PATH):
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+# Initialize ML Risk Scorer
+try:
+    from ml_risk_scorer import MLRiskScorer
+    # Models directory relative to Backend folder
+    models_dir = os.path.join(BASE_DIR, 'models')
+    risk_scorer = MLRiskScorer(models_dir=models_dir)
+    logger.info("ML Risk Scorer initialized successfully")
+    if risk_scorer.trained_models:
+        logger.info(f"Loaded {len(risk_scorer.trained_models)} trained ML model(s)")
+    else:
+        logger.info("No trained models found - using weighted scoring fallback")
+except Exception as e:
+    logger.warning(f"Failed to initialize ML Risk Scorer: {e}")
+    risk_scorer = None
+
 # Initialize Vision API client once
 try:
     if os.path.exists(CREDENTIALS_PATH):
@@ -313,15 +328,40 @@ def analyze_check():
             # Analyze check details
             details = extractor.extract_check_details(filepath)
             
+            # Calculate ML-based risk score
+            risk_assessment = None
+            if risk_scorer:
+                try:
+                    logger.info("Calculating ML risk score for check...")
+                    raw_text = details.get('raw_ocr_text', '')
+                    risk_assessment = risk_scorer.calculate_risk_score(
+                        'check', 
+                        details, 
+                        raw_text
+                    )
+                    logger.info(f"Risk assessment calculated: score={risk_assessment.get('risk_score')}, level={risk_assessment.get('risk_level')}")
+                except Exception as e:
+                    logger.error(f"Risk scoring error: {e}", exc_info=True)
+            
             # Clean up temp file
             if os.path.exists(filepath):
                 os.remove(filepath)
             
-            return jsonify({
+            # Include risk assessment in response
+            response_data = {
                 'success': True,
                 'data': details,
                 'message': 'Check analyzed successfully'
-            })
+            }
+            
+            if risk_assessment:
+                response_data['risk_assessment'] = risk_assessment
+                logger.info(f"Including risk assessment in response: score={risk_assessment.get('risk_score')}")
+            else:
+                logger.warning("Risk assessment is None - not included in response")
+            
+            logger.info(f"Response data keys: {list(response_data.keys())}")
+            return jsonify(response_data)
             
         except Exception as e:
             # Clean up on error
@@ -386,15 +426,39 @@ def analyze_paystub():
             # Extract and analyze
             details = extractor.extract_paystub(text)
             
+            # Calculate ML-based risk score
+            risk_assessment = None
+            if risk_scorer:
+                try:
+                    logger.info("Calculating ML risk score for paystub...")
+                    risk_assessment = risk_scorer.calculate_risk_score(
+                        'paystub', 
+                        details, 
+                        text
+                    )
+                    logger.info(f"Risk assessment calculated: score={risk_assessment.get('risk_score')}, level={risk_assessment.get('risk_level')}")
+                except Exception as e:
+                    logger.error(f"Risk scoring error: {e}", exc_info=True)
+            
             # Clean up
             if os.path.exists(filepath):
                 os.remove(filepath)
             
-            return jsonify({
+            # Include risk assessment in response
+            response_data = {
                 'success': True,
                 'data': details,
                 'message': 'Paystub analyzed successfully'
-            })
+            }
+            
+            if risk_assessment:
+                response_data['risk_assessment'] = risk_assessment
+                logger.info(f"Including risk assessment in response: score={risk_assessment.get('risk_score')}")
+            else:
+                logger.warning("Risk assessment is None - not included in response")
+            
+            logger.info(f"Response data keys: {list(response_data.keys())}")
+            return jsonify(response_data)
             
         except Exception as e:
             if os.path.exists(filepath):
@@ -485,15 +549,46 @@ def analyze_money_order():
                     'message': 'Money order extractor not available. Using vision API text extraction only.'
                 }
 
+            # Calculate ML-based risk score
+            risk_assessment = None
+            if risk_scorer and result.get('status') == 'success':
+                try:
+                    logger.info("Calculating ML risk score for money order...")
+                    extracted_data = result.get('extracted_data', {})
+                    logger.info(f"Extracted data for risk scoring: {extracted_data}")
+                    logger.info(f"Purchaser field value: {extracted_data.get('purchaser')}")
+                    logger.info(f"Payee field value: {extracted_data.get('payee')}")
+                    risk_assessment = risk_scorer.calculate_risk_score(
+                        'money_order', 
+                        extracted_data, 
+                        raw_text
+                    )
+                    logger.info(f"Risk assessment calculated: score={risk_assessment.get('risk_score')}, level={risk_assessment.get('risk_level')}")
+                    logger.info(f"Risk factors: {risk_assessment.get('risk_factors', [])}")
+                except Exception as e:
+                    logger.error(f"Risk scoring error: {e}", exc_info=True)
+            elif risk_scorer:
+                logger.warning(f"Money order status is not 'success' (status={result.get('status')}), skipping risk scoring")
+            
             # Clean up temp file
             if os.path.exists(filepath):
                 os.remove(filepath)
-
-            return jsonify({
+            
+            # Include risk assessment in response
+            response_data = {
                 'success': True,
                 'data': result,
                 'message': 'Money order analyzed successfully'
-            })
+            }
+            
+            if risk_assessment:
+                response_data['risk_assessment'] = risk_assessment
+                logger.info(f"Including risk assessment in response: score={risk_assessment.get('risk_score')}")
+            else:
+                logger.warning("Risk assessment is None - not included in response")
+            
+            logger.info(f"Response data keys: {list(response_data.keys())}")
+            return jsonify(response_data)
 
         except Exception as e:
             # Clean up on error
@@ -585,15 +680,39 @@ def analyze_bank_statement():
                     'message': 'Bank statement extractor not available. Using vision API text extraction only.'
                 }
 
+            # Calculate ML-based risk score
+            risk_assessment = None
+            if risk_scorer:
+                try:
+                    logger.info("Calculating ML risk score for bank statement...")
+                    risk_assessment = risk_scorer.calculate_risk_score(
+                        'bank_statement', 
+                        result, 
+                        raw_text
+                    )
+                    logger.info(f"Risk assessment calculated: score={risk_assessment.get('risk_score')}, level={risk_assessment.get('risk_level')}")
+                except Exception as e:
+                    logger.error(f"Risk scoring error: {e}", exc_info=True)
+            
             # Clean up temp file
             if os.path.exists(filepath):
                 os.remove(filepath)
 
-            return jsonify({
+            # Include risk assessment in response
+            response_data = {
                 'success': True,
                 'data': result,
                 'message': 'Bank statement analyzed successfully'
-            })
+            }
+            
+            if risk_assessment:
+                response_data['risk_assessment'] = risk_assessment
+                logger.info(f"Including risk assessment in response: score={risk_assessment.get('risk_score')}")
+            else:
+                logger.warning("Risk assessment is None - not included in response")
+            
+            logger.info(f"Response data keys: {list(response_data.keys())}")
+            return jsonify(response_data)
 
         except Exception as e:
             # Clean up on error
