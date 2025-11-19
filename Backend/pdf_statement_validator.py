@@ -245,6 +245,7 @@ class PDFStatementValidator:
         """
         Extract text from PDF using Google Cloud Vision API OCR.
         This is used as a fallback for scanned PDFs or when standard extraction fails.
+        NOW PROCESSES ALL PAGES (with reasonable limits for cost control).
 
         Returns:
             Dict[int, str]: Extracted text by page number
@@ -260,7 +261,11 @@ class PDFStatementValidator:
             # Try to convert PDF to images if we have PyMuPDF
             if hasattr(self, 'pdf_doc') and self.pdf_doc:
                 try:
-                    for page_num in range(min(len(self.pdf_doc), 10)):  # Limit to first 10 pages for cost
+                    # Process ALL pages (max 100 for cost control)
+                    page_limit = min(len(self.pdf_doc), 100)
+                    logger.info(f"Processing {page_limit} pages with Vision API")
+
+                    for page_num in range(page_limit):
                         try:
                             page = self.pdf_doc[page_num]
                             pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
@@ -559,6 +564,234 @@ class PDFStatementValidator:
 
         return results
 
+    def check_missing_data_and_dates(self) -> Dict[str, any]:
+        """
+        Check for missing critical data and impossible/invalid dates.
+        Forged statements often have incomplete account info or invalid dates.
+        """
+        results = {
+            'missing_fields': [],
+            'invalid_dates': [],
+            'fraud_score': 0.0
+        }
+
+        try:
+            all_text = ' '.join(self.text_content.values())
+            lines = all_text.split('\n')
+
+            # Critical fields that should be present in a bank statement
+            critical_fields = {
+                'account_number': ['Account Number', 'Acct', 'account ending'],
+                'account_holder': ['name', 'holder', 'customer'],
+                'bank_name': ['bank', 'credit union', 'financial'],
+                'statement_period': ['statement period', 'period:', 'through'],
+                'beginning_balance': ['beginning balance', 'opening balance', 'starting balance'],
+                'ending_balance': ['ending balance', 'closing balance', 'final balance'],
+            }
+
+            # Count missing critical fields
+            text_lower = all_text.lower()
+            missing_count = 0
+
+            for field, keywords in critical_fields.items():
+                found = any(keyword in text_lower for keyword in keywords)
+                if not found:
+                    missing_count += 1
+                    results['missing_fields'].append(field)
+                    results['fraud_score'] += 8
+                    self.findings['suspicious_indicators'].append(
+                        f"🚨 MISSING DATA: {field} not found in statement"
+                    )
+
+            # Check for incomplete account number (all **** or missing)
+            if '****' in all_text and not any(char.isdigit() for char in all_text.split('****')[1].split('\n')[0] if char != '*'):
+                results['fraud_score'] += 12
+                results['missing_fields'].append('account_number_incomplete')
+                self.findings['suspicious_indicators'].append(
+                    "🚨 INCOMPLETE ACCOUNT DATA: Account number shows only ****"
+                )
+
+            # Check for sparse/incomplete last names (single name entries)
+            account_holder_line = None
+            for i, line in enumerate(lines):
+                if 'account' in line.lower() and i > 0:
+                    account_holder_line = lines[i-1].strip()
+                    break
+
+            # Detect impossible dates (day > 31)
+            import re as regex_mod
+            all_dates = regex_mod.findall(r'(\d{1,2})[/-](\d{1,2})[/-](\d{4})', all_text)
+
+            for month, day, year in all_dates:
+                day_int = int(day)
+                month_int = int(month)
+
+                # Check for impossible days (32+)
+                if day_int > 31:
+                    results['invalid_dates'].append(f"{month}/{day}/{year}")
+                    results['fraud_score'] += 15
+                    self.findings['suspicious_indicators'].append(
+                        f"🚨 IMPOSSIBLE DATE: {month}/{day}/{year} (day {day_int} doesn't exist)"
+                    )
+
+                # Check for impossible months
+                if month_int > 12 and month_int <= 31:  # Could be swapped MM/DD
+                    results['invalid_dates'].append(f"{month}/{day}/{year} (possible swap)")
+                    results['fraud_score'] += 12
+                    self.findings['suspicious_indicators'].append(
+                        f"🚨 INVALID MONTH: {month}/{day}/{year} (month {month_int} invalid)"
+                    )
+
+            # Check for dates outside statement period
+            statement_period_match = regex_mod.search(r'statement period[:\s]*(\d{1,2}/\d{1,2}/\d{4})[^\d]*(\d{1,2}/\d{1,2}/\d{4})', all_text, regex_mod.IGNORECASE)
+            if statement_period_match and all_dates:
+                try:
+                    period_start = datetime.strptime(statement_period_match.group(1), '%m/%d/%Y')
+                    period_end = datetime.strptime(statement_period_match.group(2), '%m/%d/%Y')
+
+                    out_of_period = 0
+                    for month, day, year in all_dates:
+                        try:
+                            trans_date = datetime.strptime(f"{month}/{day}/{year}", '%m/%d/%Y')
+                            if trans_date < period_start or trans_date > period_end:
+                                out_of_period += 1
+                        except:
+                            pass
+
+                    if out_of_period > len(all_dates) * 0.1:  # More than 10% out of period
+                        results['fraud_score'] += 10
+                        results['invalid_dates'].append(f"{out_of_period} transactions outside period")
+                        self.findings['suspicious_indicators'].append(
+                            f"🚨 OUT OF PERIOD: {out_of_period} transactions outside statement period"
+                        )
+                except:
+                    pass
+
+            # Check for non-chronological transaction dates
+            transaction_dates = []
+            transaction_lines = []
+            for line in lines:
+                date_match = regex_mod.match(r'^(\d{1,2})[/-](\d{1,2})', line.strip())
+                if date_match:
+                    transaction_lines.append(line.strip())
+                    try:
+                        month, day = date_match.groups()
+                        date_obj = datetime.strptime(f"{month}/{day}/2024", '%m/%d/%Y')  # Assume current year for sorting
+                        transaction_dates.append(date_obj)
+                    except:
+                        pass
+
+            if len(transaction_dates) > 2:
+                is_sorted = all(transaction_dates[i] <= transaction_dates[i+1] for i in range(len(transaction_dates)-1))
+                if not is_sorted:
+                    # Count how many are out of order
+                    out_of_order = sum(1 for i in range(len(transaction_dates)-1) if transaction_dates[i] > transaction_dates[i+1])
+                    if out_of_order > 0:
+                        results['fraud_score'] += 10
+                        self.findings['suspicious_indicators'].append(
+                            f"🚨 NON-CHRONOLOGICAL: {out_of_order} transactions out of order"
+                        )
+
+            # Normalize fraud score to 0-1 range
+            results['fraud_score'] = min(results['fraud_score'] / 30.0, 1.0)
+
+        except Exception as e:
+            logger.error(f"Error checking missing data and dates: {e}")
+
+        return results
+
+    def check_spelling_and_formatting(self) -> Dict[str, any]:
+        """
+        Check for spelling errors and formatting inconsistencies that indicate forgery.
+        Forged documents often have typos in bank names, field names, etc.
+        """
+        results = {
+            'spelling_errors_found': [],
+            'formatting_issues': [],
+            'fraud_score': 0.0
+        }
+
+        try:
+            all_text = ' '.join(self.text_content.values())
+
+            # Bank name spelling errors (common forgery mistakes)
+            bank_misspellings = {
+                'CHAES': ('CHASE', 8),
+                'CHASSE': ('CHASE', 8),
+                'CITIBANK': ('CITIBANK', 5),  # Less common
+                'WELLS FARGO': ('WELLS FARGO', 5),
+                'CHASE BANK': ('CHASE', 3),
+                'AMERICA BANK': ('BANK OF AMERICA', 6),
+            }
+
+            common_bank_names = ['chase', 'wellsfargo', 'citibank', 'bankofamerica', 'us bank', 'td bank', 'pnc', 'capitalone']
+            text_lower = all_text.lower()
+
+            # Check for misspelled bank names
+            for misspelling, (correct_name, weight) in bank_misspellings.items():
+                if misspelling.lower() in text_lower:
+                    results['spelling_errors_found'].append({
+                        'error': misspelling,
+                        'correct': correct_name,
+                        'weight': weight
+                    })
+                    results['fraud_score'] += weight
+
+            # Field name spelling errors (FORGED documents often misspell these)
+            field_errors = {
+                'ACOUNT': ('ACCOUNT', 12),        # Common typo in forged statements - INCREASED WEIGHT
+                'STATMENT': ('STATEMENT', 11),
+                'BEGINING': ('BEGINNING', 12),
+                'BALENCE': ('BALANCE', 12),
+                'TRANSATION': ('TRANSACTION', 11),
+                'DESCRITI0N': ('DESCRIPTION', 13),  # Using zeros instead of letter O - INCREASED
+                'ВАLANCE': ('BALANCE', 18),  # Cyrillic characters mixed in (strong forgery indicator) - INCREASED
+                'DAТЕ': ('DATE', 18),  # Cyrillic character instead of Latin - INCREASED
+                'AM0UNT': ('AMOUNT', 13),  # Using zeros instead of letter O - INCREASED
+                'STRAET': ('STREET', 11),
+                'MICHEAL': ('MICHAEL', 10),
+            }
+
+            for error, (correct, weight) in field_errors.items():
+                if error in all_text:
+                    results['spelling_errors_found'].append({
+                        'error': error,
+                        'correct': correct,
+                        'weight': weight
+                    })
+                    results['fraud_score'] += weight
+                    # Log this as critical finding
+                    self.findings['suspicious_indicators'].append(
+                        f"🚨 FORGERY INDICATOR: Field name misspelling '{error}' (should be '{correct}')"
+                    )
+
+            # Check for mixed character sets (Latin vs Cyrillic) - strong forgery indicator
+            if any(ord(c) > 1024 for c in all_text):  # Cyrillic range
+                results['fraud_score'] += 25  # INCREASED from 15
+                results['formatting_issues'].append("Mixed character sets detected (Cyrillic + Latin)")
+                self.findings['suspicious_indicators'].append(
+                    "🚨 CRITICAL: Mixed character encoding detected (potential copy-paste from non-English source)"
+                )
+
+            # Check for excessive spacing or alignment issues (editing artifacts)
+            lines = all_text.split('\n')
+            alignment_issues = 0
+            for line in lines:
+                if line.startswith('   ') or line.startswith('\t\t'):  # Excessive leading whitespace
+                    alignment_issues += 1
+
+            if alignment_issues > len(lines) * 0.2:  # More than 20% of lines have alignment issues
+                results['fraud_score'] += 15  # INCREASED from 8
+                results['formatting_issues'].append(f"Alignment issues in {alignment_issues} lines")
+
+            # Normalize fraud score to 0-1 range - CHANGED DIVISOR from 50 to 30 for better sensitivity
+            results['fraud_score'] = min(results['fraud_score'] / 30.0, 1.0)
+
+        except Exception as e:
+            logger.error(f"Error checking spelling and formatting: {e}")
+
+        return results
+
     def check_transaction_behavior(self) -> Dict[str, any]:
         """Check for suspicious transaction patterns and behavioral fraud indicators."""
         results = {
@@ -702,6 +935,8 @@ class PDFStatementValidator:
         content_results = self.check_content()
         financial_results = self.check_financial_consistency()
         behavior_results = self.check_transaction_behavior()
+        spelling_results = self.check_spelling_and_formatting()
+        missing_data_results = self.check_missing_data_and_dates()
 
         # Calculate score for metadata
         metadata_issues = sum(1 for v in metadata_results.values() if v)
@@ -719,9 +954,16 @@ class PDFStatementValidator:
         financial_issues = sum(1 for v in financial_results.values() if v)
         rule_scores['financial'] = (financial_issues / len(financial_results)) * 0.10
 
-        # Calculate score for behavioral fraud (HIGHEST PRIORITY)
-        # Behavioral fraud score gets 50% weight since it's the most reliable indicator
-        rule_scores['behavioral'] = behavior_results.get('fraud_score', 0.0) * 0.50
+        # Calculate score for behavioral fraud (HIGH PRIORITY)
+        rule_scores['behavioral'] = behavior_results.get('fraud_score', 0.0) * 0.35
+
+        # Calculate score for spelling/formatting (HIGH PRIORITY for forgery detection)
+        # Spelling errors are STRONG indicators of forgery
+        rule_scores['spelling'] = spelling_results.get('fraud_score', 0.0) * 0.25
+
+        # Calculate score for missing data/invalid dates (HIGHEST PRIORITY for forgery detection)
+        # Missing critical fields and impossible dates are definitive fraud indicators
+        rule_scores['missing_data'] = missing_data_results.get('fraud_score', 0.0) * 0.35
 
         score = sum(rule_scores.values())
 
