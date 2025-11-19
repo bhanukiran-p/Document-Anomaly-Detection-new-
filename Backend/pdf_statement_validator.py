@@ -162,7 +162,19 @@ class PDFStatementValidator:
 
     def extract_text(self) -> Dict[int, str]:
         """Extract text from all pages."""
-        # Try PyMuPDF first (best for both text and image-based PDFs)
+        # TESTING MODE: Try Google Vision first for better accuracy
+        if self.vision_client:
+            logger.info("TESTING MODE: Attempting Google Vision API extraction as PRIMARY method")
+            vision_result = self._extract_text_with_vision()
+            if vision_result and sum(len(text) for text in vision_result.values()) > 100:
+                logger.info("Vision API extraction successful, returning Vision results")
+                return vision_result
+            elif vision_result:
+                logger.warning(f"Vision API extraction returned minimal text ({sum(len(text) for text in vision_result.values())} chars), trying PyMuPDF fallback")
+            else:
+                logger.warning("Vision API extraction returned no results, trying PyMuPDF fallback")
+
+        # Fallback 1: Try PyMuPDF (best for native PDFs)
         if hasattr(self, 'pdf_doc') and self.pdf_doc:
             try:
                 for page_num in range(len(self.pdf_doc)):
@@ -175,7 +187,7 @@ class PDFStatementValidator:
                 logger.warning(f"PyMuPDF text extraction failed: {e}")
                 self.text_content = {}
 
-        # Try pdfplumber
+        # Fallback 2: Try pdfplumber
         if hasattr(self, 'pdf_plumber') and self.pdf_plumber:
             try:
                 for page_num, page in enumerate(self.pdf_plumber.pages):
@@ -187,7 +199,7 @@ class PDFStatementValidator:
                 logger.warning(f"pdfplumber text extraction failed: {e}")
                 self.text_content = {}
 
-        # Try PyPDF2
+        # Fallback 3: Try PyPDF2
         if hasattr(self, 'pdf_reader') and self.pdf_reader:
             try:
                 for page_num, page in enumerate(self.pdf_reader.pages):
@@ -198,7 +210,7 @@ class PDFStatementValidator:
             except Exception as e:
                 logger.warning(f"PyPDF2 text extraction failed: {e}")
 
-        # Fallback: Extract text from raw PDF content
+        # Fallback 4: Extract text from raw PDF content
         try:
             with open(self.pdf_path, 'rb') as f:
                 raw_content = f.read()
@@ -224,18 +236,9 @@ class PDFStatementValidator:
             # Check if we got meaningful text
             total_text_length = sum(len(text) for text in self.text_content.values())
 
-            # If text extraction yielded very little (<100 chars), try Google Vision OCR
-            if total_text_length < 100 and self.vision_client:
-                logger.info("Extracted text is minimal (<100 chars), attempting Google Vision OCR fallback")
-                return self._extract_text_with_vision()
-
             return self.text_content
         except Exception as e:
             logger.warning(f"Fallback text extraction failed: {e}")
-            # If all else fails and we have Vision client, try Vision OCR
-            if self.vision_client:
-                logger.info("All standard extraction methods failed, attempting Google Vision OCR")
-                return self._extract_text_with_vision()
             return {}
 
     def _extract_text_with_vision(self) -> Dict[int, str]:
