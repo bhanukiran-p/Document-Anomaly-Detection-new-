@@ -717,7 +717,7 @@ def fraud_validate_pdf():
         file.save(filepath)
 
         try:
-            service = get_fraud_detection_service()
+            service = get_fraud_detection_service(vision_client=vision_client)
             pdf_validation = service.validate_statement_pdf(filepath)
 
             # Convert to dict
@@ -847,7 +847,7 @@ def fraud_batch_predict():
             import pandas as pd
 
             df = pd.read_csv(filepath)
-            service = get_fraud_detection_service()
+            service = get_fraud_detection_service(vision_client=vision_client)
             predictions_df = service.batch_predict(df)
 
             # Convert to JSON-serializable format
