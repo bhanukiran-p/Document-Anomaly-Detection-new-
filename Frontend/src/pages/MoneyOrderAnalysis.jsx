@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { analyzeMoneyOrder } from '../services/api';
 import { colors } from '../styles/colors';
+import { FaMoneyBillWave, FaSpinner } from 'react-icons/fa';
 
 const MoneyOrderAnalysis = () => {
   const [file, setFile] = useState(null);
@@ -48,8 +49,22 @@ const MoneyOrderAnalysis = () => {
 
     try {
       const response = await analyzeMoneyOrder(file);
-      setResults(response.data);
+      console.log('Money Order API Response:', response);
+      // Response structure from API: { success: true, data: {...details...}, risk_assessment: {...} }
+      // The api.js already returns response.data, so response is the JSON object
+      if (response && response.data) {
+        // For money order, data might be nested in response.data.data if status is 'success'
+        const resultData = response.data.status === 'success' 
+          ? { ...response.data, risk_assessment: response.risk_assessment }
+          : { ...response.data, risk_assessment: response.risk_assessment };
+        console.log('Setting results with risk_assessment:', resultData.risk_assessment);
+        setResults(resultData);
+      } else if (response) {
+        // Fallback: if structure is different, use response directly
+        setResults(response);
+      }
     } catch (err) {
+      console.error('Money order analysis error:', err);
       setError(err.error || 'Failed to analyze money order. Please try again.');
     } finally {
       setLoading(false);
@@ -195,13 +210,13 @@ const MoneyOrderAnalysis = () => {
             marginBottom: '1rem',
           }}>
             <p style={{ color: '#856404', fontSize: '0.875rem', margin: 0, fontWeight: '500' }}>
-              ⚠️ Only upload money order documents (Western Union, MoneyGram, USPS, etc.)
+              Only upload money order documents (Western Union, MoneyGram, USPS, etc.)
             </p>
           </div>
 
           <div {...getRootProps()} style={dropzoneStyle}>
             <input {...getInputProps()} />
-            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>💵</div>
+            <FaMoneyBillWave style={{ fontSize: '3rem', marginBottom: '1rem', color: colors.primary.blue }} />
             {isDragActive ? (
               <p style={{ color: colors.primary.blue, fontWeight: '500' }}>
                 Drop the money order image here...
@@ -290,10 +305,10 @@ const MoneyOrderAnalysis = () => {
 
           {loading && (
             <div style={{ textAlign: 'center', padding: '3rem' }}>
-              <div className="spin" style={{
+              <FaSpinner className="spin" style={{
                 fontSize: '3rem',
                 color: colors.primary.blue,
-              }}>⚙️</div>
+              }} />
               <p style={{ marginTop: '1rem', color: colors.neutral.gray600 }}>
                 Analyzing money order...
               </p>
@@ -307,11 +322,108 @@ const MoneyOrderAnalysis = () => {
                 Confidence: {results.confidence_score?.toFixed(1)}%
               </div>
 
+              {/* ML Risk Assessment */}
+              {results.risk_assessment && (() => {
+                const riskScore = results.risk_assessment.risk_score;
+                // Determine risk level colors
+                const isHighRisk = riskScore >= 70;
+                const isMediumRisk = riskScore >= 40 && riskScore < 70;
+                const isLowRisk = riskScore < 40;
+                
+                const riskColors = isHighRisk ? {
+                  background: '#FEE2E2',
+                  text: '#B91C1C',
+                  border: '#EF4444'
+                } : isMediumRisk ? {
+                  background: '#FEF3C7',
+                  text: '#D97706',
+                  border: '#FACC15'
+                } : {
+                  background: '#D4F6DA',
+                  text: '#16A34A',
+                  border: '#22C55E'
+                };
+                
+                return (
+                  <div style={{ marginBottom: '2rem' }}>
+                    <div style={{
+                      padding: '1.5rem',
+                      borderRadius: '12px',
+                      backgroundColor: riskColors.background,
+                      border: `2px solid ${riskColors.border}`,
+                      marginBottom: '1.5rem',
+                    }}>
+                      <h3 style={{ 
+                        color: riskColors.text,
+                        marginBottom: '1rem',
+                        fontSize: '1.5rem',
+                        fontWeight: '700'
+                      }}>
+                        ML Risk Score: {riskScore.toFixed(1)}% 
+                        <span style={{ marginLeft: '0.5rem', fontSize: '1rem' }}>
+                          ({results.risk_assessment.risk_level} RISK)
+                        </span>
+                      </h3>
+                      
+                      {results.risk_assessment.risk_factors && results.risk_assessment.risk_factors.length > 0 && (
+                        <div style={{ marginBottom: '1.5rem' }}>
+                          <h4 style={{ color: riskColors.text, marginBottom: '0.75rem', fontWeight: '600' }}>
+                            Risk Factors:
+                          </h4>
+                        {results.risk_assessment.risk_factors.map((factor, idx) => (
+                          <div key={idx} style={{
+                            padding: '0.75rem',
+                            marginBottom: '0.5rem',
+                            backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                            borderRadius: '8px',
+                            borderLeft: `4px solid ${factor.severity === 'high' ? colors.accent.red : 
+                                                      factor.severity === 'medium' ? '#F59E0B' : '#6B7280'}`
+                          }}>
+                            <strong style={{ 
+                              color: factor.severity === 'high' ? colors.accent.red : 
+                                     factor.severity === 'medium' ? '#F59E0B' : '#6B7280',
+                              textTransform: 'uppercase',
+                              fontSize: '0.75rem'
+                            }}>
+                              {factor.severity}
+                            </strong>
+                            <p style={{ margin: '0.25rem 0 0 0', fontWeight: '500' }}>{factor.message}</p>
+                            <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem', color: colors.neutral.gray600 }}>
+                              Impact: {factor.impact}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                      {results.risk_assessment.recommendations && results.risk_assessment.recommendations.length > 0 && (
+                        <div>
+                          <h4 style={{ color: riskColors.text, marginBottom: '0.75rem', fontWeight: '600' }}>
+                            Recommendations:
+                          </h4>
+                          <ul style={{ paddingLeft: '1.5rem', margin: 0 }}>
+                            {results.risk_assessment.recommendations.map((rec, idx) => (
+                              <li key={idx} style={{ 
+                                marginBottom: '0.5rem', 
+                                color: riskColors.text,
+                                lineHeight: '1.6'
+                              }}>
+                                {rec}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Anomalies Section - Show first if present */}
               {results.anomalies && results.anomalies.length > 0 && (
                 <div style={{ marginBottom: '2rem' }}>
                   <h3 style={{ color: colors.accent.red, marginBottom: '1rem' }}>
-                    ⚠️ Anomalies Detected ({results.anomalies.length})
+                    Anomalies Detected ({results.anomalies.length})
                   </h3>
                   {results.anomalies.map((anomaly, index) => (
                     <div key={index} style={anomalyCardStyle(anomaly.severity)}>

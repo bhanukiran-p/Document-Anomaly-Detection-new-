@@ -179,7 +179,7 @@ const LoginPage = () => {
           {/* Error Message */}
           {error && (
             <div style={styles.errorMessage}>
-              ⚠️ {error}
+              {error}
             </div>
           )}
 
