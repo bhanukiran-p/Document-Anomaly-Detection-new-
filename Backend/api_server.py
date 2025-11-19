@@ -15,6 +15,15 @@ import fitz
 from google.cloud import vision
 from auth import login_user, register_user, token_required
 
+# Import fraud detection modules
+try:
+    from fraud_detection_service import get_fraud_detection_service
+    from pdf_statement_validator import PDFStatementValidator
+    FRAUD_DETECTION_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Fraud detection modules not available: {e}")
+    FRAUD_DETECTION_AVAILABLE = False
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -103,13 +112,10 @@ def detect_document_type(text):
     text_lower = text.lower()
 
     # Priority check: Strong identifiers that definitively indicate document type
-    # Check for money order FIRST with strong keywords
-    if 'money order' in text_lower or 'western union' in text_lower or 'moneygram' in text_lower:
-        return 'money_order'
-
-    # Check for bank statement strong indicators
+    # Check for bank statement FIRST - these are the strongest indicators
     if ('statement period' in text_lower or 'account summary' in text_lower or
-        'beginning balance' in text_lower or 'transaction detail' in text_lower):
+        'beginning balance' in text_lower or 'transaction detail' in text_lower or
+        'ending balance' in text_lower or 'account number' in text_lower):
         return 'bank_statement'
 
     # Check for paystub strong indicators
@@ -120,6 +126,13 @@ def detect_document_type(text):
     # Check for check strong indicators
     if 'routing number' in text_lower or 'micr' in text_lower or 'check number' in text_lower:
         return 'check'
+
+    # Check for money order - but only if it's the actual money order document
+    # (Not just a bank statement with money transfer transactions)
+    if ('money order' in text_lower or 'purchaser' in text_lower or 'serial number' in text_lower):
+        # Make sure it doesn't have strong bank statement indicators
+        if not ('transaction' in text_lower and 'balance' in text_lower):
+            return 'money_order'
 
     # Fallback: Use keyword counting for less obvious cases
     # Check for check-specific keywords
@@ -595,6 +608,301 @@ def analyze_bank_statement():
             'message': 'Failed to analyze bank statement'
         }), 500
 
+
+# ==========================================
+# FRAUD DETECTION ENDPOINTS
+# ==========================================
+
+@app.route('/api/fraud/transaction-predict', methods=['POST'])
+def fraud_transaction_predict():
+    """
+    Predict fraud for a single transaction.
+
+    Expected JSON:
+    {
+        'transaction_data': {
+            'customer_name': 'John Doe',
+            'bank_name': 'Chase',
+            'merchant_name': 'Walmart',
+            'category': 'Retail',
+            'amount': 150.00,
+            'balance_after': 5000.00,
+            'is_large_transaction': 0,
+            'amount_to_balance_ratio': 0.03,
+            'transactions_past_1_day': 2,
+            'transactions_past_7_days': 10,
+            'is_new_merchant': 0,
+            'transaction_id': 'TXN001'
+        },
+        'model_type': 'ensemble'  # optional: 'xgboost', 'random_forest', or 'ensemble'
+    }
+    """
+    try:
+        if not FRAUD_DETECTION_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'error': 'Fraud detection service not available',
+                'message': 'Fraud detection models not loaded'
+            }), 503
+
+        data = request.get_json()
+        if not data or 'transaction_data' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'Missing transaction_data in request'
+            }), 400
+
+        transaction_data = data['transaction_data']
+        model_type = data.get('model_type', 'ensemble')
+
+        service = get_fraud_detection_service()
+        prediction = service.predict_transaction_fraud(transaction_data, model_type)
+
+        # Convert to dict for JSON serialization
+        from dataclasses import asdict
+        result = asdict(prediction)
+
+        return jsonify({
+            'success': True,
+            'data': result,
+            'message': 'Transaction fraud prediction completed'
+        })
+
+    except Exception as e:
+        logger.error(f"Transaction fraud prediction error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to predict transaction fraud'
+        }), 500
+
+
+@app.route('/api/fraud/validate-pdf', methods=['POST'])
+def fraud_validate_pdf():
+    """
+    Validate a bank statement PDF for signs of tampering/forgery.
+
+    Expected: File upload with PDF file
+    """
+    try:
+        if not FRAUD_DETECTION_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'error': 'Fraud detection service not available'
+            }), 503
+
+        if 'file' not in request.files:
+            return jsonify({
+                'success': False,
+                'error': 'No file provided'
+            }), 400
+
+        file = request.files['file']
+
+        if file.filename == '':
+            return jsonify({
+                'success': False,
+                'error': 'No file selected'
+            }), 400
+
+        if not allowed_file(file.filename):
+            return jsonify({
+                'success': False,
+                'error': 'Invalid file type. Only PDF, PNG, JPG allowed'
+            }), 400
+
+        # Save temp file
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(filepath)
+
+        try:
+            service = get_fraud_detection_service(vision_client=vision_client)
+            pdf_validation = service.validate_statement_pdf(filepath)
+
+            # Convert to dict
+            from dataclasses import asdict
+            result = asdict(pdf_validation)
+
+            return jsonify({
+                'success': True,
+                'data': result,
+                'message': 'PDF validation completed'
+            })
+
+        finally:
+            # Clean up temp file
+            if os.path.exists(filepath):
+                os.remove(filepath)
+
+    except Exception as e:
+        logger.error(f"PDF validation error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to validate PDF'
+        }), 500
+
+
+@app.route('/api/fraud/assess', methods=['POST'])
+def fraud_assess():
+    """
+    Comprehensive fraud assessment combining transaction and PDF analysis.
+
+    Expected JSON:
+    {
+        'transaction_data': {...},  # optional
+        'pdf_path': '/path/to/file.pdf',  # optional
+        'model_type': 'ensemble'  # optional
+    }
+    """
+    try:
+        if not FRAUD_DETECTION_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'error': 'Fraud detection service not available'
+            }), 503
+
+        data = request.get_json()
+
+        transaction_data = data.get('transaction_data')
+        pdf_path = data.get('pdf_path')
+        model_type = data.get('model_type', 'ensemble')
+
+        if not transaction_data and not pdf_path:
+            return jsonify({
+                'success': False,
+                'error': 'Provide either transaction_data or pdf_path'
+            }), 400
+
+        service = get_fraud_detection_service()
+        assessment = service.assess_fraud_risk(transaction_data, pdf_path, model_type)
+
+        # Convert to dict
+        from dataclasses import asdict
+
+        result = {
+            'transaction_prediction': asdict(assessment.transaction_prediction) if assessment.transaction_prediction else None,
+            'pdf_validation': asdict(assessment.pdf_validation) if assessment.pdf_validation else None,
+            'combined_risk_score': assessment.combined_risk_score,
+            'overall_verdict': assessment.overall_verdict,
+            'recommendation': assessment.recommendation
+        }
+
+        return jsonify({
+            'success': True,
+            'data': result,
+            'message': 'Fraud assessment completed'
+        })
+
+    except Exception as e:
+        logger.error(f"Fraud assessment error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to assess fraud'
+        }), 500
+
+
+@app.route('/api/fraud/batch-predict', methods=['POST'])
+def fraud_batch_predict():
+    """
+    Predict fraud for multiple transactions from CSV.
+
+    Expected: File upload with CSV file
+    """
+    try:
+        if not FRAUD_DETECTION_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'error': 'Fraud detection service not available'
+            }), 503
+
+        if 'file' not in request.files:
+            return jsonify({
+                'success': False,
+                'error': 'No file provided'
+            }), 400
+
+        file = request.files['file']
+
+        if file.filename == '':
+            return jsonify({
+                'success': False,
+                'error': 'No file selected'
+            }), 400
+
+        if not file.filename.endswith('.csv'):
+            return jsonify({
+                'success': False,
+                'error': 'Only CSV files allowed'
+            }), 400
+
+        # Save temp file
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(filepath)
+
+        try:
+            import pandas as pd
+
+            df = pd.read_csv(filepath)
+            service = get_fraud_detection_service(vision_client=vision_client)
+            predictions_df = service.batch_predict(df)
+
+            # Convert to JSON-serializable format
+            result_data = predictions_df.to_dict(orient='records')
+
+            return jsonify({
+                'success': True,
+                'data': result_data,
+                'total_transactions': len(predictions_df),
+                'message': 'Batch prediction completed'
+            })
+
+        finally:
+            # Clean up temp file
+            if os.path.exists(filepath):
+                os.remove(filepath)
+
+    except Exception as e:
+        logger.error(f"Batch prediction error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to perform batch prediction'
+        }), 500
+
+
+@app.route('/api/fraud/models-status', methods=['GET'])
+def fraud_models_status():
+    """
+    Check if fraud detection models are loaded.
+    """
+    try:
+        service = get_fraud_detection_service()
+        models_loaded = (service.xgb_model is not None and service.rf_model is not None)
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'models_loaded': models_loaded,
+                'xgboost_available': service.xgb_model is not None,
+                'random_forest_available': service.rf_model is not None,
+                'fraud_detection_available': FRAUD_DETECTION_AVAILABLE
+            },
+            'message': 'Models status retrieved'
+        })
+
+    except Exception as e:
+        logger.error(f"Models status error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'fraud_detection_available': FRAUD_DETECTION_AVAILABLE
+        }), 500
+
+
 if __name__ == '__main__':
     print("=" * 60)
     print("XFORIA DAD API Server")
@@ -606,6 +914,12 @@ if __name__ == '__main__':
     print(f"  - POST /api/paystub/analyze")
     print(f"  - POST /api/money-order/analyze")
     print(f"  - POST /api/bank-statement/analyze")
+    print(f"\nFraud Detection Endpoints:")
+    print(f"  - GET  /api/fraud/models-status")
+    print(f"  - POST /api/fraud/transaction-predict")
+    print(f"  - POST /api/fraud/validate-pdf")
+    print(f"  - POST /api/fraud/assess")
+    print(f"  - POST /api/fraud/batch-predict")
     print("=" * 60)
 
     app.run(debug=True, host='0.0.0.0', port=5001)
