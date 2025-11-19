@@ -108,47 +108,80 @@ def detect_document_type(text):
     """
     Detect document type based on text content
     Returns: 'check', 'paystub', 'money_order', 'bank_statement', or 'unknown'
+
+    Enhanced logic:
+    - Strong indicators take priority (exact phrase matches)
+    - Bank statements are checked first with comprehensive keywords
+    - Paystubs require multiple indicators to avoid false positives
+    - Keyword-based fallback only when strong indicators aren't found
     """
     text_lower = text.lower()
 
-    # Priority check: Strong identifiers that definitively indicate document type
-    # Check for bank statement FIRST - these are the strongest indicators
-    if ('statement period' in text_lower or 'account summary' in text_lower or
-        'beginning balance' in text_lower or 'transaction detail' in text_lower or
-        'ending balance' in text_lower or 'account number' in text_lower):
+    # ========== TIER 1: STRONG DEFINITIVE INDICATORS ==========
+
+    # Bank statement strong indicators - check FIRST
+    # More specific patterns to avoid false positives with checks
+    bank_statement_strong = [
+        'statement period', 'account summary', 'beginning balance',
+        'transaction detail', 'ending balance', 'balance forward',
+        'previous balance', 'opening balance', 'closing balance',
+        'total deposits', 'total withdrawals', 'wire transfer',
+        'ach transfer', 'daily balance', 'checking summary',
+        'savings summary', 'account statement', 'transaction history'
+    ]
+
+    if any(indicator in text_lower for indicator in bank_statement_strong):
         return 'bank_statement'
 
-    # Check for paystub strong indicators
-    if ('gross pay' in text_lower or 'net pay' in text_lower or
-        ('ytd' in text_lower and 'earnings' in text_lower)):
+    # Paystub strong indicators - require multiple to avoid false positives
+    paystub_strong_required = ['gross pay', 'net pay', 'ytd earnings', 'ytd gross']
+    paystub_strong_count = sum(1 for indicator in paystub_strong_required if indicator in text_lower)
+
+    if paystub_strong_count >= 1:
         return 'paystub'
 
-    # Check for check strong indicators
-    if 'routing number' in text_lower or 'micr' in text_lower or 'check number' in text_lower:
+    # Check strong indicators
+    check_strong = ['routing number', 'micr', 'pay to the order of']
+    if any(indicator in text_lower for indicator in check_strong):
         return 'check'
 
-    # Check for money order - but only if it's the actual money order document
-    # (Not just a bank statement with money transfer transactions)
-    if ('money order' in text_lower or 'purchaser' in text_lower or 'serial number' in text_lower):
-        # Make sure it doesn't have strong bank statement indicators
-        if not ('transaction' in text_lower and 'balance' in text_lower):
+    # Money order strong indicators
+    if ('money order' in text_lower and 'purchaser' in text_lower):
+        return 'money_order'
+
+    # ========== TIER 2: CONTEXTUAL INDICATORS ==========
+
+    # Check for money order (but exclude bank statements)
+    if any(x in text_lower for x in ['purchaser', 'serial number', 'money order']):
+        # Make sure it doesn't have bank statement indicators
+        if not any(x in text_lower for x in ['transaction', 'balance', 'deposit', 'withdrawal']):
             return 'money_order'
 
-    # Fallback: Use keyword counting for less obvious cases
-    # Check for check-specific keywords
-    check_keywords = ['pay to the order of', 'account number', 'memo', 'void', 'dollars']
+    # ========== TIER 3: KEYWORD-BASED FALLBACK ==========
+    # Only use if strong indicators weren't found
+
+    # Check keywords (less ambiguous set)
+    check_keywords = ['pay to order', 'routing', 'void', 'memo', 'account number:', 'dollars']
     check_count = sum(1 for keyword in check_keywords if keyword in text_lower)
 
-    # Check for paystub-specific keywords
-    paystub_keywords = ['earnings', 'deductions', 'federal tax', 'state tax', 'social security', 'medicare', 'employee', 'employer', 'pay period', 'paycheck']
+    # Paystub keywords (removed ambiguous ones like 'earnings', 'deductions')
+    paystub_keywords = [
+        'gross pay', 'net pay', 'federal withholding', 'state withholding',
+        'social security', 'medicare', 'pay period', 'paycheck',
+        'employee id', 'employer name', 'ytd', 'fica'
+    ]
     paystub_count = sum(1 for keyword in paystub_keywords if keyword in text_lower)
 
-    # Check for money order keywords
-    money_order_keywords = ['purchaser', 'serial number', 'receipt', 'remitter']
+    # Money order keywords
+    money_order_keywords = ['purchaser', 'serial number', 'receipt', 'remitter', 'issuer']
     money_order_count = sum(1 for keyword in money_order_keywords if keyword in text_lower)
 
-    # Check for bank statement keywords
-    bank_statement_keywords = ['ending balance', 'checking summary', 'deposits', 'withdrawals', 'daily balance']
+    # Bank statement keywords (expanded list)
+    bank_statement_keywords = [
+        'ending balance', 'checking summary', 'deposits', 'withdrawals',
+        'daily balance', 'opening', 'closing', 'transaction', 'account',
+        'statement', 'balance', 'debit', 'credit', 'posted'
+    ]
     bank_statement_count = sum(1 for keyword in bank_statement_keywords if keyword in text_lower)
 
     # Determine document type based on keyword matches
@@ -157,14 +190,17 @@ def detect_document_type(text):
     if max_count == 0:
         return 'unknown'
 
-    if check_count == max_count:
-        return 'check'
+    # Return based on highest count, with bank_statement as tiebreaker
+    if bank_statement_count == max_count and bank_statement_count > 0:
+        return 'bank_statement'
     elif paystub_count == max_count:
         return 'paystub'
-    elif bank_statement_count == max_count:
-        return 'bank_statement'
-    else:
+    elif check_count == max_count:
+        return 'check'
+    elif money_order_count == max_count:
         return 'money_order'
+    else:
+        return 'unknown'
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
