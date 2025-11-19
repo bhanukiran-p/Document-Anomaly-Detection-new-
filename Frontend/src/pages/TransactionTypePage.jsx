@@ -61,8 +61,8 @@ const TransactionTypePage = () => {
   const loginButtonStyle = {
     backgroundColor: colors.primary.blue,
     color: colors.neutral.white,
-    padding: '0.625rem 1.5rem',
-    borderRadius: '0.375rem',
+    padding: '0.5rem 1.25rem',
+    borderRadius: '9999px', // Pill shape
     border: 'none',
     cursor: 'pointer',
     fontSize: '1rem',

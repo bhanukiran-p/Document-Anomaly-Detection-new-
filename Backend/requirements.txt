@@ -13,6 +13,7 @@ Pillow==10.3.0
 # Data handling
 pandas==2.2.2
 numpy==1.26.4
+scikit-learn==1.4.2  # ML model training and inference
 
 # Streamlit for web interface
 streamlit==1.33.0
