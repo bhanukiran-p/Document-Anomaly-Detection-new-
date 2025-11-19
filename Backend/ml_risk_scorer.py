@@ -646,7 +646,8 @@ class MLRiskScorer:
                     'message': 'Serial number or control number not found',
                     'impact': 'Cannot track or verify money order'
                 })
-            if not extracted_data.get('purchaser_name'):
+            # Check for 'purchaser' (money order extractor uses this field name)
+            if not extracted_data.get('purchaser') and not extracted_data.get('purchaser_name'):
                 factors.append({
                     'type': 'missing_purchaser',
                     'severity': 'medium',

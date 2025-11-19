@@ -542,12 +542,16 @@ def analyze_money_order():
                 try:
                     logger.info("Calculating ML risk score for money order...")
                     extracted_data = result.get('extracted_data', {})
+                    logger.info(f"Extracted data for risk scoring: {extracted_data}")
+                    logger.info(f"Purchaser field value: {extracted_data.get('purchaser')}")
+                    logger.info(f"Payee field value: {extracted_data.get('payee')}")
                     risk_assessment = risk_scorer.calculate_risk_score(
                         'money_order', 
                         extracted_data, 
                         raw_text
                     )
                     logger.info(f"Risk assessment calculated: score={risk_assessment.get('risk_score')}, level={risk_assessment.get('risk_level')}")
+                    logger.info(f"Risk factors: {risk_assessment.get('risk_factors', [])}")
                 except Exception as e:
                     logger.error(f"Risk scoring error: {e}", exc_info=True)
             elif risk_scorer:
