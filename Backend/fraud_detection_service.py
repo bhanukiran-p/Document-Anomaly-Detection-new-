@@ -84,13 +84,13 @@ class FraudDetectionService:
         'statement_end_date'
     ]
 
-    def __init__(self, model_dir=None, vision_client=None):
+    def __init__(self, model_dir=None, mindee_extractor=None):
         """
         Initialize fraud detection service.
 
         Args:
             model_dir: Directory containing trained models
-            vision_client: Optional Google Cloud Vision API client for OCR fallback
+            mindee_extractor: Optional MindeeExtractor client for OCR fallback
         """
         if model_dir is None:
             # Use absolute path based on current script location
@@ -102,7 +102,7 @@ class FraudDetectionService:
         self.rf_model = None
         self.label_encoders = None
         self.feature_names = None
-        self.vision_client = vision_client
+        self.mindee_extractor = mindee_extractor
 
         self._load_models()
 
@@ -247,13 +247,13 @@ class FraudDetectionService:
         """
         try:
             # First, run rule-based PDF validation
-            validator = PDFStatementValidator(pdf_path, vision_client=self.vision_client)
+            validator = PDFStatementValidator(pdf_path, mindee_extractor=self.mindee_extractor)
             findings = validator.validate()
             rule_risk_score = findings['risk_score']
 
-            # Log if Vision was used for text extraction
-            if hasattr(validator, 'vision_used') and validator.vision_used:
-                logger.info("Vision API was used for text extraction (scanned PDF detected)")
+            # Log if Mindee was used for text extraction
+            if hasattr(validator, 'mindee_used') and validator.mindee_used:
+                logger.info("Mindee API was used for text extraction (scanned PDF detected)")
 
             # Try to extract transaction data and run ML models
             ml_risk_score = 0.0
@@ -340,7 +340,7 @@ class FraudDetectionService:
         try:
             from pdf_statement_validator import PDFStatementValidator
 
-            validator = PDFStatementValidator(pdf_path)
+            validator = PDFStatementValidator(pdf_path, mindee_extractor=self.mindee_extractor)
             validator.load_pdf()
             validator.extract_text()
 
@@ -537,20 +537,20 @@ class FraudDetectionService:
 _service_instance = None
 
 
-def get_fraud_detection_service(model_dir=None, vision_client=None) -> FraudDetectionService:
+def get_fraud_detection_service(model_dir=None, mindee_extractor=None) -> FraudDetectionService:
     """
     Get or create fraud detection service instance.
 
     Args:
         model_dir: Directory containing trained models (optional)
-        vision_client: Google Cloud Vision API client for OCR fallback (optional)
+        mindee_extractor: MindeeExtractor client for OCR fallback (optional)
 
     Returns:
         FraudDetectionService: Service instance
     """
     global _service_instance
     if _service_instance is None:
-        _service_instance = FraudDetectionService(model_dir, vision_client=vision_client)
+        _service_instance = FraudDetectionService(model_dir, mindee_extractor=mindee_extractor)
     return _service_instance
 
 

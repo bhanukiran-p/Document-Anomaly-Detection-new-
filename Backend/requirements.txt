@@ -1,9 +1,10 @@
-# Google Vision API Check Extraction Requirements
+# Document Extraction Requirements - Google Vision & Mindee
 
 # Core dependencies
 google-cloud-vision==3.7.0
 google-auth==2.29.0
 google-auth-oauthlib==1.2.0
+mindee==4.31.0
 Flask==3.0.0
 flask-cors==4.0.0
 
@@ -24,9 +25,13 @@ PyJWT==2.10.1  # JWT token handling for authentication
 python-dotenv==1.0.0  # Environment variable management
 supabase==2.4.5  # Supabase Python client
 
+# PDF & Image text extraction (Primary methods)
+pdfplumber==0.10.4  # Primary PDF text extraction
+PyPDF2==4.0.1  # Fallback PDF text extraction
+pytesseract==0.3.10  # OCR for image files
+
 # Optional - for enhanced functionality
 opencv-python==4.9.0.80  # Additional image processing
-pytesseract==0.3.10  # Fallback OCR
 pdf2image==1.16.3  # PDF to image conversion
 PyMuPDF==1.23.26  # PDF processing
 

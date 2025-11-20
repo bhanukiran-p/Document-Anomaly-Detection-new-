@@ -12,8 +12,7 @@ from werkzeug.utils import secure_filename
 import importlib.util
 import re
 import base64
-import fitz
-from google.cloud import vision
+from mindee_extractor import MindeeExtractor
 from auth import login_user, register_user, token_required
 
 # Import fraud detection modules
@@ -43,16 +42,20 @@ except ImportError as e:
     register_user_supabase = None
     verify_token = None
 
-# Load the production extractor
-spec = importlib.util.spec_from_file_location(
-    "production_extractor", 
-    "production_google_vision-extractor.py"
-)
-production_extractor = importlib.util.module_from_spec(spec)
-sys.modules["production_extractor"] = production_extractor
-spec.loader.exec_module(production_extractor)
-
-ProductionCheckExtractor = production_extractor.ProductionCheckExtractor
+# Production extractor no longer needed - using Mindee for all extraction
+# (Keeping import structure for backward compatibility if needed)
+try:
+    spec = importlib.util.spec_from_file_location(
+        "production_extractor",
+        "production_google_vision-extractor.py"
+    )
+    production_extractor = importlib.util.module_from_spec(spec)
+    sys.modules["production_extractor"] = production_extractor
+    spec.loader.exec_module(production_extractor)
+    ProductionCheckExtractor = production_extractor.ProductionCheckExtractor
+except Exception as e:
+    logger.warning(f"Production extractor not available: {e}. Using Mindee for all extraction.")
+    ProductionCheckExtractor = None
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for React frontend
@@ -64,30 +67,34 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'pdf'}
 # Get the directory where this script is located
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Set up credentials path - check environment variable first, then default location
+# Google credentials no longer needed - using Mindee exclusively
+# (Keeping for backward compatibility with PaystubExtractor and other legacy extractors if needed)
 CREDENTIALS_PATH = os.getenv('GOOGLE_CREDENTIALS_PATH')
 if not CREDENTIALS_PATH:
-    # Default to google-credentials.json in the Backend directory
     CREDENTIALS_PATH = os.path.join(BASE_DIR, 'google-credentials.json')
 
-# Also set GOOGLE_APPLICATION_CREDENTIALS environment variable for Google Cloud libraries
 if os.path.exists(CREDENTIALS_PATH):
     os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = CREDENTIALS_PATH
+else:
+    logger.info("Google credentials not found - using Mindee for all extraction")
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Initialize Vision API client once
+# Initialize Mindee client once
+mindee_api_key = os.getenv('MINDEE_API_KEY')
+if not mindee_api_key:
+    # Fallback - use the provided API key directly
+    mindee_api_key = 'md_GWYWbwGsjj6K6mzB7AhOT7SjuJhG5mbS'
+
+# Custom bank statement model ID
+bank_statement_model_id = os.getenv('BANK_STATEMENT_MODEL_ID', '82f0edbf-7afb-4566-b5f5-5ffcad8647b4')
+
 try:
-    if os.path.exists(CREDENTIALS_PATH):
-        vision_client = vision.ImageAnnotatorClient.from_service_account_file(CREDENTIALS_PATH)
-        logger.info(f"Successfully loaded Google Cloud Vision credentials from {CREDENTIALS_PATH}")
-    else:
-        # Try using default credentials from environment
-        vision_client = vision.ImageAnnotatorClient()
-        logger.info("Using default Google Cloud credentials from environment")
+    mindee_client = MindeeExtractor(mindee_api_key, bank_statement_model_id=bank_statement_model_id)
+    logger.info("Successfully initialized Mindee client")
 except Exception as e:
-    logger.warning(f"Failed to load Vision API credentials: {e}")
-    vision_client = None
+    logger.error(f"Failed to initialize Mindee client: {e}")
+    mindee_client = None
 
 # Initialize Supabase client
 supabase = None
@@ -105,52 +112,7 @@ else:
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def convert_pdf_to_images(pdf_filepath):
-    """
-    Convert all pages of a PDF to PNG images for Vision API processing.
-    Returns list of converted PNG file paths.
-    For single-page documents, returns a list with one item.
-    """
-    try:
-        pdf_document = fitz.open(pdf_filepath)
-        num_pages = len(pdf_document)
-        logger.info(f"PDF has {num_pages} page(s)")
-
-        png_filepaths = []
-
-        # Convert all pages to images
-        for page_num in range(num_pages):
-            try:
-                page = pdf_document[page_num]
-                # Use 2x zoom for better quality
-                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-
-                # Save as PNG with page number in filename
-                base_filepath = pdf_filepath.replace('.pdf', '')
-                if num_pages > 1:
-                    png_filepath = f"{base_filepath}_page{page_num + 1}.png"
-                else:
-                    png_filepath = f"{base_filepath}.png"
-
-                pix.save(png_filepath)
-                png_filepaths.append(png_filepath)
-                logger.info(f"Converted page {page_num + 1} to: {png_filepath}")
-
-            except Exception as e:
-                logger.error(f"Failed to convert page {page_num + 1}: {str(e)}")
-                continue
-
-        pdf_document.close()
-
-        if not png_filepaths:
-            raise Exception("No pages were successfully converted from PDF")
-
-        logger.info(f"Successfully converted {len(png_filepaths)} page(s) from PDF")
-        return png_filepaths
-
-    except Exception as e:
-        logger.error(f"PDF conversion failed: {str(e)}")
-        raise
+# PDF to image conversion no longer needed - using Mindee API exclusively
 
 def detect_document_type(text):
     """
@@ -348,50 +310,21 @@ def analyze_check():
         file.save(filepath)
         
         try:
-            # Handle PDF conversion if needed
-            image_filepaths = [filepath]
-            if filename.lower().endswith('.pdf'):
-                try:
-                    image_filepaths = convert_pdf_to_images(filepath)
-                    logger.info(f"PDF converted to {len(image_filepaths)} image(s)")
-                except Exception as e:
-                    logger.error(f"PDF conversion failed: {str(e)}")
-                    if os.path.exists(filepath):
-                        os.remove(filepath)
-                    raise
+            # Use Mindee for text extraction and document type detection
+            logger.info(f"Using Mindee API to extract check details from: {filename}")
 
-            # Initialize extractor and get text for document type detection
-            extractor = ProductionCheckExtractor(CREDENTIALS_PATH)
+            # Extract raw text using Mindee
+            raw_text_result = mindee_client.extract_raw_text(filepath)
 
-            # Get raw text for document type detection from all pages
-            if vision_client is None:
-                raise RuntimeError("Vision API client not initialized. Check credentials.")
+            if not raw_text_result.get('success'):
+                logger.error(f"Mindee extraction failed: {raw_text_result.get('error')}")
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+                raise Exception(f"Mindee extraction failed: {raw_text_result.get('error')}")
 
-            raw_text = ""
-            for img_path in image_filepaths:
-                try:
-                    with open(img_path, 'rb') as file:
-                        content = file.read()
+            raw_text = raw_text_result.get('raw_text', '')
+            logger.info(f"Successfully extracted text from document, total length: {len(raw_text)}")
 
-                    image = vision.Image(content=content)
-                    response = vision_client.text_detection(image=image)
-                    logger.info(f"Using text_detection for: {os.path.basename(img_path)}")
-
-                    # Check for Vision API errors
-                    if response.error.message:
-                        logger.error(f"Vision API Error: {response.error.message}")
-                        raise Exception(f"Vision API Error: {response.error.message}")
-
-                    page_text = response.text_annotations[0].description if response.text_annotations else ""
-                    raw_text += page_text + "\n"
-                    logger.info(f"Extracted {len(page_text)} characters from page")
-
-                except Exception as e:
-                    logger.error(f"Vision API request failed: {str(e)}")
-                    raise
-
-            logger.info(f"Successfully extracted text from all pages, total length: {len(raw_text)}")
-            
             # Validate document type
             detected_type = detect_document_type(raw_text)
             if detected_type != 'check' and detected_type != 'unknown':
@@ -403,9 +336,25 @@ def analyze_check():
                     'error': f'Wrong document type detected. This appears to be a {detected_type}, not a check. Please upload a bank check.',
                     'message': 'Document type mismatch'
                 }), 400
-            
-            # Analyze check details
-            details = extractor.extract_check_details(filepath)
+
+            # For now, return the extracted text from Mindee
+            # In production, you may want to use a dedicated check parser if needed
+            details = {
+                'raw_text': raw_text,
+                'extraction_method': 'mindee',
+                'message': 'Check text extracted using Mindee API'
+            }
+
+            # If ProductionCheckExtractor is available, optionally use it for additional processing
+            if ProductionCheckExtractor:
+                try:
+                    extractor = ProductionCheckExtractor(CREDENTIALS_PATH)
+                    check_details = extractor.extract_check_details(filepath)
+                    if check_details:
+                        details.update(check_details)
+                        details['extraction_method'] = 'mindee + production_extractor'
+                except Exception as e:
+                    logger.warning(f"ProductionCheckExtractor failed: {e}. Using Mindee extraction only.")
             
             # Clean up temp file
             if os.path.exists(filepath):
@@ -451,20 +400,21 @@ def analyze_paystub():
         file.save(filepath)
         
         try:
-            # Import paystub extractor from pages
-            from pages.paystub_extractor import PaystubExtractor
-            
-            # Read file
-            with open(filepath, 'rb') as f:
-                file_bytes = f.read()
-            
-            # Determine file type
-            file_type = 'application/pdf' if filename.lower().endswith('.pdf') else 'image'
-            
-            # Extract text for validation
-            extractor = PaystubExtractor(CREDENTIALS_PATH)
-            text = extractor.extract_text(file_bytes, file_type)
-            
+            # Use Mindee for text extraction and document type detection
+            logger.info(f"Using Mindee API to extract paystub details from: {filename}")
+
+            # Extract raw text using Mindee
+            raw_text_result = mindee_client.extract_raw_text(filepath)
+
+            if not raw_text_result.get('success'):
+                logger.error(f"Mindee extraction failed: {raw_text_result.get('error')}")
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+                raise Exception(f"Mindee extraction failed: {raw_text_result.get('error')}")
+
+            text = raw_text_result.get('raw_text', '')
+            logger.info(f"Successfully extracted text from document, total length: {len(text)}")
+
             # Validate document type
             detected_type = detect_document_type(text)
             if detected_type != 'paystub' and detected_type != 'unknown':
@@ -477,8 +427,23 @@ def analyze_paystub():
                     'message': 'Document type mismatch'
                 }), 400
             
-            # Extract and analyze
-            details = extractor.extract_paystub(text)
+            # For now, return the extracted text from Mindee
+            details = {
+                'raw_text': text,
+                'extraction_method': 'mindee',
+                'message': 'Paystub text extracted using Mindee API'
+            }
+
+            # If PaystubExtractor is available, optionally use it for additional processing
+            try:
+                from pages.paystub_extractor import PaystubExtractor
+                extractor = PaystubExtractor(CREDENTIALS_PATH)
+                paystub_details = extractor.extract_paystub(text)
+                if paystub_details:
+                    details.update(paystub_details)
+                    details['extraction_method'] = 'mindee + paystub_extractor'
+            except Exception as e:
+                logger.warning(f"PaystubExtractor failed: {e}. Using Mindee extraction only.")
             
             # Clean up
             if os.path.exists(filepath):
@@ -523,46 +488,20 @@ def analyze_money_order():
         file.save(filepath)
 
         try:
-            # Handle PDF conversion if needed
-            image_filepaths = [filepath]
-            if filename.lower().endswith('.pdf'):
-                try:
-                    image_filepaths = convert_pdf_to_images(filepath)
-                    logger.info(f"PDF converted to {len(image_filepaths)} image(s)")
-                except Exception as e:
-                    logger.error(f"PDF conversion failed: {str(e)}")
-                    if os.path.exists(filepath):
-                        os.remove(filepath)
-                    raise
+            # Use Mindee for text extraction and document type detection
+            logger.info(f"Using Mindee API to extract money order details from: {filename}")
 
-            # Get raw text for document type detection from all pages
-            if vision_client is None:
-                raise RuntimeError("Vision API client not initialized. Check credentials.")
+            # Extract raw text using Mindee
+            raw_text_result = mindee_client.extract_raw_text(filepath)
 
-            raw_text = ""
-            for img_path in image_filepaths:
-                try:
-                    with open(img_path, 'rb') as file:
-                        content = file.read()
+            if not raw_text_result.get('success'):
+                logger.error(f"Mindee extraction failed: {raw_text_result.get('error')}")
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+                raise Exception(f"Mindee extraction failed: {raw_text_result.get('error')}")
 
-                    image = vision.Image(content=content)
-                    response = vision_client.text_detection(image=image)
-                    logger.info(f"Using text_detection for: {os.path.basename(img_path)}")
-
-                    # Check for Vision API errors
-                    if response.error.message:
-                        logger.error(f"Vision API Error: {response.error.message}")
-                        raise Exception(f"Vision API Error: {response.error.message}")
-
-                    page_text = response.text_annotations[0].description if response.text_annotations else ""
-                    raw_text += page_text + "\n"
-                    logger.info(f"Extracted {len(page_text)} characters from page")
-
-                except Exception as e:
-                    logger.error(f"Vision API request failed: {str(e)}")
-                    raise
-
-            logger.info(f"Successfully extracted text from all pages, total length: {len(raw_text)}")
+            raw_text = raw_text_result.get('raw_text', '')
+            logger.info(f"Successfully extracted text from document, total length: {len(raw_text)}")
 
             # Validate document type
             detected_type = detect_document_type(raw_text)
@@ -576,19 +515,24 @@ def analyze_money_order():
                     'message': 'Document type mismatch'
                 }), 400
 
-            # Try to import and use money order extractor
+            # Return the extracted text from Mindee
+            result = {
+                'raw_text': raw_text,
+                'extraction_method': 'mindee',
+                'message': 'Money order text extracted using Mindee API'
+            }
+
+            # If MoneyOrderExtractor is available, optionally use it for additional processing
             try:
                 from money_order_extractor import MoneyOrderExtractor
                 extractor = MoneyOrderExtractor(CREDENTIALS_PATH)
-                result = extractor.extract_money_order(filepath)
-                logger.info("Money order extracted successfully")
-            except ImportError:
-                logger.warning("MoneyOrderExtractor module not found. Returning basic analysis.")
-                result = {
-                    'raw_text': raw_text[:500],
-                    'status': 'partial',
-                    'message': 'Money order extractor not available. Using vision API text extraction only.'
-                }
+                money_order_details = extractor.extract_money_order(filepath)
+                if money_order_details:
+                    result.update(money_order_details)
+                    result['extraction_method'] = 'mindee + money_order_extractor'
+                    logger.info("Money order extracted successfully with additional processing")
+            except Exception as e:
+                logger.warning(f"MoneyOrderExtractor failed: {e}. Using Mindee extraction only.")
 
             # Clean up temp file
             if os.path.exists(filepath):
@@ -634,101 +578,39 @@ def analyze_bank_statement():
         file.save(filepath)
 
         try:
-            # Handle PDF conversion if needed
-            image_filepaths = [filepath]
-            if filename.lower().endswith('.pdf'):
-                try:
-                    image_filepaths = convert_pdf_to_images(filepath)
-                    logger.info(f"PDF converted to {len(image_filepaths)} image(s)")
-                except Exception as e:
-                    logger.error(f"PDF conversion failed: {str(e)}")
-                    if os.path.exists(filepath):
-                        os.remove(filepath)
-                    raise
+            # Check if Mindee client is initialized
+            if mindee_client is None:
+                raise RuntimeError("Mindee client not initialized. Check API key.")
 
-            # Get raw text for document type detection from all pages
-            if vision_client is None:
-                raise RuntimeError("Vision API client not initialized. Check credentials.")
+            # Use Mindee to extract bank statement (handles PDFs natively)
+            logger.info(f"Extracting bank statement using Mindee from: {filename}")
+            result = mindee_client.extract_bank_statement(filepath)
 
-            raw_text = ""
-            for img_path in image_filepaths:
-                try:
-                    with open(img_path, 'rb') as file:
-                        content = file.read()
-
-                    image = vision.Image(content=content)
-                    response = vision_client.text_detection(image=image)
-                    logger.info(f"Using text_detection for: {os.path.basename(img_path)}")
-
-                    # Check for Vision API errors
-                    if response.error.message:
-                        logger.error(f"Vision API Error: {response.error.message}")
-                        raise Exception(f"Vision API Error: {response.error.message}")
-
-                    page_text = response.text_annotations[0].description if response.text_annotations else ""
-                    raw_text += page_text + "\n"
-                    logger.info(f"Extracted {len(page_text)} characters from page")
-
-                except Exception as e:
-                    logger.error(f"Vision API request failed: {str(e)}")
-                    raise
-
-            logger.info(f"Successfully extracted text from all pages, total length: {len(raw_text)}")
-
-            # Validate document type
-            detected_type = detect_document_type(raw_text)
-            if detected_type != 'bank_statement' and detected_type != 'unknown':
-                # Clean up all temp files
-                for img_path in image_filepaths:
-                    if os.path.exists(img_path):
-                        os.remove(img_path)
-                if filepath != image_filepaths[0] and os.path.exists(filepath):
-                    os.remove(filepath)
-                return jsonify({
-                    'success': False,
-                    'error': f'Wrong document type detected. This appears to be a {detected_type}, not a bank statement. Please upload a bank statement document.',
-                    'message': 'Document type mismatch'
-                }), 400
-
-            # Try to import and use bank statement extractor
-            try:
-                from bank_statement_extractor import BankStatementExtractor
-                extractor = BankStatementExtractor(CREDENTIALS_PATH)
-                # Use the first converted image for extraction (or original if not PDF)
-                extract_path = image_filepaths[0] if image_filepaths else filepath
-                result = extractor.extract_statement_details(extract_path)
-                logger.info("Bank statement extracted successfully")
-            except ImportError:
-                logger.warning("BankStatementExtractor module not found. Returning basic analysis.")
-                result = {
-                    'raw_text': raw_text[:500],
-                    'status': 'partial',
-                    'message': 'Bank statement extractor not available. Using vision API text extraction only.'
-                }
-
-            # Clean up all temp files (both original and converted)
-            for img_path in image_filepaths:
-                if os.path.exists(img_path):
-                    os.remove(img_path)
-            if filepath != image_filepaths[0] and os.path.exists(filepath):
+            # Clean up temp file
+            if os.path.exists(filepath):
                 os.remove(filepath)
 
-            return jsonify({
-                'success': True,
-                'data': result,
-                'message': 'Bank statement analyzed successfully'
-            })
+            if result['success']:
+                return jsonify({
+                    'success': True,
+                    'data': result['data'],
+                    'confidence': result.get('confidence'),
+                    'extraction_method': 'mindee',
+                    'message': 'Bank statement analyzed successfully'
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': result.get('error', 'Unknown error'),
+                    'extraction_method': 'mindee',
+                    'message': 'Failed to extract bank statement'
+                }), 400
 
         except Exception as e:
-            # Clean up on error - remove all temp files
-            try:
-                for img_path in image_filepaths:
-                    if os.path.exists(img_path):
-                        os.remove(img_path)
-                if filepath != image_filepaths[0] and os.path.exists(filepath):
-                    os.remove(filepath)
-            except:
-                pass
+            logger.error(f"Bank statement analysis error: {str(e)}")
+            # Clean up temp file
+            if os.path.exists(filepath):
+                os.remove(filepath)
             raise e
 
     except Exception as e:
@@ -847,7 +729,7 @@ def fraud_validate_pdf():
         file.save(filepath)
 
         try:
-            service = get_fraud_detection_service(vision_client=vision_client)
+            service = get_fraud_detection_service(mindee_extractor=mindee_client)
             pdf_validation = service.validate_statement_pdf(filepath)
 
             # Convert to dict
@@ -977,7 +859,7 @@ def fraud_batch_predict():
             import pandas as pd
 
             df = pd.read_csv(filepath)
-            service = get_fraud_detection_service(vision_client=vision_client)
+            service = get_fraud_detection_service(mindee_extractor=mindee_client)
             predictions_df = service.batch_predict(df)
 
             # Convert to JSON-serializable format

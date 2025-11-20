@@ -5,25 +5,7 @@ This module performs rule-based analysis on bank statement PDFs to detect
 signs of modification, forgery, or editing.
 """
 
-try:
-    import fitz  # PyMuPDF
-except ImportError:
-    fitz = None
-
-try:
-    import pdfplumber
-except ImportError:
-    pdfplumber = None
-
-try:
-    import PyPDF2
-except ImportError:
-    PyPDF2 = None
-
-try:
-    from google.cloud import vision
-except ImportError:
-    vision = None
+from mindee_extractor import MindeeExtractor
 
 import hashlib
 import re
@@ -79,13 +61,13 @@ class PDFStatementValidator:
         }
     }
 
-    def __init__(self, pdf_path: str, vision_client: Optional[object] = None):
+    def __init__(self, pdf_path: str, mindee_extractor: Optional[object] = None):
         """
         Initialize validator with PDF file.
 
         Args:
             pdf_path: Path to PDF file
-            vision_client: Optional Google Cloud Vision API client for OCR fallback
+            mindee_extractor: Optional MindeeExtractor client for OCR fallback
         """
         self.pdf_path = Path(pdf_path)
         if not self.pdf_path.exists():
@@ -97,7 +79,8 @@ class PDFStatementValidator:
         self.num_pages = 0
         self.metadata = None
         self.text_content = {}
-        self.vision_client = vision_client
+        self.mindee_extractor = mindee_extractor
+        self.mindee_used = False
         self.vision_used = False
         self.findings = {
             'suspicious_indicators': [],
@@ -107,186 +90,70 @@ class PDFStatementValidator:
         }
 
     def load_pdf(self) -> bool:
-        """Load and parse PDF file."""
-        # Try PyMuPDF first (best for both text and image-based PDFs)
-        if fitz:
-            try:
-                self.pdf_doc = fitz.open(str(self.pdf_path))
-                self.num_pages = len(self.pdf_doc)
-                logger.info(f"PDF loaded with PyMuPDF: {self.num_pages} pages")
-                return True
-            except Exception as e:
-                logger.warning(f"PyMuPDF failed: {e}, trying pdfplumber")
-                self.pdf_doc = None
-
-        # Try pdfplumber (better text extraction for some PDFs)
-        if pdfplumber:
-            try:
-                self.pdf_plumber = pdfplumber.open(str(self.pdf_path))
-                self.num_pages = len(self.pdf_plumber.pages)
-                logger.info(f"PDF loaded with pdfplumber: {self.num_pages} pages")
-                return True
-            except Exception as e:
-                logger.warning(f"pdfplumber failed: {e}, trying PyPDF2")
-                self.pdf_plumber = None
-
-        # Try PyPDF2 as fallback
-        if PyPDF2:
-            try:
-                with open(self.pdf_path, 'rb') as f:
-                    self.pdf_reader = PyPDF2.PdfReader(f)
-                    self.num_pages = len(self.pdf_reader.pages)
-                    self.metadata = self.pdf_reader.metadata
-
-                logger.info(f"PDF loaded with PyPDF2: {self.num_pages} pages")
-                return True
-            except Exception as e:
-                logger.warning(f"PyPDF2 failed: {e}")
-
-        # Fallback: Basic PDF reading using standard library
+        """Validate PDF file exists (Mindee will handle the actual parsing)."""
         try:
-            with open(self.pdf_path, 'rb') as f:
-                # Read raw PDF to count pages and extract text
-                raw_content = f.read()
-                # Count endobj markers as approximate page count
-                self.num_pages = raw_content.count(b'endobj')
-                if self.num_pages > 100:  # Likely not page count
-                    self.num_pages = 1  # Default to at least 1 page
+            if not self.pdf_path.exists():
+                logger.error(f"PDF file not found: {self.pdf_path}")
+                self.findings['suspicious_indicators'].append(f"PDF file not found")
+                return False
 
-            logger.info(f"PDF loaded with fallback method: {self.num_pages} pages")
+            # Get file size for metadata
+            file_size = self.pdf_path.stat().st_size
+            logger.info(f"PDF file validated: {self.pdf_path} ({file_size} bytes)")
+
+            # We'll assume 1 page as placeholder - Mindee will handle actual page count
+            self.num_pages = 1
             return True
         except Exception as e:
-            logger.error(f"Error loading PDF: {e}")
-            self.findings['suspicious_indicators'].append(f"Failed to load PDF: {e}")
+            logger.error(f"Error validating PDF: {e}")
+            self.findings['suspicious_indicators'].append(f"Failed to validate PDF: {e}")
             return False
 
     def extract_text(self) -> Dict[int, str]:
-        """Extract text from all pages using optimized strategy."""
-        # Strategy 1: Try PyMuPDF first for native PDFs (fastest)
-        if hasattr(self, 'pdf_doc') and self.pdf_doc:
-            try:
-                for page_num in range(len(self.pdf_doc)):
-                    page = self.pdf_doc[page_num]
-                    text = page.get_text()
-                    self.text_content[page_num] = text if text else ""
-                logger.info(f"Text extracted from {len(self.text_content)} pages using PyMuPDF")
+        """Extract text from PDF using Mindee API exclusively - no fallbacks."""
+        if not self.mindee_extractor:
+            raise RuntimeError("Mindee extractor is required and not available")
 
-                # If we got meaningful text, return it
-                if sum(len(text) for text in self.text_content.values()) > 100:
-                    return self.text_content
-                else:
-                    logger.warning("PyMuPDF extraction returned minimal text, trying Vision API for OCR")
-                    self.text_content = {}
-            except Exception as e:
-                logger.warning(f"PyMuPDF text extraction failed: {e}")
-                self.text_content = {}
+        logger.info("Extracting text using Mindee API (primary and only method)")
+        mindee_result = self._extract_text_with_mindee()
 
-        # Strategy 2: If native text extraction fails, use Vision API for OCR
-        if self.vision_client:
-            logger.info("Using Google Vision API for PDF OCR (scanned document detected)")
-            vision_result = self._extract_text_with_vision_direct()
-            if vision_result and sum(len(text) for text in vision_result.values()) > 100:
-                logger.info("Vision API OCR extraction successful")
-                return vision_result
-            else:
-                logger.warning("Vision API extraction returned minimal text, trying fallback methods")
+        if mindee_result and sum(len(text) for text in mindee_result.values()) > 0:
+            logger.info("Mindee API extraction successful")
+            return mindee_result
+        else:
+            raise RuntimeError("Mindee API extraction failed to return text")
 
-        # Fallback 1: Try pdfplumber
-        if pdfplumber and hasattr(self, 'pdf_plumber') and self.pdf_plumber:
-            try:
-                for page_num, page in enumerate(self.pdf_plumber.pages):
-                    text = page.extract_text()
-                    self.text_content[page_num] = text if text else ""
-                logger.info(f"Text extracted from {len(self.text_content)} pages using pdfplumber")
-                return self.text_content
-            except Exception as e:
-                logger.warning(f"pdfplumber text extraction failed: {e}")
-                self.text_content = {}
-
-        # Fallback 2: Try PyPDF2
-        if PyPDF2 and hasattr(self, 'pdf_reader') and self.pdf_reader:
-            try:
-                for page_num, page in enumerate(self.pdf_reader.pages):
-                    text = page.extract_text()
-                    self.text_content[page_num] = text if text else ""
-                logger.info(f"Text extracted from {len(self.text_content)} pages using PyPDF2")
-                return self.text_content
-            except Exception as e:
-                logger.warning(f"PyPDF2 text extraction failed: {e}")
-
-        # Fallback 3: Extract text from raw PDF content
-        try:
-            with open(self.pdf_path, 'rb') as f:
-                raw_content = f.read()
-                # Extract text between BT (begin text) and ET (end text) markers
-                import re as regex_mod
-                text_objects = regex_mod.findall(b'BT(.*?)ET', raw_content, regex_mod.DOTALL)
-
-                combined_text = ""
-                for obj in text_objects:
-                    # Extract strings from text objects (enclosed in parentheses or angle brackets)
-                    strings = regex_mod.findall(b'\\((.*?)\\)|<([0-9A-Fa-f]+)>', obj)
-                    for match in strings:
-                        if match[0]:
-                            try:
-                                combined_text += match[0].decode('latin-1', errors='ignore') + " "
-                            except:
-                                pass
-
-                if combined_text.strip():
-                    self.text_content[0] = combined_text
-                    logger.info("Text extracted from raw PDF content")
-
-            return self.text_content
-        except Exception as e:
-            logger.warning(f"Fallback text extraction failed: {e}")
-            return {}
-
-    def _extract_text_with_vision_direct(self) -> Dict[int, str]:
+    def _extract_text_with_mindee(self) -> Dict[int, str]:
         """
-        Extract text from PDF using Google Cloud Vision API by sending PDF directly.
-        More efficient than converting to images first.
+        Extract text from PDF using Mindee API.
+        Mindee handles PDF processing natively with superior OCR.
 
         Returns:
             Dict[int, str]: Extracted text by page number
         """
-        if not self.vision_client or not vision:
-            logger.warning("Vision client not available for OCR")
+        if not self.mindee_extractor or not MindeeExtractor:
+            logger.warning("Mindee extractor not available for OCR")
             return {}
 
         try:
-            logger.info("Using Google Cloud Vision API with direct PDF processing")
-            self.vision_used = True
+            logger.info("Using Mindee API with direct PDF processing")
+            self.mindee_used = True
 
-            # Send PDF directly to Vision API for better efficiency
-            with open(self.pdf_path, 'rb') as f:
-                content = f.read()
+            # Use Mindee's raw text extraction for scanned documents
+            result = self.mindee_extractor.extract_raw_text(str(self.pdf_path))
 
-            image = vision.Image(content=content)
-            # document_text_detection is optimized for structured documents and PDFs
-            response = self.vision_client.document_text_detection(image=image)
-
-            if response.error.message:
-                logger.error(f"Vision API error: {response.error.message}")
+            if result.get('success') and result.get('raw_text'):
+                full_text = result['raw_text']
+                self.text_content[0] = full_text if full_text else ""
+                logger.info(f"Mindee API extracted {len(full_text)} characters from PDF")
+                return self.text_content
+            else:
+                error = result.get('error', 'Unknown error')
+                logger.warning(f"Mindee API extraction returned no text: {error}")
                 return {}
 
-            # Extract full text
-            if response.full_text_annotation and response.full_text_annotation.text:
-                full_text = response.full_text_annotation.text
-                self.text_content[0] = full_text if full_text else ""
-                logger.info(f"Vision API extracted {len(full_text)} characters from PDF")
-                return self.text_content
-            elif response.text_annotations:
-                text = response.text_annotations[0].description
-                self.text_content[0] = text if text else ""
-                logger.info(f"Vision API extracted {len(text)} characters from PDF (fallback method)")
-                return self.text_content
-
-            logger.warning("Vision API returned no text from PDF")
-            return {}
-
         except Exception as e:
-            logger.error(f"Vision API direct PDF extraction failed: {e}")
+            logger.error(f"Mindee API direct PDF extraction failed: {e}")
             return {}
 
     def check_metadata(self) -> Dict[str, any]:
