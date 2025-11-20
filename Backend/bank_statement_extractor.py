@@ -1,6 +1,7 @@
 """
 Bank Statement Extractor for XFORIA DAD
-Extracts structured information from bank statement images
+Extracts structured information from bank statement images or PDFs
+Supports direct PDF processing without image conversion for efficiency
 """
 
 import re
@@ -9,18 +10,26 @@ from google.cloud import vision
 
 
 class BankStatementExtractor:
-    """Extract structured information from bank statement images."""
+    """Extract structured information from bank statement images or PDFs."""
 
     def __init__(self, credentials_path: str):
         self.client = vision.ImageAnnotatorClient.from_service_account_file(credentials_path)
 
     def extract_statement_details(self, image_path: str) -> Dict:
-        """Extract details from a bank statement image."""
-        with open(image_path, 'rb') as image_file:
-            content = image_file.read()
+        """Extract details from a bank statement image or PDF.
+
+        Args:
+            image_path: Path to image file (PNG, JPG) or PDF
+
+        Returns:
+            Dictionary with extracted statement details
+        """
+        with open(image_path, 'rb') as file:
+            content = file.read()
 
         image = vision.Image(content=content)
-        response = self.client.document_text_detection(image=image)
+        # Use text_detection which works better with both images and PDFs via raw bytes
+        response = self.client.text_detection(image=image)
 
         if response.error.message:
             raise Exception(f"Google Vision API Error: {response.error.message}")

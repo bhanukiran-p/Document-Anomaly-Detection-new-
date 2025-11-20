@@ -11,6 +11,7 @@ import logging
 from werkzeug.utils import secure_filename
 import importlib.util
 import re
+import base64
 import fitz
 from google.cloud import vision
 from auth import login_user, register_user, token_required
@@ -103,6 +104,53 @@ else:
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def convert_pdf_to_images(pdf_filepath):
+    """
+    Convert all pages of a PDF to PNG images for Vision API processing.
+    Returns list of converted PNG file paths.
+    For single-page documents, returns a list with one item.
+    """
+    try:
+        pdf_document = fitz.open(pdf_filepath)
+        num_pages = len(pdf_document)
+        logger.info(f"PDF has {num_pages} page(s)")
+
+        png_filepaths = []
+
+        # Convert all pages to images
+        for page_num in range(num_pages):
+            try:
+                page = pdf_document[page_num]
+                # Use 2x zoom for better quality
+                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+
+                # Save as PNG with page number in filename
+                base_filepath = pdf_filepath.replace('.pdf', '')
+                if num_pages > 1:
+                    png_filepath = f"{base_filepath}_page{page_num + 1}.png"
+                else:
+                    png_filepath = f"{base_filepath}.png"
+
+                pix.save(png_filepath)
+                png_filepaths.append(png_filepath)
+                logger.info(f"Converted page {page_num + 1} to: {png_filepath}")
+
+            except Exception as e:
+                logger.error(f"Failed to convert page {page_num + 1}: {str(e)}")
+                continue
+
+        pdf_document.close()
+
+        if not png_filepaths:
+            raise Exception("No pages were successfully converted from PDF")
+
+        logger.info(f"Successfully converted {len(png_filepaths)} page(s) from PDF")
+        return png_filepaths
+
+    except Exception as e:
+        logger.error(f"PDF conversion failed: {str(e)}")
+        raise
 
 def detect_document_type(text):
     """
@@ -301,38 +349,48 @@ def analyze_check():
         
         try:
             # Handle PDF conversion if needed
+            image_filepaths = [filepath]
             if filename.lower().endswith('.pdf'):
                 try:
-                    pdf_document = fitz.open(filepath)
-                    page = pdf_document[0]
-                    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-                    img_bytes = pix.tobytes("png")
-                    pdf_document.close()
-
-                    # Save as PNG
-                    new_filepath = filepath.replace('.pdf', '.png')
-                    with open(new_filepath, 'wb') as f:
-                        f.write(img_bytes)
-                    os.remove(filepath)
-                    filepath = new_filepath
-                    logger.info(f"Successfully converted PDF to PNG: {new_filepath}")
+                    image_filepaths = convert_pdf_to_images(filepath)
+                    logger.info(f"PDF converted to {len(image_filepaths)} image(s)")
                 except Exception as e:
-                    logger.error(f"PDF conversion failed: {e}")
+                    logger.error(f"PDF conversion failed: {str(e)}")
+                    if os.path.exists(filepath):
+                        os.remove(filepath)
                     raise
 
-            # Initialize extractor and get text for validation
+            # Initialize extractor and get text for document type detection
             extractor = ProductionCheckExtractor(CREDENTIALS_PATH)
 
-            # Get raw text for document type detection
+            # Get raw text for document type detection from all pages
             if vision_client is None:
                 raise RuntimeError("Vision API client not initialized. Check credentials.")
 
-            with open(filepath, 'rb') as image_file:
-                content = image_file.read()
-            image = vision.Image(content=content)
-            response = vision_client.text_detection(image=image)
-            raw_text = response.text_annotations[0].description if response.text_annotations else ""
-            logger.info(f"Detected document type: check")
+            raw_text = ""
+            for img_path in image_filepaths:
+                try:
+                    with open(img_path, 'rb') as file:
+                        content = file.read()
+
+                    image = vision.Image(content=content)
+                    response = vision_client.text_detection(image=image)
+                    logger.info(f"Using text_detection for: {os.path.basename(img_path)}")
+
+                    # Check for Vision API errors
+                    if response.error.message:
+                        logger.error(f"Vision API Error: {response.error.message}")
+                        raise Exception(f"Vision API Error: {response.error.message}")
+
+                    page_text = response.text_annotations[0].description if response.text_annotations else ""
+                    raw_text += page_text + "\n"
+                    logger.info(f"Extracted {len(page_text)} characters from page")
+
+                except Exception as e:
+                    logger.error(f"Vision API request failed: {str(e)}")
+                    raise
+
+            logger.info(f"Successfully extracted text from all pages, total length: {len(raw_text)}")
             
             # Validate document type
             detected_type = detect_document_type(raw_text)
@@ -466,34 +524,45 @@ def analyze_money_order():
 
         try:
             # Handle PDF conversion if needed
+            image_filepaths = [filepath]
             if filename.lower().endswith('.pdf'):
                 try:
-                    pdf_document = fitz.open(filepath)
-                    page = pdf_document[0]
-                    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-                    img_bytes = pix.tobytes("png")
-                    pdf_document.close()
-
-                    # Save as PNG
-                    new_filepath = filepath.replace('.pdf', '.png')
-                    with open(new_filepath, 'wb') as f:
-                        f.write(img_bytes)
-                    os.remove(filepath)
-                    filepath = new_filepath
-                    logger.info(f"Successfully converted PDF to PNG: {new_filepath}")
+                    image_filepaths = convert_pdf_to_images(filepath)
+                    logger.info(f"PDF converted to {len(image_filepaths)} image(s)")
                 except Exception as e:
-                    logger.error(f"PDF conversion failed: {e}")
+                    logger.error(f"PDF conversion failed: {str(e)}")
+                    if os.path.exists(filepath):
+                        os.remove(filepath)
                     raise
 
-            # Get raw text for document type detection
+            # Get raw text for document type detection from all pages
             if vision_client is None:
                 raise RuntimeError("Vision API client not initialized. Check credentials.")
 
-            with open(filepath, 'rb') as image_file:
-                content = image_file.read()
-            image = vision.Image(content=content)
-            response = vision_client.text_detection(image=image)
-            raw_text = response.text_annotations[0].description if response.text_annotations else ""
+            raw_text = ""
+            for img_path in image_filepaths:
+                try:
+                    with open(img_path, 'rb') as file:
+                        content = file.read()
+
+                    image = vision.Image(content=content)
+                    response = vision_client.text_detection(image=image)
+                    logger.info(f"Using text_detection for: {os.path.basename(img_path)}")
+
+                    # Check for Vision API errors
+                    if response.error.message:
+                        logger.error(f"Vision API Error: {response.error.message}")
+                        raise Exception(f"Vision API Error: {response.error.message}")
+
+                    page_text = response.text_annotations[0].description if response.text_annotations else ""
+                    raw_text += page_text + "\n"
+                    logger.info(f"Extracted {len(page_text)} characters from page")
+
+                except Exception as e:
+                    logger.error(f"Vision API request failed: {str(e)}")
+                    raise
+
+            logger.info(f"Successfully extracted text from all pages, total length: {len(raw_text)}")
 
             # Validate document type
             detected_type = detect_document_type(raw_text)
@@ -566,40 +635,54 @@ def analyze_bank_statement():
 
         try:
             # Handle PDF conversion if needed
+            image_filepaths = [filepath]
             if filename.lower().endswith('.pdf'):
                 try:
-                    pdf_document = fitz.open(filepath)
-                    page = pdf_document[0]
-                    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-                    img_bytes = pix.tobytes("png")
-                    pdf_document.close()
-
-                    # Save as PNG
-                    new_filepath = filepath.replace('.pdf', '.png')
-                    with open(new_filepath, 'wb') as f:
-                        f.write(img_bytes)
-                    os.remove(filepath)
-                    filepath = new_filepath
-                    logger.info(f"Successfully converted PDF to PNG: {new_filepath}")
+                    image_filepaths = convert_pdf_to_images(filepath)
+                    logger.info(f"PDF converted to {len(image_filepaths)} image(s)")
                 except Exception as e:
-                    logger.error(f"PDF conversion failed: {e}")
+                    logger.error(f"PDF conversion failed: {str(e)}")
+                    if os.path.exists(filepath):
+                        os.remove(filepath)
                     raise
 
-            # Get raw text for document type detection
+            # Get raw text for document type detection from all pages
             if vision_client is None:
                 raise RuntimeError("Vision API client not initialized. Check credentials.")
 
-            with open(filepath, 'rb') as image_file:
-                content = image_file.read()
-            image = vision.Image(content=content)
-            response = vision_client.text_detection(image=image)
-            raw_text = response.text_annotations[0].description if response.text_annotations else ""
+            raw_text = ""
+            for img_path in image_filepaths:
+                try:
+                    with open(img_path, 'rb') as file:
+                        content = file.read()
+
+                    image = vision.Image(content=content)
+                    response = vision_client.text_detection(image=image)
+                    logger.info(f"Using text_detection for: {os.path.basename(img_path)}")
+
+                    # Check for Vision API errors
+                    if response.error.message:
+                        logger.error(f"Vision API Error: {response.error.message}")
+                        raise Exception(f"Vision API Error: {response.error.message}")
+
+                    page_text = response.text_annotations[0].description if response.text_annotations else ""
+                    raw_text += page_text + "\n"
+                    logger.info(f"Extracted {len(page_text)} characters from page")
+
+                except Exception as e:
+                    logger.error(f"Vision API request failed: {str(e)}")
+                    raise
+
+            logger.info(f"Successfully extracted text from all pages, total length: {len(raw_text)}")
 
             # Validate document type
             detected_type = detect_document_type(raw_text)
             if detected_type != 'bank_statement' and detected_type != 'unknown':
-                # Clean up
-                if os.path.exists(filepath):
+                # Clean up all temp files
+                for img_path in image_filepaths:
+                    if os.path.exists(img_path):
+                        os.remove(img_path)
+                if filepath != image_filepaths[0] and os.path.exists(filepath):
                     os.remove(filepath)
                 return jsonify({
                     'success': False,
@@ -611,7 +694,9 @@ def analyze_bank_statement():
             try:
                 from bank_statement_extractor import BankStatementExtractor
                 extractor = BankStatementExtractor(CREDENTIALS_PATH)
-                result = extractor.extract_statement_details(filepath)
+                # Use the first converted image for extraction (or original if not PDF)
+                extract_path = image_filepaths[0] if image_filepaths else filepath
+                result = extractor.extract_statement_details(extract_path)
                 logger.info("Bank statement extracted successfully")
             except ImportError:
                 logger.warning("BankStatementExtractor module not found. Returning basic analysis.")
@@ -621,8 +706,11 @@ def analyze_bank_statement():
                     'message': 'Bank statement extractor not available. Using vision API text extraction only.'
                 }
 
-            # Clean up temp file
-            if os.path.exists(filepath):
+            # Clean up all temp files (both original and converted)
+            for img_path in image_filepaths:
+                if os.path.exists(img_path):
+                    os.remove(img_path)
+            if filepath != image_filepaths[0] and os.path.exists(filepath):
                 os.remove(filepath)
 
             return jsonify({
@@ -632,9 +720,15 @@ def analyze_bank_statement():
             })
 
         except Exception as e:
-            # Clean up on error
-            if os.path.exists(filepath):
-                os.remove(filepath)
+            # Clean up on error - remove all temp files
+            try:
+                for img_path in image_filepaths:
+                    if os.path.exists(img_path):
+                        os.remove(img_path)
+                if filepath != image_filepaths[0] and os.path.exists(filepath):
+                    os.remove(filepath)
+            except:
+                pass
             raise e
 
     except Exception as e:

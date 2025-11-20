@@ -161,20 +161,8 @@ class PDFStatementValidator:
             return False
 
     def extract_text(self) -> Dict[int, str]:
-        """Extract text from all pages."""
-        # TESTING MODE: Try Google Vision first for better accuracy
-        if self.vision_client:
-            logger.info("TESTING MODE: Attempting Google Vision API extraction as PRIMARY method")
-            vision_result = self._extract_text_with_vision()
-            if vision_result and sum(len(text) for text in vision_result.values()) > 100:
-                logger.info("Vision API extraction successful, returning Vision results")
-                return vision_result
-            elif vision_result:
-                logger.warning(f"Vision API extraction returned minimal text ({sum(len(text) for text in vision_result.values())} chars), trying PyMuPDF fallback")
-            else:
-                logger.warning("Vision API extraction returned no results, trying PyMuPDF fallback")
-
-        # Fallback 1: Try PyMuPDF (best for native PDFs)
+        """Extract text from all pages using optimized strategy."""
+        # Strategy 1: Try PyMuPDF first for native PDFs (fastest)
         if hasattr(self, 'pdf_doc') and self.pdf_doc:
             try:
                 for page_num in range(len(self.pdf_doc)):
@@ -182,13 +170,29 @@ class PDFStatementValidator:
                     text = page.get_text()
                     self.text_content[page_num] = text if text else ""
                 logger.info(f"Text extracted from {len(self.text_content)} pages using PyMuPDF")
-                return self.text_content
+
+                # If we got meaningful text, return it
+                if sum(len(text) for text in self.text_content.values()) > 100:
+                    return self.text_content
+                else:
+                    logger.warning("PyMuPDF extraction returned minimal text, trying Vision API for OCR")
+                    self.text_content = {}
             except Exception as e:
                 logger.warning(f"PyMuPDF text extraction failed: {e}")
                 self.text_content = {}
 
-        # Fallback 2: Try pdfplumber
-        if hasattr(self, 'pdf_plumber') and self.pdf_plumber:
+        # Strategy 2: If native text extraction fails, use Vision API for OCR
+        if self.vision_client:
+            logger.info("Using Google Vision API for PDF OCR (scanned document detected)")
+            vision_result = self._extract_text_with_vision_direct()
+            if vision_result and sum(len(text) for text in vision_result.values()) > 100:
+                logger.info("Vision API OCR extraction successful")
+                return vision_result
+            else:
+                logger.warning("Vision API extraction returned minimal text, trying fallback methods")
+
+        # Fallback 1: Try pdfplumber
+        if pdfplumber and hasattr(self, 'pdf_plumber') and self.pdf_plumber:
             try:
                 for page_num, page in enumerate(self.pdf_plumber.pages):
                     text = page.extract_text()
@@ -199,8 +203,8 @@ class PDFStatementValidator:
                 logger.warning(f"pdfplumber text extraction failed: {e}")
                 self.text_content = {}
 
-        # Fallback 3: Try PyPDF2
-        if hasattr(self, 'pdf_reader') and self.pdf_reader:
+        # Fallback 2: Try PyPDF2
+        if PyPDF2 and hasattr(self, 'pdf_reader') and self.pdf_reader:
             try:
                 for page_num, page in enumerate(self.pdf_reader.pages):
                     text = page.extract_text()
@@ -210,7 +214,7 @@ class PDFStatementValidator:
             except Exception as e:
                 logger.warning(f"PyPDF2 text extraction failed: {e}")
 
-        # Fallback 4: Extract text from raw PDF content
+        # Fallback 3: Extract text from raw PDF content
         try:
             with open(self.pdf_path, 'rb') as f:
                 raw_content = f.read()
@@ -233,90 +237,56 @@ class PDFStatementValidator:
                     self.text_content[0] = combined_text
                     logger.info("Text extracted from raw PDF content")
 
-            # Check if we got meaningful text
-            total_text_length = sum(len(text) for text in self.text_content.values())
-
             return self.text_content
         except Exception as e:
             logger.warning(f"Fallback text extraction failed: {e}")
             return {}
 
-    def _extract_text_with_vision(self) -> Dict[int, str]:
+    def _extract_text_with_vision_direct(self) -> Dict[int, str]:
         """
-        Extract text from PDF using Google Cloud Vision API OCR.
-        This is used as a fallback for scanned PDFs or when standard extraction fails.
-        NOW PROCESSES ALL PAGES (with reasonable limits for cost control).
+        Extract text from PDF using Google Cloud Vision API by sending PDF directly.
+        More efficient than converting to images first.
 
         Returns:
             Dict[int, str]: Extracted text by page number
         """
         if not self.vision_client or not vision:
-            logger.warning("Vision client not available for OCR fallback")
+            logger.warning("Vision client not available for OCR")
             return {}
 
         try:
-            logger.info("Using Google Cloud Vision API for text extraction (OCR fallback)")
+            logger.info("Using Google Cloud Vision API with direct PDF processing")
             self.vision_used = True
 
-            # Try to convert PDF to images if we have PyMuPDF
-            if hasattr(self, 'pdf_doc') and self.pdf_doc:
-                try:
-                    # Process ALL pages (max 100 for cost control)
-                    page_limit = min(len(self.pdf_doc), 100)
-                    logger.info(f"Processing {page_limit} pages with Vision API")
+            # Send PDF directly to Vision API for better efficiency
+            with open(self.pdf_path, 'rb') as f:
+                content = f.read()
 
-                    for page_num in range(page_limit):
-                        try:
-                            page = self.pdf_doc[page_num]
-                            pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-                            image_bytes = pix.tobytes("png")
+            image = vision.Image(content=content)
+            # document_text_detection is optimized for structured documents and PDFs
+            response = self.vision_client.document_text_detection(image=image)
 
-                            image = vision.Image(content=image_bytes)
-                            response = self.vision_client.text_detection(image=image)
+            if response.error.message:
+                logger.error(f"Vision API error: {response.error.message}")
+                return {}
 
-                            if response.text_annotations:
-                                text = response.text_annotations[0].description
-                                self.text_content[page_num] = text if text else ""
-                                logger.info(f"Extracted text from page {page_num} using Vision API")
+            # Extract full text
+            if response.full_text_annotation and response.full_text_annotation.text:
+                full_text = response.full_text_annotation.text
+                self.text_content[0] = full_text if full_text else ""
+                logger.info(f"Vision API extracted {len(full_text)} characters from PDF")
+                return self.text_content
+            elif response.text_annotations:
+                text = response.text_annotations[0].description
+                self.text_content[0] = text if text else ""
+                logger.info(f"Vision API extracted {len(text)} characters from PDF (fallback method)")
+                return self.text_content
 
-                        except Exception as e:
-                            logger.warning(f"Vision API extraction failed for page {page_num}: {e}")
-                            continue
-
-                    if self.text_content:
-                        logger.info(f"Vision API extracted text from {len(self.text_content)} pages")
-                        return self.text_content
-
-                except Exception as e:
-                    logger.warning(f"Failed to extract pages for Vision API: {e}")
-
-            # Fallback: Try to read the PDF file directly
-            try:
-                with open(self.pdf_path, 'rb') as f:
-                    content = f.read()
-
-                image = vision.Image(content=content)
-                response = self.vision_client.text_detection(image=image)
-
-                if response.text_annotations:
-                    text = response.text_annotations[0].description
-                    self.text_content[0] = text if text else ""
-                    logger.info("Vision API extracted text from PDF (treating as single image)")
-                    return self.text_content
-
-            except Exception as e:
-                logger.error(f"Vision API fallback extraction failed: {e}")
-
-            if not self.text_content:
-                logger.error("Vision API could not extract any text from the PDF")
-                self.findings['warnings'].append(
-                    "PDF appears to be a scanned image, but Vision API extraction produced no results"
-                )
-
-            return self.text_content
+            logger.warning("Vision API returned no text from PDF")
+            return {}
 
         except Exception as e:
-            logger.error(f"Unexpected error during Vision API extraction: {e}")
+            logger.error(f"Vision API direct PDF extraction failed: {e}")
             return {}
 
     def check_metadata(self) -> Dict[str, any]:
