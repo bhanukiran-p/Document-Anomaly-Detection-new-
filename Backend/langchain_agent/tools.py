@@ -7,6 +7,7 @@ import os
 import pandas as pd
 from typing import Dict, List, Optional
 from langchain.tools import tool
+from .result_storage import ResultStorage
 
 
 class DataAccessTools:
@@ -17,7 +18,9 @@ class DataAccessTools:
     def __init__(self,
                  ml_scores_path: str,
                  customer_history_path: str,
-                 fraud_cases_path: str):
+                 fraud_cases_path: str,
+                 training_data_path: str = 'ml_models/training_data.csv',
+                 results_storage_dir: str = 'analysis_results'):
         """
         Initialize data access tools
 
@@ -25,15 +28,22 @@ class DataAccessTools:
             ml_scores_path: Path to ML scores CSV
             customer_history_path: Path to customer history CSV
             fraud_cases_path: Path to fraud cases CSV
+            training_data_path: Path to training dataset CSV
+            results_storage_dir: Directory for stored analysis results
         """
         self.ml_scores_path = ml_scores_path
         self.customer_history_path = customer_history_path
         self.fraud_cases_path = fraud_cases_path
+        self.training_data_path = training_data_path
 
         # Load CSV files (if they exist)
         self.ml_scores_df = self._load_csv(ml_scores_path)
         self.customer_history_df = self._load_csv(customer_history_path)
         self.fraud_cases_df = self._load_csv(fraud_cases_path)
+        self.training_data_df = self._load_csv(training_data_path)
+
+        # Initialize result storage
+        self.result_storage = ResultStorage(results_storage_dir)
 
     def _load_csv(self, path: str) -> Optional[pd.DataFrame]:
         """Load CSV file if it exists"""
@@ -201,6 +211,179 @@ Recent Transactions:
             summary += f"   Description: {case.get('description', 'N/A')}\n\n"
 
         return summary
+
+    def get_training_dataset_patterns(self) -> Dict:
+        """
+        Analyze training dataset for fraud patterns and statistics
+
+        Returns:
+            Dictionary with pattern insights
+        """
+        if self.training_data_df is None or self.training_data_df.empty:
+            return {
+                'available': False,
+                'message': 'Training dataset not available'
+            }
+
+        df = self.training_data_df
+
+        # Total counts
+        total_samples = len(df)
+        fraud_samples = len(df[df['is_fraud'] == 1])
+        legit_samples = len(df[df['is_fraud'] == 0])
+
+        # Fraud type distribution
+        fraud_type_counts = df[df['is_fraud'] == 1]['fraud_type'].value_counts().to_dict()
+
+        # Calculate pattern frequencies (% of fraud cases)
+        patterns = {}
+        if fraud_samples > 0:
+            for fraud_type, count in fraud_type_counts.items():
+                patterns[fraud_type] = {
+                    'count': int(count),
+                    'percentage': round((count / fraud_samples) * 100, 1)
+                }
+
+        return {
+            'available': True,
+            'total_samples': int(total_samples),
+            'fraud_samples': int(fraud_samples),
+            'legitimate_samples': int(legit_samples),
+            'fraud_rate': round((fraud_samples / total_samples) * 100, 1),
+            'fraud_patterns': patterns
+        }
+
+    def format_training_patterns_summary(self) -> str:
+        """
+        Format training dataset patterns as readable string
+
+        Returns:
+            Formatted string summary
+        """
+        patterns = self.get_training_dataset_patterns()
+
+        if not patterns['available']:
+            return "Training dataset patterns not available"
+
+        summary = f"""Training Dataset Statistics ({patterns['total_samples']} samples):
+- Fraud Cases: {patterns['fraud_samples']} ({patterns['fraud_rate']}%)
+- Legitimate Cases: {patterns['legitimate_samples']} ({100 - patterns['fraud_rate']:.1f}%)
+
+Fraud Pattern Distribution:
+"""
+        for fraud_type, stats in sorted(patterns['fraud_patterns'].items(),
+                                       key=lambda x: x[1]['percentage'],
+                                       reverse=True):
+            summary += f"  • {fraud_type.replace('_', ' ').title()}: {stats['count']} cases ({stats['percentage']}%)\n"
+
+        return summary
+
+    def search_stored_analyses(self, issuer: str = None, amount_range: tuple = None, limit: int = 5) -> List[Dict]:
+        """
+        Search stored analysis results for similar past cases
+
+        Args:
+            issuer: Issuer name to filter by (optional)
+            amount_range: (min, max) amount range (optional)
+            limit: Maximum number of results
+
+        Returns:
+            List of similar past analyses
+        """
+        if amount_range:
+            # Search by amount range
+            min_amt, max_amt = amount_range
+            results = self.result_storage.search_by_amount_range(min_amt, max_amt, limit=limit * 2)
+
+            # Further filter by issuer if provided
+            if issuer:
+                filtered = []
+                for result in results:
+                    extracted_issuer = result.get('extracted_data', {}).get('issuer', '')
+                    normalized_issuer = result.get('normalized_data', {}).get('issuer_name', '')
+                    if issuer.lower() in extracted_issuer.lower() or issuer.lower() in normalized_issuer.lower():
+                        filtered.append(result)
+                results = filtered[:limit]
+            else:
+                results = results[:limit]
+        elif issuer:
+            # Search by issuer only
+            results = self.result_storage.search_by_issuer(issuer, limit=limit)
+        else:
+            # Get recent results
+            results = self.result_storage.get_recent_results(limit=limit)
+
+        return results
+
+    def format_past_analyses_summary(self, past_analyses: List[Dict]) -> str:
+        """
+        Format past analysis results as readable string
+
+        Args:
+            past_analyses: List of past analysis dictionaries
+
+        Returns:
+            Formatted string summary
+        """
+        if not past_analyses:
+            return "No similar past analyses found"
+
+        summary = f"Found {len(past_analyses)} similar past analysis case(s):\n\n"
+
+        for i, analysis in enumerate(past_analyses, 1):
+            # Extract key fields
+            ml_analysis = analysis.get('ml_analysis', {})
+            ai_analysis = analysis.get('ai_analysis', {})
+            extracted_data = analysis.get('extracted_data', {})
+
+            fraud_score = ml_analysis.get('fraud_risk_score', 0)
+            risk_level = ml_analysis.get('risk_level', 'UNKNOWN')
+            recommendation = ai_analysis.get('recommendation', 'N/A')
+            issuer = extracted_data.get('issuer', 'N/A')
+            amount = extracted_data.get('amount', 'N/A')
+
+            summary += f"{i}. Issuer: {issuer} | Amount: {amount}\n"
+            summary += f"   Risk: {fraud_score:.1%} ({risk_level}) | Recommendation: {recommendation}\n"
+
+            # Include key indicators if available
+            indicators = ai_analysis.get('key_indicators', [])
+            if indicators:
+                summary += f"   Indicators: {', '.join(indicators[:3])}\n"
+
+            summary += "\n"
+
+        return summary
+
+    def analyze_fraud_pattern_frequency(self, fraud_type: str) -> Dict:
+        """
+        Analyze frequency of specific fraud pattern in training dataset
+
+        Args:
+            fraud_type: Type of fraud to analyze
+
+        Returns:
+            Dictionary with frequency statistics
+        """
+        if self.training_data_df is None or self.training_data_df.empty:
+            return {'available': False, 'message': 'Training data not available'}
+
+        df = self.training_data_df
+
+        # Count fraud cases with this pattern
+        fraud_cases = df[df['is_fraud'] == 1]
+        total_fraud = len(fraud_cases)
+        pattern_count = len(fraud_cases[fraud_cases['fraud_type'] == fraud_type])
+
+        if total_fraud == 0:
+            return {'available': False, 'message': 'No fraud cases in training data'}
+
+        return {
+            'available': True,
+            'fraud_type': fraud_type,
+            'occurrences': int(pattern_count),
+            'percentage': round((pattern_count / total_fraud) * 100, 1),
+            'total_fraud_cases': int(total_fraud)
+        }
 
 
 # Create LangChain tool functions

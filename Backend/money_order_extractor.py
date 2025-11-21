@@ -7,6 +7,7 @@ import os
 import io
 import re
 from typing import Dict, Optional
+from datetime import datetime
 from google.cloud import vision
 from google.oauth2 import service_account
 
@@ -15,10 +16,19 @@ try:
     from ml_models.fraud_detector import MoneyOrderFraudDetector
     from langchain_agent.fraud_analysis_agent import FraudAnalysisAgent
     from langchain_agent.tools import DataAccessTools
+    from langchain_agent.result_storage import save_analysis_result
     ML_AVAILABLE = True
 except ImportError as e:
     print(f"Warning: ML models or AI agent not available: {e}")
     ML_AVAILABLE = False
+
+# Import normalization module
+try:
+    from normalization import NormalizerFactory
+    NORMALIZATION_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Normalization module not available: {e}")
+    NORMALIZATION_AVAILABLE = False
 
 
 class MoneyOrderExtractor:
@@ -46,12 +56,10 @@ class MoneyOrderExtractor:
 
         # Initialize ML fraud detector and AI agent
         if ML_AVAILABLE:
-            # Initialize ML fraud detector (using mock predictions for now)
-            model_path = os.getenv('ML_MODEL_PATH', 'ml_models/trained_model.pkl')
-            use_mock = os.getenv('USE_MOCK_ML_SCORES', 'true').lower() == 'true'
+            # Initialize ML fraud detector with trained models
+            model_dir = os.getenv('ML_MODEL_DIR', 'ml_models')
             self.fraud_detector = MoneyOrderFraudDetector(
-                model_path=model_path,
-                use_mock=use_mock
+                model_dir=model_dir
             )
 
             # Initialize data access tools for LangChain agent
@@ -120,7 +128,7 @@ class MoneyOrderExtractor:
                 'extracted_data': {}
             }
 
-        # Extract money order fields
+        # Extract money order fields (OCR - issuer-specific)
         extracted_data = {
             'issuer': self._extract_issuer(text),
             'serial_number': self._extract_serial_number(text),
@@ -134,20 +142,40 @@ class MoneyOrderExtractor:
             'signature': self._extract_signature(text),
         }
 
+        # Normalize data to standardized schema
+        normalized_data = None
+        if NORMALIZATION_AVAILABLE and extracted_data.get('issuer'):
+            normalizer = NormalizerFactory.get_normalizer(extracted_data['issuer'])
+            if normalizer:
+                normalized_data = normalizer.normalize(extracted_data)
+                print(f"Data normalized using {normalizer}")
+            else:
+                print(f"No normalizer found for issuer: {extracted_data['issuer']}")
+                # Fall back to raw extracted_data for unsupported issuers
+
+        # Use normalized data for ML if available, otherwise use raw extracted_data
+        data_for_ml = normalized_data.to_dict() if normalized_data else extracted_data
+
         # Perform anomaly detection with ML and AI
-        anomalies, ml_analysis, ai_analysis = self._detect_anomalies(extracted_data, text)
+        anomalies, ml_analysis, ai_analysis = self._detect_anomalies(data_for_ml, text)
 
         # Calculate confidence score (OCR extraction confidence)
         confidence = self._calculate_confidence(extracted_data)
 
-        # Build response with ML and AI analysis
+        # Build complete response with all analysis data
         response = {
             'status': 'success',
-            'extracted_data': extracted_data,
+            'extracted_data': extracted_data,      # Raw OCR extraction (issuer-specific)
             'anomalies': anomalies,
             'confidence_score': confidence,
-            'raw_text': text
+            'raw_text': text,
+            'timestamp': datetime.now().isoformat()
         }
+
+        # Add normalized data if available
+        if normalized_data:
+            response['normalized_data'] = normalized_data.to_dict()  # Standardized schema
+            response['normalization_completeness'] = normalized_data.get_completeness_score()
 
         # Add ML analysis if available
         if ml_analysis:
@@ -156,6 +184,22 @@ class MoneyOrderExtractor:
         # Add AI analysis if available
         if ai_analysis:
             response['ai_analysis'] = ai_analysis
+
+        # Save complete analysis to JSON file (if ML/AI available)
+        analysis_id = None
+        if ML_AVAILABLE and (ml_analysis or ai_analysis):
+            try:
+                serial_number = extracted_data.get('serial_number', 'unknown')
+                analysis_id = save_analysis_result(
+                    response,
+                    serial_number=serial_number,
+                    storage_dir='analysis_results'
+                )
+                if analysis_id:
+                    response['analysis_id'] = analysis_id
+                    print(f"✅ Complete analysis saved with ID: {analysis_id}")
+            except Exception as e:
+                print(f"⚠️  Error saving analysis result: {e}")
 
         return response
 
@@ -275,15 +319,49 @@ class MoneyOrderExtractor:
         patterns = [
             r'DATE[:\s]*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})',
             r'(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})',
+            # Add full month name formats
+            r'DATE[:\s]*((?:JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST|SEPTEMBER|OCTOBER|NOVEMBER|DECEMBER)\s+\d{1,2},?\s+\d{4})',
+            r'((?:JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST|SEPTEMBER|OCTOBER|NOVEMBER|DECEMBER)\s+\d{1,2},?\s+\d{4})',
+            # Keep abbreviated month names
             r'((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4})',
         ]
 
         for pattern in patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
-                return match.group(1).strip()
+                date_str = match.group(1).strip()
+                # Normalize month names to standard format for consistency
+                date_str = self._normalize_date_format(date_str)
+                return date_str
 
         return None
+
+    def _normalize_date_format(self, date_str: str) -> str:
+        """Normalize date string to MM/DD/YYYY format"""
+        if not date_str:
+            return date_str
+        
+        # Month name mapping
+        month_map = {
+            'JANUARY': '01', 'FEBRUARY': '02', 'MARCH': '03', 'APRIL': '04',
+            'MAY': '05', 'JUNE': '06', 'JULY': '07', 'AUGUST': '08',
+            'SEPTEMBER': '09', 'OCTOBER': '10', 'NOVEMBER': '11', 'DECEMBER': '12',
+            'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04',
+            'MAY': '05', 'JUN': '06', 'JUL': '07', 'AUG': '08',
+            'SEP': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12'
+        }
+        
+        # Try to parse month name format
+        for month_name, month_num in month_map.items():
+            pattern = rf'({month_name})\s+(\d{{1,2}}),?\s+(\d{{4}})'
+            match = re.search(pattern, date_str, re.IGNORECASE)
+            if match:
+                day = match.group(2).zfill(2)
+                year = match.group(3)
+                return f'{month_num}/{day}/{year}'
+        
+        # If already in numeric format, return as is
+        return date_str
 
     def _extract_location(self, text: str) -> Optional[str]:
         """Extract location/office where money order was purchased"""

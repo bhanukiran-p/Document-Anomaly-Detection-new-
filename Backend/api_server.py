@@ -3,7 +3,7 @@ Flask API Server for XFORIA DAD
 Handles Check, Paystub, Money Order, and Bank Statement Analysis
 """
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import os
 import sys
@@ -438,9 +438,29 @@ def analyze_money_order():
             if os.path.exists(filepath):
                 os.remove(filepath)
 
+            # Extract simplified response (only 3 fields)
+            simplified_data = {}
+            analysis_id = result.get('analysis_id')
+
+            # Check if we have ML and AI analysis
+            ml_analysis = result.get('ml_analysis', {})
+            ai_analysis = result.get('ai_analysis', {})
+
+            if ml_analysis and ai_analysis:
+                # Return simplified response
+                simplified_data = {
+                    'fraud_risk_score': ml_analysis.get('fraud_risk_score', 0),
+                    'model_confidence': ml_analysis.get('model_confidence', 0),
+                    'ai_recommendation': ai_analysis.get('recommendation', 'UNKNOWN')
+                }
+            else:
+                # Fallback if ML/AI not available - return basic result
+                simplified_data = result
+
             return jsonify({
                 'success': True,
-                'data': result,
+                'data': simplified_data,
+                'analysis_id': analysis_id,  # For download
                 'message': 'Money order analyzed successfully'
             })
 
@@ -456,6 +476,39 @@ def analyze_money_order():
             'error': str(e),
             'message': 'Failed to analyze money order'
         }), 500
+
+
+@app.route('/api/analysis/download/<analysis_id>', methods=['GET'])
+def download_analysis(analysis_id):
+    """Download complete JSON analysis by ID"""
+    try:
+        # Build file path
+        filepath = os.path.join('analysis_results', f"{analysis_id}.json")
+
+        # Check if file exists
+        if not os.path.exists(filepath):
+            return jsonify({
+                'success': False,
+                'error': 'Analysis not found',
+                'message': f'No analysis found with ID: {analysis_id}'
+            }), 404
+
+        # Send file as download
+        return send_file(
+            filepath,
+            mimetype='application/json',
+            as_attachment=True,
+            download_name=f'{analysis_id}.json'
+        )
+
+    except Exception as e:
+        logger.error(f"Error downloading analysis {analysis_id}: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to download analysis'
+        }), 500
+
 
 @app.route('/api/bank-statement/analyze', methods=['POST'])
 def analyze_bank_statement():

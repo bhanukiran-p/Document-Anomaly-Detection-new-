@@ -1,0 +1,4 @@
+issuer_name,serial_primary,serial_secondary,recipient,sender_name,sender_address,amount_value,amount_currency,amount_written,date,signature,is_fraud,fraud_type,fraud_confidence
+Western Union,WU123456789,REF987654,John Doe,Jane Smith,123 Main St New York NY 10001,750.00,USD,SEVEN HUNDRED FIFTY AND 00/100 DOLLARS,10-15-2024,Agent Smith,0,none,1.0
+MoneyGram,MG987654321,RCP123456,Bob Williams,Alice Johnson,456 Oak Ave Los Angeles CA 90001,5000.00,USD,FIVE THOUSAND AND 00/100 DOLLARS,11-20-2024,Alice J.,1,altered_amount,0.95
+Western Union,WU111222333,,Mary Jones,Tom Brown,,1500.00,USD,ONE THOUSAND AND 00/100 DOLLARS,12-01-2024,Agent X,1,amount_mismatch,0.90
