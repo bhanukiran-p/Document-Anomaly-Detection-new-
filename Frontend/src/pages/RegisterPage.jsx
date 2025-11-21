@@ -197,7 +197,7 @@ const RegisterPage = () => {
           {/* Error Message */}
           {error && (
             <div style={styles.errorMessage}>
-              ⚠️ {error}
+              {error}
             </div>
           )}
 
