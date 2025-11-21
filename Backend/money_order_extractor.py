@@ -87,6 +87,19 @@ class MoneyOrderExtractor:
             'receipt_number': self._extract_receipt_number(text),
             'signature': self._extract_signature(text),
         }
+        
+        # Debug logging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Money Order Extraction Results:")
+        logger.info(f"  Issuer: {extracted_data.get('issuer')}")
+        logger.info(f"  Serial Number: {extracted_data.get('serial_number')}")
+        logger.info(f"  Amount: {extracted_data.get('amount')}")
+        logger.info(f"  Amount in Words: {extracted_data.get('amount_in_words')}")
+        logger.info(f"  Payee: {extracted_data.get('payee')}")
+        logger.info(f"  Purchaser: {extracted_data.get('purchaser')}")
+        logger.info(f"  Date: {extracted_data.get('date')}")
+        logger.info(f"  Location: {extracted_data.get('location')}")
 
         # Perform anomaly detection
         anomalies = self._detect_anomalies(extracted_data, text)
@@ -133,15 +146,27 @@ class MoneyOrderExtractor:
         """Extract serial/control number"""
         # Common patterns for serial numbers
         patterns = [
+            # Explicit "SERIAL NUMBER:" or "CONTROL NUMBER:" labels
             r'SERIAL\s*(?:NO|NUMBER|#)?[:\s]*([A-Z0-9\-]{8,20})',
             r'CONTROL\s*(?:NO|NUMBER|#)?[:\s]*([A-Z0-9\-]{8,20})',
+            # Money order number patterns (e.g., "14-473651041" or "9875647821")
+            r'MONEY\s+ORDER\s+(?:NO|NUMBER|#)?[:\s]*([A-Z0-9\-]{8,20})',
+            r'(?:^|\n)\s*([0-9]{2}-[0-9]{9,12})\s*(?:\n|$)',  # Format: XX-XXXXXXXXX
+            r'(?:^|\n)\s*([0-9]{10,15})\s*(?:\n|$)',  # Format: XXXXXXXXXX (10-15 digits)
+            # Generic number patterns (less specific, use as fallback)
             r'(?:NO|NUMBER|#)?[:\s]*([A-Z0-9]{10,15})',
         ]
 
         for pattern in patterns:
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                return match.group(1).strip()
+            matches = re.finditer(pattern, text, re.IGNORECASE | re.MULTILINE)
+            for match in matches:
+                serial = match.group(1).strip()
+                # Filter out dates, amounts, and other numbers
+                # Serial numbers are typically 10-15 digits or alphanumeric
+                if len(serial) >= 8 and not serial.startswith('$'):
+                    # Check if it's not a date (MM/DD/YYYY or similar)
+                    if not re.match(r'^\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}$', serial):
+                        return serial
 
         return None
 
@@ -164,34 +189,54 @@ class MoneyOrderExtractor:
     def _extract_amount_in_words(self, text: str) -> Optional[str]:
         """Extract written amount (e.g., 'SEVEN HUNDRED FIFTY AND 00/100 DOLLARS')"""
         # Pattern for written amounts like on checks/money orders
+        # Handle variations like "FISTY" (typo) and "00//100" (double slash)
         patterns = [
+            r'([A-Z][A-Za-z\s]+(?:HUNDRED|THOUSAND|MILLION)\s+[A-Za-z\s]+AND\s+\d{1,2}/+/?\d{2,3}\s+DOLLARS)',
+            r'([A-Z][A-Z\s]+AND\s+\d{1,2}/+/?\d{2,3}\s+DOLLARS)',
             r'([A-Z][A-Za-z\s]+(?:HUNDRED|THOUSAND|MILLION)\s+[A-Za-z\s]+AND\s+\d{1,2}/\d{2,3}\s+DOLLARS)',
             r'([A-Z][A-Z\s]+AND\s+\d{1,2}/\d{2,3}\s+DOLLARS)',
+            # More flexible pattern for amounts with typos or variations
+            r'([A-Z][A-Za-z\s]{10,}?\s+AND\s+\d{1,2}/+/?\d{2,3}\s+DOLLARS)',
         ]
 
         for pattern in patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 written_amount = match.group(1).strip()
-                # Clean up extra spaces
+                # Clean up extra spaces and normalize double slashes
                 written_amount = ' '.join(written_amount.split())
-                return written_amount
+                written_amount = re.sub(r'/+', '/', written_amount)  # Normalize // to /
+                # Filter out false positives
+                false_positives = ['PAY', 'TO', 'THE', 'ORDER', 'OF', 'FROM', 'PURCHASER', 'SENDER']
+                if not any(fp in written_amount.upper() for fp in false_positives):
+                    return written_amount
 
         return None
 
     def _extract_payee(self, text: str) -> Optional[str]:
         """Extract payee (pay to the order of)"""
         patterns = [
-            r'PAY\s+TO(?:\s+THE\s+ORDER\s+OF)?[:\s]*([A-Z\s\.]+?)(?:\n|$)',
-            r'PAYEE[:\s]*([A-Z\s\.]+?)(?:\n|$)',
-            r'TO[:\s]*([A-Z][A-Za-z\s\.]+?)(?:\n|AMOUNT)',
+            # Full "PAY TO THE ORDER OF" pattern
+            r'PAY\s+TO\s+THE\s+ORDER\s+OF[:\s]+([A-Z][A-Za-z\s\.]+?)(?:\n|AMOUNT|DATE|FROM|$)',
+            # "PAY TO:" format (common in USPS and Western Union)
+            r'PAY\s+TO[:\s]+([A-Z][A-Za-z\s\.]+?)(?:\n|AMOUNT|DATE|FROM|$)',
+            # "PAYEE:" format
+            r'PAYEE[:\s]+([A-Z][A-Za-z\s\.]+?)(?:\n|AMOUNT|DATE|FROM|$)',
+            # "TO:" format
+            r'TO[:\s]+([A-Z][A-Za-z\s\.]+?)(?:\n|AMOUNT|DATE|FROM|$)',
+            # More flexible pattern
+            r'(?:PAY\s+TO|PAYEE|TO)[:\s]+([A-Z][A-Z][A-Za-z\s\.]{2,}?)(?:\n|AMOUNT|DATE|FROM|$)',
         ]
 
         for pattern in patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 payee = match.group(1).strip()
-                if len(payee) > 3 and not payee.isdigit():
+                # Clean up - remove trailing dots, extra spaces
+                payee = payee.rstrip('.').strip()
+                # Filter out common false positives
+                false_positives = ['AMOUNT', 'DATE', 'FROM', 'PURCHASER', 'SENDER', 'THE', 'ORDER', 'OF']
+                if len(payee) > 3 and not payee.isdigit() and not any(fp in payee.upper() for fp in false_positives):
                     return payee
 
         return None
@@ -199,17 +244,69 @@ class MoneyOrderExtractor:
     def _extract_purchaser(self, text: str) -> Optional[str]:
         """Extract purchaser/sender information"""
         patterns = [
-            r'PURCHASER[:\s]*([A-Z][A-Za-z\s\.]+?)(?:\n|$)',
-            r'FROM[:\s]*([A-Z][A-Za-z\s\.]+?)(?:\n|$)',
-            r'SENDER[:\s]*([A-Z][A-Za-z\s\.]+?)(?:\n|$)',
+            # "FROM:" format (common in Western Union and USPS) - most common, check first
+            r'FROM[:\s]+([A-Z][A-Za-z\s]+?)(?:\n|AMOUNT|DATE|PAY|TO|$)',
+            # "PURCHASER:" format
+            r'PURCHASER[:\s]+([A-Z][A-Za-z\s]+?)(?:\n|AMOUNT|DATE|PAY|TO|$)',
+            # "SENDER:" format
+            r'SENDER[:\s]+([A-Z][A-Za-z\s]+?)(?:\n|AMOUNT|DATE|PAY|TO|$)',
+            # "PURCHASER'S ADDRESS" or "CHASER'S ADDRESS" (typo handling)
+            r'(?:PURCHASER|CHASER)\'?S?\s+(?:ADDRESS|NAME)[:\s]*([A-Z][A-Za-z\s]+?)(?:\n|AMOUNT|DATE|PAY|TO|$)',
+            # More flexible pattern that captures until next field (without requiring capital letters)
+            r'(?:PURCHASER|FROM|SENDER)[:\s]+([A-Za-z][A-Za-z\s]{2,}?)(?:\n|AMOUNT|DATE|PAY|TO|$)',
         ]
 
         for pattern in patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 purchaser = match.group(1).strip()
-                if len(purchaser) > 3:
-                    return purchaser
+                # Clean up - remove trailing dots, extra spaces
+                purchaser = purchaser.rstrip('.').strip()
+                # Remove address-like patterns if they're part of the name (e.g., "P.O. BOX 248" should be separate)
+                # But keep the name part
+                purchaser_lines = purchaser.split('\n')
+                if purchaser_lines:
+                    # Take the first line as the name (before address)
+                    purchaser = purchaser_lines[0].strip()
+                # Split by common address separators and take first part (the name)
+                if ',' in purchaser:
+                    purchaser = purchaser.split(',')[0].strip()
+                # Filter out common false positives and address indicators
+                false_positives = ['AMOUNT', 'DATE', 'PAY', 'TO', 'THE', 'ORDER', 'OF', 'BOX', 'P.O.', 'PO BOX', 'ADDRESS']
+                if len(purchaser) > 2 and not any(fp in purchaser.upper() for fp in false_positives):
+                    # Ensure it looks like a name (has at least one letter)
+                    if re.search(r'[A-Za-z]', purchaser):
+                        return purchaser
+        
+        # Line-by-line fallback: look for "FROM:" on a line and get the name from same or next line
+        lines = text.split('\n')
+        for i, line in enumerate(lines):
+            line_upper = line.upper()
+            if 'FROM:' in line_upper or 'FROM' in line_upper:
+                # Try to extract from current line
+                match = re.search(r'FROM[:\s]+([A-Za-z][A-Za-z\s]{2,})', line, re.IGNORECASE)
+                if match:
+                    purchaser = match.group(1).strip()
+                    # Clean up
+                    if ',' in purchaser:
+                        purchaser = purchaser.split(',')[0].strip()
+                    false_positives = ['AMOUNT', 'DATE', 'PAY', 'TO', 'THE', 'ORDER', 'OF', 'BOX', 'P.O.', 'PO BOX', 'ADDRESS']
+                    if len(purchaser) > 2 and not any(fp in purchaser.upper() for fp in false_positives):
+                        if re.search(r'[A-Za-z]', purchaser):
+                            return purchaser
+                # Try next line if current line only has "FROM:"
+                if i + 1 < len(lines):
+                    next_line = lines[i + 1].strip()
+                    # Check if next line looks like a name (not empty, has letters, not a field label)
+                    if next_line and re.search(r'^[A-Za-z][A-Za-z\s]{2,}', next_line):
+                        if not any(fp in next_line.upper() for fp in ['AMOUNT', 'DATE', 'PAY', 'TO', 'FROM', 'PURCHASER', 'SENDER']):
+                            # Split by comma if it contains address
+                            if ',' in next_line:
+                                purchaser = next_line.split(',')[0].strip()
+                            else:
+                                purchaser = next_line.strip()
+                            if len(purchaser) > 2:
+                                return purchaser
 
         return None
 
