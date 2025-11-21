@@ -161,20 +161,8 @@ class PDFStatementValidator:
             return False
 
     def extract_text(self) -> Dict[int, str]:
-        """Extract text from all pages."""
-        # TESTING MODE: Try Google Vision first for better accuracy
-        if self.vision_client:
-            logger.info("TESTING MODE: Attempting Google Vision API extraction as PRIMARY method")
-            vision_result = self._extract_text_with_vision()
-            if vision_result and sum(len(text) for text in vision_result.values()) > 100:
-                logger.info("Vision API extraction successful, returning Vision results")
-                return vision_result
-            elif vision_result:
-                logger.warning(f"Vision API extraction returned minimal text ({sum(len(text) for text in vision_result.values())} chars), trying PyMuPDF fallback")
-            else:
-                logger.warning("Vision API extraction returned no results, trying PyMuPDF fallback")
-
-        # Fallback 1: Try PyMuPDF (best for native PDFs)
+        """Extract text from all pages using optimized strategy."""
+        # Strategy 1: Try PyMuPDF first for native PDFs (fastest)
         if hasattr(self, 'pdf_doc') and self.pdf_doc:
             try:
                 for page_num in range(len(self.pdf_doc)):
@@ -182,13 +170,29 @@ class PDFStatementValidator:
                     text = page.get_text()
                     self.text_content[page_num] = text if text else ""
                 logger.info(f"Text extracted from {len(self.text_content)} pages using PyMuPDF")
-                return self.text_content
+
+                # If we got meaningful text, return it
+                if sum(len(text) for text in self.text_content.values()) > 100:
+                    return self.text_content
+                else:
+                    logger.warning("PyMuPDF extraction returned minimal text, trying Vision API for OCR")
+                    self.text_content = {}
             except Exception as e:
                 logger.warning(f"PyMuPDF text extraction failed: {e}")
                 self.text_content = {}
 
-        # Fallback 2: Try pdfplumber
-        if hasattr(self, 'pdf_plumber') and self.pdf_plumber:
+        # Strategy 2: If native text extraction fails, use Vision API for OCR
+        if self.vision_client:
+            logger.info("Using Google Vision API for PDF OCR (scanned document detected)")
+            vision_result = self._extract_text_with_vision_direct()
+            if vision_result and sum(len(text) for text in vision_result.values()) > 100:
+                logger.info("Vision API OCR extraction successful")
+                return vision_result
+            else:
+                logger.warning("Vision API extraction returned minimal text, trying fallback methods")
+
+        # Fallback 1: Try pdfplumber
+        if pdfplumber and hasattr(self, 'pdf_plumber') and self.pdf_plumber:
             try:
                 for page_num, page in enumerate(self.pdf_plumber.pages):
                     text = page.extract_text()
@@ -199,8 +203,8 @@ class PDFStatementValidator:
                 logger.warning(f"pdfplumber text extraction failed: {e}")
                 self.text_content = {}
 
-        # Fallback 3: Try PyPDF2
-        if hasattr(self, 'pdf_reader') and self.pdf_reader:
+        # Fallback 2: Try PyPDF2
+        if PyPDF2 and hasattr(self, 'pdf_reader') and self.pdf_reader:
             try:
                 for page_num, page in enumerate(self.pdf_reader.pages):
                     text = page.extract_text()
@@ -210,7 +214,7 @@ class PDFStatementValidator:
             except Exception as e:
                 logger.warning(f"PyPDF2 text extraction failed: {e}")
 
-        # Fallback 4: Extract text from raw PDF content
+        # Fallback 3: Extract text from raw PDF content
         try:
             with open(self.pdf_path, 'rb') as f:
                 raw_content = f.read()
@@ -233,85 +237,56 @@ class PDFStatementValidator:
                     self.text_content[0] = combined_text
                     logger.info("Text extracted from raw PDF content")
 
-            # Check if we got meaningful text
-            total_text_length = sum(len(text) for text in self.text_content.values())
-
             return self.text_content
         except Exception as e:
             logger.warning(f"Fallback text extraction failed: {e}")
             return {}
 
-    def _extract_text_with_vision(self) -> Dict[int, str]:
+    def _extract_text_with_vision_direct(self) -> Dict[int, str]:
         """
-        Extract text from PDF using Google Cloud Vision API OCR.
-        This is used as a fallback for scanned PDFs or when standard extraction fails.
+        Extract text from PDF using Google Cloud Vision API by sending PDF directly.
+        More efficient than converting to images first.
 
         Returns:
             Dict[int, str]: Extracted text by page number
         """
         if not self.vision_client or not vision:
-            logger.warning("Vision client not available for OCR fallback")
+            logger.warning("Vision client not available for OCR")
             return {}
 
         try:
-            logger.info("Using Google Cloud Vision API for text extraction (OCR fallback)")
+            logger.info("Using Google Cloud Vision API with direct PDF processing")
             self.vision_used = True
 
-            # Try to convert PDF to images if we have PyMuPDF
-            if hasattr(self, 'pdf_doc') and self.pdf_doc:
-                try:
-                    for page_num in range(min(len(self.pdf_doc), 10)):  # Limit to first 10 pages for cost
-                        try:
-                            page = self.pdf_doc[page_num]
-                            pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-                            image_bytes = pix.tobytes("png")
+            # Send PDF directly to Vision API for better efficiency
+            with open(self.pdf_path, 'rb') as f:
+                content = f.read()
 
-                            image = vision.Image(content=image_bytes)
-                            response = self.vision_client.text_detection(image=image)
+            image = vision.Image(content=content)
+            # document_text_detection is optimized for structured documents and PDFs
+            response = self.vision_client.document_text_detection(image=image)
 
-                            if response.text_annotations:
-                                text = response.text_annotations[0].description
-                                self.text_content[page_num] = text if text else ""
-                                logger.info(f"Extracted text from page {page_num} using Vision API")
+            if response.error.message:
+                logger.error(f"Vision API error: {response.error.message}")
+                return {}
 
-                        except Exception as e:
-                            logger.warning(f"Vision API extraction failed for page {page_num}: {e}")
-                            continue
+            # Extract full text
+            if response.full_text_annotation and response.full_text_annotation.text:
+                full_text = response.full_text_annotation.text
+                self.text_content[0] = full_text if full_text else ""
+                logger.info(f"Vision API extracted {len(full_text)} characters from PDF")
+                return self.text_content
+            elif response.text_annotations:
+                text = response.text_annotations[0].description
+                self.text_content[0] = text if text else ""
+                logger.info(f"Vision API extracted {len(text)} characters from PDF (fallback method)")
+                return self.text_content
 
-                    if self.text_content:
-                        logger.info(f"Vision API extracted text from {len(self.text_content)} pages")
-                        return self.text_content
-
-                except Exception as e:
-                    logger.warning(f"Failed to extract pages for Vision API: {e}")
-
-            # Fallback: Try to read the PDF file directly
-            try:
-                with open(self.pdf_path, 'rb') as f:
-                    content = f.read()
-
-                image = vision.Image(content=content)
-                response = self.vision_client.text_detection(image=image)
-
-                if response.text_annotations:
-                    text = response.text_annotations[0].description
-                    self.text_content[0] = text if text else ""
-                    logger.info("Vision API extracted text from PDF (treating as single image)")
-                    return self.text_content
-
-            except Exception as e:
-                logger.error(f"Vision API fallback extraction failed: {e}")
-
-            if not self.text_content:
-                logger.error("Vision API could not extract any text from the PDF")
-                self.findings['warnings'].append(
-                    "PDF appears to be a scanned image, but Vision API extraction produced no results"
-                )
-
-            return self.text_content
+            logger.warning("Vision API returned no text from PDF")
+            return {}
 
         except Exception as e:
-            logger.error(f"Unexpected error during Vision API extraction: {e}")
+            logger.error(f"Vision API direct PDF extraction failed: {e}")
             return {}
 
     def check_metadata(self) -> Dict[str, any]:
@@ -559,6 +534,234 @@ class PDFStatementValidator:
 
         return results
 
+    def check_missing_data_and_dates(self) -> Dict[str, any]:
+        """
+        Check for missing critical data and impossible/invalid dates.
+        Forged statements often have incomplete account info or invalid dates.
+        """
+        results = {
+            'missing_fields': [],
+            'invalid_dates': [],
+            'fraud_score': 0.0
+        }
+
+        try:
+            all_text = ' '.join(self.text_content.values())
+            lines = all_text.split('\n')
+
+            # Critical fields that should be present in a bank statement
+            critical_fields = {
+                'account_number': ['Account Number', 'Acct', 'account ending'],
+                'account_holder': ['name', 'holder', 'customer'],
+                'bank_name': ['bank', 'credit union', 'financial'],
+                'statement_period': ['statement period', 'period:', 'through'],
+                'beginning_balance': ['beginning balance', 'opening balance', 'starting balance'],
+                'ending_balance': ['ending balance', 'closing balance', 'final balance'],
+            }
+
+            # Count missing critical fields
+            text_lower = all_text.lower()
+            missing_count = 0
+
+            for field, keywords in critical_fields.items():
+                found = any(keyword in text_lower for keyword in keywords)
+                if not found:
+                    missing_count += 1
+                    results['missing_fields'].append(field)
+                    results['fraud_score'] += 8
+                    self.findings['suspicious_indicators'].append(
+                        f"🚨 MISSING DATA: {field} not found in statement"
+                    )
+
+            # Check for incomplete account number (all **** or missing)
+            if '****' in all_text and not any(char.isdigit() for char in all_text.split('****')[1].split('\n')[0] if char != '*'):
+                results['fraud_score'] += 12
+                results['missing_fields'].append('account_number_incomplete')
+                self.findings['suspicious_indicators'].append(
+                    "🚨 INCOMPLETE ACCOUNT DATA: Account number shows only ****"
+                )
+
+            # Check for sparse/incomplete last names (single name entries)
+            account_holder_line = None
+            for i, line in enumerate(lines):
+                if 'account' in line.lower() and i > 0:
+                    account_holder_line = lines[i-1].strip()
+                    break
+
+            # Detect impossible dates (day > 31)
+            import re as regex_mod
+            all_dates = regex_mod.findall(r'(\d{1,2})[/-](\d{1,2})[/-](\d{4})', all_text)
+
+            for month, day, year in all_dates:
+                day_int = int(day)
+                month_int = int(month)
+
+                # Check for impossible days (32+)
+                if day_int > 31:
+                    results['invalid_dates'].append(f"{month}/{day}/{year}")
+                    results['fraud_score'] += 15
+                    self.findings['suspicious_indicators'].append(
+                        f"🚨 IMPOSSIBLE DATE: {month}/{day}/{year} (day {day_int} doesn't exist)"
+                    )
+
+                # Check for impossible months
+                if month_int > 12 and month_int <= 31:  # Could be swapped MM/DD
+                    results['invalid_dates'].append(f"{month}/{day}/{year} (possible swap)")
+                    results['fraud_score'] += 12
+                    self.findings['suspicious_indicators'].append(
+                        f"🚨 INVALID MONTH: {month}/{day}/{year} (month {month_int} invalid)"
+                    )
+
+            # Check for dates outside statement period
+            statement_period_match = regex_mod.search(r'statement period[:\s]*(\d{1,2}/\d{1,2}/\d{4})[^\d]*(\d{1,2}/\d{1,2}/\d{4})', all_text, regex_mod.IGNORECASE)
+            if statement_period_match and all_dates:
+                try:
+                    period_start = datetime.strptime(statement_period_match.group(1), '%m/%d/%Y')
+                    period_end = datetime.strptime(statement_period_match.group(2), '%m/%d/%Y')
+
+                    out_of_period = 0
+                    for month, day, year in all_dates:
+                        try:
+                            trans_date = datetime.strptime(f"{month}/{day}/{year}", '%m/%d/%Y')
+                            if trans_date < period_start or trans_date > period_end:
+                                out_of_period += 1
+                        except:
+                            pass
+
+                    if out_of_period > len(all_dates) * 0.1:  # More than 10% out of period
+                        results['fraud_score'] += 10
+                        results['invalid_dates'].append(f"{out_of_period} transactions outside period")
+                        self.findings['suspicious_indicators'].append(
+                            f"🚨 OUT OF PERIOD: {out_of_period} transactions outside statement period"
+                        )
+                except:
+                    pass
+
+            # Check for non-chronological transaction dates
+            transaction_dates = []
+            transaction_lines = []
+            for line in lines:
+                date_match = regex_mod.match(r'^(\d{1,2})[/-](\d{1,2})', line.strip())
+                if date_match:
+                    transaction_lines.append(line.strip())
+                    try:
+                        month, day = date_match.groups()
+                        date_obj = datetime.strptime(f"{month}/{day}/2024", '%m/%d/%Y')  # Assume current year for sorting
+                        transaction_dates.append(date_obj)
+                    except:
+                        pass
+
+            if len(transaction_dates) > 2:
+                is_sorted = all(transaction_dates[i] <= transaction_dates[i+1] for i in range(len(transaction_dates)-1))
+                if not is_sorted:
+                    # Count how many are out of order
+                    out_of_order = sum(1 for i in range(len(transaction_dates)-1) if transaction_dates[i] > transaction_dates[i+1])
+                    if out_of_order > 0:
+                        results['fraud_score'] += 10
+                        self.findings['suspicious_indicators'].append(
+                            f"🚨 NON-CHRONOLOGICAL: {out_of_order} transactions out of order"
+                        )
+
+            # Normalize fraud score to 0-1 range
+            results['fraud_score'] = min(results['fraud_score'] / 30.0, 1.0)
+
+        except Exception as e:
+            logger.error(f"Error checking missing data and dates: {e}")
+
+        return results
+
+    def check_spelling_and_formatting(self) -> Dict[str, any]:
+        """
+        Check for spelling errors and formatting inconsistencies that indicate forgery.
+        Forged documents often have typos in bank names, field names, etc.
+        """
+        results = {
+            'spelling_errors_found': [],
+            'formatting_issues': [],
+            'fraud_score': 0.0
+        }
+
+        try:
+            all_text = ' '.join(self.text_content.values())
+
+            # Bank name spelling errors (common forgery mistakes)
+            bank_misspellings = {
+                'CHAES': ('CHASE', 8),
+                'CHASSE': ('CHASE', 8),
+                'CITIBANK': ('CITIBANK', 5),  # Less common
+                'WELLS FARGO': ('WELLS FARGO', 5),
+                'CHASE BANK': ('CHASE', 3),
+                'AMERICA BANK': ('BANK OF AMERICA', 6),
+            }
+
+            common_bank_names = ['chase', 'wellsfargo', 'citibank', 'bankofamerica', 'us bank', 'td bank', 'pnc', 'capitalone']
+            text_lower = all_text.lower()
+
+            # Check for misspelled bank names
+            for misspelling, (correct_name, weight) in bank_misspellings.items():
+                if misspelling.lower() in text_lower:
+                    results['spelling_errors_found'].append({
+                        'error': misspelling,
+                        'correct': correct_name,
+                        'weight': weight
+                    })
+                    results['fraud_score'] += weight
+
+            # Field name spelling errors (FORGED documents often misspell these)
+            field_errors = {
+                'ACOUNT': ('ACCOUNT', 12),        # Common typo in forged statements - INCREASED WEIGHT
+                'STATMENT': ('STATEMENT', 11),
+                'BEGINING': ('BEGINNING', 12),
+                'BALENCE': ('BALANCE', 12),
+                'TRANSATION': ('TRANSACTION', 11),
+                'DESCRITI0N': ('DESCRIPTION', 13),  # Using zeros instead of letter O - INCREASED
+                'ВАLANCE': ('BALANCE', 18),  # Cyrillic characters mixed in (strong forgery indicator) - INCREASED
+                'DAТЕ': ('DATE', 18),  # Cyrillic character instead of Latin - INCREASED
+                'AM0UNT': ('AMOUNT', 13),  # Using zeros instead of letter O - INCREASED
+                'STRAET': ('STREET', 11),
+                'MICHEAL': ('MICHAEL', 10),
+            }
+
+            for error, (correct, weight) in field_errors.items():
+                if error in all_text:
+                    results['spelling_errors_found'].append({
+                        'error': error,
+                        'correct': correct,
+                        'weight': weight
+                    })
+                    results['fraud_score'] += weight
+                    # Log this as critical finding
+                    self.findings['suspicious_indicators'].append(
+                        f"🚨 FORGERY INDICATOR: Field name misspelling '{error}' (should be '{correct}')"
+                    )
+
+            # Check for mixed character sets (Latin vs Cyrillic) - strong forgery indicator
+            if any(ord(c) > 1024 for c in all_text):  # Cyrillic range
+                results['fraud_score'] += 25  # INCREASED from 15
+                results['formatting_issues'].append("Mixed character sets detected (Cyrillic + Latin)")
+                self.findings['suspicious_indicators'].append(
+                    "🚨 CRITICAL: Mixed character encoding detected (potential copy-paste from non-English source)"
+                )
+
+            # Check for excessive spacing or alignment issues (editing artifacts)
+            lines = all_text.split('\n')
+            alignment_issues = 0
+            for line in lines:
+                if line.startswith('   ') or line.startswith('\t\t'):  # Excessive leading whitespace
+                    alignment_issues += 1
+
+            if alignment_issues > len(lines) * 0.2:  # More than 20% of lines have alignment issues
+                results['fraud_score'] += 15  # INCREASED from 8
+                results['formatting_issues'].append(f"Alignment issues in {alignment_issues} lines")
+
+            # Normalize fraud score to 0-1 range - CHANGED DIVISOR from 50 to 30 for better sensitivity
+            results['fraud_score'] = min(results['fraud_score'] / 30.0, 1.0)
+
+        except Exception as e:
+            logger.error(f"Error checking spelling and formatting: {e}")
+
+        return results
+
     def check_transaction_behavior(self) -> Dict[str, any]:
         """Check for suspicious transaction patterns and behavioral fraud indicators."""
         results = {
@@ -702,6 +905,8 @@ class PDFStatementValidator:
         content_results = self.check_content()
         financial_results = self.check_financial_consistency()
         behavior_results = self.check_transaction_behavior()
+        spelling_results = self.check_spelling_and_formatting()
+        missing_data_results = self.check_missing_data_and_dates()
 
         # Calculate score for metadata
         metadata_issues = sum(1 for v in metadata_results.values() if v)
@@ -719,9 +924,16 @@ class PDFStatementValidator:
         financial_issues = sum(1 for v in financial_results.values() if v)
         rule_scores['financial'] = (financial_issues / len(financial_results)) * 0.10
 
-        # Calculate score for behavioral fraud (HIGHEST PRIORITY)
-        # Behavioral fraud score gets 50% weight since it's the most reliable indicator
-        rule_scores['behavioral'] = behavior_results.get('fraud_score', 0.0) * 0.50
+        # Calculate score for behavioral fraud (HIGH PRIORITY)
+        rule_scores['behavioral'] = behavior_results.get('fraud_score', 0.0) * 0.35
+
+        # Calculate score for spelling/formatting (HIGH PRIORITY for forgery detection)
+        # Spelling errors are STRONG indicators of forgery
+        rule_scores['spelling'] = spelling_results.get('fraud_score', 0.0) * 0.25
+
+        # Calculate score for missing data/invalid dates (HIGHEST PRIORITY for forgery detection)
+        # Missing critical fields and impossible dates are definitive fraud indicators
+        rule_scores['missing_data'] = missing_data_results.get('fraud_score', 0.0) * 0.35
 
         score = sum(rule_scores.values())
 
