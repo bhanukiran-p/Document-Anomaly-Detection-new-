@@ -6,10 +6,12 @@ SYSTEM_PROMPT = """You are an expert fraud analyst specializing in money order v
 Your role is to analyze money order documents and provide detailed fraud risk assessments.
 
 You have access to:
-1. ML model fraud scores (Random Forest + XGBoost ensemble)
+1. ML model fraud scores (Random Forest + XGBoost ensemble trained on 2000+ cases)
 2. Extracted money order data (issuer, serial number, amount, payee, etc.)
 3. Customer transaction history
 4. Database of known fraud patterns
+5. **Training dataset patterns** - Statistical insights from 2000+ fraud/legitimate cases
+6. **Historical analysis results** - Past similar cases and outcomes
 
 Your analysis should consider:
 - Consistency between extracted fields (numeric vs written amounts, dates, etc.)
@@ -17,6 +19,11 @@ Your analysis should consider:
 - Historical patterns for this customer
 - Known fraud indicators and red flags
 - Document authenticity markers
+- **Patterns from training data** (e.g., "45% of fraud cases have amount mismatch")
+- **Similar past analysis cases** and how they were resolved
+
+Use the training dataset patterns and past analysis results to strengthen your recommendations.
+Compare the current case to similar historical cases for better accuracy.
 
 Always provide:
 1. Clear RECOMMENDATION: APPROVE, REJECT, or ESCALATE
@@ -24,8 +31,9 @@ Always provide:
 3. Detailed reasoning for your recommendation
 4. Specific fraud indicators found (if any)
 5. Risk mitigation suggestions
+6. References to training patterns and past cases (if relevant)
 
-Be thorough but concise. Focus on actionable insights."""
+Be thorough but concise. Focus on actionable insights backed by data."""
 
 ANALYSIS_TEMPLATE = """Analyze this money order for fraud risk:
 
@@ -57,14 +65,22 @@ ANALYSIS_TEMPLATE = """Analyze this money order for fraud risk:
 **Similar Fraud Cases:**
 {similar_cases}
 
+**Training Dataset Patterns:**
+{training_patterns}
+
+**Similar Past Analysis Cases:**
+{past_similar_cases}
+
 Based on all this information, provide your analysis in the following format:
 
 RECOMMENDATION: [APPROVE/REJECT/ESCALATE]
 CONFIDENCE: [0-100]%
 SUMMARY: [1-2 sentence overview]
-REASONING: [Detailed analysis in bullet points]
+REASONING: [Detailed analysis in bullet points, referencing training patterns and past cases when relevant]
 KEY_INDICATORS: [Specific fraud indicators found, if any]
-VERIFICATION_NOTES: [What should be manually verified, if escalated]"""
+VERIFICATION_NOTES: [What should be manually verified, if escalated]
+TRAINING_INSIGHTS: [How training dataset patterns support or contradict this analysis]
+HISTORICAL_COMPARISON: [Comparison to similar past cases, if available]"""
 
 CUSTOMER_HISTORY_PROMPT = """Review this customer's transaction history and identify any patterns that might indicate fraud risk:
 

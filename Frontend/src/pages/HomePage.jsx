@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { colors } from '../styles/colors';
+import { useScrollAnimation } from '../hooks/useScrollAnimation';
 
 const HomePage = () => {
   const navigate = useNavigate();
@@ -9,7 +10,7 @@ const HomePage = () => {
   const primary = colors.primaryColor || colors.accent?.red || '#E53935';
   
   const containerStyle = {
-    maxWidth: '1300px',
+    maxWidth: '1400px',
     margin: '0 auto',
     padding: '1.5rem',
     backgroundColor: colors.background,
@@ -18,18 +19,19 @@ const HomePage = () => {
   };
   
   const headerStyle = {
-    background: colors.gradients.navy,
+    background: colors.gradients.dark,
     padding: '2rem',
     borderRadius: '0.75rem',
     color: colors.foreground,
     textAlign: 'center',
-    marginBottom: '1.5rem',
+    marginBottom: '2rem',
     border: `1px solid ${colors.border}`,
+    boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)',
   };
   
   const titleStyle = {
-    fontSize: '2rem',
-    fontWeight: '700',
+    fontSize: '2.25rem',
+    fontWeight: 'bold',
     marginBottom: '0.5rem',
     color: colors.foreground,
   };
@@ -41,42 +43,41 @@ const HomePage = () => {
   
   const cardsContainerStyle = {
     display: 'grid',
-    gridTemplateColumns: 'repeat(2, 1fr)',
-    gap: '1.5rem',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
+    gap: '2rem',
     marginBottom: '2rem',
-    maxWidth: '900px',
+    maxWidth: '1200px',
     margin: '0 auto 2rem auto',
   };
   
   const cardStyle = {
     backgroundColor: colors.card,
     borderRadius: '0.75rem',
-    padding: '1.5rem',
+    padding: '2rem',
     boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)',
     border: `1px solid ${colors.border}`,
-    borderTop: `4px solid ${primary}`,
-    transition: 'transform 0.2s, box-shadow 0.2s',
+    transition: 'all 0.3s',
     cursor: 'pointer',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     textAlign: 'center',
-    minHeight: '220px',
+    minHeight: '280px',
     justifyContent: 'space-between',
   };
   
   const cardTitleStyle = {
-    fontSize: '1.25rem',
-    fontWeight: '600',
+    fontSize: '1.5rem',
+    fontWeight: 'bold',
     color: colors.foreground,
-    marginBottom: '0.75rem',
+    marginBottom: '1rem',
   };
   
   const cardDescStyle = {
     color: colors.mutedForeground,
-    lineHeight: '1.5',
+    lineHeight: '1.6',
     marginBottom: 'auto',
-    fontSize: '0.9rem',
+    fontSize: '1rem',
     flex: 1,
     paddingBottom: '1.5rem',
   };
@@ -84,9 +85,9 @@ const HomePage = () => {
   const buttonStyle = {
     backgroundColor: primary,
     color: colors.primaryForeground,
-    padding: '0.75rem 1.5rem',
+    padding: '1rem 2rem',
     borderRadius: '0.5rem',
-    fontSize: '0.95rem',
+    fontSize: '1rem',
     fontWeight: '600',
     border: 'none',
     cursor: 'pointer',
@@ -100,14 +101,25 @@ const HomePage = () => {
     backgroundColor: 'transparent',
     color: colors.foreground,
     border: `2px solid ${colors.border}`,
-    padding: '0.625rem 1.5rem',
+    padding: '0.75rem 1.5rem',
     borderRadius: '0.5rem',
     fontSize: '0.95rem',
     fontWeight: '600',
     cursor: 'pointer',
     marginBottom: '1.5rem',
-    transition: 'all 0.2s',
+    transition: 'all 0.3s',
   };
+  
+  const aboutCardStyle = {
+    backgroundColor: colors.card,
+    padding: '2rem',
+    borderRadius: '0.75rem',
+    marginBottom: '1rem',
+    border: `1px solid ${colors.border}`,
+    boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)',
+  };
+
+  const { ref, isVisible } = useScrollAnimation();
   
   return (
     <div style={containerStyle}>
@@ -116,10 +128,12 @@ const HomePage = () => {
         onMouseEnter={(e) => {
           e.target.style.backgroundColor = colors.muted;
           e.target.style.borderColor = primary;
+          e.target.style.transform = 'translateY(-2px)';
         }}
         onMouseLeave={(e) => {
           e.target.style.backgroundColor = 'transparent';
           e.target.style.borderColor = colors.border;
+          e.target.style.transform = 'translateY(0)';
         }}
         onClick={() => navigate('/transaction-type')}
       >
@@ -127,22 +141,31 @@ const HomePage = () => {
       </button>
       
       <div style={headerStyle}>
-        <h1 style={titleStyle}>Document Analysis</h1>
+        <h1 style={titleStyle}>
+          Document <span style={{ background: `linear-gradient(135deg, ${primary}, ${colors.redGlow})`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Analysis</span>
+        </h1>
         <p style={subtitleStyle}>
           Where Innovation Meets Security
         </p>
       </div>
       
-      <div style={cardsContainerStyle}>
+      <div style={cardsContainerStyle} ref={ref}>
         <div 
-          style={cardStyle}
+          style={{
+            ...cardStyle,
+            opacity: isVisible ? 1 : 0,
+            transform: isVisible ? 'translateY(0)' : 'translateY(20px)',
+            transition: 'all 0.5s ease-out 0s',
+          }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'translateY(-4px)';
-            e.currentTarget.style.boxShadow = '0 8px 12px rgba(0,0,0,0.15)';
+            e.currentTarget.style.transform = 'translateY(-8px)';
+            e.currentTarget.style.borderColor = `${primary}80`;
+            e.currentTarget.style.boxShadow = `0 10px 40px ${primary}30`;
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+            e.currentTarget.style.transform = isVisible ? 'translateY(0)' : 'translateY(20px)';
+            e.currentTarget.style.borderColor = colors.border;
+            e.currentTarget.style.boxShadow = '0 10px 40px rgba(0, 0, 0, 0.5)';
           }}
         >
           <div>
@@ -169,14 +192,21 @@ const HomePage = () => {
         </div>
         
         <div 
-          style={cardStyle}
+          style={{
+            ...cardStyle,
+            opacity: isVisible ? 1 : 0,
+            transform: isVisible ? 'translateY(0)' : 'translateY(20px)',
+            transition: 'all 0.5s ease-out 0.15s',
+          }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'translateY(-4px)';
-            e.currentTarget.style.boxShadow = '0 8px 12px rgba(0,0,0,0.15)';
+            e.currentTarget.style.transform = 'translateY(-8px)';
+            e.currentTarget.style.borderColor = `${primary}80`;
+            e.currentTarget.style.boxShadow = `0 10px 40px ${primary}30`;
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+            e.currentTarget.style.transform = isVisible ? 'translateY(0)' : 'translateY(20px)';
+            e.currentTarget.style.borderColor = colors.border;
+            e.currentTarget.style.boxShadow = '0 10px 40px rgba(0, 0, 0, 0.5)';
           }}
         >
           <div>
@@ -203,14 +233,21 @@ const HomePage = () => {
         </div>
 
         <div
-          style={cardStyle}
+          style={{
+            ...cardStyle,
+            opacity: isVisible ? 1 : 0,
+            transform: isVisible ? 'translateY(0)' : 'translateY(20px)',
+            transition: 'all 0.5s ease-out 0.3s',
+          }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'translateY(-4px)';
-            e.currentTarget.style.boxShadow = '0 8px 12px rgba(0,0,0,0.15)';
+            e.currentTarget.style.transform = 'translateY(-8px)';
+            e.currentTarget.style.borderColor = `${primary}80`;
+            e.currentTarget.style.boxShadow = `0 10px 40px ${primary}30`;
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+            e.currentTarget.style.transform = isVisible ? 'translateY(0)' : 'translateY(20px)';
+            e.currentTarget.style.borderColor = colors.border;
+            e.currentTarget.style.boxShadow = '0 10px 40px rgba(0, 0, 0, 0.5)';
           }}
         >
           <div>
@@ -237,14 +274,21 @@ const HomePage = () => {
         </div>
 
         <div
-          style={cardStyle}
+          style={{
+            ...cardStyle,
+            opacity: isVisible ? 1 : 0,
+            transform: isVisible ? 'translateY(0)' : 'translateY(20px)',
+            transition: 'all 0.5s ease-out 0.45s',
+          }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'translateY(-4px)';
-            e.currentTarget.style.boxShadow = '0 8px 12px rgba(0,0,0,0.15)';
+            e.currentTarget.style.transform = 'translateY(-8px)';
+            e.currentTarget.style.borderColor = `${primary}80`;
+            e.currentTarget.style.boxShadow = `0 10px 40px ${primary}30`;
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+            e.currentTarget.style.transform = isVisible ? 'translateY(0)' : 'translateY(20px)';
+            e.currentTarget.style.borderColor = colors.border;
+            e.currentTarget.style.boxShadow = '0 10px 40px rgba(0, 0, 0, 0.5)';
           }}
         >
           <div>
@@ -271,20 +315,14 @@ const HomePage = () => {
         </div>
       </div>
       
-      <div style={{
-        backgroundColor: colors.card,
-        padding: '1.5rem',
-        borderRadius: '0.75rem',
-        marginBottom: '1rem',
-        border: `1px solid ${colors.border}`,
-      }}>
-        <h3 style={{ color: colors.foreground, marginBottom: '0.75rem', fontSize: '1.125rem' }}>About XFORIA DAD</h3>
-        <div style={{ color: colors.mutedForeground, lineHeight: '1.5', fontSize: '0.9rem' }}>
-          <p style={{ marginBottom: '0.5rem' }}>
-            <strong>Supported:</strong> Checks (Axis, BOA, ICICI, HDFC, Chase, Wells Fargo) • Paystubs (US & International) • Money Orders (Western Union, MoneyGram, USPS) • Bank Statements (All major banks)
+      <div style={aboutCardStyle}>
+        <h3 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.25rem', fontWeight: 'bold' }}>About XFORIA DAD</h3>
+        <div style={{ color: colors.mutedForeground, lineHeight: '1.6', fontSize: '1rem' }}>
+          <p style={{ marginBottom: '0.75rem' }}>
+            <strong style={{ color: colors.foreground }}>Supported:</strong> Checks (Axis, BOA, ICICI, HDFC, Chase, Wells Fargo) • Paystubs (US & International) • Money Orders (Western Union, MoneyGram, USPS) • Bank Statements (All major banks)
           </p>
           <p>
-            <strong>Features:</strong> Real-time OCR • AI-powered extraction • Transaction history parsing • High accuracy scoring • JSON export • PDF & Image support
+            <strong style={{ color: colors.foreground }}>Features:</strong> Real-time OCR • AI-powered extraction • Transaction history parsing • High accuracy scoring • JSON export • PDF & Image support
           </p>
         </div>
       </div>
@@ -293,4 +331,3 @@ const HomePage = () => {
 };
 
 export default HomePage;
-

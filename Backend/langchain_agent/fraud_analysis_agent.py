@@ -122,6 +122,26 @@ class FraudAnalysisAgent:
                 )
                 similar_cases = self.data_tools.format_fraud_cases_summary(cases)
 
+        # Get training dataset patterns
+        training_patterns = "Training dataset not available"
+        if self.data_tools:
+            training_patterns = self.data_tools.format_training_patterns_summary()
+
+        # Search for similar past analysis cases
+        past_similar_cases = "No similar past analyses found"
+        if self.data_tools:
+            issuer = extracted_data.get('issuer', '')
+            amount_str = extracted_data.get('amount', '0')
+            amount = float(amount_str.replace('$', '').replace(',', '') if amount_str else 0)
+
+            if amount > 0:
+                past_analyses = self.data_tools.search_stored_analyses(
+                    issuer=issuer,
+                    amount_range=(amount * 0.8, amount * 1.2),  # ±20% range
+                    limit=3
+                )
+                past_similar_cases = self.data_tools.format_past_analyses_summary(past_analyses)
+
         # Format fraud indicators
         fraud_indicators = "\n".join(
             [f"- {ind}" for ind in ml_analysis.get('feature_importance', [])]
@@ -161,7 +181,9 @@ class FraudAnalysisAgent:
             fraud_indicators=fraud_indicators,
             customer_id=customer_id or "N/A",
             customer_history=customer_history,
-            similar_cases=similar_cases
+            similar_cases=similar_cases,
+            training_patterns=training_patterns,
+            past_similar_cases=past_similar_cases
         )
 
         # Get LLM response
@@ -197,8 +219,16 @@ class FraudAnalysisAgent:
         key_indicators = [line.strip('- ').strip() for line in indicators_text.split('\n') if line.strip()]
 
         # Extract verification notes
-        verification_match = re.search(r'VERIFICATION_NOTES:\s*(.*?)$', response_text, re.DOTALL)
+        verification_match = re.search(r'VERIFICATION_NOTES:\s*(.*?)(?=TRAINING_INSIGHTS:|HISTORICAL_COMPARISON:|$)', response_text, re.DOTALL)
         verification_notes = verification_match.group(1).strip() if verification_match else ""
+
+        # Extract training insights
+        training_insights_match = re.search(r'TRAINING_INSIGHTS:\s*(.*?)(?=HISTORICAL_COMPARISON:|$)', response_text, re.DOTALL)
+        training_insights = training_insights_match.group(1).strip() if training_insights_match else ""
+
+        # Extract historical comparison
+        historical_comparison_match = re.search(r'HISTORICAL_COMPARISON:\s*(.*?)$', response_text, re.DOTALL)
+        historical_comparison = historical_comparison_match.group(1).strip() if historical_comparison_match else ""
 
         return {
             'recommendation': recommendation,
@@ -207,6 +237,8 @@ class FraudAnalysisAgent:
             'reasoning': reasoning,
             'key_indicators': key_indicators[:5],  # Limit to top 5
             'verification_notes': verification_notes,
+            'training_insights': training_insights,
+            'historical_comparison': historical_comparison,
             'analysis_type': 'llm',
             'model_used': self.model_name
         }
@@ -246,6 +278,8 @@ class FraudAnalysisAgent:
             'reasoning': reasoning,
             'key_indicators': key_indicators,
             'verification_notes': "Manual verification recommended for borderline cases",
+            'training_insights': "N/A (fallback mode - training data not analyzed)",
+            'historical_comparison': "N/A (fallback mode - past cases not analyzed)",
             'analysis_type': 'rule_based',
             'model_used': 'fallback'
         }
