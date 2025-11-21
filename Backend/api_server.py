@@ -1,6 +1,37 @@
 """
-Flask API Server for XFORIA DAD
-Handles Check, Paystub, Money Order, and Bank Statement Analysis
+================================================================================
+FILE: api_server.py
+CREATED: 2025-11-21
+VERSION: 1.0.0
+AUTHOR: XFORIA Team
+DESCRIPTION:
+    Flask API Server for XFORIA DAD (Document Anomaly Detection)
+    Handles analysis of Check, Paystub, Money Order, and Bank Statement documents
+    using Google Cloud Vision API for OCR and text extraction.
+
+KEY FEATURES:
+    - Multi-document format support (checks, paystubs, money orders, bank statements)
+    - PDF to image conversion for processing
+    - Document type validation using keyword detection
+    - Fraud detection endpoints for transaction analysis
+    - User authentication with Supabase fallback to local JSON
+    - RESTful API endpoints for document analysis
+    - Error handling and temporary file cleanup
+
+GLOBALS DECLARED:
+    - logger: Logger instance for application logging
+    - FRAUD_DETECTION_AVAILABLE: Boolean flag for fraud detection module availability
+    - SUPABASE_AVAILABLE: Boolean flag for Supabase integration availability
+    - ProductionCheckExtractor: Check extraction class from production module
+    - app: Flask application instance
+    - vision_client: Google Cloud Vision API client
+    - supabase: Supabase client instance
+    - UPLOAD_FOLDER: Directory path for temporary file uploads
+    - ALLOWED_EXTENSIONS: Set of allowed file extensions
+    - BASE_DIR: Base directory path of the script
+    - CREDENTIALS_PATH: Path to Google Cloud credentials JSON file
+
+================================================================================
 """
 
 from flask import Flask, request, jsonify
@@ -16,27 +47,39 @@ import fitz
 from google.cloud import vision
 from auth import login_user, register_user, token_required
 
-# Import fraud detection modules
+# ============================================================================
+# LOGGING CONFIGURATION
+# ============================================================================
+# Configure logging to INFO level for application tracking
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)  # Logger: Provides logging functionality throughout the application
+
+# ============================================================================
+# OPTIONAL MODULE IMPORTS WITH GRACEFUL DEGRADATION
+# ============================================================================
+# FRAUD DETECTION MODULES (Optional - gracefully disabled if unavailable)
+# Variables: get_fraud_detection_service, PDFStatementValidator
 try:
     from fraud_detection_service import get_fraud_detection_service
     from pdf_statement_validator import PDFStatementValidator
-    FRAUD_DETECTION_AVAILABLE = True
+    FRAUD_DETECTION_AVAILABLE = True  # Flag: Set to True if fraud detection modules are loaded
+    logger.info("Fraud detection modules loaded successfully")
 except ImportError as e:
     logger.warning(f"Fraud detection modules not available: {e}")
-    FRAUD_DETECTION_AVAILABLE = False
+    FRAUD_DETECTION_AVAILABLE = False  # Flag: Set to False if imports fail
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Optional Supabase imports
+# SUPABASE DATABASE MODULES (Optional - gracefully disabled if unavailable)
+# Variables: get_supabase, check_supabase_connection, login_user_supabase,
+#           register_user_supabase, verify_token
 try:
     from supabase_client import get_supabase, check_connection as check_supabase_connection
     from auth_supabase import login_user_supabase, register_user_supabase, verify_token
-    SUPABASE_AVAILABLE = True
+    SUPABASE_AVAILABLE = True  # Flag: Set to True if Supabase modules are loaded
+    logger.info("Supabase modules loaded successfully")
 except ImportError as e:
-    logger.warning(f"Supabase modules not available: {e}")
-    SUPABASE_AVAILABLE = False
+    logger.warning(f"Supabase modules not available: {e}. Using local authentication only.")
+    SUPABASE_AVAILABLE = False  # Flag: Set to False if imports fail
+    # Initialize all Supabase functions to None for safe fallback
     get_supabase = None
     check_supabase_connection = None
     login_user_supabase = None
