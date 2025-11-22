@@ -447,7 +447,7 @@ class MLRiskScorer:
         
         elif document_type == 'money_order':
             # Issuer verification
-            issuer = extracted_data.get('issuer', '').upper()
+            issuer = (extracted_data.get('issuer') or '').upper()
             known_issuers = ['WESTERN UNION', 'MONEYGRAM', 'USPS', 'POSTAL SERVICE']
             if issuer and not any(k in issuer for k in known_issuers):
                 components['issuer_verification'] = 50.0

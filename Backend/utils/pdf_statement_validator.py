@@ -20,10 +20,6 @@ try:
 except ImportError:
     PyPDF2 = None
 
-try:
-    from google.cloud import vision
-except ImportError:
-    vision = None
 
 import hashlib
 import re
@@ -79,13 +75,12 @@ class PDFStatementValidator:
         }
     }
 
-    def __init__(self, pdf_path: str, vision_client: Optional[object] = None):
+    def __init__(self, pdf_path: str):
         """
         Initialize validator with PDF file.
 
         Args:
             pdf_path: Path to PDF file
-            vision_client: Optional Google Cloud Vision API client for OCR fallback
         """
         self.pdf_path = Path(pdf_path)
         if not self.pdf_path.exists():
@@ -97,8 +92,6 @@ class PDFStatementValidator:
         self.num_pages = 0
         self.metadata = None
         self.text_content = {}
-        self.vision_client = vision_client
-        self.vision_used = False
         self.findings = {
             'suspicious_indicators': [],
             'warnings': [],
@@ -181,16 +174,6 @@ class PDFStatementValidator:
                 logger.warning(f"PyMuPDF text extraction failed: {e}")
                 self.text_content = {}
 
-        # Strategy 2: If native text extraction fails, use Vision API for OCR
-        if self.vision_client:
-            logger.info("Using Google Vision API for PDF OCR (scanned document detected)")
-            vision_result = self._extract_text_with_vision_direct()
-            if vision_result and sum(len(text) for text in vision_result.values()) > 100:
-                logger.info("Vision API OCR extraction successful")
-                return vision_result
-            else:
-                logger.warning("Vision API extraction returned minimal text, trying fallback methods")
-
         # Fallback 1: Try pdfplumber
         if pdfplumber and hasattr(self, 'pdf_plumber') and self.pdf_plumber:
             try:
@@ -240,53 +223,6 @@ class PDFStatementValidator:
             return self.text_content
         except Exception as e:
             logger.warning(f"Fallback text extraction failed: {e}")
-            return {}
-
-    def _extract_text_with_vision_direct(self) -> Dict[int, str]:
-        """
-        Extract text from PDF using Google Cloud Vision API by sending PDF directly.
-        More efficient than converting to images first.
-
-        Returns:
-            Dict[int, str]: Extracted text by page number
-        """
-        if not self.vision_client or not vision:
-            logger.warning("Vision client not available for OCR")
-            return {}
-
-        try:
-            logger.info("Using Google Cloud Vision API with direct PDF processing")
-            self.vision_used = True
-
-            # Send PDF directly to Vision API for better efficiency
-            with open(self.pdf_path, 'rb') as f:
-                content = f.read()
-
-            image = vision.Image(content=content)
-            # document_text_detection is optimized for structured documents and PDFs
-            response = self.vision_client.document_text_detection(image=image)
-
-            if response.error.message:
-                logger.error(f"Vision API error: {response.error.message}")
-                return {}
-
-            # Extract full text
-            if response.full_text_annotation and response.full_text_annotation.text:
-                full_text = response.full_text_annotation.text
-                self.text_content[0] = full_text if full_text else ""
-                logger.info(f"Vision API extracted {len(full_text)} characters from PDF")
-                return self.text_content
-            elif response.text_annotations:
-                text = response.text_annotations[0].description
-                self.text_content[0] = text if text else ""
-                logger.info(f"Vision API extracted {len(text)} characters from PDF (fallback method)")
-                return self.text_content
-
-            logger.warning("Vision API returned no text from PDF")
-            return {}
-
-        except Exception as e:
-            logger.error(f"Vision API direct PDF extraction failed: {e}")
             return {}
 
     def check_metadata(self) -> Dict[str, any]:

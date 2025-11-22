@@ -317,7 +317,7 @@ const CheckAnalysis = () => {
                   text: '#16A34A',
                   border: '#22C55E'
                 };
-                
+
                 return (
                   <div style={{ marginBottom: '2rem' }}>
                     <div style={{
@@ -336,7 +336,7 @@ const CheckAnalysis = () => {
                         ML Risk Score: {riskScore.toFixed(1)}% 
                         <span style={{ marginLeft: '0.5rem', fontSize: '1rem' }}>
                           ({results.risk_assessment.risk_level} RISK)
-                        </span>
+                      </span>
                       </h3>
                       
                       {results.risk_assessment.risk_factors && results.risk_assessment.risk_factors.length > 0 && (
@@ -349,7 +349,7 @@ const CheckAnalysis = () => {
                             padding: '0.75rem',
                             marginBottom: '0.5rem',
                             backgroundColor: 'rgba(255, 255, 255, 0.7)',
-                            borderRadius: '8px',
+                      borderRadius: '8px',
                             borderLeft: `4px solid ${factor.severity === 'high' ? colors.accent.red : 
                                                       factor.severity === 'medium' ? '#F59E0B' : '#6B7280'}`
                           }}>
@@ -364,12 +364,12 @@ const CheckAnalysis = () => {
                             <p style={{ margin: '0.25rem 0 0 0', fontWeight: '500' }}>{factor.message}</p>
                             <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem', color: colors.neutral.gray600 }}>
                               Impact: {factor.impact}
-                            </p>
-                          </div>
+                      </p>
+                    </div>
                         ))}
                       </div>
                     )}
-                    
+
                       {results.risk_assessment.recommendations && results.risk_assessment.recommendations.length > 0 && (
                         <div>
                           <h4 style={{ color: riskColors.text, marginBottom: '0.75rem', fontWeight: '600' }}>
@@ -384,10 +384,10 @@ const CheckAnalysis = () => {
                               }}>
                                 {rec}
                               </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                     </div>
                   </div>
                 );

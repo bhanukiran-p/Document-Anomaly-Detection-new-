@@ -7,7 +7,7 @@ AUTHOR: XFORIA Team
 DESCRIPTION:
     Flask API Server for XFORIA DAD (Document Anomaly Detection)
     Handles analysis of Check, Paystub, Money Order, and Bank Statement documents
-    using Google Cloud Vision API for OCR and text extraction.
+    using Mindee Document AI for OCR and text extraction.
 
 KEY FEATURES:
     - Multi-document format support (checks, paystubs, money orders, bank statements)
@@ -22,14 +22,11 @@ GLOBALS DECLARED:
     - logger: Logger instance for application logging
     - FRAUD_DETECTION_AVAILABLE: Boolean flag for fraud detection module availability
     - SUPABASE_AVAILABLE: Boolean flag for Supabase integration availability
-    - ProductionCheckExtractor: Check extraction class from production module
     - app: Flask application instance
-    - vision_client: Google Cloud Vision API client
     - supabase: Supabase client instance
     - UPLOAD_FOLDER: Directory path for temporary file uploads
     - ALLOWED_EXTENSIONS: Set of allowed file extensions
     - BASE_DIR: Base directory path of the script
-    - CREDENTIALS_PATH: Path to Google Cloud credentials JSON file
 
 ================================================================================
 """
@@ -37,16 +34,8 @@ GLOBALS DECLARED:
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
-import sys
 import logging
 from werkzeug.utils import secure_filename
-import importlib.util
-import re
-import base64
-import fitz
-from google.cloud import vision
-from auth import login_user, register_user, token_required
-
 # ============================================================================
 # LOGGING CONFIGURATION
 # ============================================================================
@@ -54,14 +43,34 @@ from auth import login_user, register_user, token_required
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)  # Logger: Provides logging functionality throughout the application
 
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    logger.info("Environment variables loaded from .env file")
+except ImportError:
+    logger.warning("python-dotenv not installed. Environment variables must be set manually.")
+
+# ============================================================================
+# DOCUMENT EXTRACTION IMPORTS (Organized by document type)
+# ============================================================================
+from check import extract_check
+from paystub import extract_paystub
+from money_order import extract_money_order
+from bank_statement import extract_bank_statement
+
+# ============================================================================
+# AUTHENTICATION IMPORTS
+# ============================================================================
+from auth import login_user, register_user
+
 # ============================================================================
 # OPTIONAL MODULE IMPORTS WITH GRACEFUL DEGRADATION
 # ============================================================================
 # FRAUD DETECTION MODULES (Optional - gracefully disabled if unavailable)
-# Variables: get_fraud_detection_service, PDFStatementValidator
+# Variables: get_fraud_detection_service
 try:
-    from fraud_detection_service import get_fraud_detection_service
-    from pdf_statement_validator import PDFStatementValidator
+    from utils import get_fraud_detection_service
     FRAUD_DETECTION_AVAILABLE = True  # Flag: Set to True if fraud detection modules are loaded
     logger.info("Fraud detection modules loaded successfully")
 except ImportError as e:
@@ -72,8 +81,8 @@ except ImportError as e:
 # Variables: get_supabase, check_supabase_connection, login_user_supabase,
 #           register_user_supabase, verify_token
 try:
-    from supabase_client import get_supabase, check_connection as check_supabase_connection
-    from auth_supabase import login_user_supabase, register_user_supabase, verify_token
+    from database import get_supabase, check_connection as check_supabase_connection
+    from auth import login_user_supabase, register_user_supabase, verify_token
     SUPABASE_AVAILABLE = True  # Flag: Set to True if Supabase modules are loaded
     logger.info("Supabase modules loaded successfully")
 except ImportError as e:
@@ -86,17 +95,6 @@ except ImportError as e:
     register_user_supabase = None
     verify_token = None
 
-# Load the production extractor
-spec = importlib.util.spec_from_file_location(
-    "production_extractor", 
-    "production_google_vision-extractor.py"
-)
-production_extractor = importlib.util.module_from_spec(spec)
-sys.modules["production_extractor"] = production_extractor
-spec.loader.exec_module(production_extractor)
-
-ProductionCheckExtractor = production_extractor.ProductionCheckExtractor
-
 app = Flask(__name__)
 CORS(app)  # Enable CORS for React frontend
 
@@ -107,21 +105,11 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'pdf'}
 # Get the directory where this script is located
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Set up credentials path - check environment variable first, then default location
-CREDENTIALS_PATH = os.getenv('GOOGLE_CREDENTIALS_PATH')
-if not CREDENTIALS_PATH:
-    # Default to google-credentials.json in the Backend directory
-    CREDENTIALS_PATH = os.path.join(BASE_DIR, 'google-credentials.json')
-
-# Also set GOOGLE_APPLICATION_CREDENTIALS environment variable for Google Cloud libraries
-if os.path.exists(CREDENTIALS_PATH):
-    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = CREDENTIALS_PATH
-
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Initialize ML Risk Scorer
 try:
-    from ml_risk_scorer import MLRiskScorer
+    from risk import MLRiskScorer
     # Models directory relative to Backend folder
     models_dir = os.path.join(BASE_DIR, 'models')
     risk_scorer = MLRiskScorer(models_dir=models_dir)
@@ -133,19 +121,6 @@ try:
 except Exception as e:
     logger.warning(f"Failed to initialize ML Risk Scorer: {e}")
     risk_scorer = None
-
-# Initialize Vision API client once
-try:
-    if os.path.exists(CREDENTIALS_PATH):
-        vision_client = vision.ImageAnnotatorClient.from_service_account_file(CREDENTIALS_PATH)
-        logger.info(f"Successfully loaded Google Cloud Vision credentials from {CREDENTIALS_PATH}")
-    else:
-        # Try using default credentials from environment
-        vision_client = vision.ImageAnnotatorClient()
-        logger.info("Using default Google Cloud credentials from environment")
-except Exception as e:
-    logger.warning(f"Failed to load Vision API credentials: {e}")
-    vision_client = None
 
 # Initialize Supabase client
 supabase = None
@@ -162,53 +137,6 @@ else:
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-def convert_pdf_to_images(pdf_filepath):
-    """
-    Convert all pages of a PDF to PNG images for Vision API processing.
-    Returns list of converted PNG file paths.
-    For single-page documents, returns a list with one item.
-    """
-    try:
-        pdf_document = fitz.open(pdf_filepath)
-        num_pages = len(pdf_document)
-        logger.info(f"PDF has {num_pages} page(s)")
-
-        png_filepaths = []
-
-        # Convert all pages to images
-        for page_num in range(num_pages):
-            try:
-                page = pdf_document[page_num]
-                # Use 2x zoom for better quality
-                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-
-                # Save as PNG with page number in filename
-                base_filepath = pdf_filepath.replace('.pdf', '')
-                if num_pages > 1:
-                    png_filepath = f"{base_filepath}_page{page_num + 1}.png"
-                else:
-                    png_filepath = f"{base_filepath}.png"
-
-                pix.save(png_filepath)
-                png_filepaths.append(png_filepath)
-                logger.info(f"Converted page {page_num + 1} to: {png_filepath}")
-
-            except Exception as e:
-                logger.error(f"Failed to convert page {page_num + 1}: {str(e)}")
-                continue
-
-        pdf_document.close()
-
-        if not png_filepaths:
-            raise Exception("No pages were successfully converted from PDF")
-
-        logger.info(f"Successfully converted {len(png_filepaths)} page(s) from PDF")
-        return png_filepaths
-
-    except Exception as e:
-        logger.error(f"PDF conversion failed: {str(e)}")
-        raise
 
 def detect_document_type(text):
     """
@@ -386,74 +314,29 @@ def api_register():
 
 @app.route('/api/check/analyze', methods=['POST'])
 def analyze_check():
-    """Analyze check image endpoint"""
     try:
-        # Check if file is in request
         if 'file' not in request.files:
             return jsonify({'error': 'No file provided'}), 400
-        
+
         file = request.files['file']
-        
+
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
-        
+
         if not allowed_file(file.filename):
             return jsonify({'error': 'Invalid file type. Allowed: JPG, JPEG, PNG, PDF'}), 400
-        
-        # Save file temporarily
+
         filename = secure_filename(file.filename)
         filepath = os.path.join(UPLOAD_FOLDER, filename)
         file.save(filepath)
-        
+
         try:
-            # Handle PDF conversion if needed
-            image_filepaths = [filepath]
-            if filename.lower().endswith('.pdf'):
-                try:
-                    image_filepaths = convert_pdf_to_images(filepath)
-                    logger.info(f"PDF converted to {len(image_filepaths)} image(s)")
-                except Exception as e:
-                    logger.error(f"PDF conversion failed: {str(e)}")
-                    if os.path.exists(filepath):
-                        os.remove(filepath)
-                    raise
+            result = extract_check(filepath)
+            extracted = result.get('extracted_data', {})
+            raw_text = extracted.get('raw_ocr_text') or result.get('raw_ocr_text') or result.get('raw_text') or ''
 
-            # Initialize extractor and get text for document type detection
-            extractor = ProductionCheckExtractor(CREDENTIALS_PATH)
-
-            # Get raw text for document type detection from all pages
-            if vision_client is None:
-                raise RuntimeError("Vision API client not initialized. Check credentials.")
-
-            raw_text = ""
-            for img_path in image_filepaths:
-                try:
-                    with open(img_path, 'rb') as file:
-                        content = file.read()
-
-                    image = vision.Image(content=content)
-                    response = vision_client.text_detection(image=image)
-                    logger.info(f"Using text_detection for: {os.path.basename(img_path)}")
-
-                    # Check for Vision API errors
-                    if response.error.message:
-                        logger.error(f"Vision API Error: {response.error.message}")
-                        raise Exception(f"Vision API Error: {response.error.message}")
-
-                    page_text = response.text_annotations[0].description if response.text_annotations else ""
-                    raw_text += page_text + "\n"
-                    logger.info(f"Extracted {len(page_text)} characters from page")
-
-                except Exception as e:
-                    logger.error(f"Vision API request failed: {str(e)}")
-                    raise
-
-            logger.info(f"Successfully extracted text from all pages, total length: {len(raw_text)}")
-            
-            # Validate document type
             detected_type = detect_document_type(raw_text)
-            if detected_type != 'check' and detected_type != 'unknown':
-                # Clean up
+            if detected_type not in ('check', 'unknown'):
                 if os.path.exists(filepath):
                     os.remove(filepath)
                 return jsonify({
@@ -461,51 +344,37 @@ def analyze_check():
                     'error': f'Wrong document type detected. This appears to be a {detected_type}, not a check. Please upload a bank check.',
                     'message': 'Document type mismatch'
                 }), 400
-            
-            # Analyze check details
-            details = extractor.extract_check_details(filepath)
-            
-            # Calculate ML-based risk score
+
             risk_assessment = None
             if risk_scorer:
                 try:
-                    logger.info("Calculating ML risk score for check...")
-                    raw_text = details.get('raw_ocr_text', '')
                     risk_assessment = risk_scorer.calculate_risk_score(
-                        'check', 
-                        details, 
+                        'check',
+                        extracted,
                         raw_text
                     )
-                    logger.info(f"Risk assessment calculated: score={risk_assessment.get('risk_score')}, level={risk_assessment.get('risk_level')}")
                 except Exception as e:
                     logger.error(f"Risk scoring error: {e}", exc_info=True)
-            
-            # Clean up temp file
+
             if os.path.exists(filepath):
                 os.remove(filepath)
-            
-            # Include risk assessment in response
+
             response_data = {
                 'success': True,
-                'data': details,
+                'data': extracted,
                 'message': 'Check analyzed successfully'
             }
-            
+
             if risk_assessment:
                 response_data['risk_assessment'] = risk_assessment
-                logger.info(f"Including risk assessment in response: score={risk_assessment.get('risk_score')}")
-            else:
-                logger.warning("Risk assessment is None - not included in response")
-            
-            logger.info(f"Response data keys: {list(response_data.keys())}")
+
             return jsonify(response_data)
-            
+
         except Exception as e:
-            # Clean up on error
             if os.path.exists(filepath):
                 os.remove(filepath)
             raise e
-            
+
     except Exception as e:
         return jsonify({
             'success': False,
@@ -513,45 +382,48 @@ def analyze_check():
             'message': 'Failed to analyze check'
         }), 500
 
+
+
+
+        
+            
+            
+            
+#     except Exception as e:
+#         return jsonify({
+#             'success': False,
+#             'error': str(e),
+#             'message': 'Failed to analyze paystub'
+#         }), 500
+
+
+
+
 @app.route('/api/paystub/analyze', methods=['POST'])
 def analyze_paystub():
-    """Analyze paystub document endpoint"""
     try:
         if 'file' not in request.files:
             return jsonify({'error': 'No file provided'}), 400
-        
+
         file = request.files['file']
-        
+
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
-        
+
         if not allowed_file(file.filename):
             return jsonify({'error': 'Invalid file type'}), 400
-        
-        # Save file temporarily
+
         filename = secure_filename(file.filename)
         filepath = os.path.join(UPLOAD_FOLDER, filename)
         file.save(filepath)
-        
+
         try:
-            # Import paystub extractor from pages
-            from pages.paystub_extractor import PaystubExtractor
-            
-            # Read file
-            with open(filepath, 'rb') as f:
-                file_bytes = f.read()
-            
-            # Determine file type
-            file_type = 'application/pdf' if filename.lower().endswith('.pdf') else 'image'
-            
-            # Extract text for validation
-            extractor = PaystubExtractor(CREDENTIALS_PATH)
-            text = extractor.extract_text(file_bytes, file_type)
-            
-            # Validate document type
-            detected_type = detect_document_type(text)
-            if detected_type != 'paystub' and detected_type != 'unknown':
-                # Clean up
+            result = extract_paystub(filepath)
+            extracted = result.get('extracted_data', {})
+            raw_text = extracted.get('raw_ocr_text') or result.get('raw_ocr_text') or result.get('raw_text') or ''
+
+            detected_type = detect_document_type(raw_text)
+            if detected_type not in ('paystub', 'unknown'):
                 if os.path.exists(filepath):
                     os.remove(filepath)
                 return jsonify({
@@ -559,49 +431,37 @@ def analyze_paystub():
                     'error': f'Wrong document type detected. This appears to be a {detected_type}, not a paystub. Please upload a paystub document.',
                     'message': 'Document type mismatch'
                 }), 400
-            
-            # Extract and analyze
-            details = extractor.extract_paystub(text)
-            
-            # Calculate ML-based risk score
+
             risk_assessment = None
             if risk_scorer:
                 try:
-                    logger.info("Calculating ML risk score for paystub...")
                     risk_assessment = risk_scorer.calculate_risk_score(
-                        'paystub', 
-                        details, 
-                        text
+                        'paystub',
+                        extracted,
+                        raw_text
                     )
-                    logger.info(f"Risk assessment calculated: score={risk_assessment.get('risk_score')}, level={risk_assessment.get('risk_level')}")
                 except Exception as e:
                     logger.error(f"Risk scoring error: {e}", exc_info=True)
-            
-            # Clean up
+
             if os.path.exists(filepath):
                 os.remove(filepath)
-            
-            # Include risk assessment in response
+
             response_data = {
                 'success': True,
-                'data': details,
+                'data': extracted,
                 'message': 'Paystub analyzed successfully'
             }
-            
+
             if risk_assessment:
                 response_data['risk_assessment'] = risk_assessment
-                logger.info(f"Including risk assessment in response: score={risk_assessment.get('risk_score')}")
-            else:
-                logger.warning("Risk assessment is None - not included in response")
-            
-            logger.info(f"Response data keys: {list(response_data.keys())}")
+
             return jsonify(response_data)
-            
+
         except Exception as e:
             if os.path.exists(filepath):
                 os.remove(filepath)
             raise e
-            
+
     except Exception as e:
         return jsonify({
             'success': False,
@@ -609,9 +469,24 @@ def analyze_paystub():
             'message': 'Failed to analyze paystub'
         }), 500
 
+
+
+
+
+
+
+
+
+
+
+            
+            
+
+
+
+
 @app.route('/api/money-order/analyze', methods=['POST'])
 def analyze_money_order():
-    """Analyze money order document endpoint"""
     try:
         if 'file' not in request.files:
             return jsonify({'error': 'No file provided'}), 400
@@ -624,57 +499,17 @@ def analyze_money_order():
         if not allowed_file(file.filename):
             return jsonify({'error': 'Invalid file type. Allowed: JPG, JPEG, PNG, PDF'}), 400
 
-        # Save file temporarily
         filename = secure_filename(file.filename)
         filepath = os.path.join(UPLOAD_FOLDER, filename)
         file.save(filepath)
 
         try:
-            # Handle PDF conversion if needed
-            image_filepaths = [filepath]
-            if filename.lower().endswith('.pdf'):
-                try:
-                    image_filepaths = convert_pdf_to_images(filepath)
-                    logger.info(f"PDF converted to {len(image_filepaths)} image(s)")
-                except Exception as e:
-                    logger.error(f"PDF conversion failed: {str(e)}")
-                    if os.path.exists(filepath):
-                        os.remove(filepath)
-                    raise
+            result = extract_money_order(filepath)
+            extracted = result.get('extracted_data', {})
+            raw_text = extracted.get('raw_ocr_text') or result.get('raw_ocr_text') or result.get('raw_text') or ''
 
-            # Get raw text for document type detection from all pages
-            if vision_client is None:
-                raise RuntimeError("Vision API client not initialized. Check credentials.")
-
-            raw_text = ""
-            for img_path in image_filepaths:
-                try:
-                    with open(img_path, 'rb') as file:
-                        content = file.read()
-
-                    image = vision.Image(content=content)
-                    response = vision_client.text_detection(image=image)
-                    logger.info(f"Using text_detection for: {os.path.basename(img_path)}")
-
-                    # Check for Vision API errors
-                    if response.error.message:
-                        logger.error(f"Vision API Error: {response.error.message}")
-                        raise Exception(f"Vision API Error: {response.error.message}")
-
-                    page_text = response.text_annotations[0].description if response.text_annotations else ""
-                    raw_text += page_text + "\n"
-                    logger.info(f"Extracted {len(page_text)} characters from page")
-
-                except Exception as e:
-                    logger.error(f"Vision API request failed: {str(e)}")
-                    raise
-
-            logger.info(f"Successfully extracted text from all pages, total length: {len(raw_text)}")
-
-            # Validate document type
             detected_type = detect_document_type(raw_text)
-            if detected_type != 'money_order' and detected_type != 'unknown':
-                # Clean up
+            if detected_type not in ('money_order', 'unknown'):
                 if os.path.exists(filepath):
                     os.remove(filepath)
                 return jsonify({
@@ -683,63 +518,32 @@ def analyze_money_order():
                     'message': 'Document type mismatch'
                 }), 400
 
-            # Try to import and use money order extractor
-            try:
-                from money_order_extractor import MoneyOrderExtractor
-                extractor = MoneyOrderExtractor(CREDENTIALS_PATH)
-                result = extractor.extract_money_order(filepath)
-                logger.info("Money order extracted successfully")
-            except ImportError:
-                logger.warning("MoneyOrderExtractor module not found. Returning basic analysis.")
-                result = {
-                    'raw_text': raw_text[:500],
-                    'status': 'partial',
-                    'message': 'Money order extractor not available. Using vision API text extraction only.'
-                }
-
-            # Calculate ML-based risk score
             risk_assessment = None
-            if risk_scorer and result.get('status') == 'success':
+            if risk_scorer:
                 try:
-                    logger.info("Calculating ML risk score for money order...")
-                    extracted_data = result.get('extracted_data', {})
-                    logger.info(f"Extracted data for risk scoring: {extracted_data}")
-                    logger.info(f"Purchaser field value: {extracted_data.get('purchaser')}")
-                    logger.info(f"Payee field value: {extracted_data.get('payee')}")
                     risk_assessment = risk_scorer.calculate_risk_score(
-                        'money_order', 
-                        extracted_data, 
+                        'money_order',
+                        extracted,
                         raw_text
                     )
-                    logger.info(f"Risk assessment calculated: score={risk_assessment.get('risk_score')}, level={risk_assessment.get('risk_level')}")
-                    logger.info(f"Risk factors: {risk_assessment.get('risk_factors', [])}")
                 except Exception as e:
                     logger.error(f"Risk scoring error: {e}", exc_info=True)
-            elif risk_scorer:
-                logger.warning(f"Money order status is not 'success' (status={result.get('status')}), skipping risk scoring")
-            
-            # Clean up temp file
+
             if os.path.exists(filepath):
                 os.remove(filepath)
-            
-            # Include risk assessment in response
+
             response_data = {
                 'success': True,
                 'data': result,
                 'message': 'Money order analyzed successfully'
             }
-            
+
             if risk_assessment:
                 response_data['risk_assessment'] = risk_assessment
-                logger.info(f"Including risk assessment in response: score={risk_assessment.get('risk_score')}")
-            else:
-                logger.warning("Risk assessment is None - not included in response")
-            
-            logger.info(f"Response data keys: {list(response_data.keys())}")
+
             return jsonify(response_data)
 
         except Exception as e:
-            # Clean up on error
             if os.path.exists(filepath):
                 os.remove(filepath)
             raise e
@@ -751,9 +555,22 @@ def analyze_money_order():
             'message': 'Failed to analyze money order'
         }), 500
 
+
+
+
+
+
+
+
+
+
+
+
+            
+
+
 @app.route('/api/bank-statement/analyze', methods=['POST'])
 def analyze_bank_statement():
-    """Analyze bank statement document endpoint"""
     try:
         if 'file' not in request.files:
             return jsonify({'error': 'No file provided'}), 400
@@ -766,61 +583,18 @@ def analyze_bank_statement():
         if not allowed_file(file.filename):
             return jsonify({'error': 'Invalid file type. Allowed: JPG, JPEG, PNG, PDF'}), 400
 
-        # Save file temporarily
         filename = secure_filename(file.filename)
         filepath = os.path.join(UPLOAD_FOLDER, filename)
         file.save(filepath)
 
         try:
-            # Handle PDF conversion if needed
-            image_filepaths = [filepath]
-            if filename.lower().endswith('.pdf'):
-                try:
-                    image_filepaths = convert_pdf_to_images(filepath)
-                    logger.info(f"PDF converted to {len(image_filepaths)} image(s)")
-                except Exception as e:
-                    logger.error(f"PDF conversion failed: {str(e)}")
-                    if os.path.exists(filepath):
-                        os.remove(filepath)
-                    raise
+            result = extract_bank_statement(filepath)
+            extracted = result.get('extracted_data', {})
+            raw_text = extracted.get('raw_ocr_text') or result.get('raw_ocr_text') or result.get('raw_text') or ''
 
-            # Get raw text for document type detection from all pages
-            if vision_client is None:
-                raise RuntimeError("Vision API client not initialized. Check credentials.")
-
-            raw_text = ""
-            for img_path in image_filepaths:
-                try:
-                    with open(img_path, 'rb') as file:
-                        content = file.read()
-
-                    image = vision.Image(content=content)
-                    response = vision_client.text_detection(image=image)
-                    logger.info(f"Using text_detection for: {os.path.basename(img_path)}")
-
-                    # Check for Vision API errors
-                    if response.error.message:
-                        logger.error(f"Vision API Error: {response.error.message}")
-                        raise Exception(f"Vision API Error: {response.error.message}")
-
-                    page_text = response.text_annotations[0].description if response.text_annotations else ""
-                    raw_text += page_text + "\n"
-                    logger.info(f"Extracted {len(page_text)} characters from page")
-
-                except Exception as e:
-                    logger.error(f"Vision API request failed: {str(e)}")
-                    raise
-
-            logger.info(f"Successfully extracted text from all pages, total length: {len(raw_text)}")
-
-            # Validate document type
             detected_type = detect_document_type(raw_text)
-            if detected_type != 'bank_statement' and detected_type != 'unknown':
-                # Clean up all temp files
-                for img_path in image_filepaths:
-                    if os.path.exists(img_path):
-                        os.remove(img_path)
-                if filepath != image_filepaths[0] and os.path.exists(filepath):
+            if detected_type not in ('bank_statement', 'unknown'):
+                if os.path.exists(filepath):
                     os.remove(filepath)
                 return jsonify({
                     'success': False,
@@ -828,66 +602,34 @@ def analyze_bank_statement():
                     'message': 'Document type mismatch'
                 }), 400
 
-            # Try to import and use bank statement extractor
-            try:
-                from bank_statement_extractor import BankStatementExtractor
-                extractor = BankStatementExtractor(CREDENTIALS_PATH)
-                # Use the first converted image for extraction (or original if not PDF)
-                extract_path = image_filepaths[0] if image_filepaths else filepath
-                result = extractor.extract_statement_details(extract_path)
-                logger.info("Bank statement extracted successfully")
-            except ImportError:
-                logger.warning("BankStatementExtractor module not found. Returning basic analysis.")
-                result = {
-                    'raw_text': raw_text[:500],
-                    'status': 'partial',
-                    'message': 'Bank statement extractor not available. Using vision API text extraction only.'
-                }
-
-            # Calculate ML-based risk score
             risk_assessment = None
             if risk_scorer:
                 try:
-                    logger.info("Calculating ML risk score for bank statement...")
                     risk_assessment = risk_scorer.calculate_risk_score(
-                        'bank_statement', 
-                        result, 
+                        'bank_statement',
+                        extracted,
                         raw_text
                     )
-                    logger.info(f"Risk assessment calculated: score={risk_assessment.get('risk_score')}, level={risk_assessment.get('risk_level')}")
                 except Exception as e:
                     logger.error(f"Risk scoring error: {e}", exc_info=True)
-            
-            # Clean up temp file
+
             if os.path.exists(filepath):
                 os.remove(filepath)
 
-            # Include risk assessment in response
             response_data = {
                 'success': True,
                 'data': result,
                 'message': 'Bank statement analyzed successfully'
             }
-            
+
             if risk_assessment:
                 response_data['risk_assessment'] = risk_assessment
-                logger.info(f"Including risk assessment in response: score={risk_assessment.get('risk_score')}")
-            else:
-                logger.warning("Risk assessment is None - not included in response")
-            
-            logger.info(f"Response data keys: {list(response_data.keys())}")
+
             return jsonify(response_data)
 
         except Exception as e:
-            # Clean up on error - remove all temp files
-            try:
-                for img_path in image_filepaths:
-                    if os.path.exists(img_path):
-                        os.remove(img_path)
-                if filepath != image_filepaths[0] and os.path.exists(filepath):
-                    os.remove(filepath)
-            except:
-                pass
+            if os.path.exists(filepath):
+                os.remove(filepath)
             raise e
 
     except Exception as e:
@@ -896,6 +638,12 @@ def analyze_bank_statement():
             'error': str(e),
             'message': 'Failed to analyze bank statement'
         }), 500
+
+
+
+
+
+
 
 
 # ==========================================
@@ -1006,7 +754,7 @@ def fraud_validate_pdf():
         file.save(filepath)
 
         try:
-            service = get_fraud_detection_service(vision_client=vision_client)
+            service = get_fraud_detection_service()
             pdf_validation = service.validate_statement_pdf(filepath)
 
             # Convert to dict
@@ -1136,7 +884,7 @@ def fraud_batch_predict():
             import pandas as pd
 
             df = pd.read_csv(filepath)
-            service = get_fraud_detection_service(vision_client=vision_client)
+            service = get_fraud_detection_service()
             predictions_df = service.batch_predict(df)
 
             # Convert to JSON-serializable format

@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { colors } from '../styles/colors';
-import { FaBars, FaTimes, FaSignOutAlt } from 'react-icons/fa';
+import { FaBars, FaTimes } from 'react-icons/fa';
 
 const Header = () => {
   const location = useLocation();
@@ -118,25 +118,25 @@ const Header = () => {
     display: 'block',
   });
 
-  // eslint-disable-next-line no-unused-vars
   const logoutButtonStyle = {
-    padding: '0.5rem 1.25rem',
-    borderRadius: '9999px', // Pill shape
-    fontWeight: '500',
-    backgroundColor: colors.accent.red,
-    color: colors.neutral.white,
+    backgroundColor: 'transparent',
     border: 'none',
     cursor: 'pointer',
-    transition: 'all 0.2s',
-    width: 'auto',
+    padding: '0.5rem',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '0.5rem',
+    transition: 'transform 0.2s',
     marginTop: '2rem',
     borderTop: `1px solid ${colors.neutral.gray200}`,
     paddingTop: '2rem',
     alignSelf: 'center'
+  };
+
+  const logoutImageStyle = {
+    width: '40px',
+    height: '40px',
+    borderRadius: '50%',
   };
   
   return (
@@ -229,14 +229,18 @@ const Header = () => {
           style={logoutButtonStyle}
           onClick={handleLogout}
           onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = colors.accent.redDark;
+            e.currentTarget.style.transform = 'scale(1.1)';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = colors.accent.red;
+            e.currentTarget.style.transform = 'scale(1)';
           }}
+          title="Logout"
         >
-          <FaSignOutAlt style={{ fontSize: '1.1rem', flexShrink: 0 }} />
-          <span>Logout</span>
+          <img
+            src="/exit-door.png"
+            alt="Logout"
+            style={logoutImageStyle}
+          />
         </button>
       </div>
     </>

@@ -1,0 +1,73 @@
+timestamp,document_type,source_file,raw_text,flat_fields,full_payload,risk_score,risk_verdict,risk_payload
+2025-11-22T02:34:59.937936+00:00,MONEY_ORDER,money_order_western_union_2.pdf,"LOAD THIS DIRECTION, THIS SIDE UP
+THIS DOCUMENT CONTAINS A TRUE WATERMARK - HOLD UP TO LIGHT TO VIEW
+WESTER
+|
+MONEY
+WESTERN UNION FINANCIAL SERVICES INC. - ISSUER
+ble at Wells Fargo Bank Grand Junction - Downtown, N.A., Grand Junction, Colorado
+Englewood, Colorado
+A 799284 D 542592
+N 8788 05
+1446732994115 L 992118
+14-467329941
+SAMPLE
+PAY EXACTLY FIVE HUNDE
+PAY TO THE
+ORDER OF
+JOHN MICHAEL SMITH
+PURCHASER'S ADDRESS
+123 MAIN STREET
+DENVER, CO 80202
+:: 485463093::
+1446732994115::
+$ 500.00
+CHILD/BENEFICIARY SIGNATURE
+PURCHASER'S SIGNATURE
+2025
+MONEY ORDER RECEIPT - NON NEGOTIABLE
+Try the new Western Union Payments service for all your bills
+and get guaranteed proof of payment. To learn more and to
+search over 10,000 billers, goto Western UnionPaysMyBills.com.
+ACT 799284 LOC 001787 DT 542592 $500.00 FIVE HUNDRED DOLLARS AND NO CENTS
+RETAIN THIS MONEY ORDER RECEIPT. IT MUST BE INCLUDED WITH ALL REFUND REQUESTS. BE SURE TO READ IMPORTANT
+INFORMATION BELOW AND ON BACK.
+PURCHASE AGREEMENT: You the purchaser agree that Western Union Financial Services Inc. (WUFSI) need
+* 14467329941 *
+LOAD THIS DIRECTION, THIS SIDE","{""raw_text"": ""LOAD THIS DIRECTION, THIS SIDE UP\nTHIS DOCUMENT CONTAINS A TRUE WATERMARK - HOLD UP TO LIGHT TO VIEW\nWESTER\n|\nMONEY\nWESTERN UNION FINANCIAL SERVICES INC. - ISSUER\nble at Wells Fargo Bank Grand Junction - Downtown, N.A., Grand Junction, Colorado\nEnglewood, Colorado\nA 799284 D 542592\nN 8788 05\n1446732994115 L 992118\n14-467329941\nSAMPLE\nPAY EXACTLY FIVE HUNDE\nPAY TO THE\nORDER OF\nJOHN MICHAEL SMITH\nPURCHASER'S ADDRESS\n123 MAIN STREET\nDENVER, CO 80202\n:: 485463093::\n1446732994115::\n$ 500.00\nCHILD/BEN"", ""status"": ""partial"", ""message"": ""Money order extractor not available. Using vision API text extraction only.""}","{""raw_text"": ""LOAD THIS DIRECTION, THIS SIDE UP\nTHIS DOCUMENT CONTAINS A TRUE WATERMARK - HOLD UP TO LIGHT TO VIEW\nWESTER\n|\nMONEY\nWESTERN UNION FINANCIAL SERVICES INC. - ISSUER\nble at Wells Fargo Bank Grand Junction - Downtown, N.A., Grand Junction, Colorado\nEnglewood, Colorado\nA 799284 D 542592\nN 8788 05\n1446732994115 L 992118\n14-467329941\nSAMPLE\nPAY EXACTLY FIVE HUNDE\nPAY TO THE\nORDER OF\nJOHN MICHAEL SMITH\nPURCHASER'S ADDRESS\n123 MAIN STREET\nDENVER, CO 80202\n:: 485463093::\n1446732994115::\n$ 500.00\nCHILD/BEN"", ""status"": ""partial"", ""message"": ""Money order extractor not available. Using vision API text extraction only.""}",0.27,LOW RISK - MINOR CONCERNS,"{""document_type"": ""MONEY_ORDER"", ""document_path"": ""temp_uploads\\money_order_western_union_2.png"", ""risk_score"": 0.27, ""verdict"": ""LOW RISK - MINOR CONCERNS"", ""suspicious_indicators"": [""[Validation] Missing fields: serial_number, amount, payee, purchaser, date"", ""[Validation] Invalid money order amount""], ""warnings"": [""[Validation] Signature not detected""], ""is_suspicious"": true, ""ml_probability"": null}"
+2025-11-22T02:35:04.816355+00:00,MONEY_ORDER,money_order_western_union_2.pdf,"LOAD THIS DIRECTION, THIS SIDE UP
+THIS DOCUMENT CONTAINS A TRUE WATERMARK - HOLD UP TO LIGHT TO VIEW
+WESTER
+|
+MONEY
+WESTERN UNION FINANCIAL SERVICES INC. - ISSUER
+ble at Wells Fargo Bank Grand Junction - Downtown, N.A., Grand Junction, Colorado
+Englewood, Colorado
+A 799284 D 542592
+N 8788 05
+1446732994115 L 992118
+14-467329941
+SAMPLE
+PAY EXACTLY FIVE HUNDE
+PAY TO THE
+ORDER OF
+JOHN MICHAEL SMITH
+PURCHASER'S ADDRESS
+123 MAIN STREET
+DENVER, CO 80202
+:: 485463093::
+1446732994115::
+$ 500.00
+CHILD/BENEFICIARY SIGNATURE
+PURCHASER'S SIGNATURE
+2025
+MONEY ORDER RECEIPT - NON NEGOTIABLE
+Try the new Western Union Payments service for all your bills
+and get guaranteed proof of payment. To learn more and to
+search over 10,000 billers, goto Western UnionPaysMyBills.com.
+ACT 799284 LOC 001787 DT 542592 $500.00 FIVE HUNDRED DOLLARS AND NO CENTS
+RETAIN THIS MONEY ORDER RECEIPT. IT MUST BE INCLUDED WITH ALL REFUND REQUESTS. BE SURE TO READ IMPORTANT
+INFORMATION BELOW AND ON BACK.
+PURCHASE AGREEMENT: You the purchaser agree that Western Union Financial Services Inc. (WUFSI) need
+* 14467329941 *
+LOAD THIS DIRECTION, THIS SIDE","{""raw_text"": ""LOAD THIS DIRECTION, THIS SIDE UP\nTHIS DOCUMENT CONTAINS A TRUE WATERMARK - HOLD UP TO LIGHT TO VIEW\nWESTER\n|\nMONEY\nWESTERN UNION FINANCIAL SERVICES INC. - ISSUER\nble at Wells Fargo Bank Grand Junction - Downtown, N.A., Grand Junction, Colorado\nEnglewood, Colorado\nA 799284 D 542592\nN 8788 05\n1446732994115 L 992118\n14-467329941\nSAMPLE\nPAY EXACTLY FIVE HUNDE\nPAY TO THE\nORDER OF\nJOHN MICHAEL SMITH\nPURCHASER'S ADDRESS\n123 MAIN STREET\nDENVER, CO 80202\n:: 485463093::\n1446732994115::\n$ 500.00\nCHILD/BEN"", ""status"": ""partial"", ""message"": ""Money order extractor not available. Using vision API text extraction only.""}","{""raw_text"": ""LOAD THIS DIRECTION, THIS SIDE UP\nTHIS DOCUMENT CONTAINS A TRUE WATERMARK - HOLD UP TO LIGHT TO VIEW\nWESTER\n|\nMONEY\nWESTERN UNION FINANCIAL SERVICES INC. - ISSUER\nble at Wells Fargo Bank Grand Junction - Downtown, N.A., Grand Junction, Colorado\nEnglewood, Colorado\nA 799284 D 542592\nN 8788 05\n1446732994115 L 992118\n14-467329941\nSAMPLE\nPAY EXACTLY FIVE HUNDE\nPAY TO THE\nORDER OF\nJOHN MICHAEL SMITH\nPURCHASER'S ADDRESS\n123 MAIN STREET\nDENVER, CO 80202\n:: 485463093::\n1446732994115::\n$ 500.00\nCHILD/BEN"", ""status"": ""partial"", ""message"": ""Money order extractor not available. Using vision API text extraction only.""}",0.27,LOW RISK - MINOR CONCERNS,"{""document_type"": ""MONEY_ORDER"", ""document_path"": ""temp_uploads\\money_order_western_union_2.png"", ""risk_score"": 0.27, ""verdict"": ""LOW RISK - MINOR CONCERNS"", ""suspicious_indicators"": [""[Validation] Missing fields: serial_number, amount, payee, purchaser, date"", ""[Validation] Invalid money order amount""], ""warnings"": [""[Validation] Signature not detected""], ""is_suspicious"": true, ""ml_probability"": null}"
