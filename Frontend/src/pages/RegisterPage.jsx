@@ -77,6 +77,12 @@ const RegisterPage = () => {
       gap: '0.75rem',
       marginBottom: '24px',
     },
+    logoImage: {
+      height: '100px',
+      width: 'auto',
+      objectFit: 'contain',
+      display: 'block',
+    },
     logoText: {
       fontSize: '1.5rem',
       fontWeight: 'bold',
@@ -183,21 +189,7 @@ const RegisterPage = () => {
         {/* Logo Section */}
         <div style={styles.logoSection}>
           <div style={styles.logoContainer}>
-            <div style={{
-              width: '40px',
-              height: '40px',
-              backgroundColor: primary,
-              borderRadius: '0.5rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: colors.primaryForeground,
-              fontSize: '1.25rem',
-              fontWeight: 'bold',
-            }}>
-              D
-            </div>
-            <span style={styles.logoText}>DAD</span>
+            <img src="/DAD_red_black.png" alt="DAD Logo" style={styles.logoImage} />
           </div>
           <h1 style={styles.title}>Create Account</h1>
           <p style={styles.subtitle}>Join XFORIA to get started</p>

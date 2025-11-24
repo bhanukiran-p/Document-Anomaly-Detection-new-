@@ -306,24 +306,16 @@ def analyze_paystub():
         file.save(filepath)
         
         try:
-            # Import paystub extractor from pages
-            from pages.paystub_extractor import PaystubExtractor
+            # Use Mindee extractor
+            from paystub.extractor import extract_paystub
             
-            # Read file
-            with open(filepath, 'rb') as f:
-                file_bytes = f.read()
-            
-            # Determine file type
-            file_type = 'application/pdf' if filename.lower().endswith('.pdf') else 'image'
-            
-            # Extract text for validation
-            extractor = PaystubExtractor(CREDENTIALS_PATH)
-            text = extractor.extract_text(file_bytes, file_type)
+            result = extract_paystub(filepath)
+            extracted = result.get('extracted_data', {})
+            raw_text = extracted.get('raw_ocr_text') or result.get('raw_text') or ''
             
             # Validate document type
-            detected_type = detect_document_type(text)
-            if detected_type != 'paystub' and detected_type != 'unknown':
-                # Clean up
+            detected_type = detect_document_type(raw_text)
+            if detected_type not in ('paystub', 'unknown'):
                 if os.path.exists(filepath):
                     os.remove(filepath)
                 return jsonify({
@@ -332,16 +324,19 @@ def analyze_paystub():
                     'message': 'Document type mismatch'
                 }), 400
             
-            # Extract and analyze
-            details = extractor.extract_paystub(text)
-            
             # Clean up
             if os.path.exists(filepath):
                 os.remove(filepath)
             
+            # Format response for frontend
+            formatted_data = {
+                **extracted,
+                'extracted_data': extracted,
+            }
+            
             return jsonify({
                 'success': True,
-                'data': details,
+                'data': formatted_data,
                 'message': 'Paystub analyzed successfully'
             })
             
@@ -398,20 +393,16 @@ def analyze_money_order():
                     logger.error(f"PDF conversion failed: {e}")
                     raise
 
-            # Get raw text for document type detection
-            if vision_client is None:
-                raise RuntimeError("Vision API client not initialized. Check credentials.")
-
-            with open(filepath, 'rb') as image_file:
-                content = image_file.read()
-            image = vision.Image(content=content)
-            response = vision_client.text_detection(image=image)
-            raw_text = response.text_annotations[0].description if response.text_annotations else ""
-
+            # Use Mindee extractor
+            from money_order.extractor import extract_money_order
+            
+            result = extract_money_order(filepath)
+            extracted = result.get('extracted_data', {})
+            raw_text = extracted.get('raw_ocr_text') or result.get('raw_text') or ''
+            
             # Validate document type
             detected_type = detect_document_type(raw_text)
-            if detected_type != 'money_order' and detected_type != 'unknown':
-                # Clean up
+            if detected_type not in ('money_order', 'unknown'):
                 if os.path.exists(filepath):
                     os.remove(filepath)
                 return jsonify({
@@ -419,50 +410,24 @@ def analyze_money_order():
                     'error': f'Wrong document type detected. This appears to be a {detected_type}, not a money order. Please upload a money order document.',
                     'message': 'Document type mismatch'
                 }), 400
-
-            # Try to import and use money order extractor
-            try:
-                from money_order_extractor import MoneyOrderExtractor
-                extractor = MoneyOrderExtractor(CREDENTIALS_PATH)
-                result = extractor.extract_money_order(filepath)
-                logger.info("Money order extracted successfully")
-            except ImportError:
-                logger.warning("MoneyOrderExtractor module not found. Returning basic analysis.")
-                result = {
-                    'raw_text': raw_text[:500],
-                    'status': 'partial',
-                    'message': 'Money order extractor not available. Using vision API text extraction only.'
-                }
-
+            
+            # Format response for frontend
+            formatted_data = {
+                **extracted,
+                'extracted_data': extracted,
+            }
+            
+            response_data = {
+                'success': True,
+                'data': formatted_data,
+                'message': 'Money order analyzed successfully'
+            }
+            
             # Clean up temp file
             if os.path.exists(filepath):
                 os.remove(filepath)
-
-            # Extract simplified response (only 3 fields)
-            simplified_data = {}
-            analysis_id = result.get('analysis_id')
-
-            # Check if we have ML and AI analysis
-            ml_analysis = result.get('ml_analysis', {})
-            ai_analysis = result.get('ai_analysis', {})
-
-            if ml_analysis and ai_analysis:
-                # Return simplified response
-                simplified_data = {
-                    'fraud_risk_score': ml_analysis.get('fraud_risk_score', 0),
-                    'model_confidence': ml_analysis.get('model_confidence', 0),
-                    'ai_recommendation': ai_analysis.get('recommendation', 'UNKNOWN')
-                }
-            else:
-                # Fallback if ML/AI not available - return basic result
-                simplified_data = result
-
-            return jsonify({
-                'success': True,
-                'data': simplified_data,
-                'analysis_id': analysis_id,  # For download
-                'message': 'Money order analyzed successfully'
-            })
+            
+            return jsonify(response_data)
 
         except Exception as e:
             # Clean up on error
@@ -551,20 +516,16 @@ def analyze_bank_statement():
                     logger.error(f"PDF conversion failed: {e}")
                     raise
 
-            # Get raw text for document type detection
-            if vision_client is None:
-                raise RuntimeError("Vision API client not initialized. Check credentials.")
-
-            with open(filepath, 'rb') as image_file:
-                content = image_file.read()
-            image = vision.Image(content=content)
-            response = vision_client.text_detection(image=image)
-            raw_text = response.text_annotations[0].description if response.text_annotations else ""
-
+            # Use Mindee extractor
+            from bank_statement.extractor import extract_bank_statement
+            
+            result = extract_bank_statement(filepath)
+            extracted = result.get('extracted_data', {})
+            raw_text = extracted.get('raw_ocr_text') or result.get('raw_text') or ''
+            
             # Validate document type
             detected_type = detect_document_type(raw_text)
-            if detected_type != 'bank_statement' and detected_type != 'unknown':
-                # Clean up
+            if detected_type not in ('bank_statement', 'unknown'):
                 if os.path.exists(filepath):
                     os.remove(filepath)
                 return jsonify({
@@ -572,24 +533,29 @@ def analyze_bank_statement():
                     'error': f'Wrong document type detected. This appears to be a {detected_type}, not a bank statement. Please upload a bank statement document.',
                     'message': 'Document type mismatch'
                 }), 400
-
-            # Try to import and use bank statement extractor
-            try:
-                from bank_statement_extractor import BankStatementExtractor
-                extractor = BankStatementExtractor(CREDENTIALS_PATH)
-                result = extractor.extract_statement_details(filepath)
-                logger.info("Bank statement extracted successfully")
-            except ImportError:
-                logger.warning("BankStatementExtractor module not found. Returning basic analysis.")
-                result = {
-                    'raw_text': raw_text[:500],
-                    'status': 'partial',
-                    'message': 'Bank statement extractor not available. Using vision API text extraction only.'
+            
+            # Format response for frontend
+            formatted_data = {
+                **extracted,
+                'extracted_data': extracted,
+                'statement_period': f"{extracted.get('statement_period_start', 'N/A')} to {extracted.get('statement_period_end', 'N/A')}",
+                'balances': {
+                    'opening_balance': extracted.get('opening_balance'),
+                    'closing_balance': extracted.get('closing_balance'),
                 }
-
+            }
+            
+            response_data = {
+                'success': True,
+                'data': formatted_data,
+                'message': 'Bank statement analyzed successfully'
+            }
+            
             # Clean up temp file
             if os.path.exists(filepath):
                 os.remove(filepath)
+            
+            return jsonify(response_data)
 
             return jsonify({
                 'success': True,
