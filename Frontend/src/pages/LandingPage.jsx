@@ -63,7 +63,7 @@ const LandingPage = () => {
     backdropFilter: 'blur(10px)',
     WebkitBackdropFilter: 'blur(10px)',
     borderBottom: `1px solid ${colors.border}`,
-    padding: '1rem 1.5rem',
+    padding: '0.75rem 1.5rem 0.75rem 0.25rem',
   };
 
   const navContainerStyle = {
@@ -82,6 +82,15 @@ const LandingPage = () => {
     fontWeight: 'bold',
     color: primary,
     cursor: 'pointer',
+    transition: 'transform 0.3s ease',
+    marginLeft: '-0.75rem',
+  };
+  
+  const logoImageStyle = {
+    height: '75px',
+    width: 'auto',
+    objectFit: 'contain',
+    display: 'block',
   };
 
   const navLinksStyle = {
@@ -537,8 +546,25 @@ const LandingPage = () => {
       {/* Navigation */}
       <nav style={navStyle}>
         <div style={navContainerStyle}>
-          <div style={logoStyle} onClick={() => navigate('/')}>
-            <img src="/dad-logo.png" alt="DAD Logo" style={{ height: '40px' }} />
+          <div 
+            style={logoStyle} 
+            onClick={() => navigate('/')}
+            onMouseEnter={(e) => {
+              const img = e.currentTarget.querySelector('img');
+              if (img) {
+                img.style.filter = 'drop-shadow(0 0 12px rgba(255, 255, 255, 0.5)) drop-shadow(0 0 20px rgba(229, 57, 53, 0.6))';
+                img.style.transform = 'scale(1.05)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              const img = e.currentTarget.querySelector('img');
+              if (img) {
+                img.style.filter = 'drop-shadow(0 0 8px rgba(255, 255, 255, 0.3)) drop-shadow(0 0 15px rgba(229, 57, 53, 0.4))';
+                img.style.transform = 'scale(1)';
+              }
+            }}
+          >
+            <img src="/New_FD.png" alt="DAD Logo" style={logoImageStyle} />
           </div>
           
           <div style={{ ...navLinksStyle, display: window.innerWidth >= 768 ? 'flex' : 'none' }}>
@@ -598,6 +624,17 @@ const LandingPage = () => {
       <section style={heroSectionStyle}>
         <HeroBackground />
         <div style={heroContentStyle}>
+          <img 
+            src="/New_FD.png" 
+            alt="XFORIA DAD Logo" 
+            style={{
+              height: '200px',
+              width: 'auto',
+              objectFit: 'contain',
+              display: 'block',
+              margin: '0 auto 2rem',
+            }} 
+          />
           <h1 style={heroTitleStyle}>
             Stop Document Fraud Before It Costs You{' '}
             <span style={heroGradientTextStyle}>Millions</span>
@@ -1447,7 +1484,7 @@ const FooterSection = ({ colors, primary }) => {
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 1.5rem' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '3rem', marginBottom: '3rem' }}>
           <div>
-            <img src="/dad-logo.png" alt="DAD Logo" style={{ height: '40px', marginBottom: '1rem' }} />
+            <img src="/DAD_red_black.png" alt="DAD Logo" style={{ height: '60px', width: 'auto', objectFit: 'contain', display: 'block', marginBottom: '1rem' }} />
             <p style={{ fontSize: '0.875rem', color: colors.mutedForeground, marginBottom: '1rem' }}>
               Enterprise AI for Document Fraud Detection
             </p>

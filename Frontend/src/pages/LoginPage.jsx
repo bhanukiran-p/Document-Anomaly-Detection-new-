@@ -59,6 +59,13 @@ const LoginPage = () => {
       gap: '0.75rem',
       marginBottom: '24px',
     },
+    logoImage: {
+      height: '120px',
+      width: 'auto',
+      objectFit: 'contain',
+      display: 'block',
+      margin: '0 auto',
+    },
     logoText: {
       fontSize: '1.5rem',
       fontWeight: 'bold',
@@ -162,21 +169,7 @@ const LoginPage = () => {
         {/* Logo Section */}
         <div style={styles.logoSection}>
           <div style={styles.logoContainer}>
-            <div style={{
-              width: '40px',
-              height: '40px',
-              backgroundColor: primary,
-              borderRadius: '0.5rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: colors.primaryForeground,
-              fontSize: '1.25rem',
-              fontWeight: 'bold',
-            }}>
-              D
-            </div>
-            <span style={styles.logoText}>DAD</span>
+            <img src="/DAD_red_black.png" alt="DAD Logo" style={styles.logoImage} />
           </div>
           <h1 style={styles.title}>Login</h1>
           <p style={styles.subtitle}>Your Guardian against Fraud</p>
