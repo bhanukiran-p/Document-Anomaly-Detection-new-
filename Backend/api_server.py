@@ -13,24 +13,42 @@ import importlib.util
 import re
 import fitz
 from google.cloud import vision
-from auth import login_user, register_user, token_required
-from supabase_client import get_supabase, check_connection as check_supabase_connection
-from auth_supabase import login_user_supabase, register_user_supabase, verify_token
+from auth import login_user, register_user
+try:
+    from database.supabase_client import get_supabase, check_connection as check_supabase_connection
+except ImportError:
+    get_supabase = None
+    check_supabase_connection = None
+
+try:
+    from auth.supabase_auth import login_user_supabase, register_user_supabase, verify_token
+except ImportError:
+    login_user_supabase = None
+    register_user_supabase = None
+    verify_token = None
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Load the production extractor
-spec = importlib.util.spec_from_file_location(
-    "production_extractor", 
-    "production_google_vision-extractor.py"
-)
-production_extractor = importlib.util.module_from_spec(spec)
-sys.modules["production_extractor"] = production_extractor
-spec.loader.exec_module(production_extractor)
-
-ProductionCheckExtractor = production_extractor.ProductionCheckExtractor
+# Load the production extractor (optional - for backward compatibility)
+try:
+    spec = importlib.util.spec_from_file_location(
+        "production_extractor", 
+        "production_google_vision-extractor.py"
+    )
+    if spec and spec.loader:
+        production_extractor = importlib.util.module_from_spec(spec)
+        sys.modules["production_extractor"] = production_extractor
+        spec.loader.exec_module(production_extractor)
+        ProductionCheckExtractor = production_extractor.ProductionCheckExtractor
+        logger.info("Production extractor loaded successfully")
+    else:
+        ProductionCheckExtractor = None
+        logger.warning("Production extractor file not found, using Mindee extractor instead")
+except (FileNotFoundError, ImportError, AttributeError) as e:
+    ProductionCheckExtractor = None
+    logger.warning(f"Production extractor not available: {e}. Using Mindee extractor instead.")
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for React frontend
@@ -52,9 +70,13 @@ except Exception as e:
 
 # Initialize Supabase client
 try:
-    supabase = get_supabase()
-    supabase_status = check_supabase_connection()
-    logger.info(f"Supabase initialization: {supabase_status['message']}")
+    if get_supabase and check_supabase_connection:
+        supabase = get_supabase()
+        supabase_status = check_supabase_connection()
+        logger.info(f"Supabase initialization: {supabase_status['message']}")
+    else:
+        supabase = None
+        logger.warning("Supabase client not available")
 except Exception as e:
     logger.warning(f"Failed to initialize Supabase: {e}")
     supabase = None
@@ -233,44 +255,61 @@ def analyze_check():
                     logger.error(f"PDF conversion failed: {e}")
                     raise
 
-            # Initialize extractor and get text for validation
-            extractor = ProductionCheckExtractor(CREDENTIALS_PATH)
-
-            # Get raw text for document type detection
-            if vision_client is None:
-                raise RuntimeError("Vision API client not initialized. Check credentials.")
-
-            with open(filepath, 'rb') as image_file:
-                content = image_file.read()
-            image = vision.Image(content=content)
-            response = vision_client.text_detection(image=image)
-            raw_text = response.text_annotations[0].description if response.text_annotations else ""
-            logger.info(f"Detected document type: check")
-            
-            # Validate document type
-            detected_type = detect_document_type(raw_text)
-            if detected_type != 'check' and detected_type != 'unknown':
-                # Clean up
+            # Use Mindee-based check extractor
+            try:
+                from check.extractor import extract_check
+                result = extract_check(filepath)
+                logger.info("Check extracted successfully")
+            except ImportError as e:
+                logger.error(f"Failed to import check extractor: {e}")
+                # Clean up on error
                 if os.path.exists(filepath):
                     os.remove(filepath)
                 return jsonify({
                     'success': False,
-                    'error': f'Wrong document type detected. This appears to be a {detected_type}, not a check. Please upload a bank check.',
-                    'message': 'Document type mismatch'
-                }), 400
-            
-            # Analyze check details
-            details = extractor.extract_check_details(filepath)
-            
+                    'error': 'Check extractor not available',
+                    'message': 'Failed to load check extraction module'
+                }), 500
+            except Exception as e:
+                logger.error(f"Check extraction failed: {e}", exc_info=True)
+                # Clean up on error
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+                return jsonify({
+                    'success': False,
+                    'error': str(e),
+                    'message': 'Failed to extract check data'
+                }), 500
+
+            # Get raw text for document type validation
+            extracted_data = result.get('extracted_data', {})
+            raw_text = extracted_data.get('raw_ocr_text') or result.get('raw_text') or ''
+
+            # Validate document type if we have raw text
+            if raw_text:
+                detected_type = detect_document_type(raw_text)
+                if detected_type != 'check' and detected_type != 'unknown':
+                    # Clean up
+                    if os.path.exists(filepath):
+                        os.remove(filepath)
+                    return jsonify({
+                        'success': False,
+                        'error': f'Wrong document type detected. This appears to be a {detected_type}, not a check. Please upload a bank check.',
+                        'message': 'Document type mismatch'
+                    }), 400
+
             # Clean up temp file
             if os.path.exists(filepath):
                 os.remove(filepath)
-            
-            return jsonify({
+
+            # Format response for frontend
+            response_data = {
                 'success': True,
-                'data': details,
+                'data': extracted_data,
                 'message': 'Check analyzed successfully'
-            })
+            }
+
+            return jsonify(response_data)
             
         except Exception as e:
             # Clean up on error
@@ -398,71 +437,115 @@ def analyze_money_order():
                     logger.error(f"PDF conversion failed: {e}")
                     raise
 
-            # Get raw text for document type detection
-            if vision_client is None:
-                raise RuntimeError("Vision API client not initialized. Check credentials.")
-
-            with open(filepath, 'rb') as image_file:
-                content = image_file.read()
-            image = vision.Image(content=content)
-            response = vision_client.text_detection(image=image)
-            raw_text = response.text_annotations[0].description if response.text_annotations else ""
-
-            # Validate document type
-            detected_type = detect_document_type(raw_text)
-            if detected_type != 'money_order' and detected_type != 'unknown':
-                # Clean up
+            # Use Mindee-based money order extractor
+            try:
+                from money_order.extractor import extract_money_order
+                result = extract_money_order(filepath)
+                logger.info("Money order extracted successfully")
+            except ImportError as e:
+                logger.error(f"Failed to import money order extractor: {e}")
+                # Clean up on error
                 if os.path.exists(filepath):
                     os.remove(filepath)
                 return jsonify({
                     'success': False,
-                    'error': f'Wrong document type detected. This appears to be a {detected_type}, not a money order. Please upload a money order document.',
-                    'message': 'Document type mismatch'
-                }), 400
+                    'error': 'Money order extractor not available',
+                    'message': 'Failed to load money order extraction module'
+                }), 500
+            except Exception as e:
+                logger.error(f"Money order extraction failed: {e}", exc_info=True)
+                # Clean up on error
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+                return jsonify({
+                    'success': False,
+                    'error': str(e),
+                    'message': 'Failed to extract money order data'
+                }), 500
 
-            # Try to import and use money order extractor
-            try:
-                from money_order_extractor import MoneyOrderExtractor
-                extractor = MoneyOrderExtractor(CREDENTIALS_PATH)
-                result = extractor.extract_money_order(filepath)
-                logger.info("Money order extracted successfully")
-            except ImportError:
-                logger.warning("MoneyOrderExtractor module not found. Returning basic analysis.")
-                result = {
-                    'raw_text': raw_text[:500],
-                    'status': 'partial',
-                    'message': 'Money order extractor not available. Using vision API text extraction only.'
-                }
+            # Get raw text for document type validation
+            extracted_data = result.get('extracted_data', {})
+            raw_text = extracted_data.get('raw_ocr_text') or result.get('raw_text') or ''
+
+            # Validate document type if we have raw text
+            if raw_text:
+                detected_type = detect_document_type(raw_text)
+                if detected_type != 'money_order' and detected_type != 'unknown':
+                    # Clean up
+                    if os.path.exists(filepath):
+                        os.remove(filepath)
+                    return jsonify({
+                        'success': False,
+                        'error': f'Wrong document type detected. This appears to be a {detected_type}, not a money order. Please upload a money order document.',
+                        'message': 'Document type mismatch'
+                    }), 400
 
             # Clean up temp file
             if os.path.exists(filepath):
                 os.remove(filepath)
 
-            # Extract simplified response (only 3 fields)
-            simplified_data = {}
-            analysis_id = result.get('analysis_id')
-
-            # Check if we have ML and AI analysis
-            ml_analysis = result.get('ml_analysis', {})
-            ai_analysis = result.get('ai_analysis', {})
-
-            if ml_analysis and ai_analysis:
-                # Return simplified response
-                simplified_data = {
-                    'fraud_risk_score': ml_analysis.get('fraud_risk_score', 0),
-                    'model_confidence': ml_analysis.get('model_confidence', 0),
-                    'ai_recommendation': ai_analysis.get('recommendation', 'UNKNOWN')
-                }
-            else:
-                # Fallback if ML/AI not available - return basic result
-                simplified_data = result
-
-            return jsonify({
+            # Format response for frontend - flatten ML and AI analysis to top level
+            # Extract key fields for simplified frontend display
+            extracted_data = result.get('extracted_data', {})
+            if not isinstance(extracted_data, dict):
+                extracted_data = {}
+            
+            ml_analysis = result.get('ml_analysis', {}) or {}
+            if not isinstance(ml_analysis, dict):
+                ml_analysis = {}
+            
+            ai_analysis = result.get('ai_analysis', {}) or {}
+            if not isinstance(ai_analysis, dict):
+                ai_analysis = {}
+            
+            # Get ML values with defaults (safely handle any type)
+            fraud_risk_score = ml_analysis.get('fraud_risk_score', 0.0) if isinstance(ml_analysis, dict) else 0.0
+            model_confidence = ml_analysis.get('model_confidence', 0.0) if isinstance(ml_analysis, dict) else 0.0
+            risk_level = ml_analysis.get('risk_level', 'UNKNOWN') if isinstance(ml_analysis, dict) else 'UNKNOWN'
+            
+            # Get AI values with defaults (safely handle any type)
+            ai_recommendation = ai_analysis.get('recommendation', 'UNKNOWN') if isinstance(ai_analysis, dict) else 'UNKNOWN'
+            ai_confidence = ai_analysis.get('confidence', 0.0) if isinstance(ai_analysis, dict) else 0.0
+            
+            # Helper function to safely convert NumPy types to Python types
+            def safe_float(value):
+                """Convert value to Python float, handling NumPy types"""
+                if value is None:
+                    return 0.0
+                try:
+                    return float(value)
+                except (TypeError, ValueError):
+                    return 0.0
+            
+            # Flatten response with top-level fields for frontend compatibility
+            formatted_data = {
+                **(extracted_data if isinstance(extracted_data, dict) else {}),
+                # Always include ML analysis fields at top level (convert NumPy types)
+                'fraud_risk_score': safe_float(fraud_risk_score),
+                'model_confidence': safe_float(model_confidence),
+                'risk_level': str(risk_level) if risk_level else 'UNKNOWN',
+                # Always include AI analysis fields at top level
+                'ai_recommendation': str(ai_recommendation) if ai_recommendation else 'UNKNOWN',
+                'ai_confidence': safe_float(ai_confidence),
+                # Keep nested structures for detailed analysis (already serialized)
+                'ml_analysis': ml_analysis if ml_analysis else {},
+                'ai_analysis': ai_analysis if ai_analysis else {},
+                'normalized_data': result.get('normalized_data'),
+                'anomalies': result.get('anomalies', []),
+                'confidence_score': safe_float(result.get('confidence_score', 0.0)),
+                'raw_text': result.get('raw_text', ''),
+                'timestamp': result.get('timestamp'),
+            }
+            
+            response_data = {
                 'success': True,
-                'data': simplified_data,
-                'analysis_id': analysis_id,  # For download
+                'data': formatted_data,
                 'message': 'Money order analyzed successfully'
-            })
+            }
+
+            logger.info(f"Response formatted - fraud_risk_score: {formatted_data.get('fraud_risk_score')}, risk_level: {formatted_data.get('risk_level')}, model_confidence: {formatted_data.get('model_confidence')}")
+            logger.info(f"Response data keys: {list(formatted_data.keys())}")
+            return jsonify(response_data)
 
         except Exception as e:
             # Clean up on error
