@@ -13,48 +13,61 @@ logger = logging.getLogger(__name__)
 MINDEE_API_KEY = os.getenv("MINDEE_API_KEY", "").strip()
 MINDEE_MODEL_ID_MONEY_ORDER = os.getenv("MINDEE_MODEL_ID_MONEY_ORDER", "7ecd4b47-c7a0-430c-ac68-a68b04960a39").strip()
 
-if not MINDEE_API_KEY:
-    raise RuntimeError("MINDEE_API_KEY is not set")
+# Initialize Mindee client lazily to avoid import-time errors
+mindee_client = None
 
-mindee_client = ClientV2(MINDEE_API_KEY)
+def get_mindee_client():
+    """Get or create Mindee client"""
+    global mindee_client
+    if mindee_client is None:
+        if not MINDEE_API_KEY:
+            raise RuntimeError("MINDEE_API_KEY is not set in environment variables")
+        mindee_client = ClientV2(MINDEE_API_KEY)
+    return mindee_client
 
 
 def _run_model(file_path: str, model_id: str) -> Dict[str, Any]:
     """Run Mindee model inference on a document"""
-    params = InferenceParameters(model_id=model_id, raw_text=True, confidence=True)
-    input_source = PathInput(file_path)
-    response = mindee_client.enqueue_and_get_inference(input_source, params)
-    result = response.inference.result
-    fields = result.fields or {}
+    try:
+        client = get_mindee_client()
+        params = InferenceParameters(model_id=model_id, raw_text=True, confidence=True)
+        input_source = PathInput(file_path)
+        response = client.enqueue_and_get_inference(input_source, params)
+        result = response.inference.result
+        fields = result.fields or {}
+        
+        logger.info(f"=== MINDEE RAW RESPONSE DEBUG ===")
+        logger.info(f"Available field names: {list(fields.keys())}")
 
-    logger.info(f"=== MINDEE RAW RESPONSE DEBUG ===")
-    logger.info(f"Available field names: {list(fields.keys())}")
+        simple_fields: Dict[str, Any] = {}
+        for name, field in fields.items():
+            if hasattr(field, "value"):
+                simple_fields[name] = field.value
+                logger.info(f"  {name}: {field.value}")
+            elif hasattr(field, "items"):
+                values = []
+                for item in field.items:
+                    if hasattr(item, "value"):
+                        values.append(item.value)
+                    elif hasattr(item, "fields"):
+                        values.append({k: v.value for k, v in item.fields.items()})
+                simple_fields[name] = values
+                logger.info(f"  {name} (list): {values}")
+            elif hasattr(field, "fields"):
+                simple_fields[name] = {k: v.value for k, v in field.fields.items()}
+                logger.info(f"  {name} (dict): {simple_fields[name]}")
 
-    simple_fields: Dict[str, Any] = {}
-    for name, field in fields.items():
-        if hasattr(field, "value"):
-            simple_fields[name] = field.value
-            logger.info(f"  {name}: {field.value}")
-        elif hasattr(field, "items"):
-            values = []
-            for item in field.items:
-                if hasattr(item, "value"):
-                    values.append(item.value)
-                elif hasattr(item, "fields"):
-                    values.append({k: v.value for k, v in item.fields.items()})
-            simple_fields[name] = values
-            logger.info(f"  {name} (list): {values}")
-        elif hasattr(field, "fields"):
-            simple_fields[name] = {k: v.value for k, v in field.fields.items()}
-            logger.info(f"  {name} (dict): {simple_fields[name]}")
+        logger.info(f"=== END DEBUG ===")
+        logger.info(f"Extracted fields summary: {simple_fields}")
 
-    logger.info(f"=== END DEBUG ===")
-
-    raw_text = getattr(result, "raw_text", "") or ""
-    # Convert RawText object to string if it's not already a string
-    if raw_text and not isinstance(raw_text, str):
-        raw_text = str(raw_text)
-    return {"fields": simple_fields, "raw_text": raw_text}
+        raw_text = getattr(result, "raw_text", "") or ""
+        # Convert RawText object to string if it's not already a string
+        if raw_text and not isinstance(raw_text, str):
+            raw_text = str(raw_text)
+        return {"fields": simple_fields, "raw_text": raw_text}
+    except Exception as e:
+        logger.error(f"Mindee API error: {e}", exc_info=True)
+        raise RuntimeError(f"Failed to process document with Mindee API: {str(e)}")
 
 
 def _extract_from_raw_text(raw_text: str, field_name: str) -> Optional[str]:
@@ -186,9 +199,16 @@ def extract_money_order(file_path: str) -> Dict[str, Any]:
     Returns:
         Dictionary containing extracted money order data
     """
-    out = _run_model(file_path, MINDEE_MODEL_ID_MONEY_ORDER)
-    fields = out["fields"]
-    raw_text = out.get("raw_text", "")
+    try:
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+        
+        out = _run_model(file_path, MINDEE_MODEL_ID_MONEY_ORDER)
+        fields = out.get("fields", {})
+        raw_text = out.get("raw_text", "")
+    except Exception as e:
+        logger.error(f"Money order extraction error: {e}", exc_info=True)
+        raise
     
     # Extract fields with fallback to raw text extraction
     issuer = fields.get("issuer")

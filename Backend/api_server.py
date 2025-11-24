@@ -546,12 +546,23 @@ def analyze_money_order():
         except Exception as e:
             if os.path.exists(filepath):
                 os.remove(filepath)
+            logger.error(f"Error processing money order: {e}", exc_info=True)
             raise e
 
     except Exception as e:
+        logger.error(f"Money order analysis failed: {e}", exc_info=True)
+        error_message = str(e)
+        # Make error messages more user-friendly
+        if "MINDEE_API_KEY" in error_message:
+            error_message = "Mindee API key is not configured. Please check your environment variables."
+        elif "Failed to process document with Mindee API" in error_message:
+            error_message = "Failed to process document with Mindee API. Please check your API key and model ID."
+        elif "File not found" in error_message:
+            error_message = "Uploaded file not found. Please try uploading again."
+        
         return jsonify({
             'success': False,
-            'error': str(e),
+            'error': error_message,
             'message': 'Failed to analyze money order'
         }), 500
 
