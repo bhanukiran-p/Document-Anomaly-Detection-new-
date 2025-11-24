@@ -22,7 +22,8 @@ const Header = () => {
   useEffect(() => {
     if (isMenuOpen && logoutButtonRef.current) {
       logoutButtonRef.current.style.backgroundColor = colors.accent.red;
-      logoutButtonRef.current.style.transform = 'none';
+      logoutButtonRef.current.style.transform = 'scale(1)';
+      logoutButtonRef.current.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
     }
   }, [isMenuOpen]);
   
@@ -119,24 +120,28 @@ const Header = () => {
   });
 
   const logoutButtonStyle = {
-    backgroundColor: 'transparent',
-    border: 'none',
+    backgroundColor: colors.accent.red,
+    border: `2px solid ${colors.accent.red}`,
+    borderRadius: '50%',
     cursor: 'pointer',
-    padding: '0.5rem',
+    padding: '0',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    transition: 'transform 0.2s',
-    marginTop: '2rem',
-    borderTop: `1px solid ${colors.neutral.gray200}`,
-    paddingTop: '2rem',
-    alignSelf: 'center'
+    transition: 'all 0.2s ease',
+    marginTop: 'auto',
+    marginBottom: '1rem',
+    width: '48px',
+    height: '48px',
+    alignSelf: 'center',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
   };
 
   const logoutImageStyle = {
-    width: '40px',
-    height: '40px',
-    borderRadius: '50%',
+    width: '24px',
+    height: '24px',
+    objectFit: 'contain',
+    filter: 'brightness(0) invert(1)',
   };
   
   return (
@@ -230,9 +235,13 @@ const Header = () => {
           onClick={handleLogout}
           onMouseEnter={(e) => {
             e.currentTarget.style.transform = 'scale(1.1)';
+            e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
+            e.currentTarget.style.backgroundColor = colors.accent.red;
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.transform = 'scale(1)';
+            e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+            e.currentTarget.style.backgroundColor = colors.accent.red;
           }}
           title="Logout"
         >
