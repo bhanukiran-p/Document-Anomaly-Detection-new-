@@ -1,15 +1,13 @@
 import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { analyzeBankStatement, validatePDFForFraud } from '../services/api';
+import { analyzeBankStatement } from '../services/api';
 import { colors } from '../styles/colors';
-import { FaBuilding, FaSpinner } from 'react-icons/fa';
 
 const BankStatementAnalysis = () => {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
-  const [fraudResults, setFraudResults] = useState(null);
   const [error, setError] = useState(null);
 
   const onDrop = useCallback((acceptedFiles) => {
@@ -18,7 +16,6 @@ const BankStatementAnalysis = () => {
       setFile(selectedFile);
       setError(null);
       setResults(null);
-      setFraudResults(null);
 
       // Create preview for images
       if (selectedFile.type.startsWith('image/')) {
@@ -50,22 +47,9 @@ const BankStatementAnalysis = () => {
     setError(null);
 
     try {
-      // Analyze bank statement
       const response = await analyzeBankStatement(file);
-      console.log('Bank Statement API Response:', response);
-      // Response structure from API: { success: true, data: {...details...}, risk_assessment: {...} }
-      // The api.js already returns response.data, so response is the JSON object
-      if (response && response.data) {
-        // Merge data and risk_assessment into one object for results
-        const resultData = { ...response.data, risk_assessment: response.risk_assessment };
-        console.log('Setting results with risk_assessment:', resultData.risk_assessment);
-        setResults(resultData);
-      } else if (response) {
-        // Fallback: if structure is different, use response directly
-        setResults(response);
-      }
+      setResults(response.data);
     } catch (err) {
-      console.error('Bank statement analysis error:', err);
       setError(err.error || 'Failed to analyze bank statement. Please try again.');
     } finally {
       setLoading(false);
@@ -83,18 +67,26 @@ const BankStatementAnalysis = () => {
   };
 
   // Styles
+  // Use primaryColor for new design system red
+  const primary = colors.primaryColor || colors.accent?.red || '#E53935';
+
   const containerStyle = {
     maxWidth: '1400px',
     margin: '0 auto',
+    backgroundColor: colors.background,
+    minHeight: '100vh',
+    color: colors.foreground,
+    padding: '1.5rem',
   };
 
   const headerStyle = {
-    background: `linear-gradient(135deg, ${colors.primary.navy} 0%, ${colors.primary.blue} 100%)`,
+    background: colors.gradients.navy,
     padding: '2rem',
-    borderRadius: '12px',
-    color: colors.neutral.white,
+    borderRadius: '0.75rem',
+    color: colors.foreground,
     textAlign: 'center',
     marginBottom: '2rem',
+    border: `1px solid ${colors.border}`,
   };
 
   const gridStyle = {
@@ -104,41 +96,45 @@ const BankStatementAnalysis = () => {
   };
 
   const cardStyle = {
-    backgroundColor: colors.background.card,
-    borderRadius: '12px',
+    backgroundColor: colors.card,
+    borderRadius: '0.75rem',
     padding: '2rem',
-    boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+    boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)',
+    border: `1px solid ${colors.border}`,
   };
 
   const dropzoneStyle = {
-    border: `2px dashed ${isDragActive ? colors.primary.blue : colors.neutral.gray300}`,
-    borderRadius: '12px',
+    border: `2px dashed ${isDragActive ? primary : colors.border}`,
+    borderRadius: '0.75rem',
     padding: '3rem',
     textAlign: 'center',
-    backgroundColor: isDragActive ? colors.primary.lightBlue : colors.background.main,
+    backgroundColor: isDragActive ? colors.muted : colors.secondary,
     cursor: 'pointer',
     transition: 'all 0.2s',
   };
 
   const buttonStyle = {
-    backgroundColor: colors.accent.red,
-    color: colors.neutral.white,
-    padding: '0.5rem 1.25rem',
-    borderRadius: '9999px', // Pill shape
+    backgroundColor: primary,
+    color: colors.primaryForeground,
+    padding: '1rem 2rem',
+    borderRadius: '0.5rem',
     fontSize: '1rem',
     fontWeight: '600',
     width: '100%',
     marginTop: '1rem',
     cursor: loading ? 'not-allowed' : 'pointer',
     opacity: loading ? 0.6 : 1,
+    boxShadow: `0 0 20px ${primary}40`,
+    transition: 'all 0.3s',
   };
 
   const resultCardStyle = {
-    backgroundColor: colors.background.main,
+    backgroundColor: colors.secondary,
     padding: '1.5rem',
-    borderRadius: '8px',
-    borderLeft: `4px solid ${colors.primary.blue}`,
+    borderRadius: '0.5rem',
+    borderLeft: `4px solid ${primary}`,
     marginBottom: '1rem',
+    border: `1px solid ${colors.border}`,
   };
 
   const confidenceStyle = (confidence) => {
@@ -187,7 +183,7 @@ const BankStatementAnalysis = () => {
       <div style={gridStyle}>
         {/* Upload Section */}
         <div style={cardStyle}>
-          <h2 style={{ color: colors.primary.navy, marginBottom: '1.5rem' }}>
+          <h2 style={{ color: colors.foreground, marginBottom: '1.5rem' }}>
             Upload Bank Statement
           </h2>
 
@@ -199,23 +195,23 @@ const BankStatementAnalysis = () => {
             marginBottom: '1rem',
           }}>
             <p style={{ color: '#856404', fontSize: '0.875rem', margin: 0, fontWeight: '500' }}>
-              Only upload bank statement documents (checking/savings account statements)
+              ⚠️ Only upload bank statement documents (checking/savings account statements)
             </p>
           </div>
 
           <div {...getRootProps()} style={dropzoneStyle}>
             <input {...getInputProps()} />
-            <FaBuilding style={{ fontSize: '3rem', marginBottom: '1rem', color: colors.primary.blue }} />
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🏦</div>
             {isDragActive ? (
-              <p style={{ color: colors.primary.blue, fontWeight: '500' }}>
+              <p style={{ color: primary, fontWeight: '500' }}>
                 Drop the bank statement here...
               </p>
             ) : (
               <div>
-                <p style={{ color: colors.neutral.gray700, marginBottom: '0.5rem' }}>
+                <p style={{ color: colors.foreground, marginBottom: '0.5rem' }}>
                   Drop your bank statement here or click to browse
                 </p>
-                <p style={{ color: colors.neutral.gray500, fontSize: '0.875rem' }}>
+                <p style={{ color: colors.mutedForeground, fontSize: '0.875rem' }}>
                   Bank Statements Only - JPG, JPEG, PNG, PDF
                 </p>
               </div>
@@ -225,7 +221,7 @@ const BankStatementAnalysis = () => {
           {file && (
             <div style={{ marginTop: '1.5rem' }}>
               <div style={{
-                backgroundColor: colors.primary.lightBlue,
+                backgroundColor: colors.muted,
                 padding: '1rem',
                 borderRadius: '8px',
               }}>
@@ -276,17 +272,17 @@ const BankStatementAnalysis = () => {
 
         {/* Results Section */}
         <div style={cardStyle}>
-          <h2 style={{ color: colors.primary.navy, marginBottom: '1.5rem' }}>
+          <h2 style={{ color: colors.foreground, marginBottom: '1.5rem' }}>
             Analysis Results
           </h2>
 
           {!results && !loading && (
             <div style={{
-              backgroundColor: colors.primary.lightBlue,
+              backgroundColor: colors.muted,
               padding: '2rem',
               borderRadius: '8px',
               textAlign: 'center',
-              color: colors.primary.navy,
+              color: colors.foreground,
             }}>
               <p>Upload a bank statement on the left to begin analysis</p>
             </div>
@@ -294,10 +290,10 @@ const BankStatementAnalysis = () => {
 
           {loading && (
             <div style={{ textAlign: 'center', padding: '3rem' }}>
-              <FaSpinner className="spin" style={{
+              <div className="spin" style={{
                 fontSize: '3rem',
-                color: colors.primary.blue,
-              }} />
+                color: primary,
+              }}>⚙️</div>
               <p style={{ marginTop: '1rem', color: colors.neutral.gray600 }}>
                 Analyzing bank statement...
               </p>
@@ -306,105 +302,6 @@ const BankStatementAnalysis = () => {
 
           {results && (
             <div className="fade-in">
-              {/* Fraud Detection Results */}
-              {fraudResults && (() => {
-                // Determine risk level and colors
-                const riskScore = fraudResults.risk_score;
-                let riskLevel, bgColor, borderColor, textColor, emoji, explanation;
-
-                if (riskScore >= 0.7) {
-                  riskLevel = 'HIGH RISK';
-                  bgColor = '#ffebee';  // Light red
-                  borderColor = '#d32f2f';  // Dark red
-                  textColor = '#d32f2f';
-                  emoji = '🔴';
-                  explanation = 'This document shows multiple high-risk fraud indicators. Manual review recommended.';
-                } else if (riskScore >= 0.45) {
-                  riskLevel = 'MEDIUM RISK';
-                  bgColor = '#fff3e0';  // Light orange
-                  borderColor = '#f57c00';  // Dark orange
-                  textColor = '#f57c00';
-                  emoji = '🟡';
-                  explanation = 'This document has some suspicious patterns. Consider additional verification.';
-                } else if (riskScore >= 0.25) {
-                  riskLevel = 'LOW RISK';
-                  bgColor = '#e3f2fd';  // Light blue
-                  borderColor = '#1976d2';  // Dark blue
-                  textColor = '#1976d2';
-                  emoji = '🔵';
-                  explanation = 'This document has minor concerns. Likely legitimate but worth noting.';
-                } else {
-                  riskLevel = 'CLEAN';
-                  bgColor = '#e8f5e9';  // Light green
-                  borderColor = '#388e3c';  // Dark green
-                  textColor = '#388e3c';
-                  emoji = '🟢';
-                  explanation = 'This document appears to be legitimate with no significant fraud indicators.';
-                }
-
-                return (
-                  <div style={{
-                    backgroundColor: bgColor,
-                    border: `2px solid ${borderColor}`,
-                    borderRadius: '12px',
-                    padding: '1.5rem',
-                    marginBottom: '1.5rem',
-                  }}>
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      marginBottom: '1rem',
-                      fontSize: '1.3rem',
-                      fontWeight: '600',
-                    }}>
-                      <span style={{ marginRight: '0.75rem', fontSize: '2rem' }}>
-                        {emoji}
-                      </span>
-                      <span style={{ color: textColor }}>
-                        {riskLevel}
-                      </span>
-                    </div>
-
-                    <div style={{
-                      marginBottom: '1rem',
-                      padding: '1rem',
-                      backgroundColor: 'rgba(255,255,255,0.7)',
-                      borderRadius: '8px',
-                      borderLeft: `4px solid ${borderColor}`,
-                    }}>
-                      <p style={{ margin: '0.5rem 0', color: '#333' }}>
-                        <strong>Risk Score:</strong> {riskScore.toFixed(3)} / 1.000
-                      </p>
-                      <p style={{ margin: '0.5rem 0', color: textColor, fontStyle: 'italic' }}>
-                        {explanation}
-                      </p>
-                    </div>
-
-                    {fraudResults.suspicious_indicators && fraudResults.suspicious_indicators.length > 0 && (
-                      <div style={{ marginBottom: '1rem' }}>
-                        <h4 style={{ color: textColor, marginBottom: '0.5rem' }}>🚫 Suspicious Indicators:</h4>
-                        <ul style={{ margin: '0', paddingLeft: '1.5rem', color: '#333' }}>
-                          {fraudResults.suspicious_indicators.map((indicator, idx) => (
-                            <li key={idx} style={{ marginBottom: '0.35rem' }}>{indicator}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {fraudResults.warnings && fraudResults.warnings.length > 0 && (
-                      <div>
-                        <h4 style={{ color: colors.status.warning, marginBottom: '0.5rem' }}>⚠️ Warnings:</h4>
-                        <ul style={{ margin: '0', paddingLeft: '1.5rem', color: colors.status.warning }}>
-                          {fraudResults.warnings.map((warning, idx) => (
-                            <li key={idx} style={{ marginBottom: '0.35rem' }}>{warning}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-
               {results.summary?.confidence && (
                 <div style={confidenceStyle(results.summary.confidence)}>
                   [{results.summary.confidence >= 80 ? 'HIGH' : results.summary.confidence >= 60 ? 'MEDIUM' : 'LOW'}]
@@ -412,104 +309,7 @@ const BankStatementAnalysis = () => {
                 </div>
               )}
 
-              {/* ML Risk Assessment */}
-              {results.risk_assessment && (() => {
-                const riskScore = results.risk_assessment.risk_score;
-                // Determine risk level colors
-                const isHighRisk = riskScore >= 70;
-                const isMediumRisk = riskScore >= 40 && riskScore < 70;
-                const isLowRisk = riskScore < 40;
-                
-                const riskColors = isHighRisk ? {
-                  background: '#FEE2E2',
-                  text: '#B91C1C',
-                  border: '#EF4444'
-                } : isMediumRisk ? {
-                  background: '#FEF3C7',
-                  text: '#D97706',
-                  border: '#FACC15'
-                } : {
-                  background: '#D4F6DA',
-                  text: '#16A34A',
-                  border: '#22C55E'
-                };
-                
-                return (
-                  <div style={{ marginBottom: '2rem' }}>
-                    <div style={{
-                      padding: '1.5rem',
-                      borderRadius: '12px',
-                      backgroundColor: riskColors.background,
-                      border: `2px solid ${riskColors.border}`,
-                      marginBottom: '1.5rem',
-                    }}>
-                      <h3 style={{ 
-                        color: riskColors.text,
-                        marginBottom: '1rem',
-                        fontSize: '1.5rem',
-                        fontWeight: '700'
-                      }}>
-                        ML Risk Score: {riskScore.toFixed(1)}% 
-                        <span style={{ marginLeft: '0.5rem', fontSize: '1rem' }}>
-                          ({results.risk_assessment.risk_level} RISK)
-                        </span>
-                      </h3>
-                      
-                      {results.risk_assessment.risk_factors && results.risk_assessment.risk_factors.length > 0 && (
-                        <div style={{ marginBottom: '1.5rem' }}>
-                          <h4 style={{ color: riskColors.text, marginBottom: '0.75rem', fontWeight: '600' }}>
-                            Risk Factors:
-                          </h4>
-                        {results.risk_assessment.risk_factors.map((factor, idx) => (
-                          <div key={idx} style={{
-                            padding: '0.75rem',
-                            marginBottom: '0.5rem',
-                            backgroundColor: 'rgba(255, 255, 255, 0.7)',
-                            borderRadius: '8px',
-                            borderLeft: `4px solid ${factor.severity === 'high' ? colors.accent.red : 
-                                                      factor.severity === 'medium' ? '#F59E0B' : '#6B7280'}`
-                          }}>
-                            <strong style={{ 
-                              color: factor.severity === 'high' ? colors.accent.red : 
-                                     factor.severity === 'medium' ? '#F59E0B' : '#6B7280',
-                              textTransform: 'uppercase',
-                              fontSize: '0.75rem'
-                            }}>
-                              {factor.severity}
-                            </strong>
-                            <p style={{ margin: '0.25rem 0 0 0', fontWeight: '500' }}>{factor.message}</p>
-                            <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem', color: colors.neutral.gray600 }}>
-                              Impact: {factor.impact}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    
-                      {results.risk_assessment.recommendations && results.risk_assessment.recommendations.length > 0 && (
-                        <div>
-                          <h4 style={{ color: riskColors.text, marginBottom: '0.75rem', fontWeight: '600' }}>
-                            Recommendations:
-                          </h4>
-                          <ul style={{ paddingLeft: '1.5rem', margin: 0 }}>
-                            {results.risk_assessment.recommendations.map((rec, idx) => (
-                              <li key={idx} style={{ 
-                                marginBottom: '0.5rem', 
-                                color: riskColors.text,
-                                lineHeight: '1.6'
-                              }}>
-                                {rec}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              <h3 style={{ color: colors.primary.navy, marginBottom: '1rem' }}>
+              <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>
                 Account Information
               </h3>
               <div style={resultCardStyle}>
@@ -519,12 +319,12 @@ const BankStatementAnalysis = () => {
                 <p><strong>Statement Period:</strong> {results.statement_period || 'N/A'}</p>
               </div>
 
-              <h3 style={{ color: colors.primary.navy, marginBottom: '1rem', marginTop: '1.5rem' }}>
+              <h3 style={{ color: colors.foreground, marginBottom: '1rem', marginTop: '1.5rem' }}>
                 Balance Summary
               </h3>
               <div style={resultCardStyle}>
                 <p><strong>Opening Balance:</strong>
-                  <span style={{ color: colors.primary.navy, fontSize: '1.1rem', fontWeight: '600', marginLeft: '0.5rem' }}>
+                  <span style={{ color: colors.foreground, fontSize: '1.1rem', fontWeight: '600', marginLeft: '0.5rem' }}>
                     {results.balances?.opening_balance || 'N/A'}
                   </span>
                 </p>
@@ -543,7 +343,7 @@ const BankStatementAnalysis = () => {
 
               {results.summary && (
                 <>
-                  <h3 style={{ color: colors.primary.navy, marginBottom: '1rem', marginTop: '1.5rem' }}>
+                  <h3 style={{ color: colors.foreground, marginBottom: '1rem', marginTop: '1.5rem' }}>
                     Transaction Summary
                   </h3>
                   <div style={resultCardStyle}>
@@ -579,7 +379,7 @@ const BankStatementAnalysis = () => {
 
               {results.transactions && results.transactions.length > 0 && (
                 <>
-                  <h3 style={{ color: colors.primary.navy, marginBottom: '1rem', marginTop: '1.5rem' }}>
+                  <h3 style={{ color: colors.foreground, marginBottom: '1rem', marginTop: '1.5rem' }}>
                     Recent Transactions ({Math.min(results.transactions.length, 10)} shown)
                   </h3>
                   <div style={{
@@ -596,7 +396,7 @@ const BankStatementAnalysis = () => {
                       gap: '1rem',
                       padding: '0.75rem',
                       fontWeight: '600',
-                      color: colors.primary.navy,
+                      color: colors.foreground,
                       borderBottom: `2px solid ${colors.neutral.gray300}`,
                       marginBottom: '0.5rem',
                       fontSize: '0.9rem',
@@ -641,12 +441,12 @@ const BankStatementAnalysis = () => {
               <button
                 style={{
                   ...buttonStyle,
-                  backgroundColor: colors.primary.navy,
+                  backgroundColor: primary,
                   marginTop: '1.5rem',
                 }}
                 onClick={downloadJSON}
-                onMouseEnter={(e) => e.target.style.backgroundColor = colors.primary.blue}
-                onMouseLeave={(e) => e.target.style.backgroundColor = colors.primary.navy}
+                onMouseEnter={(e) => e.target.style.backgroundColor = primary}
+                onMouseLeave={(e) => e.target.style.backgroundColor = primary}
               >
                 Download Full Results (JSON)
               </button>

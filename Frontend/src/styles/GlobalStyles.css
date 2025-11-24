@@ -4,35 +4,102 @@
   box-sizing: border-box;
 }
 
+:root {
+  /* Design System Colors */
+  --background: hsl(210, 40%, 2%);
+  --foreground: hsl(0, 0%, 98%);
+  --primary: hsl(0, 72%, 55%);
+  --primary-foreground: hsl(0, 0%, 100%);
+  --navy: hsl(210, 47%, 25%);
+  --navy-dark: hsl(210, 50%, 15%);
+  --red-accent: hsl(0, 72%, 55%);
+  --red-glow: hsl(0, 72%, 65%);
+  --card: hsl(210, 30%, 8%);
+  --secondary: hsl(210, 30%, 12%);
+  --muted: hsl(210, 30%, 15%);
+  --border: hsl(210, 30%, 15%);
+  --muted-foreground: hsl(210, 10%, 60%);
+  --destructive: hsl(0, 84.2%, 60.2%);
+
+  /* Gradients */
+  --gradient-dark: linear-gradient(135deg, hsl(210, 50%, 8%), hsl(210, 50%, 4%));
+  --gradient-navy: linear-gradient(135deg, hsl(210, 47%, 25%), hsl(210, 50%, 15%));
+  --gradient-red: linear-gradient(135deg, hsl(0, 72%, 55%), hsl(0, 72%, 65%));
+
+  /* Border Radius */
+  --radius-large: 0.75rem;
+  --radius-medium: calc(0.75rem - 2px);
+  --radius-small: calc(0.75rem - 4px);
+}
+
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #f9fafb;
-  color: #111827;
+  font-feature-settings: "liga" 1, "calt" 1;
+  background-color: var(--background);
+  color: var(--foreground);
+  line-height: 1.6;
 }
 
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
 }
 
-/* Scrollbar Styling */
+/* Typography */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: bold;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+
+h1 {
+  font-size: 3rem; /* 48px */
+}
+
+@media (min-width: 768px) {
+  h1 {
+    font-size: 4.5rem; /* 72px */
+  }
+}
+
+h2 {
+  font-size: 2.25rem; /* 36px */
+}
+
+@media (min-width: 768px) {
+  h2 {
+    font-size: 3rem; /* 48px */
+  }
+}
+
+h3 {
+  font-size: 1.875rem; /* 30px */
+}
+
+@media (min-width: 768px) {
+  h3 {
+    font-size: 2.25rem; /* 36px */
+  }
+}
+
+/* Scrollbar Styling - Dark Theme */
 ::-webkit-scrollbar {
   width: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: var(--card);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #888;
+  background: var(--muted);
   border-radius: 5px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: var(--navy);
 }
 
 /* Remove default button styles */
@@ -41,13 +108,14 @@ button {
   outline: none;
   cursor: pointer;
   font-family: inherit;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Input focus styles */
 input:focus,
 textarea:focus,
 select:focus {
-  outline: 2px solid #3b82f6;
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 
@@ -63,17 +131,18 @@ button {
 a {
   color: inherit;
   text-decoration: none;
+  transition: all 0.2s;
 }
 
 a:hover {
-  text-decoration: underline;
+  opacity: 0.8;
 }
 
-/* Animation utilities */
-@keyframes fadeIn {
+/* Animations */
+@keyframes fade-in {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(20px);
   }
   to {
     opacity: 1;
@@ -81,8 +150,31 @@ a:hover {
   }
 }
 
-.fade-in {
-  animation: fadeIn 0.3s ease-in;
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-20px);
+  }
+}
+
+@keyframes accordion-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+  }
+}
+
+@keyframes accordion-up {
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+  to {
+    height: 0;
+  }
 }
 
 @keyframes spin {
@@ -91,7 +183,53 @@ a:hover {
   }
 }
 
+/* Animation Classes */
+.fade-in {
+  animation: fade-in 0.6s ease-out;
+}
+
+.float {
+  animation: float 3s ease-in-out infinite;
+}
+
 .spin {
   animation: spin 1s linear infinite;
 }
 
+/* Utility Classes */
+.hover-scale {
+  transition: transform 0.2s ease-out;
+}
+
+.hover-scale:hover {
+  transform: scale(1.05);
+}
+
+/* Glassmorphism Effect */
+.glass {
+  background: rgba(14, 20, 25, 0.8);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--border);
+}
+
+/* Shadows */
+.shadow-red-glow {
+  box-shadow: 0 0 40px hsla(0, 72%, 55%, 0.3);
+}
+
+.shadow-card-elevated {
+  box-shadow: 0 10px 40px hsla(0, 0%, 0%, 0.5);
+}
+
+/* Scroll-triggered animation utility */
+.scroll-reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+}
+
+.scroll-reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
