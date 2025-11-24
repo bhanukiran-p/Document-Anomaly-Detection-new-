@@ -5,6 +5,7 @@ Saves and retrieves complete fraud analysis JSON files
 
 import os
 import json
+import numpy as np
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -28,6 +29,31 @@ class ResultStorage:
             os.makedirs(self.storage_dir)
             print(f"Created results storage directory: {self.storage_dir}")
 
+    def _convert_numpy_types(self, obj):
+        """
+        Recursively convert numpy types to native Python types for JSON serialization
+
+        Args:
+            obj: Object to convert (dict, list, or primitive)
+
+        Returns:
+            Converted object with all numpy types replaced
+        """
+        if isinstance(obj, dict):
+            return {key: self._convert_numpy_types(value) for key, value in obj.items()}
+        elif isinstance(obj, list):
+            return [self._convert_numpy_types(item) for item in obj]
+        elif isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, np.bool_):
+            return bool(obj)
+        else:
+            return obj
+
     def save_analysis_result(self, analysis_data: Dict, serial_number: str = None) -> str:
         """
         Save complete analysis result to JSON file
@@ -50,10 +76,13 @@ class ResultStorage:
         analysis_data['analysis_id'] = analysis_id
         analysis_data['saved_timestamp'] = datetime.now().isoformat()
 
+        # Convert numpy types to native Python types for JSON serialization
+        analysis_data_clean = self._convert_numpy_types(analysis_data)
+
         # Save to file
         try:
             with open(filepath, 'w') as f:
-                json.dump(analysis_data, f, indent=2)
+                json.dump(analysis_data_clean, f, indent=2)
             print(f"✅ Analysis saved: {filepath}")
             return analysis_id
         except Exception as e:
