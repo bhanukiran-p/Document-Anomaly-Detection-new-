@@ -616,9 +616,23 @@ def analyze_bank_statement():
             if os.path.exists(filepath):
                 os.remove(filepath)
 
+            # Format response for frontend - flatten extracted_data and add balances structure
+            extracted = result.get('extracted_data', {})
+            formatted_data = {
+                **extracted,  # Include all extracted fields at top level
+                'statement_period': f"{extracted.get('statement_period_start', '')} to {extracted.get('statement_period_end', '')}".strip(' to '),
+                'balances': {
+                    'opening_balance': extracted.get('opening_balance'),
+                    'ending_balance': extracted.get('closing_balance'),
+                    'available_balance': extracted.get('available_balance'),
+                    'current_balance': extracted.get('current_balance'),
+                },
+                'extracted_data': extracted,  # Keep original structure for compatibility
+            }
+
             response_data = {
                 'success': True,
-                'data': result,
+                'data': formatted_data,
                 'message': 'Bank statement analyzed successfully'
             }
 
