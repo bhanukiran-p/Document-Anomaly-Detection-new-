@@ -1,0 +1,721 @@
+import React, { useState, useCallback } from 'react';
+import { useDropzone } from 'react-dropzone';
+import { analyzeMoneyOrder } from '../services/api';
+import { colors } from '../styles/colors';
+
+const MoneyOrderAnalysis = () => {
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState(null);
+  const [error, setError] = useState(null);
+
+  // Use primaryColor for new design system red
+  const primary = colors.primaryColor || colors.accent?.red || '#E53935';
+
+  const onDrop = useCallback((acceptedFiles) => {
+    const selectedFile = acceptedFiles[0];
+    if (selectedFile) {
+      setFile(selectedFile);
+      setError(null);
+      setResults(null);
+
+      // Create preview for images
+      if (selectedFile.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = () => setPreview(reader.result);
+        reader.readAsDataURL(selectedFile);
+      } else {
+        setPreview(null);
+      }
+    }
+  }, []);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'image/*': ['.jpeg', '.jpg', '.png'],
+      'application/pdf': ['.pdf']
+    },
+    multiple: false
+  });
+
+  const handleAnalyze = async () => {
+    if (!file) {
+      setError('Please upload a money order image first');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await analyzeMoneyOrder(file);
+      setResults(response.data);
+    } catch (err) {
+      setError(err.error || 'Failed to analyze money order. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const downloadJSON = () => {
+    const dataStr = JSON.stringify(results, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `money_order_analysis_${new Date().getTime()}.json`;
+    link.click();
+  };
+
+  // Styles matching landing page design system
+  const containerStyle = {
+    maxWidth: '1400px',
+    margin: '0 auto',
+    backgroundColor: colors.background,
+    minHeight: '100vh',
+    color: colors.foreground,
+    padding: '1.5rem',
+  };
+
+  const headerStyle = {
+    background: colors.gradients.navy,
+    padding: '2rem',
+    borderRadius: '0.75rem',
+    color: colors.foreground,
+    textAlign: 'center',
+    marginBottom: '2rem',
+    border: `1px solid ${colors.border}`,
+  };
+
+  const gridStyle = {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(500px, 1fr))',
+    gap: '2rem',
+  };
+
+  const cardStyle = {
+    backgroundColor: colors.card,
+    borderRadius: '0.75rem',
+    padding: '2rem',
+    boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)',
+    border: `1px solid ${colors.border}`,
+  };
+
+  const dropzoneStyle = {
+    border: `2px dashed ${isDragActive ? primary : colors.border}`,
+    borderRadius: '0.75rem',
+    padding: '3rem',
+    textAlign: 'center',
+    backgroundColor: isDragActive ? colors.muted : colors.secondary,
+    cursor: 'pointer',
+    transition: 'all 0.3s',
+  };
+
+  const buttonStyle = {
+    backgroundColor: primary,
+    color: colors.primaryForeground,
+    padding: '1rem 2rem',
+    borderRadius: '0.5rem',
+    fontSize: '1rem',
+    fontWeight: '600',
+    width: '100%',
+    marginTop: '1rem',
+    cursor: loading ? 'not-allowed' : 'pointer',
+    opacity: loading ? 0.6 : 1,
+    boxShadow: `0 0 20px ${primary}40`,
+    transition: 'all 0.3s',
+    border: 'none',
+  };
+
+  const resultCardStyle = {
+    backgroundColor: colors.secondary,
+    padding: '1.5rem',
+    borderRadius: '0.5rem',
+    borderLeft: `4px solid ${primary}`,
+    marginBottom: '1rem',
+    border: `1px solid ${colors.border}`,
+    color: colors.foreground,
+  };
+
+  const warningBannerStyle = {
+    backgroundColor: `${primary}20`,
+    border: `1px solid ${primary}`,
+    borderRadius: '0.5rem',
+    padding: '1rem',
+    marginBottom: '1rem',
+  };
+
+  const anomalyCardStyle = (severity) => {
+    let bgColor = colors.muted;
+    let borderColor = primary;
+    let textColor = colors.foreground;
+
+    if (severity === 'critical') {
+      bgColor = `${primary}20`;
+      borderColor = primary;
+    } else if (severity === 'high') {
+      bgColor = `${primary}15`;
+      borderColor = primary;
+    } else if (severity === 'medium') {
+      bgColor = colors.muted;
+      borderColor = colors.border;
+    }
+
+    return {
+      backgroundColor: bgColor,
+      padding: '1rem',
+      borderRadius: '0.5rem',
+      borderLeft: `4px solid ${borderColor}`,
+      marginBottom: '0.75rem',
+      border: `1px solid ${colors.border}`,
+      color: textColor,
+    };
+  };
+
+  const confidenceStyle = (confidence) => {
+    let bgColor = colors.muted;
+    let textColor = primary;
+
+    if (confidence >= 80) {
+      bgColor = `${colors.status.success}30`;
+      textColor = colors.status.success;
+    } else if (confidence >= 60) {
+      bgColor = `${colors.status.warning}30`;
+      textColor = colors.status.warning;
+    } else {
+      bgColor = `${primary}20`;
+      textColor = primary;
+    }
+
+    return {
+      backgroundColor: bgColor,
+      color: textColor,
+      padding: '0.75rem 1.5rem',
+      borderRadius: '0.5rem',
+      fontWeight: '600',
+      fontSize: '1.1rem',
+      marginBottom: '1.5rem',
+      textAlign: 'center',
+      border: `1px solid ${textColor}40`,
+    };
+  };
+
+  const mlCardStyle = (riskLevel) => {
+    let bgColor = colors.card;
+    let borderColor = primary;
+
+    if (riskLevel === 'LOW') {
+      bgColor = `${colors.status.success}15`;
+      borderColor = colors.status.success;
+    } else if (riskLevel === 'MEDIUM') {
+      bgColor = `${colors.status.warning}15`;
+      borderColor = colors.status.warning;
+    } else if (riskLevel === 'HIGH' || riskLevel === 'CRITICAL') {
+      bgColor = `${primary}20`;
+      borderColor = primary;
+    }
+
+    return {
+      marginBottom: '2rem',
+      padding: '1.5rem',
+      backgroundColor: bgColor,
+      border: `2px solid ${borderColor}`,
+      borderRadius: '0.75rem',
+    };
+  };
+
+  const aiCardStyle = (recommendation) => {
+    let bgColor = colors.card;
+    let borderColor = primary;
+
+    if (recommendation === 'APPROVE') {
+      bgColor = `${colors.status.success}15`;
+      borderColor = colors.status.success;
+    } else if (recommendation === 'REJECT') {
+      bgColor = `${primary}20`;
+      borderColor = primary;
+    } else {
+      bgColor = `${colors.status.warning}15`;
+      borderColor = colors.status.warning;
+    }
+
+    return {
+      padding: '1.5rem',
+      backgroundColor: bgColor,
+      border: `2px solid ${borderColor}`,
+      borderRadius: '0.75rem',
+      marginBottom: '1rem',
+    };
+  };
+
+  return (
+    <div style={containerStyle}>
+      <div style={headerStyle}>
+        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem', color: colors.foreground }}>Money Order Analysis</h1>
+        <p style={{ color: colors.mutedForeground }}>Analyze money orders for fraud and anomaly detection</p>
+      </div>
+
+      <div style={gridStyle}>
+        {/* Upload Section */}
+        <div style={cardStyle}>
+          <h2 style={{ color: colors.foreground, marginBottom: '1.5rem', fontSize: '1.5rem', fontWeight: 'bold' }}>
+            Upload Money Order Image
+          </h2>
+
+          <div style={warningBannerStyle}>
+            <p style={{ color: primary, fontSize: '0.875rem', margin: 0, fontWeight: '500' }}>
+              ⚠️ Only upload money order documents (Western Union, MoneyGram, USPS, etc.)
+            </p>
+          </div>
+
+          <div {...getRootProps()} style={dropzoneStyle}>
+            <input {...getInputProps()} />
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>💵</div>
+            {isDragActive ? (
+              <p style={{ color: primary, fontWeight: '500' }}>
+                Drop the money order image here...
+              </p>
+            ) : (
+              <div>
+                <p style={{ color: colors.foreground, marginBottom: '0.5rem' }}>
+                  Drop your money order image here or click to browse
+                </p>
+                <p style={{ color: colors.mutedForeground, fontSize: '0.875rem' }}>
+                  Money Orders Only - JPG, JPEG, PNG, PDF
+                </p>
+              </div>
+            )}
+          </div>
+
+          {file && (
+            <div style={{ marginTop: '1.5rem' }}>
+              <div style={{
+                backgroundColor: colors.secondary,
+                padding: '1rem',
+                borderRadius: '0.5rem',
+                border: `1px solid ${colors.border}`,
+                color: colors.foreground,
+              }}>
+                <strong>File:</strong> {file.name}<br />
+                <strong>Size:</strong> {(file.size / 1024).toFixed(2)} KB<br />
+                <strong>Type:</strong> {file.type || 'Unknown'}
+              </div>
+
+              {preview && (
+                <div style={{ marginTop: '1rem' }}>
+                  <img
+                    src={preview}
+                    alt="Money order preview"
+                    style={{
+                      width: '100%',
+                      borderRadius: '0.5rem',
+                      boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)',
+                      border: `1px solid ${colors.border}`,
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          <button
+            style={buttonStyle}
+            onClick={handleAnalyze}
+            disabled={loading || !file}
+            onMouseEnter={(e) => {
+              if (!loading) {
+                e.target.style.transform = 'translateY(-2px)';
+                e.target.style.boxShadow = `0 6px 30px ${primary}60`;
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!loading) {
+                e.target.style.transform = 'translateY(0)';
+                e.target.style.boxShadow = `0 0 20px ${primary}40`;
+              }
+            }}
+          >
+            {loading ? 'Analyzing...' : 'Analyze Money Order'}
+          </button>
+
+          {error && (
+            <div style={{
+              backgroundColor: `${colors.destructive}20`,
+              color: colors.destructive,
+              padding: '1rem',
+              borderRadius: '0.5rem',
+              marginTop: '1rem',
+              fontWeight: '500',
+              border: `1px solid ${colors.destructive}`,
+            }}>
+              {error}
+            </div>
+          )}
+        </div>
+
+        {/* Results Section */}
+        <div style={cardStyle}>
+          <h2 style={{ color: colors.foreground, marginBottom: '1.5rem', fontSize: '1.5rem', fontWeight: 'bold' }}>
+            Analysis Results
+          </h2>
+
+          {!results && !loading && (
+            <div style={{
+              backgroundColor: colors.secondary,
+              padding: '2rem',
+              borderRadius: '0.5rem',
+              textAlign: 'center',
+              color: colors.mutedForeground,
+              border: `1px solid ${colors.border}`,
+            }}>
+              <p>Upload a money order image on the left to begin analysis</p>
+            </div>
+          )}
+
+          {loading && (
+            <div style={{ textAlign: 'center', padding: '3rem' }}>
+              <div className="spin" style={{
+                fontSize: '3rem',
+                color: primary,
+              }}>⚙️</div>
+              <p style={{ marginTop: '1rem', color: colors.mutedForeground }}>
+                Analyzing money order...
+              </p>
+            </div>
+          )}
+
+          {results && (results.fraud_risk_score !== undefined || results.status === 'success') && (
+            <>
+            <div className="fade-in">
+              {/* Simplified 3-field display for new API format */}
+              {results.fraud_risk_score !== undefined && results.model_confidence !== undefined && results.ai_recommendation !== undefined ? (
+                <div>
+                  {/* Fraud Risk Score */}
+                  <div style={{
+                    ...mlCardStyle(results.fraud_risk_score < 0.3 ? 'LOW' : results.fraud_risk_score < 0.6 ? 'MEDIUM' : results.fraud_risk_score < 0.85 ? 'HIGH' : 'CRITICAL'),
+                    marginBottom: '2rem'
+                  }}>
+                    <h3 style={{
+                      color: colors.foreground,
+                      marginBottom: '1rem',
+                      fontSize: '1.25rem',
+                      fontWeight: 'bold',
+                    }}>
+                      🤖 ML Fraud Risk Score
+                    </h3>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.3rem' }}>
+                          Fraud Risk
+                        </div>
+                        <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: primary }}>
+                          {(results.fraud_risk_score * 100).toFixed(1)}%
+                        </div>
+                        <div style={{ fontSize: '1.1rem', fontWeight: '600', marginTop: '0.3rem', color: colors.foreground }}>
+                          {results.fraud_risk_score < 0.3 ? 'LOW RISK' : results.fraud_risk_score < 0.6 ? 'MEDIUM RISK' : results.fraud_risk_score < 0.85 ? 'HIGH RISK' : 'CRITICAL RISK'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Model Confidence */}
+                  <div style={{
+                    padding: '1.5rem',
+                    backgroundColor: `${colors.status.success}15`,
+                    border: `2px solid ${colors.status.success}`,
+                    borderRadius: '0.75rem',
+                    marginBottom: '2rem',
+                  }}>
+                    <h3 style={{
+                      color: colors.foreground,
+                      marginBottom: '1rem',
+                      fontSize: '1.25rem',
+                      fontWeight: 'bold',
+                    }}>
+                      📊 Model Confidence
+                    </h3>
+                    <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: colors.status.success }}>
+                      {(results.model_confidence * 100).toFixed(1)}%
+                    </div>
+                    <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginTop: '0.5rem' }}>
+                      AI model confidence in this prediction
+                    </div>
+                  </div>
+
+                  {/* AI Recommendation */}
+                  <div style={aiCardStyle(results.ai_recommendation)}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
+                          🧠 AI Recommendation
+                        </div>
+                        <div style={{
+                          fontSize: '2rem',
+                          fontWeight: 'bold',
+                          color: results.ai_recommendation === 'APPROVE' ? colors.status.success :
+                                 results.ai_recommendation === 'REJECT' ? primary : colors.status.warning
+                        }}>
+                          {results.ai_recommendation}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{
+                      marginTop: '1rem',
+                      padding: '1rem',
+                      backgroundColor: colors.secondary,
+                      borderRadius: '0.5rem',
+                      fontSize: '0.95rem',
+                      color: colors.foreground,
+                      border: `1px solid ${colors.border}`,
+                    }}>
+                      Based on ML fraud detection and AI analysis of 2000+ training cases
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* Legacy full format support */
+                <div>
+                  {results.confidence_score && (
+                    <div style={confidenceStyle(results.confidence_score || 0)}>
+                      [{results.confidence_score >= 80 ? 'HIGH' : results.confidence_score >= 60 ? 'MEDIUM' : 'LOW'}]
+                      Confidence: {results.confidence_score?.toFixed(1)}%
+                    </div>
+                  )}
+
+                  {/* ML Risk Analysis Section */}
+                  {results.ml_analysis && (
+                    <div style={mlCardStyle(results.ml_analysis.risk_level)}>
+                      <h3 style={{
+                        color: colors.foreground,
+                        marginBottom: '1rem',
+                        fontSize: '1.25rem',
+                        fontWeight: 'bold',
+                      }}>
+                        🤖 ML Fraud Risk Analysis
+                      </h3>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '2rem', marginBottom: '1rem' }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.3rem' }}>
+                            Fraud Risk Score
+                          </div>
+                          <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: primary }}>
+                            {(results.ml_analysis.fraud_risk_score * 100).toFixed(1)}%
+                          </div>
+                          <div style={{ fontSize: '1.1rem', fontWeight: '600', marginTop: '0.3rem', color: colors.foreground }}>
+                            Risk Level: {results.ml_analysis.risk_level}
+                          </div>
+                        </div>
+
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.3rem' }}>
+                            Model Confidence
+                          </div>
+                          <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: colors.status.success }}>
+                            {(results.ml_analysis.model_confidence * 100).toFixed(1)}%
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Model Scores Breakdown */}
+                      {results.ml_analysis.model_scores && (
+                        <div style={{ marginTop: '1rem', fontSize: '0.85rem', color: colors.mutedForeground }}>
+                          <strong>Model Ensemble:</strong>
+                          <span style={{ marginLeft: '1rem' }}>
+                            Random Forest: {(results.ml_analysis.model_scores.random_forest * 100).toFixed(1)}%
+                          </span>
+                          <span style={{ marginLeft: '1rem' }}>
+                            XGBoost: {(results.ml_analysis.model_scores.xgboost * 100).toFixed(1)}%
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* AI Recommendation Section */}
+                  {results.ai_analysis && (
+                    <div style={{ marginBottom: '2rem' }}>
+                      <div style={aiCardStyle(results.ai_analysis.recommendation)}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
+                              🧠 AI Recommendation
+                            </div>
+                            <div style={{
+                              fontSize: '2rem',
+                              fontWeight: 'bold',
+                              color: results.ai_analysis.recommendation === 'APPROVE' ? colors.status.success :
+                                     results.ai_analysis.recommendation === 'REJECT' ? primary : colors.status.warning
+                            }}>
+                              {results.ai_analysis.recommendation}
+                            </div>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: '0.9rem', color: colors.mutedForeground }}>
+                              Confidence
+                            </div>
+                            <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: colors.foreground }}>
+                              {(results.ai_analysis.confidence * 100).toFixed(0)}%
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* AI Summary */}
+                        {results.ai_analysis.summary && (
+                          <div style={{
+                            marginTop: '1rem',
+                            padding: '1rem',
+                            backgroundColor: colors.secondary,
+                            borderRadius: '0.5rem',
+                            fontSize: '0.95rem',
+                            fontStyle: 'italic',
+                            color: colors.foreground,
+                            border: `1px solid ${colors.border}`,
+                          }}>
+                            {results.ai_analysis.summary}
+                          </div>
+                        )}
+                      </div>
+
+                  {/* AI Reasoning */}
+                  {results.ai_analysis.reasoning && (
+                    <div style={{
+                      padding: '1.5rem',
+                      backgroundColor: colors.secondary,
+                      borderRadius: '0.5rem',
+                      marginBottom: '1rem',
+                      border: `1px solid ${colors.border}`,
+                    }}>
+                      <h4 style={{ color: colors.foreground, marginBottom: '0.8rem', fontWeight: 'bold' }}>
+                        📊 Analysis Reasoning
+                      </h4>
+                      <div style={{ whiteSpace: 'pre-wrap', fontSize: '0.9rem', lineHeight: '1.6', color: colors.mutedForeground }}>
+                        {results.ai_analysis.reasoning}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Key Indicators */}
+                  {results.ai_analysis.key_indicators && results.ai_analysis.key_indicators.length > 0 && (
+                    <div style={{
+                      padding: '1.5rem',
+                      backgroundColor: colors.secondary,
+                      borderRadius: '0.5rem',
+                      border: `1px solid ${colors.border}`,
+                    }}>
+                      <h4 style={{ color: colors.foreground, marginBottom: '0.8rem', fontWeight: 'bold' }}>
+                        🔍 Key Indicators
+                      </h4>
+                      <ul style={{ paddingLeft: '1.5rem', margin: 0 }}>
+                        {results.ai_analysis.key_indicators.map((indicator, index) => (
+                          <li key={index} style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: colors.mutedForeground }}>
+                            {indicator}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Anomalies Section */}
+            {results.anomalies && results.anomalies.length > 0 && (
+                <div style={{ marginBottom: '2rem' }}>
+                  <div style={warningBannerStyle}>
+                    <h3 style={{ color: primary, margin: 0, fontSize: '1rem', fontWeight: '600' }}>
+                      ⚠️ Detailed Anomalies ({results.anomalies.length})
+                  </h3>
+                  </div>
+                  {results.anomalies.map((anomaly, index) => (
+                    <div key={index} style={anomalyCardStyle(anomaly.severity)}>
+                      <strong style={{ textTransform: 'uppercase', color: colors.foreground }}>
+                        [{anomaly.severity}] {anomaly.type}:
+                      </strong>
+                      <br />
+                      <span style={{ color: colors.mutedForeground }}>{anomaly.message}</span>
+                    </div>
+                  ))}
+                </div>
+            )}
+
+            {results.extracted_data && (
+              <>
+                <h3 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.125rem', fontWeight: 'bold' }}>
+                  📄 Issuer Information
+                </h3>
+                <div style={resultCardStyle}>
+                  <p style={{ color: colors.foreground, marginBottom: '0.5rem' }}>
+                    <strong>Issuer:</strong> <span style={{ color: colors.mutedForeground }}>{results.extracted_data?.issuer || 'N/A'}</span>
+                  </p>
+                  <p style={{ color: colors.foreground, marginBottom: '0.5rem' }}>
+                    <strong>Serial Number:</strong> <span style={{ color: colors.mutedForeground }}>{results.extracted_data?.serial_number || 'N/A'}</span>
+                  </p>
+                  <p style={{ color: colors.foreground }}>
+                    <strong>Receipt Number:</strong> <span style={{ color: colors.mutedForeground }}>{results.extracted_data?.receipt_number || 'N/A'}</span>
+                  </p>
+                </div>
+
+                <h3 style={{ color: colors.foreground, marginBottom: '1rem', marginTop: '1.5rem', fontSize: '1.125rem', fontWeight: 'bold' }}>
+                  Transaction Information
+                </h3>
+                <div style={resultCardStyle}>
+                  <p style={{ color: colors.foreground, marginBottom: '0.5rem' }}>
+                    <strong>Amount (Numeric):</strong>
+                    <span style={{ color: primary, fontSize: '1.2rem', fontWeight: '600', marginLeft: '0.5rem' }}>
+                      {results.extracted_data?.amount || 'N/A'}
+                    </span>
+                  </p>
+                  <p style={{ color: colors.foreground, marginBottom: '0.5rem' }}>
+                    <strong>Amount (Written):</strong> <span style={{ color: colors.mutedForeground }}>{results.extracted_data?.amount_in_words || 'N/A'}</span>
+                  </p>
+                  <p style={{ color: colors.foreground, marginBottom: '0.5rem' }}>
+                    <strong>Payee:</strong> <span style={{ color: colors.mutedForeground }}>{results.extracted_data?.payee || 'N/A'}</span>
+                  </p>
+                  <p style={{ color: colors.foreground, marginBottom: '0.5rem' }}>
+                    <strong>Purchaser:</strong> <span style={{ color: colors.mutedForeground }}>{results.extracted_data?.purchaser || 'N/A'}</span>
+                  </p>
+                  <p style={{ color: colors.foreground, marginBottom: '0.5rem' }}>
+                    <strong>Date:</strong> <span style={{ color: colors.mutedForeground }}>{results.extracted_data?.date || 'N/A'}</span>
+                  </p>
+                  <p style={{ color: colors.foreground, marginBottom: '0.5rem' }}>
+                    <strong>Location:</strong> <span style={{ color: colors.mutedForeground }}>{results.extracted_data?.location || 'N/A'}</span>
+                  </p>
+                  <p style={{ color: colors.foreground }}>
+                    <strong>Signature:</strong> <span style={{ color: colors.mutedForeground }}>{results.extracted_data?.signature || 'N/A'}</span>
+                  </p>
+                </div>
+              </>
+            )}
+
+            <button
+              style={{
+                ...buttonStyle,
+                backgroundColor: colors.card,
+                color: colors.foreground,
+                border: `2px solid ${colors.border}`,
+                marginTop: '1.5rem',
+              }}
+              onClick={downloadJSON}
+              onMouseEnter={(e) => {
+                e.target.style.borderColor = primary;
+                e.target.style.backgroundColor = colors.muted;
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.borderColor = colors.border;
+                e.target.style.backgroundColor = colors.card;
+              }}
+            >
+              Download Full Results (JSON)
+            </button>
+          </>
+        )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default MoneyOrderAnalysis;

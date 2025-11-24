@@ -2,7 +2,6 @@ import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { analyzePaystub } from '../services/api';
 import { colors } from '../styles/colors';
-import { FaFileInvoiceDollar, FaSpinner } from 'react-icons/fa';
 
 const PaystubAnalysis = () => {
   const [file, setFile] = useState(null);
@@ -49,20 +48,8 @@ const PaystubAnalysis = () => {
     
     try {
       const response = await analyzePaystub(file);
-      console.log('Paystub API Response:', response);
-      // Response structure from API: { success: true, data: {...details...}, risk_assessment: {...} }
-      // The api.js already returns response.data, so response is the JSON object
-      if (response && response.data) {
-        // Merge data and risk_assessment into one object for results
-        const resultData = { ...response.data, risk_assessment: response.risk_assessment };
-        console.log('Setting results with risk_assessment:', resultData.risk_assessment);
-        setResults(resultData);
-      } else if (response) {
-        // Fallback: if structure is different, use response directly
-        setResults(response);
-      }
+      setResults(response.data);
     } catch (err) {
-      console.error('Paystub analysis error:', err);
       setError(err.error || 'Failed to analyze paystub. Please try again.');
     } finally {
       setLoading(false);
@@ -80,18 +67,26 @@ const PaystubAnalysis = () => {
   };
   
   // Styles
+  // Use primaryColor for new design system red
+  const primary = colors.primaryColor || colors.accent?.red || '#E53935';
+  
   const containerStyle = {
     maxWidth: '1400px',
     margin: '0 auto',
+    backgroundColor: colors.background,
+    minHeight: '100vh',
+    color: colors.foreground,
+    padding: '1.5rem',
   };
   
   const headerStyle = {
-    background: `linear-gradient(135deg, ${colors.primary.navy} 0%, ${colors.primary.blue} 100%)`,
+    background: colors.gradients.navy,
     padding: '2rem',
-    borderRadius: '12px',
-    color: colors.neutral.white,
+    borderRadius: '0.75rem',
+    color: colors.foreground,
     textAlign: 'center',
     marginBottom: '2rem',
+    border: `1px solid ${colors.border}`,
   };
   
   const gridStyle = {
@@ -101,41 +96,45 @@ const PaystubAnalysis = () => {
   };
   
   const cardStyle = {
-    backgroundColor: colors.background.card,
-    borderRadius: '12px',
+    backgroundColor: colors.card,
+    borderRadius: '0.75rem',
     padding: '2rem',
-    boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+    boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)',
+    border: `1px solid ${colors.border}`,
   };
   
   const dropzoneStyle = {
-    border: `2px dashed ${isDragActive ? colors.primary.blue : colors.neutral.gray300}`,
-    borderRadius: '12px',
+    border: `2px dashed ${isDragActive ? primary : colors.border}`,
+    borderRadius: '0.75rem',
     padding: '3rem',
     textAlign: 'center',
-    backgroundColor: isDragActive ? colors.primary.lightBlue : colors.background.main,
+    backgroundColor: isDragActive ? colors.muted : colors.secondary,
     cursor: 'pointer',
     transition: 'all 0.2s',
   };
   
   const buttonStyle = {
-    backgroundColor: colors.accent.red,
-    color: colors.neutral.white,
-    padding: '0.5rem 1.25rem',
-    borderRadius: '9999px', // Pill shape
+    backgroundColor: primary,
+    color: colors.primaryForeground,
+    padding: '1rem 2rem',
+    borderRadius: '0.5rem',
     fontSize: '1rem',
     fontWeight: '600',
     width: '100%',
     marginTop: '1rem',
     cursor: loading ? 'not-allowed' : 'pointer',
     opacity: loading ? 0.6 : 1,
+    boxShadow: `0 0 20px ${primary}40`,
+    transition: 'all 0.3s',
   };
   
   const resultCardStyle = {
-    backgroundColor: colors.background.main,
+    backgroundColor: colors.secondary,
     padding: '1.5rem',
-    borderRadius: '8px',
-    borderLeft: `4px solid ${colors.primary.blue}`,
+    borderRadius: '0.5rem',
+    borderLeft: `4px solid ${primary}`,
     marginBottom: '1rem',
+    border: `1px solid ${colors.border}`,
   };
   
   const metricsGridStyle = {
@@ -146,10 +145,11 @@ const PaystubAnalysis = () => {
   };
   
   const metricStyle = {
-    backgroundColor: colors.background.main,
+    backgroundColor: colors.secondary,
     padding: '1rem',
-    borderRadius: '8px',
+    borderRadius: '0.5rem',
     textAlign: 'center',
+    border: `1px solid ${colors.border}`,
   };
   
   const confidenceStyle = (confidence) => {
@@ -186,7 +186,7 @@ const PaystubAnalysis = () => {
       <div style={gridStyle}>
         {/* Upload Section */}
         <div style={cardStyle}>
-          <h2 style={{ color: colors.primary.navy, marginBottom: '1.5rem' }}>
+          <h2 style={{ color: colors.foreground, marginBottom: '1.5rem' }}>
             Upload Paystub Document
           </h2>
           
@@ -198,23 +198,23 @@ const PaystubAnalysis = () => {
             marginBottom: '1rem',
           }}>
             <p style={{ color: '#856404', fontSize: '0.875rem', margin: 0, fontWeight: '500' }}>
-              Only upload paystub documents (payslips or salary statements)
+              ⚠️ Only upload paystub documents (payslips or salary statements)
             </p>
           </div>
           
           <div {...getRootProps()} style={dropzoneStyle}>
             <input {...getInputProps()} />
-            <FaFileInvoiceDollar style={{ fontSize: '3rem', marginBottom: '1rem', color: colors.primary.blue }} />
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>💰</div>
             {isDragActive ? (
-              <p style={{ color: colors.primary.blue, fontWeight: '500' }}>
+              <p style={{ color: primary, fontWeight: '500' }}>
                 Drop the paystub here...
               </p>
             ) : (
               <div>
-                <p style={{ color: colors.neutral.gray700, marginBottom: '0.5rem' }}>
+                <p style={{ color: colors.foreground, marginBottom: '0.5rem' }}>
                   Drop your paystub here or click to browse
                 </p>
-                <p style={{ color: colors.neutral.gray500, fontSize: '0.875rem' }}>
+                <p style={{ color: colors.mutedForeground, fontSize: '0.875rem' }}>
                   Paystubs Only - JPG, JPEG, PNG, PDF
                 </p>
               </div>
@@ -224,7 +224,7 @@ const PaystubAnalysis = () => {
           {file && (
             <div style={{ marginTop: '1.5rem' }}>
               <div style={{
-                backgroundColor: colors.primary.lightBlue,
+                backgroundColor: colors.muted,
                 padding: '1rem',
                 borderRadius: '8px',
               }}>
@@ -275,17 +275,17 @@ const PaystubAnalysis = () => {
         
         {/* Results Section */}
         <div style={cardStyle}>
-          <h2 style={{ color: colors.primary.navy, marginBottom: '1.5rem' }}>
+          <h2 style={{ color: colors.foreground, marginBottom: '1.5rem' }}>
             Analysis Results
           </h2>
           
           {!results && !loading && (
             <div style={{
-              backgroundColor: colors.primary.lightBlue,
+              backgroundColor: colors.muted,
               padding: '2rem',
               borderRadius: '8px',
               textAlign: 'center',
-              color: colors.primary.navy,
+              color: colors.foreground,
             }}>
               <p>Upload a paystub on the left to begin analysis</p>
             </div>
@@ -293,7 +293,7 @@ const PaystubAnalysis = () => {
           
           {loading && (
             <div style={{ textAlign: 'center', padding: '3rem' }}>
-              <FaSpinner className="spin" style={{ fontSize: '3rem', color: colors.primary.blue }} />
+              <div className="spin" style={{ fontSize: '3rem', color: primary }}>⚙️</div>
               <p style={{ marginTop: '1rem', color: colors.neutral.gray600 }}>
                 Analyzing paystub...
               </p>
@@ -307,108 +307,7 @@ const PaystubAnalysis = () => {
                 Confidence: {results.confidence_score?.toFixed(1)}%
               </div>
               
-              {/* Debug: Check if risk_assessment exists */}
-              {console.log('Results object:', results)}
-              {console.log('Risk assessment:', results.risk_assessment)}
-              
-              {/* ML Risk Assessment */}
-              {results.risk_assessment && (() => {
-                const riskScore = results.risk_assessment.risk_score;
-                // Determine risk level colors
-                const isHighRisk = riskScore >= 70;
-                const isMediumRisk = riskScore >= 40 && riskScore < 70;
-                const isLowRisk = riskScore < 40;
-                
-                const riskColors = isHighRisk ? {
-                  background: '#FEE2E2',
-                  text: '#B91C1C',
-                  border: '#EF4444'
-                } : isMediumRisk ? {
-                  background: '#FEF3C7',
-                  text: '#D97706',
-                  border: '#FACC15'
-                } : {
-                  background: '#D4F6DA',
-                  text: '#16A34A',
-                  border: '#22C55E'
-                };
-                
-                return (
-                  <div style={{ marginBottom: '2rem' }}>
-                    <div style={{
-                      padding: '1.5rem',
-                      borderRadius: '12px',
-                      backgroundColor: riskColors.background,
-                      border: `2px solid ${riskColors.border}`,
-                      marginBottom: '1.5rem',
-                    }}>
-                      <h3 style={{ 
-                        color: riskColors.text,
-                        marginBottom: '1rem',
-                        fontSize: '1.5rem',
-                        fontWeight: '700'
-                      }}>
-                        ML Risk Score: {riskScore.toFixed(1)}% 
-                        <span style={{ marginLeft: '0.5rem', fontSize: '1rem' }}>
-                          ({results.risk_assessment.risk_level} RISK)
-                        </span>
-                      </h3>
-                      
-                      {results.risk_assessment.risk_factors && results.risk_assessment.risk_factors.length > 0 && (
-                        <div style={{ marginBottom: '1.5rem' }}>
-                          <h4 style={{ color: riskColors.text, marginBottom: '0.75rem', fontWeight: '600' }}>
-                            Risk Factors:
-                          </h4>
-                        {results.risk_assessment.risk_factors.map((factor, idx) => (
-                          <div key={idx} style={{
-                            padding: '0.75rem',
-                            marginBottom: '0.5rem',
-                            backgroundColor: 'rgba(255, 255, 255, 0.7)',
-                            borderRadius: '8px',
-                            borderLeft: `4px solid ${factor.severity === 'high' ? colors.accent.red : 
-                                                      factor.severity === 'medium' ? '#F59E0B' : '#6B7280'}`
-                          }}>
-                            <strong style={{ 
-                              color: factor.severity === 'high' ? colors.accent.red : 
-                                     factor.severity === 'medium' ? '#F59E0B' : '#6B7280',
-                              textTransform: 'uppercase',
-                              fontSize: '0.75rem'
-                            }}>
-                              {factor.severity}
-                            </strong>
-                            <p style={{ margin: '0.25rem 0 0 0', fontWeight: '500' }}>{factor.message}</p>
-                            <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem', color: colors.neutral.gray600 }}>
-                              Impact: {factor.impact}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    
-                      {results.risk_assessment.recommendations && results.risk_assessment.recommendations.length > 0 && (
-                        <div>
-                          <h4 style={{ color: riskColors.text, marginBottom: '0.75rem', fontWeight: '600' }}>
-                            Recommendations:
-                          </h4>
-                          <ul style={{ paddingLeft: '1.5rem', margin: 0 }}>
-                            {results.risk_assessment.recommendations.map((rec, idx) => (
-                              <li key={idx} style={{ 
-                                marginBottom: '0.5rem', 
-                                color: riskColors.text,
-                                lineHeight: '1.6'
-                              }}>
-                                {rec}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })()}
-              
-              <h3 style={{ color: colors.primary.navy, marginBottom: '1rem' }}>
+              <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>
                 Company & Employee Information
               </h3>
               <div style={resultCardStyle}>
@@ -417,7 +316,7 @@ const PaystubAnalysis = () => {
                 <p><strong>Employee ID:</strong> {results.employee_id || 'N/A'}</p>
               </div>
               
-              <h3 style={{ color: colors.primary.navy, marginBottom: '1rem', marginTop: '1.5rem' }}>
+              <h3 style={{ color: colors.foreground, marginBottom: '1rem', marginTop: '1.5rem' }}>
                 Pay Period Information
               </h3>
               <div style={resultCardStyle}>
@@ -425,7 +324,7 @@ const PaystubAnalysis = () => {
                 <p><strong>Pay Date:</strong> {results.pay_date || 'N/A'}</p>
               </div>
               
-              <h3 style={{ color: colors.primary.navy, marginBottom: '1rem', marginTop: '1.5rem' }}>
+              <h3 style={{ color: colors.foreground, marginBottom: '1rem', marginTop: '1.5rem' }}>
                 Earnings
               </h3>
               <div style={metricsGridStyle}>
@@ -443,13 +342,13 @@ const PaystubAnalysis = () => {
                 </div>
                 <div style={metricStyle}>
                   <div style={{ color: colors.neutral.gray600, fontSize: '0.875rem' }}>YTD Gross</div>
-                  <div style={{ fontSize: '1.5rem', fontWeight: '600', color: colors.primary.navy }}>
+                  <div style={{ fontSize: '1.5rem', fontWeight: '600', color: colors.foreground }}>
                     ${results.ytd_gross || 'N/A'}
                   </div>
                 </div>
                 <div style={metricStyle}>
                   <div style={{ color: colors.neutral.gray600, fontSize: '0.875rem' }}>YTD Net</div>
-                  <div style={{ fontSize: '1.5rem', fontWeight: '600', color: colors.primary.navy }}>
+                  <div style={{ fontSize: '1.5rem', fontWeight: '600', color: colors.foreground }}>
                     ${results.ytd_net || 'N/A'}
                   </div>
                 </div>
@@ -457,7 +356,7 @@ const PaystubAnalysis = () => {
               
               {results.federal_tax && (
                 <>
-                  <h3 style={{ color: colors.primary.navy, marginBottom: '1rem', marginTop: '1.5rem' }}>
+                  <h3 style={{ color: colors.foreground, marginBottom: '1rem', marginTop: '1.5rem' }}>
                     Tax Withholdings
                   </h3>
                   <div style={resultCardStyle}>
@@ -472,12 +371,12 @@ const PaystubAnalysis = () => {
               <button 
                 style={{
                   ...buttonStyle,
-                  backgroundColor: colors.primary.navy,
+                  backgroundColor: primary,
                   marginTop: '1.5rem',
                 }}
                 onClick={downloadJSON}
-                onMouseEnter={(e) => e.target.style.backgroundColor = colors.primary.blue}
-                onMouseLeave={(e) => e.target.style.backgroundColor = colors.primary.navy}
+                onMouseEnter={(e) => e.target.style.backgroundColor = primary}
+                onMouseLeave={(e) => e.target.style.backgroundColor = primary}
               >
                 Download Full Results (JSON)
               </button>

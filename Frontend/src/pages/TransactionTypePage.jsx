@@ -8,6 +8,9 @@ const TransactionTypePage = () => {
   const navigate = useNavigate();
   const { isAuthenticated, logout } = useAuth();
 
+  // Use primaryColor for new design system red
+  const primary = colors.primaryColor || colors.accent?.red || '#E53935';
+
   const logoutButtonStyle = {
     backgroundColor: 'transparent',
     border: 'none',
@@ -27,9 +30,10 @@ const TransactionTypePage = () => {
 
   const pageStyle = {
     minHeight: '100vh',
-    backgroundColor: colors.neutral.white,
+    backgroundColor: colors.background,
     display: 'flex',
     flexDirection: 'column',
+    color: colors.foreground,
   };
   
   const headerStyle = {
@@ -37,8 +41,8 @@ const TransactionTypePage = () => {
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: '1rem 2.5rem',
-    backgroundColor: colors.neutral.white,
-    boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+    backgroundColor: colors.card,
+    borderBottom: `1px solid ${colors.border}`,
   };
   
   const logoContainerStyle = {
@@ -55,14 +59,14 @@ const TransactionTypePage = () => {
   const taglineStyle = {
     fontSize: '1rem',
     fontWeight: '500',
-    color: colors.accent.red,
+    color: primary,
   };
   
   const loginButtonStyle = {
-    backgroundColor: colors.primary.blue,
-    color: colors.neutral.white,
-    padding: '0.5rem 1.25rem',
-    borderRadius: '9999px', // Pill shape
+    backgroundColor: primary,
+    color: colors.primaryForeground,
+    padding: '0.625rem 1.5rem',
+    borderRadius: '0.375rem',
     border: 'none',
     cursor: 'pointer',
     fontSize: '1rem',
@@ -70,7 +74,8 @@ const TransactionTypePage = () => {
     display: 'flex',
     alignItems: 'center',
     gap: '0.5rem',
-    transition: 'background-color 0.2s',
+    transition: 'all 0.3s',
+    boxShadow: `0 0 20px ${primary}40`,
   };
   
   const mainContentStyle = {
@@ -80,6 +85,7 @@ const TransactionTypePage = () => {
     alignItems: 'center',
     justifyContent: 'center',
     padding: '2rem',
+    background: colors.gradients.dark,
   };
   
   const dadLogoStyle = {
@@ -91,14 +97,14 @@ const TransactionTypePage = () => {
   const titleStyle = {
     fontSize: '2rem',
     fontWeight: '700',
-    color: colors.primary.navy,
+    color: colors.foreground,
     marginBottom: '0.5rem',
     textAlign: 'center',
   };
   
   const subtitleStyle = {
     fontSize: '1rem',
-    color: colors.neutral.gray600,
+    color: colors.mutedForeground,
     marginBottom: '2rem',
     textAlign: 'center',
   };
@@ -112,15 +118,16 @@ const TransactionTypePage = () => {
   };
   
   const cardStyle = {
-    backgroundColor: '#F8F9FA',
-    borderRadius: '12px',
+    backgroundColor: colors.card,
+    borderRadius: '0.75rem',
     padding: '2rem 1.5rem',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     textAlign: 'center',
     transition: 'transform 0.3s, box-shadow 0.3s',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+    boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)',
+    border: `1px solid ${colors.border}`,
     minHeight: '320px',
   };
   
@@ -128,49 +135,50 @@ const TransactionTypePage = () => {
     width: '80px',
     height: '80px',
     borderRadius: '50%',
-    backgroundColor: colors.primary.navy,
+    backgroundColor: primary,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: '1.5rem',
     fontSize: '2rem',
-    color: colors.neutral.white,
+    color: colors.primaryForeground,
   };
   
   const cardTitleStyle = {
     fontSize: '1.5rem',
     fontWeight: '700',
-    color: colors.primary.navy,
+    color: colors.foreground,
     marginBottom: '0.75rem',
   };
   
   const cardDescStyle = {
     fontSize: '0.95rem',
-    color: colors.neutral.gray600,
+    color: colors.mutedForeground,
     lineHeight: '1.5',
     marginBottom: '2rem',
     flex: 1,
   };
   
   const activeButtonStyle = {
-    backgroundColor: colors.accent.red,
-    color: colors.neutral.white,
-    padding: '0.5rem 1.25rem',
-    borderRadius: '9999px', // Pill shape
+    backgroundColor: primary,
+    color: colors.primaryForeground,
+    padding: '0.875rem 2rem',
+    borderRadius: '0.5rem',
     border: 'none',
     cursor: 'pointer',
     fontSize: '1rem',
     fontWeight: '600',
     width: '100%',
-    transition: 'background-color 0.2s',
+    transition: 'all 0.3s',
+    boxShadow: `0 0 20px ${primary}40`,
   };
   
   const disabledButtonStyle = {
-    backgroundColor: colors.primary.lightBlue,
-    color: colors.primary.blue,
+    backgroundColor: colors.muted,
+    color: colors.mutedForeground,
     padding: '0.875rem 2rem',
     borderRadius: '0.5rem',
-    border: 'none',
+    border: `1px solid ${colors.border}`,
     cursor: 'not-allowed',
     fontSize: '1rem',
     fontWeight: '600',
@@ -178,10 +186,11 @@ const TransactionTypePage = () => {
   };
   
   const footerStyle = {
-    backgroundColor: colors.primary.navy,
-    color: colors.neutral.white,
+    backgroundColor: colors.card,
+    color: colors.foreground,
     padding: '1.25rem 2rem',
     textAlign: 'center',
+    borderTop: `1px solid ${colors.border}`,
   };
   
   const footerTextStyle = {
@@ -194,7 +203,7 @@ const TransactionTypePage = () => {
   };
   
   const separatorStyle = {
-    color: colors.neutral.gray400,
+    color: colors.mutedForeground,
   };
   
   return (
@@ -212,8 +221,14 @@ const TransactionTypePage = () => {
         {!isAuthenticated ? (
           <button
             style={loginButtonStyle}
-            onMouseEnter={(e) => e.target.style.backgroundColor = colors.primary.navy}
-            onMouseLeave={(e) => e.target.style.backgroundColor = colors.primary.blue}
+            onMouseEnter={(e) => {
+              e.target.style.transform = 'scale(1.05)';
+              e.target.style.boxShadow = `0 0 30px ${primary}60`;
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.transform = 'scale(1)';
+              e.target.style.boxShadow = `0 0 20px ${primary}40`;
+            }}
             onClick={() => navigate('/login')}
           >
             Login →
@@ -250,11 +265,13 @@ const TransactionTypePage = () => {
             style={cardStyle}
             onMouseEnter={(e) => {
               e.currentTarget.style.transform = 'translateY(-8px)';
-              e.currentTarget.style.boxShadow = '0 12px 24px rgba(0,0,0,0.15)';
+              e.currentTarget.style.boxShadow = `0 12px 40px ${primary}30`;
+              e.currentTarget.style.borderColor = primary;
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)';
+              e.currentTarget.style.boxShadow = '0 10px 40px rgba(0, 0, 0, 0.5)';
+              e.currentTarget.style.borderColor = colors.border;
             }}
           >
             <div style={iconCircleStyle}>
@@ -267,8 +284,14 @@ const TransactionTypePage = () => {
             
             <button
               style={activeButtonStyle}
-              onMouseEnter={(e) => e.target.style.backgroundColor = colors.accent.redDark}
-              onMouseLeave={(e) => e.target.style.backgroundColor = colors.accent.red}
+              onMouseEnter={(e) => {
+                e.target.style.transform = 'translateY(-2px)';
+                e.target.style.boxShadow = `0 6px 30px ${primary}60`;
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.transform = 'translateY(0)';
+                e.target.style.boxShadow = `0 0 20px ${primary}40`;
+              }}
               onClick={() => navigate('/finance')}
             >
               On Demand Transactions
@@ -309,4 +332,3 @@ const TransactionTypePage = () => {
 };
 
 export default TransactionTypePage;
-

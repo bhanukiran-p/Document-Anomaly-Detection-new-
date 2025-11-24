@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { colors } from '../styles/colors';
@@ -10,31 +10,24 @@ const Header = () => {
   // eslint-disable-next-line no-unused-vars
   const { user, logout } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const logoutButtonRef = useRef(null);
 
   const handleLogout = () => {
     logout();
     setIsMenuOpen(false);
     navigate('/');
   };
-
-  // Reset button styles when sidebar opens
-  useEffect(() => {
-    if (isMenuOpen && logoutButtonRef.current) {
-      logoutButtonRef.current.style.backgroundColor = colors.accent.red;
-      logoutButtonRef.current.style.transform = 'scale(1)';
-      logoutButtonRef.current.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
-    }
-  }, [isMenuOpen]);
   
   const headerStyle = {
-    backgroundColor: colors.neutral.white,
-    borderBottom: `2px solid ${colors.primary.navy}`,
+    backgroundColor: colors.card,
+    borderBottom: `1px solid ${colors.border}`,
     padding: '1rem 2rem',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+    position: 'sticky',
+    top: 0,
+    zIndex: 100,
+    backdropFilter: 'blur(10px)',
   };
   
   const logoStyle = {
@@ -52,18 +45,19 @@ const Header = () => {
   const taglineStyle = {
     fontSize: '1rem',
     fontWeight: '500',
-    color: colors.accent.red,
+    color: colors.primaryColor || colors.accent?.red || '#E53935',
   };
   
   const hamburgerButtonStyle = {
     backgroundColor: 'transparent',
     border: 'none',
     fontSize: '1.5rem',
-    color: colors.primary.navy,
+    color: colors.foreground,
     cursor: 'pointer',
     padding: '0.5rem',
     display: 'flex',
     alignItems: 'center',
+    transition: 'color 0.2s',
   };
   
   const navOverlayStyle = {
@@ -72,13 +66,14 @@ const Header = () => {
     right: isMenuOpen ? 0 : '-100%',
     width: '300px',
     height: '100vh',
-    backgroundColor: colors.neutral.white,
-    boxShadow: '-4px 0 8px rgba(0,0,0,0.1)',
+    backgroundColor: colors.card,
+    boxShadow: `-4px 0 8px ${colors.background}80`,
     transition: 'right 0.3s ease',
     zIndex: 1000,
     display: 'flex',
     flexDirection: 'column',
     padding: '2rem',
+    borderLeft: `1px solid ${colors.border}`,
   };
   
   const navBackdropStyle = {
@@ -87,7 +82,7 @@ const Header = () => {
     left: 0,
     width: '100vw',
     height: '100vh',
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(3, 5, 7, 0.8)',
     zIndex: 999,
     display: isMenuOpen ? 'block' : 'none',
   };
@@ -97,9 +92,10 @@ const Header = () => {
     backgroundColor: 'transparent',
     border: 'none',
     fontSize: '1.5rem',
-    color: colors.primary.navy,
+    color: colors.foreground,
     cursor: 'pointer',
     marginBottom: '2rem',
+    transition: 'color 0.2s',
   };
   
   const navStyle = {
@@ -110,38 +106,30 @@ const Header = () => {
   
   const linkStyle = (isActive) => ({
     padding: '0.75rem 1rem',
-    borderRadius: '0.375rem',
+    borderRadius: '0.5rem',
     fontWeight: '500',
-    backgroundColor: isActive ? colors.primary.lightBlue : 'transparent',
-    color: isActive ? colors.primary.navy : colors.neutral.gray700,
+    backgroundColor: isActive ? colors.muted : 'transparent',
+    color: isActive ? (colors.primaryColor || colors.accent?.red || '#E53935') : colors.foreground,
     transition: 'all 0.2s',
     textDecoration: 'none',
     display: 'block',
   });
 
+  // eslint-disable-next-line no-unused-vars
   const logoutButtonStyle = {
-    backgroundColor: colors.accent.red,
-    border: `2px solid ${colors.accent.red}`,
-    borderRadius: '50%',
+    padding: '0.75rem 1rem',
+    borderRadius: '0.5rem',
+    fontWeight: '500',
+    backgroundColor: colors.primaryColor || colors.accent?.red || '#E53935',
+    color: colors.primaryForeground,
+    border: 'none',
     cursor: 'pointer',
-    padding: '0',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    transition: 'all 0.2s ease',
-    marginTop: 'auto',
-    marginBottom: '1rem',
-    width: '48px',
-    height: '48px',
-    alignSelf: 'center',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-  };
-
-  const logoutImageStyle = {
-    width: '24px',
-    height: '24px',
-    objectFit: 'contain',
-    filter: 'brightness(0) invert(1)',
+    transition: 'all 0.2s',
+    width: '100%',
+    textAlign: 'left',
+    marginTop: '2rem',
+    borderTop: `1px solid ${colors.border}`,
+    paddingTop: '2rem',
   };
   
   return (
@@ -157,6 +145,8 @@ const Header = () => {
         <button 
           style={hamburgerButtonStyle}
           onClick={() => setIsMenuOpen(true)}
+            onMouseEnter={(e) => e.target.style.color = colors.primaryColor || colors.accent?.red || '#E53935'}
+          onMouseLeave={(e) => e.target.style.color = colors.foreground}
         >
           <FaBars />
         </button>
@@ -173,6 +163,8 @@ const Header = () => {
         <button 
           style={closeButtonStyle}
           onClick={() => setIsMenuOpen(false)}
+            onMouseEnter={(e) => e.target.style.color = colors.primaryColor || colors.accent?.red || '#E53935'}
+          onMouseLeave={(e) => e.target.style.color = colors.foreground}
         >
           <FaTimes />
         </button>
@@ -230,26 +222,18 @@ const Header = () => {
         </nav>
 
         <button
-          ref={logoutButtonRef}
           style={logoutButtonStyle}
           onClick={handleLogout}
           onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'scale(1.1)';
-            e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
-            e.currentTarget.style.backgroundColor = colors.accent.red;
+            e.target.style.transform = 'scale(1.05)';
+            e.target.style.boxShadow = `0 0 20px ${colors.primaryColor || colors.accent?.red || '#E53935'}40`;
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'scale(1)';
-            e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
-            e.currentTarget.style.backgroundColor = colors.accent.red;
+            e.target.style.transform = 'scale(1)';
+            e.target.style.boxShadow = 'none';
           }}
-          title="Logout"
         >
-          <img
-            src="/exit-door.png"
-            alt="Logout"
-            style={logoutImageStyle}
-          />
+          🚪 Logout
         </button>
       </div>
     </>
@@ -257,4 +241,3 @@ const Header = () => {
 };
 
 export default Header;
-
