@@ -56,6 +56,8 @@ export const AuthProvider = ({ children }) => {
       const response = await axios.post(`${API_BASE_URL}/auth/login`, {
         email,
         password
+      }, {
+        timeout: 10000 // 10 second timeout
       });
 
       const { token, user: userData } = response.data;
@@ -68,7 +70,18 @@ export const AuthProvider = ({ children }) => {
       return response.data;
     } catch (err) {
       console.error('Login error:', err);
-      const errorMessage = err.response?.data?.error || err.message || 'Login failed';
+      let errorMessage = 'Login failed';
+      
+      if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+        errorMessage = 'Connection timeout. Please check if the server is running.';
+      } else if (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error')) {
+        errorMessage = 'Network error. Please check if the backend server is running on port 5001.';
+      } else if (err.response?.data?.error) {
+        errorMessage = err.response.data.error;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
       setError(errorMessage);
       throw new Error(errorMessage);
     }
