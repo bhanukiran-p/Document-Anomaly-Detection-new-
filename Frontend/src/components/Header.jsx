@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { colors } from '../styles/colors';
-import { FaBars, FaTimes, FaSignOutAlt } from 'react-icons/fa';
+import { FaBars, FaTimes } from 'react-icons/fa';
 
 const Header = () => {
   const location = useLocation();
@@ -20,7 +20,7 @@ const Header = () => {
   const headerStyle = {
     backgroundColor: colors.card,
     borderBottom: `1px solid ${colors.border}`,
-    padding: '0.75rem 1.5rem 0.75rem 0.5rem',
+    padding: '1rem 2rem',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -33,23 +33,19 @@ const Header = () => {
   const logoStyle = {
     display: 'flex',
     alignItems: 'center',
-    gap: '0.5rem',
+    gap: '1rem',
     textDecoration: 'none',
-    marginLeft: '-0.5rem',
   };
   
   const logoImageStyle = {
-    height: '75px',
+    height: '50px',
     width: 'auto',
-    objectFit: 'contain',
-    display: 'block',
   };
   
   const taglineStyle = {
-    fontSize: '0.875rem',
+    fontSize: '1rem',
     fontWeight: '500',
     color: colors.primaryColor || colors.accent?.red || '#E53935',
-    whiteSpace: 'nowrap',
   };
   
   const hamburgerButtonStyle = {
@@ -121,46 +117,26 @@ const Header = () => {
 
   // eslint-disable-next-line no-unused-vars
   const logoutButtonStyle = {
-    width: '50px',
-    height: '50px',
-    borderRadius: '50%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+    padding: '0.75rem 1rem',
+    borderRadius: '0.5rem',
+    fontWeight: '500',
     backgroundColor: colors.primaryColor || colors.accent?.red || '#E53935',
     color: colors.primaryForeground,
     border: 'none',
     cursor: 'pointer',
     transition: 'all 0.2s',
+    width: '100%',
+    textAlign: 'left',
     marginTop: '2rem',
     borderTop: `1px solid ${colors.border}`,
     paddingTop: '2rem',
-    alignSelf: 'center',
-    fontSize: '1.25rem',
   };
   
   return (
     <>
       <header style={headerStyle}>
-        <Link 
-          to="/" 
-          style={logoStyle}
-          onMouseEnter={(e) => {
-            const img = e.currentTarget.querySelector('img');
-            if (img) {
-              img.style.filter = 'drop-shadow(0 0 12px rgba(255, 255, 255, 0.5)) drop-shadow(0 0 20px rgba(229, 57, 53, 0.6))';
-              img.style.transform = 'scale(1.05)';
-            }
-          }}
-          onMouseLeave={(e) => {
-            const img = e.currentTarget.querySelector('img');
-            if (img) {
-              img.style.filter = 'drop-shadow(0 0 8px rgba(255, 255, 255, 0.3)) drop-shadow(0 0 15px rgba(229, 57, 53, 0.4))';
-              img.style.transform = 'scale(1)';
-            }
-          }}
-        >
-          <img src="/New_FD.png" alt="XFORIA DAD Logo" style={logoImageStyle} />
+        <Link to="/" style={logoStyle}>
+          <img src="/logo.png" alt="XFORIA DAD Logo" style={logoImageStyle} />
           <div style={taglineStyle}>
             Your Guardian against Fraud
           </div>
@@ -249,16 +225,15 @@ const Header = () => {
           style={logoutButtonStyle}
           onClick={handleLogout}
           onMouseEnter={(e) => {
-            e.target.style.transform = 'scale(1.1)';
-            e.target.style.boxShadow = `0 0 20px ${colors.primaryColor || colors.accent?.red || '#E53935'}60`;
+            e.target.style.transform = 'scale(1.05)';
+            e.target.style.boxShadow = `0 0 20px ${colors.primaryColor || colors.accent?.red || '#E53935'}40`;
           }}
           onMouseLeave={(e) => {
             e.target.style.transform = 'scale(1)';
             e.target.style.boxShadow = 'none';
           }}
-          title="Logout"
         >
-          <FaSignOutAlt />
+          🚪 Logout
         </button>
       </div>
     </>

@@ -40,7 +40,7 @@ const TransactionTypePage = () => {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '0.75rem 1.5rem 0.75rem 0.5rem',
+    padding: '1rem 2.5rem',
     backgroundColor: colors.card,
     borderBottom: `1px solid ${colors.border}`,
   };
@@ -48,22 +48,18 @@ const TransactionTypePage = () => {
   const logoContainerStyle = {
     display: 'flex',
     alignItems: 'center',
-    gap: '0.5rem',
-    marginLeft: '-0.5rem',
+    gap: '1rem',
   };
   
   const logoImageStyle = {
-    height: '75px',
+    height: '50px',
     width: 'auto',
-    objectFit: 'contain',
-    display: 'block',
   };
   
   const taglineStyle = {
-    fontSize: '0.875rem',
+    fontSize: '1rem',
     fontWeight: '500',
     color: primary,
-    whiteSpace: 'nowrap',
   };
   
   const loginButtonStyle = {
@@ -93,10 +89,8 @@ const TransactionTypePage = () => {
   };
   
   const dadLogoStyle = {
-    height: '150px',
+    height: '80px',
     width: 'auto',
-    objectFit: 'contain',
-    display: 'block',
     marginBottom: '1.5rem',
   };
   
@@ -220,7 +214,7 @@ const TransactionTypePage = () => {
           style={{ ...logoContainerStyle, cursor: 'pointer' }}
           onClick={() => navigate('/')}
         >
-          <img src="/New_FD.png" alt="XFORIA DAD Logo" style={logoImageStyle} />
+          <img src="/logo.png" alt="XFORIA DAD Logo" style={logoImageStyle} />
           <div style={taglineStyle}>Your Guardian against Fraud</div>
         </div>
         
@@ -261,7 +255,7 @@ const TransactionTypePage = () => {
       
       {/* Main Content */}
       <main style={mainContentStyle}>
-        <img src="/DAD_red_black.png" alt="DAD Logo" style={dadLogoStyle} />
+        <img src="/dad-logo.png" alt="DAD Logo" style={dadLogoStyle} />
         <h1 style={titleStyle}>Choose Transaction Type</h1>
         <p style={subtitleStyle}>Select your preferred fraud detection method</p>
         

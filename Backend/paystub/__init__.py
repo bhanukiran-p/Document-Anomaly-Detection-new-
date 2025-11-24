@@ -1,2 +1,0 @@
-# Paystub extraction module
-
