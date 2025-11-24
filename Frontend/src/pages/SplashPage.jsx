@@ -17,7 +17,7 @@ const SplashPage = () => {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '0.75rem 1.5rem 0.75rem 0.5rem',
+    padding: '1.5rem 3rem',
     backgroundColor: '#FAFAFA',
     boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
   };
@@ -25,22 +25,18 @@ const SplashPage = () => {
   const logoContainerStyle = {
     display: 'flex',
     alignItems: 'center',
-    gap: '0.5rem',
-    marginLeft: '-0.5rem',
+    gap: '1rem',
   };
   
   const logoImageStyle = {
-    height: '75px',
+    height: '50px',
     width: 'auto',
-    objectFit: 'contain',
-    display: 'block',
   };
   
   const taglineStyle = {
-    fontSize: '0.875rem',
+    fontSize: '1rem',
     fontWeight: '500',
     color: colors.accent.red,
-    whiteSpace: 'nowrap',
   };
   
   const logoutButtonStyle = {
@@ -88,13 +84,12 @@ const SplashPage = () => {
   };
   
   const dadLogoStyle = {
-    height: '300px',
+    height: '220px',
     width: 'auto',
     marginBottom: '1.5rem',
     padding: '1rem',
-    objectFit: 'contain',
-    display: 'block',
     backgroundColor: 'transparent',
+    borderRadius: '8px',
   };
   
   const heroTaglineStyle = {
@@ -329,7 +324,7 @@ const SplashPage = () => {
           style={{ ...logoContainerStyle, cursor: 'pointer' }}
           onClick={() => navigate('/')}
         >
-          <img src="/New_FD.png" alt="XFORIA DAD Logo" style={logoImageStyle} />
+          <img src="/logo.png" alt="XFORIA DAD Logo" style={logoImageStyle} />
           <div style={taglineStyle}>Your Guardian against Fraud</div>
         </div>
         

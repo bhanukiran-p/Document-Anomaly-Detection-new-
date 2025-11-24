@@ -1,2 +1,0 @@
-# Bank statement extraction module
-

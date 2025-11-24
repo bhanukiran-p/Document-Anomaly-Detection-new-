@@ -1,2 +1,0 @@
-# Money order extraction module
-
