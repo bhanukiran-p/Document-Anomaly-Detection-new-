@@ -52,7 +52,7 @@ const TransactionTypePage = () => {
   };
   
   const logoImageStyle = {
-    height: '50px',
+    height: '80px',
     width: 'auto',
   };
   
@@ -89,8 +89,10 @@ const TransactionTypePage = () => {
   };
   
   const dadLogoStyle = {
-    height: '80px',
-    width: 'auto',
+    height: '200px',
+    width: '420px',
+    maxWidth: '90vw',
+    objectFit: 'contain',
     marginBottom: '1.5rem',
   };
   
@@ -210,11 +212,11 @@ const TransactionTypePage = () => {
     <div style={pageStyle}>
       {/* Header */}
       <header style={headerStyle}>
-        <div 
+        <div
           style={{ ...logoContainerStyle, cursor: 'pointer' }}
           onClick={() => navigate('/')}
         >
-          <img src="/logo.png" alt="XFORIA DAD Logo" style={logoImageStyle} />
+          <img src="/New_FD.png" alt="XFORIA DAD Logo" style={logoImageStyle} />
           <div style={taglineStyle}>Your Guardian against Fraud</div>
         </div>
         
@@ -255,7 +257,7 @@ const TransactionTypePage = () => {
       
       {/* Main Content */}
       <main style={mainContentStyle}>
-        <img src="/dad-logo.png" alt="DAD Logo" style={dadLogoStyle} />
+        <img src="/DAD_red_white.png" alt="DAD Logo" style={dadLogoStyle} />
         <h1 style={titleStyle}>Choose Transaction Type</h1>
         <p style={subtitleStyle}>Select your preferred fraud detection method</p>
         

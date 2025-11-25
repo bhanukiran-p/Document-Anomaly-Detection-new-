@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { analyzeMoneyOrder } from '../services/api';
 import { colors } from '../styles/colors';
+import { FaExclamationTriangle } from 'react-icons/fa';
 
 const MoneyOrderAnalysis = () => {
   const [file, setFile] = useState(null);
@@ -265,9 +266,10 @@ const MoneyOrderAnalysis = () => {
           </h2>
 
           <div style={warningBannerStyle}>
-            <p style={{ color: primary, fontSize: '0.875rem', margin: 0, fontWeight: '500' }}>
-              ⚠️ Only upload money order documents (Western Union, MoneyGram, USPS, etc.)
-            </p>
+            <div style={{ color: primary, fontSize: '0.875rem', margin: 0, fontWeight: '500', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <FaExclamationTriangle />
+              <span>Only upload money order documents (Western Union, MoneyGram, USPS, etc.)</span>
+            </div>
           </div>
 
           <div {...getRootProps()} style={dropzoneStyle}>
@@ -625,9 +627,10 @@ const MoneyOrderAnalysis = () => {
             {results.anomalies && results.anomalies.length > 0 && (
                 <div style={{ marginBottom: '2rem' }}>
                   <div style={warningBannerStyle}>
-                    <h3 style={{ color: primary, margin: 0, fontSize: '1rem', fontWeight: '600' }}>
-                      ⚠️ Detailed Anomalies ({results.anomalies.length})
-                  </h3>
+                    <h3 style={{ color: primary, margin: 0, fontSize: '1rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <FaExclamationTriangle />
+                      <span>Detailed Anomalies ({results.anomalies.length})</span>
+                    </h3>
                   </div>
                   {results.anomalies.map((anomaly, index) => (
                     <div key={index} style={anomalyCardStyle(anomaly.severity)}>

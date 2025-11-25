@@ -90,7 +90,17 @@ def _run_model(file_path: str, model_id: str) -> Dict[str, Any]:
         params = InferenceParameters(model_id=model_id, raw_text=True, confidence=True)
         input_source = PathInput(file_path)
         response = client.enqueue_and_get_inference(input_source, params)
+        
+        if not response or not hasattr(response, 'inference'):
+            raise ValueError("Invalid response from Mindee API: missing inference object")
+        
+        if not response.inference or not hasattr(response.inference, 'result'):
+            raise ValueError("Invalid response from Mindee API: missing result object")
+            
         result = response.inference.result
+        if not result:
+            raise ValueError("Invalid response from Mindee API: result is None")
+            
         fields = result.fields or {}
 
         logger.info(f"=== MINDEE RAW RESPONSE DEBUG ===")
@@ -179,6 +189,7 @@ def _extract_from_raw_text(raw_text: str, field_name: str) -> Optional[str]:
             r'pay\s+the\s+sum\s+of[:\s]+([A-Z][A-Za-z\s-]+)',
             r'([A-Z][A-Za-z\s-]+\s+dollars?\s+and\s+[A-Z][A-Za-z\s-]+\s+cents?)',
             r'([A-Z][A-Za-z\s-]+\s+dollars?)',
+            r'([A-Z\s-]+DOLLARS?\s*(?:AND\s+[A-Z0-9/ ]+)?)(?:\n|$)',
         ],
         'receipt_number': [
             r'receipt\s+number[:\s]+([A-Z0-9-]+)',
@@ -297,6 +308,9 @@ def extract_money_order(file_path: str) -> Dict[str, Any]:
     signature = fields.get("signature")
     if not signature:
         signature = _extract_from_raw_text(raw_text, "signature")
+    if not signature and raw_text:
+        if re.search(r'(authorized\s+signature|signature)', raw_text, re.IGNORECASE):
+            signature = "PRESENT"
     
     # Format amount as currency string
     amount_value = fields.get("amount")
@@ -423,7 +437,7 @@ def extract_money_order(file_path: str) -> Dict[str, Any]:
                     'normalized_data': normalized_data.to_dict() if normalized_data else None
                 }
                 
-                ai_analysis = ai_agent.analyze_fraud_risk(analysis_context)
+                ai_analysis = ai_agent.analyze_fraud(ml_analysis, extracted, customer_id=None)
                 logger.info(f"AI fraud analysis completed: recommendation={ai_analysis.get('recommendation', 'N/A')}")
         except Exception as e:
             logger.error(f"AI fraud analysis failed: {e}", exc_info=True)

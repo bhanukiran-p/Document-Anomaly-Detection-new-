@@ -86,7 +86,7 @@ const HomePage = () => {
     backgroundColor: primary,
     color: colors.primaryForeground,
     padding: '1rem 2rem',
-    borderRadius: '0.5rem',
+    borderRadius: '999px',
     fontSize: '1rem',
     fontWeight: '600',
     border: 'none',
@@ -110,15 +110,6 @@ const HomePage = () => {
     transition: 'all 0.3s',
   };
   
-  const aboutCardStyle = {
-    backgroundColor: colors.card,
-    padding: '2rem',
-    borderRadius: '0.75rem',
-    marginBottom: '1rem',
-    border: `1px solid ${colors.border}`,
-    boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)',
-  };
-
   const { ref, isVisible } = useScrollAnimation();
   
   return (
@@ -315,17 +306,6 @@ const HomePage = () => {
         </div>
       </div>
       
-      <div style={aboutCardStyle}>
-        <h3 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.25rem', fontWeight: 'bold' }}>About XFORIA DAD</h3>
-        <div style={{ color: colors.mutedForeground, lineHeight: '1.6', fontSize: '1rem' }}>
-          <p style={{ marginBottom: '0.75rem' }}>
-            <strong style={{ color: colors.foreground }}>Supported:</strong> Checks (Axis, BOA, ICICI, HDFC, Chase, Wells Fargo) • Paystubs (US & International) • Money Orders (Western Union, MoneyGram, USPS) • Bank Statements (All major banks)
-          </p>
-          <p>
-            <strong style={{ color: colors.foreground }}>Features:</strong> Real-time OCR • AI-powered extraction • Transaction history parsing • High accuracy scoring • JSON export • PDF & Image support
-          </p>
-        </div>
-      </div>
     </div>
   );
 };
