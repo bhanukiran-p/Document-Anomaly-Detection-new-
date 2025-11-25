@@ -9,6 +9,16 @@ from datetime import datetime
 from google.cloud import vision
 from google.oauth2 import service_account
 import fitz  # PyMuPDF
+import os
+
+# Import AI agent
+try:
+    from langchain_agent.fraud_analysis_agent import FraudAnalysisAgent
+    from langchain_agent.tools import DataAccessTools
+    ML_AVAILABLE = True
+except ImportError:
+    print("Warning: LangChain agent not available")
+    ML_AVAILABLE = False
 
 class PaystubExtractor:
     """Extract paystub details using Google Vision API"""
@@ -21,6 +31,29 @@ class PaystubExtractor:
             self.client = vision.ImageAnnotatorClient(credentials=credentials)
         else:
             self.client = vision.ImageAnnotatorClient()
+
+        # Initialize AI Agent
+        if ML_AVAILABLE:
+            try:
+                # Initialize data access tools
+                self.data_tools = DataAccessTools(
+                    ml_scores_path=os.getenv('ML_SCORES_CSV', 'ml_models/mock_data/ml_scores.csv'),
+                    customer_history_path=os.getenv('CUSTOMER_HISTORY_CSV', 'ml_models/mock_data/customer_history.csv'),
+                    fraud_cases_path=os.getenv('FRAUD_CASES_CSV', 'ml_models/mock_data/fraud_cases.csv')
+                )
+                
+                # Initialize agent
+                self.ai_agent = FraudAnalysisAgent(
+                    api_key=os.getenv('OPENAI_API_KEY'),
+                    model=os.getenv('AI_MODEL', 'gpt-4'),
+                    data_tools=self.data_tools
+                )
+                print("Paystub AI Agent initialized")
+            except Exception as e:
+                print(f"Failed to initialize Paystub AI Agent: {e}")
+                self.ai_agent = None
+        else:
+            self.ai_agent = None
     
     def extract_text(self, file_bytes, file_type='image'):
         """Extract text from image or PDF using Vision API"""
@@ -506,6 +539,38 @@ class PaystubExtractor:
         
         details['confidence_score'] = round(confidence, 2)
         details['extraction_timestamp'] = datetime.now().isoformat()
+        
+        # Perform AI Analysis
+        if self.ai_agent:
+            try:
+                # Prepare data for AI
+                # Mock ML analysis for now as we don't have a specific Paystub ML model yet
+                # We'll generate a basic risk score based on extraction confidence
+                risk_score = 1.0 - (confidence / 100.0)
+                if risk_score < 0.1: risk_score = 0.1
+                
+                ml_analysis = {
+                    'fraud_risk_score': risk_score,
+                    'risk_level': 'LOW' if risk_score < 0.3 else 'MEDIUM' if risk_score < 0.7 else 'HIGH',
+                    'model_confidence': confidence / 100.0,
+                    'feature_importance': ['extraction_confidence']
+                }
+                
+                # Mock customer ID
+                customer_id = 'CUST_PAYSTUB_001'
+                
+                # Run AI analysis
+                ai_analysis = self.ai_agent.analyze_fraud(ml_analysis, details, customer_id)
+                
+                # Add AI results to details
+                details['fraud_risk_score'] = ml_analysis['fraud_risk_score']
+                details['model_confidence'] = ml_analysis['model_confidence']
+                details['ai_recommendation'] = ai_analysis.get('recommendation', 'UNKNOWN')
+                details['actionable_recommendations'] = ai_analysis.get('actionable_recommendations', [])
+                details['ai_analysis'] = ai_analysis
+                
+            except Exception as e:
+                print(f"Error in Paystub AI analysis: {e}")
         
         return details
 
