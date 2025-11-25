@@ -2,6 +2,98 @@ import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { analyzeBankStatement } from '../services/api';
 import { colors } from '../styles/colors';
+import { FaExclamationTriangle, FaUniversity, FaCog } from 'react-icons/fa';
+
+const buildBankStatementSections = (data) => ({
+  'Account Information': [
+    { label: 'Bank Name', value: data.bank_name || 'N/A' },
+    { label: 'Account Holder', value: data.account_holder || 'N/A' },
+    { label: 'Account Number', value: data.account_number || 'N/A' },
+    { label: 'Statement Period', value: data.statement_period || 'N/A' },
+  ],
+  'Balance Summary': [
+    { label: 'Opening Balance', value: data.balances?.opening_balance || 'N/A' },
+    { label: 'Ending Balance', value: data.balances?.ending_balance || 'N/A' },
+    { label: 'Available Balance', value: data.balances?.available_balance || 'N/A' },
+    { label: 'Current Balance', value: data.balances?.current_balance || 'N/A' },
+  ],
+  'Transaction Summary': [
+    { label: 'Total Transactions', value: data.summary?.transaction_count ?? 'N/A' },
+    { label: 'Total Credits', value: data.summary?.total_credits ?? 'N/A' },
+    { label: 'Total Debits', value: data.summary?.total_debits ?? 'N/A' },
+    { label: 'Net Activity', value: data.summary?.net_activity ?? 'N/A' },
+  ],
+  'Transactions (sample)': (data.transactions || []).slice(0, 10).map((txn) => ({
+    label: txn.date || 'Date',
+    value: `${txn.description || 'Transaction'} | Amount: ${txn.amount || 'N/A'} | Balance: ${txn.balance || 'N/A'}`,
+  })),
+});
+
+const isMissing = (value) => {
+  if (value === undefined || value === null) return true;
+  if (typeof value === 'number') return false;
+  const normalized = String(value).trim().toLowerCase();
+  return (
+    !normalized ||
+    normalized === 'n/a' ||
+    normalized === 'na' ||
+    normalized === 'none' ||
+    normalized === 'unknown' ||
+    normalized === 'missing'
+  );
+};
+
+const buildBankCriticalFactors = (data = {}, anomalies = []) => {
+  const factors = [];
+  const addFactor = (text) => {
+    if (text && !factors.includes(text)) {
+      factors.push(text);
+    }
+  };
+
+  const anomalyText = Array.isArray(anomalies) ? anomalies.join(' | ').toLowerCase() : '';
+  const balances = data.balances || {};
+  const summary = data.summary || {};
+  const transactionCount = Array.isArray(data.transactions) ? data.transactions.length : summary.transaction_count;
+
+  if (isMissing(data.bank_name)) {
+    addFactor('Bank name missing — issuing institution cannot be confirmed.');
+  }
+
+  if (isMissing(data.account_holder)) {
+    addFactor('Account holder absent — ownership cannot be proven.');
+  }
+
+  if (isMissing(data.account_number)) {
+    addFactor('Account number unavailable — no way to reference the account.');
+  }
+
+  if (isMissing(data.statement_period)) {
+    addFactor('Statement period missing — coverage window unclear.');
+  }
+
+  if (isMissing(balances.opening_balance) || isMissing(balances.ending_balance)) {
+    addFactor('Opening/ending balances not captured — balance movement cannot be reconciled.');
+  }
+
+  if (!transactionCount || transactionCount < 3) {
+    addFactor('Too few transactions detected — insufficient activity for validation.');
+  }
+
+  if (anomalyText.includes('balances inconsistent') || anomalyText.includes('amount mismatch')) {
+    addFactor('Balance math inconsistent with net activity per ML review.');
+  }
+
+  if (anomalyText.includes('invalid date')) {
+    addFactor('Statement or transaction dates flagged as invalid.');
+  }
+
+  if (anomalyText.includes('missing critical fields')) {
+    addFactor('Multiple mandatory sections left blank according to ML model.');
+  }
+
+  return factors;
+};
 
 const BankStatementAnalysis = () => {
   const [file, setFile] = useState(null);
@@ -9,6 +101,14 @@ const BankStatementAnalysis = () => {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
+
+  const toPercent = (value) => {
+    if (value === null || value === undefined) return 0;
+    const num = Number(value);
+    if (!Number.isFinite(num)) return 0;
+    const percent = num <= 1 ? num * 100 : num;
+    return Math.max(0, Math.min(100, percent));
+  };
 
   const onDrop = useCallback((acceptedFiles) => {
     const selectedFile = acceptedFiles[0];
@@ -48,16 +148,27 @@ const BankStatementAnalysis = () => {
 
     try {
       const response = await analyzeBankStatement(file);
-      setResults(response.data);
+      if (response.success === false) {
+        setError(response.error || response.message || 'Failed to analyze bank statement. Please try again.');
+        setResults(null);
+      } else {
+        setResults(response.data || response);
+      }
     } catch (err) {
-      setError(err.error || 'Failed to analyze bank statement. Please try again.');
+      const errorMessage = err.error || err.message || err.response?.data?.error || err.response?.data?.message || 'Failed to analyze bank statement. Please try again.';
+      setError(errorMessage);
+      setResults(null);
+      console.error('Bank statement analysis error:', err);
     } finally {
       setLoading(false);
     }
   };
 
   const downloadJSON = () => {
-    const dataStr = JSON.stringify(results, null, 2);
+    const payload = results
+      ? { ...results, extracted_sections: buildBankStatementSections(results) }
+      : results;
+    const dataStr = JSON.stringify(payload, null, 2);
     const dataBlob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(dataBlob);
     const link = document.createElement('a');
@@ -137,6 +248,15 @@ const BankStatementAnalysis = () => {
     border: `1px solid ${colors.border}`,
   };
 
+  const infoCardStyle = {
+    backgroundColor: colors.card,
+    padding: '1.5rem',
+    borderRadius: '0.5rem',
+    border: `1px solid ${colors.border}`,
+    marginBottom: '1rem',
+    color: colors.foreground,
+  };
+
   const confidenceStyle = (confidence) => {
     let bgColor = colors.accent.redLight;
     let textColor = colors.accent.red;
@@ -161,17 +281,11 @@ const BankStatementAnalysis = () => {
     };
   };
 
-  const transactionRowStyle = (isDebit) => ({
-    display: 'grid',
-    gridTemplateColumns: '80px 1fr 120px 120px',
-    gap: '1rem',
-    padding: '0.75rem',
-    backgroundColor: colors.background.card,
-    borderRadius: '6px',
-    marginBottom: '0.5rem',
-    fontSize: '0.9rem',
-    borderLeft: `3px solid ${isDebit ? colors.accent.red : colors.status.success}`,
-  });
+  const analysisData = results;
+  const mlAnalysis = analysisData?.ml_analysis || {};
+  const aiAnalysis = analysisData?.ai_analysis || {};
+  const anomalies = analysisData?.anomalies || [];
+  const criticalFactors = analysisData ? buildBankCriticalFactors(analysisData, anomalies) : [];
 
   return (
     <div style={containerStyle}>
@@ -194,14 +308,15 @@ const BankStatementAnalysis = () => {
             padding: '1rem',
             marginBottom: '1rem',
           }}>
-            <p style={{ color: '#856404', fontSize: '0.875rem', margin: 0, fontWeight: '500' }}>
-              ⚠️ Only upload bank statement documents (checking/savings account statements)
-            </p>
+            <div style={{ color: '#856404', fontSize: '0.875rem', margin: 0, fontWeight: '500', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <FaExclamationTriangle />
+              <span>Only upload bank statement documents (checking/savings account statements)</span>
+            </div>
           </div>
 
           <div {...getRootProps()} style={dropzoneStyle}>
             <input {...getInputProps()} />
-            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🏦</div>
+            <FaUniversity style={{ fontSize: '3rem', marginBottom: '1rem', color: colors.foreground }} />
             {isDragActive ? (
               <p style={{ color: primary, fontWeight: '500' }}>
                 Drop the bank statement here...
@@ -290,153 +405,237 @@ const BankStatementAnalysis = () => {
 
           {loading && (
             <div style={{ textAlign: 'center', padding: '3rem' }}>
-              <div className="spin" style={{
+              <FaCog className="spin" style={{
                 fontSize: '3rem',
                 color: primary,
-              }}>⚙️</div>
+              }} />
               <p style={{ marginTop: '1rem', color: colors.neutral.gray600 }}>
                 Analyzing bank statement...
               </p>
             </div>
           )}
 
-          {results && (
+          {analysisData && (
             <div className="fade-in">
-              {results.summary?.confidence && (
-                <div style={confidenceStyle(results.summary.confidence)}>
-                  [{results.summary.confidence >= 80 ? 'HIGH' : results.summary.confidence >= 60 ? 'MEDIUM' : 'LOW'}]
-                  Confidence: {results.summary.confidence?.toFixed(1)}%
+              {analysisData.summary?.confidence && (
+                <div style={confidenceStyle(analysisData.summary.confidence)}>
+                  [{analysisData.summary.confidence >= 80 ? 'HIGH' : analysisData.summary.confidence >= 60 ? 'MEDIUM' : 'LOW'}]
+                  Confidence: {analysisData.summary.confidence?.toFixed(1)}%
                 </div>
               )}
 
-              <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>
-                Account Information
-              </h3>
-              <div style={resultCardStyle}>
-                <p><strong>Bank Name:</strong> {results.bank_name || 'N/A'}</p>
-                <p><strong>Account Holder:</strong> {results.account_holder || 'N/A'}</p>
-                <p><strong>Account Number:</strong> {results.account_number ? `****${results.account_number}` : 'N/A'}</p>
-                <p><strong>Statement Period:</strong> {results.statement_period || 'N/A'}</p>
-              </div>
+              {/* Risk Cards */}
+              {(() => {
+                const fraudRiskPercent = toPercent(analysisData.fraud_risk_score ?? mlAnalysis.fraud_risk_score);
+                const modelConfidencePercent = toPercent(analysisData.model_confidence ?? mlAnalysis.model_confidence);
+                const aiConfidencePercent = toPercent(analysisData.ai_confidence ?? aiAnalysis.confidence);
+                const riskLevel = mlAnalysis.risk_level || analysisData.risk_level || 'UNKNOWN';
+                const aiRecommendation = (analysisData.ai_recommendation || aiAnalysis.recommendation || 'UNKNOWN').toUpperCase();
+                const aiColor = aiRecommendation === 'APPROVE'
+                  ? colors.status.success
+                  : aiRecommendation === 'REJECT'
+                    ? primary
+                    : colors.status.warning;
 
-              <h3 style={{ color: colors.foreground, marginBottom: '1rem', marginTop: '1.5rem' }}>
-                Balance Summary
-              </h3>
-              <div style={resultCardStyle}>
-                <p><strong>Opening Balance:</strong>
-                  <span style={{ color: colors.foreground, fontSize: '1.1rem', fontWeight: '600', marginLeft: '0.5rem' }}>
-                    {results.balances?.opening_balance || 'N/A'}
-                  </span>
-                </p>
-                <p><strong>Ending Balance:</strong>
-                  <span style={{ color: colors.status.success, fontSize: '1.1rem', fontWeight: '600', marginLeft: '0.5rem' }}>
-                    {results.balances?.ending_balance || 'N/A'}
-                  </span>
-                </p>
-                {results.balances?.available_balance && (
-                  <p><strong>Available Balance:</strong> {results.balances.available_balance}</p>
-                )}
-                {results.balances?.current_balance && (
-                  <p><strong>Current Balance:</strong> {results.balances.current_balance}</p>
-                )}
-              </div>
-
-              {results.summary && (
-                <>
-                  <h3 style={{ color: colors.foreground, marginBottom: '1rem', marginTop: '1.5rem' }}>
-                    Transaction Summary
-                  </h3>
-                  <div style={resultCardStyle}>
-                    <p><strong>Total Transactions:</strong> {results.summary.transaction_count || 0}</p>
-                    <p><strong>Total Credits:</strong>
-                      <span style={{ color: colors.status.success, fontWeight: '600', marginLeft: '0.5rem' }}>
-                        {results.summary.total_credits !== null && results.summary.total_credits !== undefined
-                          ? `$${results.summary.total_credits.toFixed(2)}`
-                          : 'N/A'}
-                      </span>
-                    </p>
-                    <p><strong>Total Debits:</strong>
-                      <span style={{ color: colors.accent.red, fontWeight: '600', marginLeft: '0.5rem' }}>
-                        {results.summary.total_debits !== null && results.summary.total_debits !== undefined
-                          ? `$${Math.abs(results.summary.total_debits).toFixed(2)}`
-                          : 'N/A'}
-                      </span>
-                    </p>
-                    <p><strong>Net Activity:</strong>
-                      <span style={{
-                        color: results.summary.net_activity >= 0 ? colors.status.success : colors.accent.red,
-                        fontWeight: '600',
-                        marginLeft: '0.5rem'
-                      }}>
-                        {results.summary.net_activity !== null && results.summary.net_activity !== undefined
-                          ? `$${results.summary.net_activity.toFixed(2)}`
-                          : 'N/A'}
-                      </span>
-                    </p>
-                  </div>
-                </>
-              )}
-
-              {results.transactions && results.transactions.length > 0 && (
-                <>
-                  <h3 style={{ color: colors.foreground, marginBottom: '1rem', marginTop: '1.5rem' }}>
-                    Recent Transactions ({Math.min(results.transactions.length, 10)} shown)
-                  </h3>
-                  <div style={{
-                    backgroundColor: colors.background.main,
-                    padding: '1rem',
-                    borderRadius: '8px',
-                    maxHeight: '400px',
-                    overflowY: 'auto'
-                  }}>
-                    {/* Header */}
+                return (
+                  <>
                     <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: '80px 1fr 120px 120px',
-                      gap: '1rem',
-                      padding: '0.75rem',
-                      fontWeight: '600',
-                      color: colors.foreground,
-                      borderBottom: `2px solid ${colors.neutral.gray300}`,
-                      marginBottom: '0.5rem',
-                      fontSize: '0.9rem',
+                      ...resultCardStyle,
+                      backgroundColor: `${primary}20`,
+                      borderLeft: `4px solid ${primary}`
                     }}>
-                      <div>Date</div>
-                      <div>Description</div>
-                      <div>Amount</div>
-                      <div>Balance</div>
+                      <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
+                        Fraud Risk Score
+                      </div>
+                      <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: primary }}>
+                        {fraudRiskPercent.toFixed(1)}%
+                      </div>
+                      <div style={{ marginTop: '0.25rem', color: colors.mutedForeground }}>
+                        Risk Level: <strong>{riskLevel}</strong>
+                      </div>
                     </div>
 
-                    {/* Transaction rows */}
-                    {results.transactions.slice(0, 10).map((txn, index) => (
-                      <div key={index} style={transactionRowStyle(txn.amount_value < 0)}>
-                        <div style={{ fontWeight: '500' }}>{txn.date || 'N/A'}</div>
-                        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {txn.description || 'No description'}
-                        </div>
-                        <div style={{
-                          fontWeight: '600',
-                          color: txn.amount_value < 0 ? colors.accent.red : colors.status.success
-                        }}>
-                          {txn.amount || 'N/A'}
-                        </div>
-                        <div style={{ fontWeight: '500' }}>{txn.balance || 'N/A'}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {results.transactions.length > 10 && (
-                    <p style={{
-                      color: colors.neutral.gray600,
-                      fontSize: '0.875rem',
-                      marginTop: '0.5rem',
-                      fontStyle: 'italic'
+                    <div style={{
+                      ...resultCardStyle,
+                      backgroundColor: `${colors.status.success}20`,
+                      borderLeft: `4px solid ${colors.status.success}`
                     }}>
-                      + {results.transactions.length - 10} more transactions (download JSON for full list)
+                      <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
+                        Model Confidence
+                      </div>
+                      <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: colors.status.success }}>
+                        {modelConfidencePercent.toFixed(1)}%
+                      </div>
+                    </div>
+
+                    <div style={{
+                      ...resultCardStyle,
+                      backgroundColor: `${aiColor}20`,
+                      borderLeft: `4px solid ${aiColor}`
+                    }}>
+                      <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
+                        AI Recommendation
+                      </div>
+                      <div style={{ fontSize: '2rem', fontWeight: 'bold', color: aiColor }}>
+                        {aiRecommendation}
+                      </div>
+                      <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginTop: '0.25rem' }}>
+                        AI Confidence: {aiConfidencePercent.toFixed(1)}%
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+
+              {anomalies.length > 0 && (
+                <div style={{
+                  ...infoCardStyle,
+                  backgroundColor: `${colors.status.warning}10`,
+                  borderLeft: `4px solid ${colors.status.warning}`
+                }}>
+                  <h4 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                      <line x1="12" y1="9" x2="12" y2="13"/>
+                      <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    Detected Anomalies
+                  </h4>
+                  <ul style={{ color: colors.mutedForeground, paddingLeft: '1.5rem' }}>
+                    {anomalies.map((anomaly, idx) => (
+                      <li key={idx} style={{ marginBottom: '0.4rem' }}>
+                        {emphasizeAnomaly(anomaly)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {criticalFactors.length > 0 && (
+                <div style={{
+                  ...infoCardStyle,
+                  backgroundColor: `${primary}10`,
+                  borderLeft: `4px solid ${primary}`
+                }}>
+                  <h4 style={{ color: colors.foreground, marginBottom: '0.75rem', fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="12" y1="8" x2="12" y2="13" />
+                      <line x1="12" y1="16" x2="12.01" y2="16" />
+                    </svg>
+                    Key Missing / Risk Factors
+                  </h4>
+                  <ul style={{ color: colors.foreground, paddingLeft: '1.5rem', marginBottom: 0 }}>
+                    {criticalFactors.map((factor, idx) => (
+                      <li key={idx} style={{ marginBottom: '0.35rem' }}>
+                        <strong>{factor}</strong>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* AI Analysis Details */}
+              {(aiAnalysis.summary || aiAnalysis.reasoning || (Array.isArray(aiAnalysis.key_indicators) && aiAnalysis.key_indicators.length) || aiAnalysis.verification_notes) && (
+                <div style={infoCardStyle}>
+                  <h4 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"/>
+                      <path d="M12 6v6l4 2"/>
+                    </svg>
+                    AI Analysis Details
+                  </h4>
+                  {aiAnalysis.summary && (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <strong>Summary:</strong>
+                      <p style={{ color: colors.mutedForeground, marginTop: '0.5rem' }}>{aiAnalysis.summary}</p>
+                    </div>
+                  )}
+                  {aiAnalysis.reasoning && (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <strong>Reasoning:</strong>
+                      <p style={{ color: colors.mutedForeground, marginTop: '0.5rem', whiteSpace: 'pre-wrap' }}>{aiAnalysis.reasoning}</p>
+                    </div>
+                  )}
+                  {Array.isArray(aiAnalysis.key_indicators) && aiAnalysis.key_indicators.length > 0 && (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <strong>Key Indicators:</strong>
+                      <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
+                        {aiAnalysis.key_indicators.map((indicator, idx) => (
+                          <li key={idx} style={{ marginBottom: '0.3rem' }}>{indicator}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {aiAnalysis.verification_notes && (
+                    <div>
+                      <strong>Verification Notes:</strong>
+                      <p style={{ color: colors.mutedForeground, marginTop: '0.5rem' }}>{aiAnalysis.verification_notes}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ML Analysis */}
+              {(mlAnalysis.risk_level || (Array.isArray(mlAnalysis.feature_importance) && mlAnalysis.feature_importance.length) || mlAnalysis.model_scores) && (
+                <div style={infoCardStyle}>
+                  <h4 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M3 3v18h18"/>
+                      <path d="M18 17V9"/>
+                      <path d="M13 17V5"/>
+                      <path d="M8 17v-3"/>
+                    </svg>
+                    ML Risk Analysis
+                  </h4>
+                  {mlAnalysis.risk_level && (
+                    <p style={{ marginBottom: '0.75rem' }}>
+                      <strong>Risk Level:</strong>{' '}
+                      <span style={{
+                        color: ['HIGH', 'CRITICAL'].includes(mlAnalysis.risk_level) ? primary : colors.status.success,
+                        fontWeight: 'bold'
+                      }}>
+                        {mlAnalysis.risk_level}
+                      </span>
                     </p>
                   )}
-                </>
+                  {Array.isArray(mlAnalysis.feature_importance) && mlAnalysis.feature_importance.length > 0 && (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <strong>Top Indicators:</strong>
+                      <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
+                        {mlAnalysis.feature_importance.slice(0, 5).map((item, idx) => (
+                          <li key={idx} style={{ marginBottom: '0.3rem' }}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {mlAnalysis.model_scores && (
+                    <div style={{ fontSize: '0.85rem', color: colors.mutedForeground }}>
+                      <strong>Analysis Scores:</strong>
+                      {mlAnalysis.model_scores.random_forest !== undefined && (
+                        <div>Random Forest: {(mlAnalysis.model_scores.random_forest * 100).toFixed(1)}%</div>
+                      )}
+                      {mlAnalysis.model_scores.xgboost !== undefined && (
+                        <div>XGBoost: {(mlAnalysis.model_scores.xgboost * 100).toFixed(1)}%</div>
+                      )}
+                      {mlAnalysis.model_scores.ensemble !== undefined && (
+                        <div>Ensemble: {(mlAnalysis.model_scores.ensemble * 100).toFixed(1)}%</div>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
+
+              <div style={{
+                ...infoCardStyle,
+                backgroundColor: colors.card,
+                border: `1px solid ${colors.border}`
+              }}>
+                <p style={{ margin: 0 }}>
+                  Full bank statement details (account profile, balance summary, full transaction table, etc.)
+                  are included in the downloaded JSON file as structured tabular sections.
+                </p>
+              </div>
 
               <button
                 style={{
@@ -459,3 +658,10 @@ const BankStatementAnalysis = () => {
 };
 
 export default BankStatementAnalysis;
+  const emphasizeAnomaly = (text) => {
+    if (!text) return text;
+    const lower = text.toLowerCase();
+    const highlightKeywords = ['missing', 'invalid', 'mismatch', 'critical'];
+    const shouldEmphasize = highlightKeywords.some((keyword) => lower.includes(keyword));
+    return shouldEmphasize ? <strong>{text}</strong> : text;
+  };

@@ -22,7 +22,9 @@ export const analyzeCheck = async (file) => {
     });
     return response.data;
   } catch (error) {
-    throw error.response?.data || { error: 'Failed to analyze check' };
+    const errorData = error.response?.data || { error: 'Failed to analyze check', message: error.message || 'Network error' };
+    console.error('Check analysis API error:', errorData);
+    throw errorData;
   }
 };
 
@@ -39,7 +41,9 @@ export const analyzePaystub = async (file) => {
     });
     return response.data;
   } catch (error) {
-    throw error.response?.data || { error: 'Failed to analyze paystub' };
+    const errorData = error.response?.data || { error: 'Failed to analyze paystub', message: error.message || 'Network error' };
+    console.error('Paystub analysis API error:', errorData);
+    throw errorData;
   }
 };
 
@@ -56,7 +60,9 @@ export const analyzeMoneyOrder = async (file) => {
     });
     return response.data;
   } catch (error) {
-    throw error.response?.data || { error: 'Failed to analyze money order' };
+    const errorData = error.response?.data || { error: 'Failed to analyze money order', message: error.message || 'Network error' };
+    console.error('Money order analysis API error:', errorData);
+    throw errorData;
   }
 };
 
@@ -73,7 +79,9 @@ export const analyzeBankStatement = async (file) => {
     });
     return response.data;
   } catch (error) {
-    throw error.response?.data || { error: 'Failed to analyze bank statement' };
+    const errorData = error.response?.data || { error: 'Failed to analyze bank statement', message: error.message || 'Network error' };
+    console.error('Bank statement analysis API error:', errorData);
+    throw errorData;
   }
 };
 

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { colors } from '../styles/colors';
+import { FaExclamationTriangle } from 'react-icons/fa';
 
 const LoginPage = () => {
   const navigate = useNavigate();
@@ -172,7 +173,10 @@ const LoginPage = () => {
           {/* Error Message */}
           {error && (
             <div style={styles.errorMessage}>
-              ⚠️ {error}
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                <FaExclamationTriangle />
+                {error}
+              </span>
             </div>
           )}
 

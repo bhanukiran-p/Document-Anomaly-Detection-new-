@@ -19,7 +19,7 @@ class FeatureExtractor:
     def __init__(self):
         self.valid_issuers = ['USPS', 'Western Union', 'MoneyGram', '7-Eleven',
                              'Walmart', 'CVS', 'ACE Cash Express', 'Money Mart',
-                             'Check Into Cash']
+                             'Check Into Cash', 'Payroll', 'Paystub']
         # Initialize advanced feature extractor
         self.advanced_extractor = AdvancedFeatureExtractor()
 
@@ -146,7 +146,9 @@ class FeatureExtractor:
         """Check if issuer is valid"""
         if not issuer:
             return 0.0
-        return 1.0 if issuer in self.valid_issuers else 0.5
+        if issuer in self.valid_issuers:
+            return 1.0
+        return 0.8
 
     def _get_serial_length(self, serial: str) -> float:
         """Get serial number length"""

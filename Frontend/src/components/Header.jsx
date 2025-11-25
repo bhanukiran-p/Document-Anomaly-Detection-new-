@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { colors } from '../styles/colors';
-import { FaBars, FaTimes } from 'react-icons/fa';
+import { FaBars, FaTimes, FaSignOutAlt } from 'react-icons/fa';
 
 const Header = () => {
   const location = useLocation();
@@ -38,7 +38,7 @@ const Header = () => {
   };
   
   const logoImageStyle = {
-    height: '50px',
+    height: '80px',
     width: 'auto',
   };
   
@@ -115,28 +115,34 @@ const Header = () => {
     display: 'block',
   });
 
-  // eslint-disable-next-line no-unused-vars
+  const logoutButtonWrapperStyle = {
+    marginTop: 'auto',
+    paddingTop: '2rem',
+    borderTop: `1px solid ${colors.border}`,
+    display: 'flex',
+    justifyContent: 'center',
+  };
+
   const logoutButtonStyle = {
-    padding: '0.75rem 1rem',
-    borderRadius: '0.5rem',
-    fontWeight: '500',
+    width: '56px',
+    height: '56px',
+    borderRadius: '50%',
     backgroundColor: colors.primaryColor || colors.accent?.red || '#E53935',
     color: colors.primaryForeground,
     border: 'none',
     cursor: 'pointer',
-    transition: 'all 0.2s',
-    width: '100%',
-    textAlign: 'left',
-    marginTop: '2rem',
-    borderTop: `1px solid ${colors.border}`,
-    paddingTop: '2rem',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '1.25rem',
+    transition: 'transform 0.2s, box-shadow 0.2s',
   };
   
   return (
     <>
       <header style={headerStyle}>
         <Link to="/" style={logoStyle}>
-          <img src="/logo.png" alt="XFORIA DAD Logo" style={logoImageStyle} />
+          <img src="/New_FD.png" alt="XFORIA DAD Logo" style={logoImageStyle} />
           <div style={taglineStyle}>
             Your Guardian against Fraud
           </div>
@@ -221,20 +227,24 @@ const Header = () => {
           </Link>
         </nav>
 
-        <button
-          style={logoutButtonStyle}
-          onClick={handleLogout}
-          onMouseEnter={(e) => {
-            e.target.style.transform = 'scale(1.05)';
-            e.target.style.boxShadow = `0 0 20px ${colors.primaryColor || colors.accent?.red || '#E53935'}40`;
-          }}
-          onMouseLeave={(e) => {
-            e.target.style.transform = 'scale(1)';
-            e.target.style.boxShadow = 'none';
-          }}
-        >
-          🚪 Logout
-        </button>
+        <div style={logoutButtonWrapperStyle}>
+          <button
+            style={logoutButtonStyle}
+            aria-label="Logout"
+            title="Logout"
+            onClick={handleLogout}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'scale(1.05)';
+              e.currentTarget.style.boxShadow = `0 0 20px ${(colors.primaryColor || colors.accent?.red || '#E53935')}60`;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'scale(1)';
+              e.currentTarget.style.boxShadow = 'none';
+            }}
+          >
+            <FaSignOutAlt />
+          </button>
+        </div>
       </div>
     </>
   );

@@ -67,11 +67,13 @@ const LandingPage = () => {
   };
 
   const navContainerStyle = {
-    maxWidth: '1400px',
-    margin: '0 auto',
+    width: '100%',
+    maxWidth: '100%',
+    margin: 0,
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingRight: '1rem',
   };
   
   const logoStyle = {
@@ -131,6 +133,14 @@ const LandingPage = () => {
     textAlign: 'center',
     position: 'relative',
     zIndex: 10,
+  };
+
+  const heroLogoStyle = {
+    height: '200px',
+    width: '420px',
+    maxWidth: '90vw',
+    objectFit: 'contain',
+    marginBottom: '2.75rem',
   };
 
   const heroTitleStyle = {
@@ -538,7 +548,7 @@ const LandingPage = () => {
       <nav style={navStyle}>
         <div style={navContainerStyle}>
           <div style={logoStyle} onClick={() => navigate('/')}>
-            <img src="/dad-logo.png" alt="DAD Logo" style={{ height: '40px' }} />
+            <img src="/New_FD.png" alt="DAD Logo" style={{ height: '80px', width: 'auto' }} />
           </div>
           
           <div style={{ ...navLinksStyle, display: window.innerWidth >= 768 ? 'flex' : 'none' }}>
@@ -598,6 +608,7 @@ const LandingPage = () => {
       <section style={heroSectionStyle}>
         <HeroBackground />
         <div style={heroContentStyle}>
+          <img src="/New_FD.png" alt="XFORIA DAD Logo" style={heroLogoStyle} />
           <h1 style={heroTitleStyle}>
             Stop Document Fraud Before It Costs You{' '}
             <span style={heroGradientTextStyle}>Millions</span>
@@ -1447,7 +1458,7 @@ const FooterSection = ({ colors, primary }) => {
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 1.5rem' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '3rem', marginBottom: '3rem' }}>
           <div>
-            <img src="/dad-logo.png" alt="DAD Logo" style={{ height: '40px', marginBottom: '1rem' }} />
+            <img src="/New_FD.png" alt="DAD Logo" style={{ height: '40px', marginBottom: '1rem' }} />
             <p style={{ fontSize: '0.875rem', color: colors.mutedForeground, marginBottom: '1rem' }}>
               Enterprise AI for Document Fraud Detection
             </p>
