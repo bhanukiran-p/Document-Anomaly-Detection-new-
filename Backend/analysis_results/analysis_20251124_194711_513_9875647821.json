@@ -1,0 +1,102 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "Western Union",
+    "serial_number": "9875647821",
+    "amount": "$750.00",
+    "amount_in_words": null,
+    "payee": "JANE SMITH",
+    "purchaser": "JOHN DOE",
+    "date": "10/26/2023",
+    "location": "ANYTOWN, CA 91234",
+    "receipt_number": null,
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "critical",
+      "type": "fraud_risk_critical",
+      "message": "[REJECT] High fraud risk (100.0%). Multiple red flags detected."
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "CRITICAL: Amount mismatch - numeric \u2260 written"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Amount parsing confidence low"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Missing critical fields (score: 0.95)"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Serial number doesn't match issuer pattern"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Invalid address format"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Very old (760 days)"
+    },
+    {
+      "severity": "critical",
+      "type": "ai_indicator",
+      "message": "CRITICAL: Amount mismatch - numeric \u2260 written"
+    },
+    {
+      "severity": "critical",
+      "type": "ai_indicator",
+      "message": "Amount parsing confidence low"
+    },
+    {
+      "severity": "critical",
+      "type": "ai_indicator",
+      "message": "Missing critical fields (score: 0.95)"
+    },
+    {
+      "severity": "critical",
+      "type": "ai_indicator",
+      "message": "Serial number doesn't match issuer pattern"
+    },
+    {
+      "severity": "critical",
+      "type": "ai_indicator",
+      "message": "Invalid address format"
+    }
+  ],
+  "confidence_score": 85,
+  "raw_text": "WESTERN WESTERN UNION\u00ae\nUNION\nMONEY ORDER\nPAY TO: JANE SMITH\n987557821\nAMOUNT:\n$750.00\nDATE: OCTOBER 26, 2023\nSEVEN HUNDRED FISTY AND 00//100 DOLLARS\nFROM: JOHN DOE\n123 OAK ST, ANYTOWN, CA 91234\n9875647821\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-11-24T19:47:11.512922",
+  "normalized_data": {
+    "issuer_name": "Western Union",
+    "serial_primary": "9875647821",
+    "serial_secondary": null,
+    "recipient": "JANE SMITH",
+    "sender_name": "JOHN DOE",
+    "sender_address": null,
+    "amount_numeric": {
+      "value": 750.0,
+      "currency": "USD"
+    },
+    "amount_written": null,
+    "date": "10-26-2023",
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 0.7,
+  "ml_analysis": {
+    "fraud_risk_score": 1.0,
+    "risk_level": "CRITICAL",
+    "model_confidence": 0.992,
+    "model_scores": {
+      "random_forest": 0.995,
+      "xgboost": 

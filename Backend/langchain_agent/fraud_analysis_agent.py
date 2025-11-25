@@ -219,8 +219,17 @@ class FraudAnalysisAgent:
         key_indicators = [line.strip('- ').strip() for line in indicators_text.split('\n') if line.strip()]
 
         # Extract verification notes
-        verification_match = re.search(r'VERIFICATION_NOTES:\s*(.*?)(?=TRAINING_INSIGHTS:|HISTORICAL_COMPARISON:|$)', response_text, re.DOTALL)
+        verification_match = re.search(r'VERIFICATION_NOTES:\s*(.*?)(?=ACTIONABLE_RECOMMENDATIONS:|TRAINING_INSIGHTS:|HISTORICAL_COMPARISON:|$)', response_text, re.DOTALL)
         verification_notes = verification_match.group(1).strip() if verification_match else ""
+
+        # Extract actionable recommendations
+        recommendations_match = re.search(r'ACTIONABLE_RECOMMENDATIONS:\s*(.*?)(?=TRAINING_INSIGHTS:|HISTORICAL_COMPARISON:|$)', response_text, re.DOTALL)
+        recommendations_text = recommendations_match.group(1).strip() if recommendations_match else ""
+        recommendations = [line.strip('- ').strip() for line in recommendations_text.split('\n') if line.strip()]
+        
+        # Ensure we have at least 3 recommendations if possible, or use defaults
+        if not recommendations:
+            recommendations = ["Verify customer identification", "Check for physical alteration signs", "Validate serial number pattern"]
 
         # Extract training insights
         training_insights_match = re.search(r'TRAINING_INSIGHTS:\s*(.*?)(?=HISTORICAL_COMPARISON:|$)', response_text, re.DOTALL)
@@ -236,7 +245,9 @@ class FraudAnalysisAgent:
             'summary': summary,
             'reasoning': reasoning,
             'key_indicators': key_indicators[:5],  # Limit to top 5
+            'key_indicators': key_indicators[:5],  # Limit to top 5
             'verification_notes': verification_notes,
+            'actionable_recommendations': recommendations[:3],  # Limit to top 3
             'training_insights': training_insights,
             'historical_comparison': historical_comparison,
             'analysis_type': 'llm',
@@ -267,6 +278,26 @@ class FraudAnalysisAgent:
             confidence = 0.75
             summary = f"Moderate fraud risk ({fraud_score:.1%}). Requires manual review."
             reasoning = "ML models show moderate risk. Some anomalies present but not conclusive."
+            
+        # Generate actionable recommendations based on risk
+        if recommendation == 'APPROVE':
+            actionable_recommendations = [
+                "Proceed with transaction processing",
+                "Verify customer ID matches payee/purchaser",
+                "Ensure endorsement is present on back"
+            ]
+        elif recommendation == 'REJECT':
+            actionable_recommendations = [
+                "Decline transaction immediately",
+                "Do not return document if confiscation policy applies",
+                "Report incident to fraud department"
+            ]
+        else:  # ESCALATE
+            actionable_recommendations = [
+                "Request secondary form of identification",
+                "Contact issuer verification hotline",
+                "Hold funds for 24-hour verification period"
+            ]
 
         # Use ML-identified indicators
         key_indicators = ml_analysis.get('feature_importance', [])[:5]
@@ -277,7 +308,9 @@ class FraudAnalysisAgent:
             'summary': summary,
             'reasoning': reasoning,
             'key_indicators': key_indicators,
+            'key_indicators': key_indicators,
             'verification_notes': "Manual verification recommended for borderline cases",
+            'actionable_recommendations': actionable_recommendations,
             'training_insights': "N/A (fallback mode - training data not analyzed)",
             'historical_comparison': "N/A (fallback mode - past cases not analyzed)",
             'analysis_type': 'rule_based',
