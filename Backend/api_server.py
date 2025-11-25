@@ -451,7 +451,8 @@ def analyze_money_order():
                 simplified_data = {
                     'fraud_risk_score': ml_analysis.get('fraud_risk_score', 0),
                     'model_confidence': ml_analysis.get('model_confidence', 0),
-                    'ai_recommendation': ai_analysis.get('recommendation', 'UNKNOWN')
+                    'ai_recommendation': ai_analysis.get('recommendation', 'UNKNOWN'),
+                    'actionable_recommendations': ai_analysis.get('actionable_recommendations', [])
                 }
             else:
                 # Fallback if ML/AI not available - return basic result

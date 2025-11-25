@@ -388,6 +388,24 @@ const MoneyOrderAnalysis = () => {
                 </div>
               </div>
 
+              {/* Actionable Recommendations Card */}
+              {analysisData.actionable_recommendations && analysisData.actionable_recommendations.length > 0 && (
+                <div style={{
+                  ...resultCardStyle,
+                  marginBottom: '1.5rem',
+                  borderLeft: `4px solid ${colors.status?.info || '#3b82f6'}`,
+                }}>
+                  <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '1rem' }}>
+                    Actionable Recommendations
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: '1.5rem', color: colors.foreground }}>
+                    {analysisData.actionable_recommendations.map((rec, index) => (
+                      <li key={index} style={{ marginBottom: '0.5rem', fontSize: '1.1rem' }}>{rec}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               {/* Download Button */}
               <button
                 style={{
