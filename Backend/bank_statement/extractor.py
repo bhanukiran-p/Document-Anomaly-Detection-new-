@@ -6,6 +6,10 @@ import logging
 import re
 from typing import Any, Dict, Optional
 from mindee import ClientV2, InferenceParameters, PathInput
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv(override=True)
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +25,7 @@ mindee_client = ClientV2(MINDEE_API_KEY)
 
 def _run_model(file_path: str, model_id: str) -> Dict[str, Any]:
     """Run Mindee model inference on a document"""
-    params = InferenceParameters(model_id=model_id, raw_text=True, confidence=True)
+    params = InferenceParameters(model_id=model_id, raw_text=True)
     input_source = PathInput(file_path)
     response = mindee_client.enqueue_and_get_inference(input_source, params)
     result = response.inference.result
