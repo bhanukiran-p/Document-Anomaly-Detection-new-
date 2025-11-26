@@ -202,6 +202,100 @@ const PaystubAnalysis = () => {
     link.download = `paystub_analysis_${new Date().getTime()}.json`;
     link.click();
   };
+
+  const downloadCSV = () => {
+    if (!results) return;
+
+    // Filter anomalies to exclude AI recommendations and risk scores
+    const filteredAnomalies = (results.anomalies || []).filter(anomaly => {
+      const anomalyLower = String(anomaly).toLowerCase();
+      return !anomalyLower.includes('ai recommendation') &&
+             !anomalyLower.includes('high fraud risk detected') &&
+             !anomalyLower.includes('risk score');
+    });
+
+    const fraudRiskPercent = toPercent(results.fraud_risk_score ?? results.ml_analysis?.fraud_risk_score);
+    const modelConfidencePercent = toPercent(results.model_confidence ?? results.ml_analysis?.model_confidence);
+    const aiConfidencePercent = toPercent(results.ai_confidence ?? results.ai_analysis?.confidence);
+    const riskLevel = (results.risk_level || results.ml_analysis?.risk_level || 'UNKNOWN').toString().toUpperCase();
+    const aiRecommendation = (results.ai_recommendation || results.ai_analysis?.recommendation || 'UNKNOWN').toString().toUpperCase();
+
+    // Helper to escape CSV values
+    const escapeCSV = (value) => {
+      if (value === null || value === undefined) return '';
+      const str = String(value);
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    // CSV Headers
+    const headers = [
+      'Document Type',
+      'Timestamp',
+      'Company Name',
+      'Employee Name',
+      'Employee ID',
+      'Pay Period Start',
+      'Pay Period End',
+      'Pay Date',
+      'Gross Pay',
+      'Net Pay',
+      'YTD Gross',
+      'YTD Net',
+      'Federal Tax',
+      'State Tax',
+      'Social Security',
+      'Medicare',
+      'Fraud Risk Score (%)',
+      'Risk Level',
+      'Model Confidence (%)',
+      'AI Recommendation',
+      'AI Confidence (%)',
+      'Anomaly Count',
+      'Top Anomalies'
+    ];
+
+    // CSV Data
+    const row = [
+      'Paystub',
+      results.timestamp || new Date().toISOString(),
+      results.company_name || 'N/A',
+      results.employee_name || 'N/A',
+      results.employee_id || 'N/A',
+      results.pay_period_start || 'N/A',
+      results.pay_period_end || 'N/A',
+      results.pay_date || 'N/A',
+      results.gross_pay || 'N/A',
+      results.net_pay || 'N/A',
+      results.ytd_gross || 'N/A',
+      results.ytd_net || 'N/A',
+      results.federal_tax || 'N/A',
+      results.state_tax || 'N/A',
+      results.social_security || 'N/A',
+      results.medicare || 'N/A',
+      fraudRiskPercent.toFixed(1),
+      riskLevel,
+      modelConfidencePercent.toFixed(1),
+      aiRecommendation,
+      aiConfidencePercent.toFixed(1),
+      filteredAnomalies.length,
+      filteredAnomalies.slice(0, 3).join(' | ')
+    ];
+
+    const csvContent = [
+      headers.map(escapeCSV).join(','),
+      row.map(escapeCSV).join(',')
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `paystub_analysis_${new Date().getTime()}.csv`;
+    link.click();
+  };
   
   // Styles
   // Use primaryColor for new design system red
@@ -702,22 +796,37 @@ const PaystubAnalysis = () => {
                 border: `1px solid ${colors.border}`
               }}>
                 <p style={{ margin: 0 }}>
-                  Detailed paystub fields are available in the downloaded JSON file. The file contains tabular sections for company info, pay period, earnings, and withholding details.
+                  Download results in JSON format for complete details or CSV format for dashboard/analytics integration.
                 </p>
               </div>
-              
-              <button 
-                style={{
-                  ...buttonStyle,
-                  backgroundColor: primary,
-                  marginTop: '1.5rem',
-                }}
-                onClick={downloadJSON}
-                onMouseEnter={(e) => e.target.style.backgroundColor = primary}
-                onMouseLeave={(e) => e.target.style.backgroundColor = primary}
-              >
-                Download Full Results (JSON)
-              </button>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1.5rem' }}>
+                <button
+                  style={{
+                    ...buttonStyle,
+                    backgroundColor: primary,
+                    marginTop: 0,
+                  }}
+                  onClick={downloadJSON}
+                  onMouseEnter={(e) => e.target.style.backgroundColor = colors.accent.redDark}
+                  onMouseLeave={(e) => e.target.style.backgroundColor = primary}
+                >
+                  Download JSON
+                </button>
+
+                <button
+                  style={{
+                    ...buttonStyle,
+                    backgroundColor: colors.status.success,
+                    marginTop: 0,
+                  }}
+                  onClick={downloadCSV}
+                  onMouseEnter={(e) => e.target.style.backgroundColor = colors.status.successDark || '#1b5e20'}
+                  onMouseLeave={(e) => e.target.style.backgroundColor = colors.status.success}
+                >
+                  Download CSV
+                </button>
+              </div>
             </div>
           )}
         </div>

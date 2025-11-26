@@ -189,6 +189,102 @@ const BankStatementAnalysis = () => {
     link.click();
   };
 
+  const downloadCSV = () => {
+    if (!results) return;
+
+    // Filter anomalies to exclude AI recommendations and risk scores
+    const filteredAnomalies = (results.anomalies || []).filter(anomaly => {
+      const anomalyLower = String(anomaly).toLowerCase();
+      return !anomalyLower.includes('ai recommendation') &&
+             !anomalyLower.includes('high fraud risk detected') &&
+             !anomalyLower.includes('risk score');
+    });
+
+    const fraudRiskPercent = toPercent(results.fraud_risk_score ?? results.ml_analysis?.fraud_risk_score);
+    const modelConfidencePercent = toPercent(results.model_confidence ?? results.ml_analysis?.model_confidence);
+    const aiConfidencePercent = toPercent(results.ai_confidence ?? results.ai_analysis?.confidence);
+    const riskLevel = (results.risk_level || results.ml_analysis?.risk_level || 'UNKNOWN').toString().toUpperCase();
+    const aiRecommendation = (results.ai_recommendation || results.ai_analysis?.recommendation || 'UNKNOWN').toString().toUpperCase();
+
+    // Helper to escape CSV values
+    const escapeCSV = (value) => {
+      if (value === null || value === undefined) return '';
+      const str = String(value);
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    // CSV Headers
+    const headers = [
+      'Document Type',
+      'Timestamp',
+      'Bank Name',
+      'Account Holder',
+      'Account Number',
+      'Statement Period',
+      'Opening Balance',
+      'Ending Balance',
+      'Available Balance',
+      'Total Transactions',
+      'Total Credits',
+      'Total Debits',
+      'Net Activity',
+      'Fraud Risk Score (%)',
+      'Risk Level',
+      'Model Confidence (%)',
+      'AI Recommendation',
+      'AI Confidence (%)',
+      'Anomaly Count',
+      'Top Anomalies'
+    ];
+
+    // CSV Data
+    const row = [
+      'Bank Statement',
+      results.timestamp || new Date().toISOString(),
+      results.bank_name || 'N/A',
+      results.account_holder || 'N/A',
+      results.account_number || 'N/A',
+      results.statement_period || 'N/A',
+      results.balances?.opening_balance || 'N/A',
+      results.balances?.ending_balance || 'N/A',
+      results.balances?.available_balance || 'N/A',
+      results.summary?.transaction_count ?? 'N/A',
+      results.summary?.total_credits ?? 'N/A',
+      results.summary?.total_debits ?? 'N/A',
+      results.summary?.net_activity ?? 'N/A',
+      fraudRiskPercent.toFixed(1),
+      riskLevel,
+      modelConfidencePercent.toFixed(1),
+      aiRecommendation,
+      aiConfidencePercent.toFixed(1),
+      filteredAnomalies.length,
+      filteredAnomalies.slice(0, 3).join(' | ')
+    ];
+
+    const csvContent = [
+      headers.map(escapeCSV).join(','),
+      row.map(escapeCSV).join(',')
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `bank_statement_analysis_${new Date().getTime()}.csv`;
+    link.click();
+  };
+
+  const emphasizeAnomaly = (text) => {
+    if (!text) return text;
+    const lower = text.toLowerCase();
+    const highlightKeywords = ['missing', 'invalid', 'mismatch', 'critical'];
+    const shouldEmphasize = highlightKeywords.some((keyword) => lower.includes(keyword));
+    return shouldEmphasize ? <strong>{text}</strong> : text;
+  };
+
   // Styles
   // Use primaryColor for new design system red
   const primary = colors.primaryColor || colors.accent?.red || '#E53935';
@@ -644,23 +740,37 @@ const BankStatementAnalysis = () => {
                 border: `1px solid ${colors.border}`
               }}>
                 <p style={{ margin: 0 }}>
-                  Full bank statement details (account profile, balance summary, full transaction table, etc.)
-                  are included in the downloaded JSON file as structured tabular sections.
+                  Download results in JSON format for complete details or CSV format for dashboard/analytics integration.
                 </p>
               </div>
 
-              <button
-                style={{
-                  ...buttonStyle,
-                  backgroundColor: primary,
-                  marginTop: '1.5rem',
-                }}
-                onClick={downloadJSON}
-                onMouseEnter={(e) => e.target.style.backgroundColor = primary}
-                onMouseLeave={(e) => e.target.style.backgroundColor = primary}
-              >
-                Download Full Results (JSON)
-              </button>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1.5rem' }}>
+                <button
+                  style={{
+                    ...buttonStyle,
+                    backgroundColor: primary,
+                    marginTop: 0,
+                  }}
+                  onClick={downloadJSON}
+                  onMouseEnter={(e) => e.target.style.backgroundColor = colors.accent.redDark}
+                  onMouseLeave={(e) => e.target.style.backgroundColor = primary}
+                >
+                  Download JSON
+                </button>
+
+                <button
+                  style={{
+                    ...buttonStyle,
+                    backgroundColor: colors.status.success,
+                    marginTop: 0,
+                  }}
+                  onClick={downloadCSV}
+                  onMouseEnter={(e) => e.target.style.backgroundColor = colors.status.successDark || '#1b5e20'}
+                  onMouseLeave={(e) => e.target.style.backgroundColor = colors.status.success}
+                >
+                  Download CSV
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -670,10 +780,3 @@ const BankStatementAnalysis = () => {
 };
 
 export default BankStatementAnalysis;
-  const emphasizeAnomaly = (text) => {
-    if (!text) return text;
-    const lower = text.toLowerCase();
-    const highlightKeywords = ['missing', 'invalid', 'mismatch', 'critical'];
-    const shouldEmphasize = highlightKeywords.some((keyword) => lower.includes(keyword));
-    return shouldEmphasize ? <strong>{text}</strong> : text;
-  };
