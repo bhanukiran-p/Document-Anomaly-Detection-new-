@@ -846,17 +846,24 @@ def analyze_money_order():
             # Use Mindee-based money order extractor
             try:
                 from money_order.extractor import extract_money_order
+                logger.info(f"Starting money order extraction for file: {filepath}")
                 result = extract_money_order(filepath)
-                logger.info("Money order extracted successfully")
-                
+                logger.info(f"Money order extraction completed. Result type: {type(result)}, Keys: {list(result.keys()) if isinstance(result, dict) else 'N/A'}")
+
                 # Validate result structure
                 if not result or not isinstance(result, dict):
-                    raise ValueError("Extractor returned invalid result: result is not a dictionary")
+                    error_msg = f"Extractor returned invalid result: result is not a dictionary (type: {type(result)})"
+                    logger.error(error_msg)
+                    raise ValueError(error_msg)
                 if 'extracted_data' not in result and 'raw_text' not in result:
-                    raise ValueError("Extractor returned invalid result: missing required fields")
-                    
+                    error_msg = f"Extractor returned invalid result: missing required fields. Available keys: {list(result.keys())}"
+                    logger.error(error_msg)
+                    raise ValueError(error_msg)
+
+                logger.info("Money order extraction validation passed")
+
             except ImportError as e:
-                logger.error(f"Failed to import money order extractor: {e}")
+                logger.error(f"Failed to import money order extractor: {e}", exc_info=True)
                 # Clean up on error
                 if os.path.exists(filepath):
                     os.remove(filepath)
@@ -1158,4 +1165,5 @@ if __name__ == '__main__':
     print(f"  - POST /api/bank-statement/analyze")
     print("=" * 60)
 
-    app.run(debug=True, host='0.0.0.0', port=5001)
+    # Run without debug mode to avoid constant reloads from ML library imports
+    app.run(debug=False, host='0.0.0.0', port=5001)
