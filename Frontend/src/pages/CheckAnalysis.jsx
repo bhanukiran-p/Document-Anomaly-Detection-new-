@@ -179,7 +179,84 @@ const CheckAnalysis = () => {
     link.download = `check_analysis_${new Date().getTime()}.json`;
     link.click();
   };
-  
+
+  const downloadCSV = () => {
+    if (!results) return;
+
+    // CSV Headers
+    const headers = [
+      'Document Type',
+      'Timestamp',
+      'Bank Name',
+      'Check Number',
+      'Amount',
+      'Date',
+      'Payee Name',
+      'Payer Name',
+      'Account Number',
+      'Routing Number',
+      'Fraud Risk Score (%)',
+      'Risk Level',
+      'Model Confidence (%)',
+      'AI Recommendation',
+      'AI Confidence (%)',
+      'Signature Detected',
+      'Anomaly Count',
+      'Top Anomalies'
+    ];
+
+    // Filter anomalies to exclude AI recommendations and scores
+    const filteredAnomalies = (results.anomalies || []).filter(anomaly => {
+      const anomalyLower = String(anomaly).toLowerCase();
+      return !anomalyLower.includes('ai recommendation') &&
+             !anomalyLower.includes('high fraud risk detected') &&
+             !anomalyLower.includes('risk score');
+    });
+
+    // CSV Row
+    const row = [
+      'Bank Check',
+      results.timestamp || new Date().toISOString(),
+      results.bank_name || 'N/A',
+      results.check_number || 'N/A',
+      results.amount || 'N/A',
+      results.date || 'N/A',
+      results.payee_name || 'N/A',
+      results.payer_name || 'N/A',
+      results.account_number || 'N/A',
+      results.routing_number || 'N/A',
+      ((results.fraud_risk_score || 0) * 100).toFixed(2),
+      results.risk_level || 'UNKNOWN',
+      ((results.model_confidence || 0) * 100).toFixed(2),
+      results.ai_recommendation || 'UNKNOWN',
+      ((results.ai_confidence || 0) * 100).toFixed(2),
+      results.signature_detected ? 'Yes' : 'No',
+      filteredAnomalies.length,
+      filteredAnomalies.slice(0, 3).join(' | ')
+    ];
+
+    // Escape CSV values
+    const escapeCsvValue = (value) => {
+      const stringValue = String(value);
+      if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+        return `"${stringValue.replace(/"/g, '""')}"`;
+      }
+      return stringValue;
+    };
+
+    const csvContent = [
+      headers.map(escapeCsvValue).join(','),
+      row.map(escapeCsvValue).join(',')
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `check_analysis_${new Date().getTime()}.csv`;
+    link.click();
+  };
+
   // Styles
   // Use primaryColor for new design system red
   const primary = colors.primaryColor || colors.accent?.red || '#E53935';
@@ -641,26 +718,48 @@ const CheckAnalysis = () => {
                 </p>
               </div>
 
-              <button
-                style={{
-                  ...buttonStyle,
-                  backgroundColor: colors.card,
-                  color: colors.foreground,
-                  border: `2px solid ${colors.border}`,
-                  marginTop: '1.5rem',
-                }}
-                onClick={downloadJSON}
-                onMouseEnter={(e) => {
-                  e.target.style.borderColor = primary;
-                  e.target.style.backgroundColor = colors.muted;
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.borderColor = colors.border;
-                  e.target.style.backgroundColor = colors.card;
-                }}
-              >
-                Download Full Results (JSON)
-              </button>
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
+                <button
+                  style={{
+                    ...buttonStyle,
+                    backgroundColor: colors.card,
+                    color: colors.foreground,
+                    border: `2px solid ${colors.border}`,
+                    marginTop: 0,
+                    flex: 1,
+                  }}
+                  onClick={downloadJSON}
+                  onMouseEnter={(e) => {
+                    e.target.style.borderColor = primary;
+                    e.target.style.backgroundColor = colors.muted;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.borderColor = colors.border;
+                    e.target.style.backgroundColor = colors.card;
+                  }}
+                >
+                  Download JSON
+                </button>
+                <button
+                  style={{
+                    ...buttonStyle,
+                    backgroundColor: primary,
+                    color: colors.primaryForeground,
+                    border: `2px solid ${primary}`,
+                    marginTop: 0,
+                    flex: 1,
+                  }}
+                  onClick={downloadCSV}
+                  onMouseEnter={(e) => {
+                    e.target.style.backgroundColor = colors.accent.redDark;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.backgroundColor = primary;
+                  }}
+                >
+                  Download CSV (Dashboard)
+                </button>
+              </div>
             </div>
           )}
         </div>
