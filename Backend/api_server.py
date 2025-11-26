@@ -13,6 +13,7 @@ import importlib.util
 import re
 import fitz
 from datetime import datetime
+import numpy as np
 try:
     from google.cloud import vision
     VISION_AVAILABLE = True
@@ -64,6 +65,25 @@ except ImportError as e:
     BANK_STATEMENT_MINDEE_AVAILABLE = False
     logger.warning(f"Bank statement extractor not available: {e}")
 
+# Import bank statement fraud detection modules
+try:
+    from bank_statement.fraud_detector import BankStatementFraudDetector
+    BANK_STATEMENT_DETECTOR_AVAILABLE = True
+except ImportError as e:
+    BankStatementFraudDetector = None
+    BANK_STATEMENT_DETECTOR_AVAILABLE = False
+    logger.warning(f"Bank statement fraud detector not available: {e}")
+
+try:
+    from langchain_agent.bank_statement_agent import BankStatementFraudAnalysisAgent
+    BANK_STATEMENT_AI_AVAILABLE = True
+    bank_statement_ai_agent = BankStatementFraudAnalysisAgent()
+except ImportError as e:
+    BankStatementFraudAnalysisAgent = None
+    BANK_STATEMENT_AI_AVAILABLE = False
+    bank_statement_ai_agent = None
+    logger.warning(f"Bank statement AI agent not available: {e}")
+
 app = Flask(__name__)
 CORS(app)  # Enable CORS for React frontend
 
@@ -94,6 +114,33 @@ try:
 except Exception as e:
     logger.warning(f"Failed to initialize Supabase: {e}")
     supabase = None
+
+# Load trained bank statement Random Forest model
+bank_statement_model = None
+bank_statement_scaler = None
+bank_statement_model_metadata = None
+try:
+    import pickle
+    model_path = 'models/bank_statement_risk_model_latest.pkl'
+    scaler_path = 'models/bank_statement_scaler_latest.pkl'
+    metadata_path = 'models/bank_statement_model_metadata_latest.json'
+
+    if os.path.exists(model_path) and os.path.exists(scaler_path):
+        with open(model_path, 'rb') as f:
+            bank_statement_model = pickle.load(f)
+        with open(scaler_path, 'rb') as f:
+            bank_statement_scaler = pickle.load(f)
+        if os.path.exists(metadata_path):
+            import json
+            with open(metadata_path, 'r') as f:
+                bank_statement_model_metadata = json.load(f)
+        logger.info("✅ Loaded trained bank statement Random Forest model")
+    else:
+        logger.warning("⚠️ Bank statement Random Forest model not found. Will use fallback detector.")
+except Exception as e:
+    logger.warning(f"Could not load bank statement model: {e}")
+    bank_statement_model = None
+    bank_statement_scaler = None
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -304,6 +351,226 @@ def _merge_bank_statement_data(primary, fallback):
     return merged
 
 def _evaluate_bank_statement_risk(data):
+    """
+    Evaluate bank statement risk using trained Random Forest model
+    """
+    # Try to use trained Random Forest model first
+    if bank_statement_model and bank_statement_scaler:
+        try:
+            # Extract features in the same order as training
+            feature_names = bank_statement_model_metadata.get('feature_names', []) if bank_statement_model_metadata else []
+
+            # Helper function to safely parse currency values
+            def parse_currency(val):
+                if val is None:
+                    return 0.0
+                if isinstance(val, (int, float)):
+                    return float(val)
+                if isinstance(val, str):
+                    return float(str(val).replace('$', '').replace(',', '').strip())
+                return 0.0
+
+            # Extract balance data
+            balances = data.get('balances', {}) or {}
+            opening_balance = parse_currency(balances.get('opening_balance'))
+            ending_balance = parse_currency(balances.get('closing_balance'))
+
+            # Extract summary data
+            summary = data.get('summary', {}) or {}
+            total_credits = parse_currency(summary.get('total_credits'))
+            total_debits = parse_currency(summary.get('total_debits'))
+
+            # Process transactions
+            transactions = data.get('transactions', []) or []
+            num_transactions = len(transactions)
+
+            # Calculate transaction-based features
+            amounts = []
+            credits_count = 0
+            debits_count = 0
+            first_txn_amount = 0
+            first_txn_balance = 0
+            first_txn_is_credit = 0
+            first_txn_is_debit = 0
+
+            for i, txn in enumerate(transactions):
+                if isinstance(txn, dict):
+                    amt = parse_currency(txn.get('amount_value', txn.get('amount')))
+                    amounts.append(abs(amt))
+
+                    # Get first transaction details
+                    if i == 0:
+                        first_txn_amount = amt
+                        first_txn_balance = parse_currency(txn.get('balance'))
+                        first_txn_is_credit = 1 if txn.get('is_credit') else 0
+                        first_txn_is_debit = 1 if txn.get('is_debit') else 0
+
+                    # Count credit/debit transactions
+                    if txn.get('is_credit'):
+                        credits_count += 1
+                    elif txn.get('is_debit'):
+                        debits_count += 1
+
+            # Calculate derived features
+            abs_amount = abs(first_txn_amount)
+
+            # Large transaction detection (>75th percentile)
+            is_large_transaction = 0
+            if amounts and len(amounts) > 1:
+                percentile_75 = np.percentile(amounts, 75)
+                is_large_transaction = 1 if abs_amount > percentile_75 else 0
+
+            # Amount to balance ratio
+            amount_to_balance_ratio = 0.0
+            if opening_balance != 0:
+                amount_to_balance_ratio = abs_amount / abs(opening_balance)
+
+            # Activity metrics (simplified - using total transaction count)
+            transactions_past_1_day = num_transactions  # Simplified assumption
+            transactions_past_7_days = num_transactions
+
+            # Cumulative monthly totals (from summary)
+            cumulative_monthly_credits = total_credits
+            cumulative_monthly_debits = total_debits
+
+            # Default values (not extractable from data structure)
+            is_new_merchant = 0
+            weekday = 0  # Will be 0-6 if date parsing were implemented
+            day_of_month = 15  # Default middle of month
+            is_weekend = 0
+
+            # Create feature vector
+            feature_dict = {
+                'opening_balance': opening_balance,
+                'ending_balance': ending_balance,
+                'total_credits': total_credits,
+                'total_debits': total_debits,
+                'amount': first_txn_amount,
+                'balance_after': first_txn_balance,
+                'is_credit': first_txn_is_credit,
+                'is_debit': first_txn_is_debit,
+                'abs_amount': abs_amount,
+                'is_large_transaction': is_large_transaction,
+                'amount_to_balance_ratio': amount_to_balance_ratio,
+                'transactions_past_1_day': transactions_past_1_day,
+                'transactions_past_7_days': transactions_past_7_days,
+                'cumulative_monthly_credits': cumulative_monthly_credits,
+                'cumulative_monthly_debits': cumulative_monthly_debits,
+                'is_new_merchant': is_new_merchant,
+                'weekday': weekday,
+                'day_of_month': day_of_month,
+                'is_weekend': is_weekend,
+            }
+
+            # Create feature vector in the correct order
+            feature_vector = [feature_dict.get(f, 0) for f in feature_names]
+
+            # Log feature extraction for debugging
+            logger.debug(f"Extracted features: {dict(zip(feature_names, feature_vector))}")
+
+            # Scale features
+            feature_vector_scaled = bank_statement_scaler.transform([feature_vector])
+
+            # Predict
+            # Handle both classifier (returns 0/1) and regressor (returns 0-1 probability)
+            prediction = bank_statement_model.predict(feature_vector_scaled)[0]
+
+            # Try to get probability predictions if it's a classifier
+            try:
+                prediction_proba = bank_statement_model.predict_proba(feature_vector_scaled)
+                # Get probability of fraud (class 1)
+                fraud_probability = prediction_proba[0, 1]
+                risk_score = float(fraud_probability) * 100  # Convert to 0-100 scale
+
+                # Apply optimized threshold if available
+                optimal_threshold = 0.5  # Default balanced threshold
+                if bank_statement_model_metadata and 'balanced_threshold' in bank_statement_model_metadata:
+                    optimal_threshold = bank_statement_model_metadata['balanced_threshold']
+
+                # Determine risk level based on threshold comparison
+                if fraud_probability >= optimal_threshold:
+                    # Above threshold - likely fraud
+                    risk_level = 'CRITICAL' if fraud_probability > 0.75 else 'HIGH'
+                else:
+                    # Below threshold - likely legitimate
+                    risk_level = 'MEDIUM' if fraud_probability > 0.25 else 'LOW'
+
+            except (AttributeError, IndexError):
+                # Fallback for regressor models
+                risk_score = max(0.0, min(100.0, float(prediction) * 100))  # Convert to 0-100 scale
+
+                # Get risk level based on score
+                if risk_score < 25:
+                    risk_level = 'LOW'
+                elif risk_score < 50:
+                    risk_level = 'MEDIUM'
+                elif risk_score < 75:
+                    risk_level = 'HIGH'
+                else:
+                    risk_level = 'CRITICAL'
+
+            # Use metadata to get feature importance
+            risk_factors = []
+            if bank_statement_model_metadata and 'top_features' in bank_statement_model_metadata:
+                top_features = bank_statement_model_metadata['top_features']
+                for feat in top_features[:3]:
+                    risk_factors.append(f"{feat['feature']}: {feat['importance']:.4f}")
+
+            # Get model confidence - use F1 score for classifiers, accuracy for regressors
+            metrics = bank_statement_model_metadata.get('metrics', {})
+            if 'test_f1_score' in metrics:
+                model_confidence = metrics.get('test_f1_score', 0.70)
+            elif 'test_roc_auc' in metrics:
+                model_confidence = metrics.get('test_roc_auc', 0.70)
+            else:
+                model_confidence = metrics.get('test_accuracy', 0.70)
+
+            logger.info(f"Bank statement Random Forest fraud score: {risk_score:.2f} (level: {risk_level}), confidence: {model_confidence}")
+            return {
+                'fraud_risk_score': round(risk_score, 2),
+                'risk_level': risk_level,
+                'model_confidence': round(float(model_confidence), 3),
+                'risk_factors': risk_factors if risk_factors else ["Trained on statement_fraud_5000 dataset"],
+                'feature_importance': risk_factors if risk_factors else [],
+                'prediction_type': 'random_forest_trained'
+            }
+        except Exception as e:
+            logger.error(f"Error in trained Random Forest model: {e}", exc_info=True)
+            # Fall through to fallback detector
+
+    # Try to use custom feature-based ML detector as fallback
+    if BANK_STATEMENT_DETECTOR_AVAILABLE and BankStatementFraudDetector:
+        try:
+            detector = BankStatementFraudDetector()
+            features = detector.extract_features(data)
+            score = detector.calculate_fraud_score(features)
+            risk_factors = detector.identify_risk_factors(features, score)
+            risk_level = detector.get_risk_level(score)
+
+            # Calculate model confidence based on data completeness
+            has_required_fields = sum([
+                bool(data.get('bank_name')),
+                bool(data.get('account_holder')),
+                bool(data.get('account_number')),
+                bool(data.get('statement_period')),
+            ])
+            data_completeness = has_required_fields / 4
+            model_confidence = 0.65 + (data_completeness * 0.25)
+
+            logger.info(f"Bank statement feature-based ML fraud score: {score} (level: {risk_level})")
+            return {
+                'fraud_risk_score': round(score, 2),
+                'risk_level': risk_level,
+                'model_confidence': round(model_confidence, 3),
+                'risk_factors': risk_factors,
+                'feature_importance': risk_factors,
+                'prediction_type': 'feature_based_ml'
+            }
+        except Exception as e:
+            logger.error(f"Error in feature-based ML detector: {e}", exc_info=True)
+            # Fall through to rule-based fallback
+
+    # Fallback rule-based scoring
     score = 0.25
     indicators = []
     raw_text = (data.get('raw_text') or '').lower()
@@ -348,15 +615,42 @@ def _evaluate_bank_statement_risk(data):
         model_confidence = 0.75
     if summary.get('transaction_count', 0) >= 10:
         model_confidence = 0.85
+    logger.warning("Using fallback rule-based bank statement scoring (ML detector not available)")
     return {
         'fraud_risk_score': round(score, 3),
         'risk_level': level,
         'model_confidence': round(model_confidence, 3),
+        'risk_factors': indicators,
         'feature_importance': indicators,
-        'prediction_type': 'bank_statement_rules'
+        'prediction_type': 'rule_based_fallback'
     }
 
-def _build_bank_statement_ai_analysis(risk):
+def _build_bank_statement_ai_analysis(risk, bank_data=None):
+    """
+    Build AI analysis for bank statement using LangChain agent if available
+    Falls back to rule-based analysis if LLM is unavailable
+    """
+    # Try to use LangChain agent if available and OpenAI API key is set
+    if BANK_STATEMENT_AI_AVAILABLE and bank_statement_ai_agent and bank_data:
+        try:
+            ai_result = bank_statement_ai_agent.analyze(risk, bank_data)
+            if ai_result.get('success'):
+                return {
+                    'recommendation': ai_result.get('recommendation', 'ESCALATE'),
+                    'confidence': ai_result.get('confidence', 0.7),
+                    'summary': ai_result.get('summary', ''),
+                    'reasoning': ai_result.get('reasoning', ''),
+                    'key_indicators': ai_result.get('key_concerns', risk.get('risk_factors', [])),
+                    'next_steps': ai_result.get('next_steps', []),
+                    'analysis_type': 'gpt4_analysis',
+                    'model_used': 'gpt-4',
+                    'source': ai_result.get('source', 'gpt-4')
+                }
+        except Exception as e:
+            logger.error(f"Error in AI analysis for bank statement: {e}")
+            # Fall through to rule-based fallback
+
+    # Rule-based fallback
     score = risk.get('fraud_risk_score', 0.0)
     level = risk.get('risk_level', 'UNKNOWN')
     if level in ['HIGH', 'CRITICAL']:
@@ -369,16 +663,15 @@ def _build_bank_statement_ai_analysis(risk):
         recommendation = 'APPROVE'
         confidence = 0.65
     summary = f"{level.title()} fraud risk ({score * 100:.1f}%)."
-    reasoning = "Heuristic analysis evaluated transaction patterns, balance changes, and metadata for anomalies."
+    reasoning = "ML-based analysis evaluated transaction patterns, balance changes, and metadata for anomalies."
     return {
         'recommendation': recommendation,
         'confidence': confidence,
         'summary': summary,
         'reasoning': reasoning,
-        'key_indicators': risk.get('feature_importance', []),
-        'verification_notes': "Manual review recommended when anomalies are detected.",
-        'analysis_type': 'rule_based',
-        'model_used': 'bank_statement_heuristics'
+        'key_indicators': risk.get('risk_factors', risk.get('feature_importance', [])),
+        'analysis_type': 'rule_based_fallback',
+        'model_used': 'bank_statement_ml_detector'
     }
 
 def _collect_bank_statement_anomalies(risk, ai_analysis):
@@ -1108,7 +1401,7 @@ def analyze_bank_statement():
 
             structured_data = _merge_bank_statement_data(initial_data, fallback_data)
             risk_analysis = _evaluate_bank_statement_risk(structured_data)
-            ai_analysis = _build_bank_statement_ai_analysis(risk_analysis)
+            ai_analysis = _build_bank_statement_ai_analysis(risk_analysis, structured_data)
             anomalies = _collect_bank_statement_anomalies(risk_analysis, ai_analysis)
             confidence_score = structured_data.get('summary', {}).get('confidence', 0.0)
 

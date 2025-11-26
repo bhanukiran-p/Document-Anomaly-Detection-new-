@@ -16,5 +16,17 @@
     "email": "test_345@example.com",
     "password_hash": "533b1aee059c7d1ab105ba82079cf621$1f555311ae2bdae533e4ff30fabbff73352c91def81df064241080b47f71e248",
     "created_at": "2025-11-25T19:17:35.272095"
+  },
+  "testing@newui.com": {
+    "user_id": "d8c674ca6bf27551",
+    "email": "testing@newui.com",
+    "password_hash": "3de0709f1d784015685f7268abf06933$19f2c432a6924115aaf3a23eca72a9cc984fa8e1c9286371bfb406dd4b2741c4",
+    "created_at": "2025-11-26T02:41:01.177972"
+  },
+  "newuitest@example21.com": {
+    "user_id": "94bec04eea0d2a9d",
+    "email": "newuitest@example21.com",
+    "password_hash": "93f4d7fd1c32cea1d32f7bcc01ad081a$91a472ae3deaf703c2226957f10fe29b45b0b764320cfa3a66d7a9651651ecc7",
+    "created_at": "2025-11-26T04:48:57.058273"
   }
 }

@@ -1,0 +1,82 @@
+{
+  "model_type": "RandomForestRegressor",
+  "n_estimators": 100,
+  "max_depth": 15,
+  "min_samples_split": 5,
+  "min_samples_leaf": 2,
+  "feature_names": [
+    "opening_balance",
+    "ending_balance",
+    "total_credits",
+    "total_debits",
+    "amount",
+    "balance_after",
+    "is_credit",
+    "is_debit",
+    "abs_amount",
+    "is_large_transaction",
+    "amount_to_balance_ratio",
+    "transactions_past_1_day",
+    "transactions_past_7_days",
+    "cumulative_monthly_credits",
+    "cumulative_monthly_debits",
+    "is_new_merchant",
+    "weekday",
+    "day_of_month",
+    "is_weekend"
+  ],
+  "metrics": {
+    "train_r2_score": 0.5021275777381407,
+    "test_r2_score": -0.019248510437441357,
+    "train_rmse": 0.32257127049706313,
+    "test_rmse": 0.46608856510388075,
+    "test_accuracy": 0.682,
+    "n_features": 19,
+    "n_samples_train": 4000,
+    "n_samples_test": 1000
+  },
+  "training_date": "2025-11-25T21:11:46.133707",
+  "training_file": "dataset/staement_fraud_5000.csv",
+  "top_features": [
+    {
+      "feature": "cumulative_monthly_debits",
+      "importance": 0.10506382801736508
+    },
+    {
+      "feature": "cumulative_monthly_credits",
+      "importance": 0.10285694681457523
+    },
+    {
+      "feature": "total_credits",
+      "importance": 0.09656035874978221
+    },
+    {
+      "feature": "opening_balance",
+      "importance": 0.09375795621893411
+    },
+    {
+      "feature": "total_debits",
+      "importance": 0.09352444610605115
+    },
+    {
+      "feature": "amount_to_balance_ratio",
+      "importance": 0.06891343296414706
+    },
+    {
+      "feature": "balance_after",
+      "importance": 0.0679436804827041
+    },
+    {
+      "feature": "amount",
+      "importance": 0.06768085205940165
+    },
+    {
+      "feature": "ending_balance",
+      "importance": 0.06656561986985127
+    },
+    {
+      "feature": "day_of_month",
+      "importance": 0.062040001004555104
+    }
+  ]
+}
