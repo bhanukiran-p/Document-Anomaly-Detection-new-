@@ -8,6 +8,10 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 from mindee import ClientV2, InferenceParameters, PathInput
 import numpy as np
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv(override=True)
 
 logger = logging.getLogger(__name__)
 
@@ -284,7 +288,7 @@ def _run_model(file_path: str, model_id: str) -> Dict[str, Any]:
     """Run Mindee model inference on a document"""
     try:
         client = get_mindee_client()
-        params = InferenceParameters(model_id=model_id, raw_text=True, confidence=True)
+        params = InferenceParameters(model_id=model_id, raw_text=True)
         input_source = PathInput(file_path)
         response = client.enqueue_and_get_inference(input_source, params)
         
