@@ -388,10 +388,12 @@ def _evaluate_bank_statement_risk(data):
             amounts = []
             credits_count = 0
             debits_count = 0
+            zelle_count = 0  # Count Zelle transactions
             first_txn_amount = 0
             first_txn_balance = 0
             first_txn_is_credit = 0
             first_txn_is_debit = 0
+            large_transaction_amounts = []
 
             for i, txn in enumerate(transactions):
                 if isinstance(txn, dict):
@@ -402,14 +404,23 @@ def _evaluate_bank_statement_risk(data):
                     if i == 0:
                         first_txn_amount = amt
                         first_txn_balance = parse_currency(txn.get('balance'))
-                        first_txn_is_credit = 1 if txn.get('is_credit') else 0
-                        first_txn_is_debit = 1 if txn.get('is_debit') else 0
+                        first_txn_is_credit = 1 if txn.get('is_credit') or amt > 0 else 0
+                        first_txn_is_debit = 1 if txn.get('is_debit') or amt < 0 else 0
 
                     # Count credit/debit transactions
-                    if txn.get('is_credit'):
+                    description = str(txn.get('description', '')).lower()
+                    if amt > 0 or txn.get('is_credit'):
                         credits_count += 1
-                    elif txn.get('is_debit'):
+                    elif amt < 0 or txn.get('is_debit'):
                         debits_count += 1
+
+                    # Count Zelle transactions
+                    if 'zelle' in description:
+                        zelle_count += 1
+
+                    # Track large transactions
+                    if abs(amt) > 1000:  # Arbitrary threshold for "large"
+                        large_transaction_amounts.append(abs(amt))
 
             # Calculate derived features
             abs_amount = abs(first_txn_amount)
@@ -419,15 +430,17 @@ def _evaluate_bank_statement_risk(data):
             if amounts and len(amounts) > 1:
                 percentile_75 = np.percentile(amounts, 75)
                 is_large_transaction = 1 if abs_amount > percentile_75 else 0
+            elif abs_amount > 1000:
+                is_large_transaction = 1
 
             # Amount to balance ratio
             amount_to_balance_ratio = 0.0
             if opening_balance != 0:
                 amount_to_balance_ratio = abs_amount / abs(opening_balance)
 
-            # Activity metrics (simplified - using total transaction count)
-            transactions_past_1_day = num_transactions  # Simplified assumption
-            transactions_past_7_days = num_transactions
+            # Activity metrics - use actual transaction counts
+            transactions_past_1_day = credits_count + debits_count  # Total transactions
+            transactions_past_7_days = num_transactions  # All transactions in statement
 
             # Cumulative monthly totals (from summary)
             cumulative_monthly_credits = total_credits
@@ -516,16 +529,21 @@ def _evaluate_bank_statement_risk(data):
                 for feat in top_features[:3]:
                     risk_factors.append(f"{feat['feature']}: {feat['importance']:.4f}")
 
-            # Get model confidence - use F1 score for classifiers, accuracy for regressors
-            metrics = bank_statement_model_metadata.get('metrics', {})
-            if 'test_f1_score' in metrics:
-                model_confidence = metrics.get('test_f1_score', 0.70)
-            elif 'test_roc_auc' in metrics:
-                model_confidence = metrics.get('test_roc_auc', 0.70)
-            else:
-                model_confidence = metrics.get('test_accuracy', 0.70)
+            # Get model confidence - use prediction probability for per-statement confidence
+            try:
+                # Use the fraud probability as the confidence for this specific prediction
+                model_confidence = fraud_probability
+            except NameError:
+                # Fallback if fraud_probability is not defined (regressor path)
+                metrics = bank_statement_model_metadata.get('metrics', {})
+                if 'test_f1_score' in metrics:
+                    model_confidence = metrics.get('test_f1_score', 0.70)
+                elif 'test_roc_auc' in metrics:
+                    model_confidence = metrics.get('test_roc_auc', 0.70)
+                else:
+                    model_confidence = metrics.get('test_accuracy', 0.70)
 
-            logger.info(f"Bank statement Random Forest fraud score: {risk_score:.2f} (level: {risk_level}), confidence: {model_confidence}")
+            logger.info(f"Bank statement Random Forest fraud score: {risk_score:.2f} (level: {risk_level}), confidence: {model_confidence:.4f}")
             return {
                 'fraud_risk_score': round(risk_score, 2),
                 'risk_level': risk_level,

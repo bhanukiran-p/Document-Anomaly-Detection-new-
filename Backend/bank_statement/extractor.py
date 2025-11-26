@@ -21,7 +21,7 @@ mindee_client = ClientV2(MINDEE_API_KEY)
 
 def _run_model(file_path: str, model_id: str) -> Dict[str, Any]:
     """Run Mindee model inference on a document"""
-    params = InferenceParameters(model_id=model_id, raw_text=True, confidence=True)
+    params = InferenceParameters(model_id=model_id, raw_text=True)
     input_source = PathInput(file_path)
     response = mindee_client.enqueue_and_get_inference(input_source, params)
     result = response.inference.result
