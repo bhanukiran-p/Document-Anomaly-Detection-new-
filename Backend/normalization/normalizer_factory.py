@@ -6,7 +6,9 @@ Automatically selects and returns the appropriate normalizer for a given issuer
 from typing import Optional
 from .base_normalizer import BaseNormalizer
 from .western_union import WesternUnionNormalizer
+from .western_union import WesternUnionNormalizer
 from .moneygram import MoneyGramNormalizer
+from .paystub import PaystubNormalizer
 
 
 class NormalizerFactory:
@@ -18,7 +20,9 @@ class NormalizerFactory:
     NORMALIZERS = {
         'western union': WesternUnionNormalizer,
         'moneygram': MoneyGramNormalizer,
+        'moneygram': MoneyGramNormalizer,
         'money gram': MoneyGramNormalizer,  # Handle spacing variation
+        'paystub': PaystubNormalizer,
     }
 
     @classmethod
