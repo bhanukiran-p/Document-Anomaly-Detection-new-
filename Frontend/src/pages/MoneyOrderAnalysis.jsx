@@ -225,6 +225,87 @@ const MoneyOrderAnalysis = () => {
     }
   };
 
+  const downloadCSV = () => {
+    if (!analysisData) return;
+
+    // CSV Headers
+    const headers = [
+      'Document Type',
+      'Timestamp',
+      'Issuer',
+      'Serial Number',
+      'Amount',
+      'Date',
+      'Payee',
+      'Purchaser',
+      'Location',
+      'City',
+      'State',
+      'ZIP Code',
+      'Fraud Risk Score (%)',
+      'Risk Level',
+      'Model Confidence (%)',
+      'AI Recommendation',
+      'AI Confidence (%)',
+      'Signature Status',
+      'Anomaly Count',
+      'Top Anomalies'
+    ];
+
+    // Filter anomalies to exclude AI recommendations and scores
+    const filteredAnomalies = (analysisData.anomalies || []).filter(anomaly => {
+      const anomalyLower = String(anomaly).toLowerCase();
+      return !anomalyLower.includes('ai recommendation') &&
+             !anomalyLower.includes('high fraud risk detected') &&
+             !anomalyLower.includes('risk score');
+    });
+
+    // CSV Row
+    const row = [
+      'Money Order',
+      analysisData.timestamp || new Date().toISOString(),
+      analysisData.issuer || 'N/A',
+      analysisData.serial_number || analysisData.money_order_number || 'N/A',
+      analysisData.amount || 'N/A',
+      analysisData.date || 'N/A',
+      analysisData.payee || 'N/A',
+      analysisData.purchaser || 'N/A',
+      analysisData.location || analysisData.address || 'N/A',
+      analysisData.city || 'N/A',
+      analysisData.state || 'N/A',
+      analysisData.zip_code || 'N/A',
+      ((analysisData.fraud_risk_score || 0) * 100).toFixed(2),
+      analysisData.risk_level || 'UNKNOWN',
+      ((analysisData.model_confidence || 0) * 100).toFixed(2),
+      analysisData.ai_recommendation || 'UNKNOWN',
+      ((analysisData.ai_confidence || 0) * 100).toFixed(2),
+      analysisData.signature || 'N/A',
+      filteredAnomalies.length,
+      filteredAnomalies.slice(0, 3).join(' | ')
+    ];
+
+    // Escape CSV values (handle commas and quotes)
+    const escapeCsvValue = (value) => {
+      const stringValue = String(value);
+      if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+        return `"${stringValue.replace(/"/g, '""')}"`;
+      }
+      return stringValue;
+    };
+
+    const csvContent = [
+      headers.map(escapeCsvValue).join(','),
+      row.map(escapeCsvValue).join(',')
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `money_order_analysis_${new Date().getTime()}.csv`;
+    link.click();
+  };
+
   // Styles matching landing page design system
   const containerStyle = {
     maxWidth: '1400px',
@@ -718,27 +799,49 @@ const MoneyOrderAnalysis = () => {
                 </p>
               </div>
 
-              {/* Download Button */}
-              <button
-                style={{
-                  ...buttonStyle,
-                  backgroundColor: colors.card,
-                  color: colors.foreground,
-                  border: `2px solid ${colors.border}`,
-                  marginTop: '1.5rem',
-                }}
-                onClick={downloadJSON}
-                onMouseEnter={(e) => {
-                  e.target.style.borderColor = primary;
-                  e.target.style.backgroundColor = colors.muted;
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.borderColor = colors.border;
-                  e.target.style.backgroundColor = colors.card;
-                }}
-              >
-                Download Full Results (JSON)
-              </button>
+              {/* Download Buttons */}
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
+                <button
+                  style={{
+                    ...buttonStyle,
+                    backgroundColor: colors.card,
+                    color: colors.foreground,
+                    border: `2px solid ${colors.border}`,
+                    marginTop: 0,
+                    flex: 1,
+                  }}
+                  onClick={downloadJSON}
+                  onMouseEnter={(e) => {
+                    e.target.style.borderColor = primary;
+                    e.target.style.backgroundColor = colors.muted;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.borderColor = colors.border;
+                    e.target.style.backgroundColor = colors.card;
+                  }}
+                >
+                  Download JSON
+                </button>
+                <button
+                  style={{
+                    ...buttonStyle,
+                    backgroundColor: primary,
+                    color: colors.primaryForeground,
+                    border: `2px solid ${primary}`,
+                    marginTop: 0,
+                    flex: 1,
+                  }}
+                  onClick={downloadCSV}
+                  onMouseEnter={(e) => {
+                    e.target.style.backgroundColor = colors.accent.redDark;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.backgroundColor = primary;
+                  }}
+                >
+                  Download CSV (Dashboard)
+                </button>
+              </div>
             </div>
           )}
         </div>
