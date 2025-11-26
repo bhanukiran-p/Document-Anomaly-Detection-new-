@@ -1,18 +1,17 @@
-# Google Vision API Check Extraction Requirements
+# Mindee Document AI Check Extraction Requirements
 
 # Core dependencies
-google-cloud-vision==3.7.0
-google-auth==2.29.0
-google-auth-oauthlib==1.2.0
 Flask==3.0.0
 flask-cors==4.0.0
+mindee==4.9.0
 
 # Image processing
-Pillow==10.3.0
+Pillow==11.0.0
 
 # Data handling
-pandas==2.2.2
+pandas==2.3.3
 numpy==1.26.4
+scikit-learn==1.4.2  # ML model training and inference
 
 # Streamlit for web interface
 streamlit==1.33.0

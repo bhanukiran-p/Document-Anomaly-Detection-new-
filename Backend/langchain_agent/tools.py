@@ -6,7 +6,7 @@ Provides tools to access CSV data, customer history, and fraud patterns
 import os
 import pandas as pd
 from typing import Dict, List, Optional
-from langchain.tools import tool
+from langchain_core.tools import tool
 from .result_storage import ResultStorage
 
 

@@ -22,7 +22,9 @@ export const analyzeCheck = async (file) => {
     });
     return response.data;
   } catch (error) {
-    throw error.response?.data || { error: 'Failed to analyze check' };
+    const errorData = error.response?.data || { error: 'Failed to analyze check', message: error.message || 'Network error' };
+    console.error('Check analysis API error:', errorData);
+    throw errorData;
   }
 };
 
@@ -39,7 +41,9 @@ export const analyzePaystub = async (file) => {
     });
     return response.data;
   } catch (error) {
-    throw error.response?.data || { error: 'Failed to analyze paystub' };
+    const errorData = error.response?.data || { error: 'Failed to analyze paystub', message: error.message || 'Network error' };
+    console.error('Paystub analysis API error:', errorData);
+    throw errorData;
   }
 };
 
@@ -56,7 +60,9 @@ export const analyzeMoneyOrder = async (file) => {
     });
     return response.data;
   } catch (error) {
-    throw error.response?.data || { error: 'Failed to analyze money order' };
+    const errorData = error.response?.data || { error: 'Failed to analyze money order', message: error.message || 'Network error' };
+    console.error('Money order analysis API error:', errorData);
+    throw errorData;
   }
 };
 
@@ -73,7 +79,49 @@ export const analyzeBankStatement = async (file) => {
     });
     return response.data;
   } catch (error) {
-    throw error.response?.data || { error: 'Failed to analyze bank statement' };
+    const errorData = error.response?.data || { error: 'Failed to analyze bank statement', message: error.message || 'Network error' };
+    console.error('Bank statement analysis API error:', errorData);
+    throw errorData;
+  }
+};
+
+// Fraud Detection - PDF Validation API
+export const validatePDFForFraud = async (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const response = await axios.post(`${API_BASE_URL}/fraud/validate-pdf`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { error: 'Failed to validate PDF for fraud detection' };
+  }
+};
+
+// Fraud Detection - Transaction Prediction API
+export const predictTransactionFraud = async (transactionData, modelType = 'ensemble') => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/fraud/transaction-predict`, {
+      transaction_data: transactionData,
+      model_type: modelType,
+    });
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { error: 'Failed to predict transaction fraud' };
+  }
+};
+
+// Fraud Detection - Get Models Status
+export const getFraudModelsStatus = async () => {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/fraud/models-status`);
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { error: 'Failed to get fraud models status' };
   }
 };
 

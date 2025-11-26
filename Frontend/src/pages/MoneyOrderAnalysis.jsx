@@ -2,6 +2,96 @@ import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { analyzeMoneyOrder } from '../services/api';
 import { colors } from '../styles/colors';
+import { FaExclamationTriangle, FaMoneyBillWave, FaCog } from 'react-icons/fa';
+
+const buildMoneyOrderSections = (data) => ({
+  'Money Order Details': [
+    { label: 'Issuer', value: data.issuer || 'N/A' },
+    { label: 'Serial Number', value: data.serial_number || data.money_order_number || 'N/A' },
+    { label: 'Amount', value: data.amount || 'N/A' },
+    { label: 'Amount in Words', value: data.amount_in_words || 'N/A' },
+    { label: 'Date', value: data.date || 'N/A' },
+  ],
+  'Parties & Verification': [
+    { label: 'Purchaser', value: data.purchaser || 'N/A' },
+    { label: 'Payee', value: data.payee || 'N/A' },
+    { label: 'Signature', value: data.signature ? 'Present' : 'Missing' },
+    { label: 'Receipt Number', value: data.receipt_number || 'N/A' },
+  ],
+  Location: [
+    { label: 'Location', value: data.location || 'N/A' },
+    { label: 'Address', value: data.address || 'N/A' },
+    { label: 'City', value: data.city || 'N/A' },
+    { label: 'State', value: data.state || 'N/A' },
+    { label: 'ZIP Code', value: data.zip_code || 'N/A' },
+  ],
+});
+
+const normalizeValue = (value) => (typeof value === 'string' ? value.trim() : value);
+
+const isMissing = (value) => {
+  if (value === undefined || value === null) return true;
+  if (typeof value === 'number') return false;
+  const normalized = String(value).trim().toLowerCase();
+  return (
+    !normalized ||
+    normalized === 'n/a' ||
+    normalized === 'na' ||
+    normalized === 'none' ||
+    normalized === 'unknown' ||
+    normalized === 'missing'
+  );
+};
+
+const buildCriticalFactors = (data = {}, anomalies = []) => {
+  const factors = [];
+  const addFactor = (text) => {
+    if (text && !factors.includes(text)) {
+      factors.push(text);
+    }
+  };
+
+  const anomalyText = Array.isArray(anomalies) ? anomalies.join(' | ').toLowerCase() : '';
+  const signatureText = normalizeValue(data.signature);
+
+  if (isMissing(signatureText) || anomalyText.includes('missing signature')) {
+    addFactor('Signature line is blank — authorization unavailable.');
+  }
+
+  if (isMissing(data.serial_number) && isMissing(data.money_order_number)) {
+    addFactor('Serial / control number missing — cannot trace the money order.');
+  }
+
+  if (isMissing(data.amount_in_words) || anomalyText.includes('amount mismatch')) {
+    addFactor('Amount in words missing or conflicts with numeric amount.');
+  }
+
+  if (isMissing(data.payee)) {
+    addFactor('Payee name missing — funds destination unclear.');
+  }
+
+  if (isMissing(data.purchaser)) {
+    addFactor('Purchaser/remitter missing — source party not verified.');
+  }
+
+  if ((isMissing(data.location) && isMissing(data.address)) || anomalyText.includes('invalid address')) {
+    addFactor('Issuing location/address invalid or missing.');
+  }
+
+  if (isMissing(data.receipt_number)) {
+    addFactor('Receipt reference absent — no purchase proof.');
+  }
+
+  if (anomalyText.includes('issuer-specific validation failed')) {
+    addFactor('Issuer format validation failed — layout doesn’t match genuine templates.');
+  }
+
+  if (anomalyText.includes('missing critical fields')) {
+    addFactor('Multiple mandatory sections incomplete per ML rules.');
+  }
+
+  return factors;
+};
 
 const MoneyOrderAnalysis = () => {
   const [file, setFile] = useState(null);
@@ -12,6 +102,14 @@ const MoneyOrderAnalysis = () => {
 
   // Use primaryColor for new design system red
   const primary = colors.primaryColor || colors.accent?.red || '#E53935';
+
+  const toPercent = (value) => {
+    if (value === null || value === undefined) return 0;
+    const num = Number(value);
+    if (!Number.isFinite(num)) return 0;
+    const percent = num <= 1 ? num * 100 : num;
+    return Math.max(0, Math.min(100, percent));
+  };
 
   const onDrop = useCallback((acceptedFiles) => {
     const selectedFile = acceptedFiles[0];
@@ -51,9 +149,17 @@ const MoneyOrderAnalysis = () => {
 
     try {
       const response = await analyzeMoneyOrder(file);
-      setResults(response);
+      if (response.success === false) {
+        setError(response.error || response.message || 'Failed to analyze money order. Please try again.');
+        setResults(null);
+      } else {
+        setResults(response.data || response);
+      }
     } catch (err) {
-      setError(err.error || 'Failed to analyze money order. Please try again.');
+      const errorMessage = err.error || err.message || err.response?.data?.error || err.response?.data?.message || 'Failed to analyze money order. Please try again.';
+      setError(errorMessage);
+      setResults(null);
+      console.error('Money order analysis error:', err);
     } finally {
       setLoading(false);
     }
@@ -61,8 +167,10 @@ const MoneyOrderAnalysis = () => {
 
   const downloadJSON = async () => {
     if (!results || !results.analysis_id) {
-      // Fallback: download current results
-      const dataStr = JSON.stringify(results, null, 2);
+      const payload = results
+        ? { ...results, extracted_sections: buildMoneyOrderSections(analysisData) }
+        : results;
+      const dataStr = JSON.stringify(payload, null, 2);
       const dataBlob = new Blob([dataStr], { type: 'application/json' });
       const url = URL.createObjectURL(dataBlob);
       const link = document.createElement('a');
@@ -83,8 +191,8 @@ const MoneyOrderAnalysis = () => {
         link.download = `${results.analysis_id}.json`;
         link.click();
       } else {
-        // Fallback to current results
-        const dataStr = JSON.stringify(results, null, 2);
+        const payload = { ...results, extracted_sections: buildMoneyOrderSections(analysisData) };
+        const dataStr = JSON.stringify(payload, null, 2);
         const dataBlob = new Blob([dataStr], { type: 'application/json' });
         const url = URL.createObjectURL(dataBlob);
         const link = document.createElement('a');
@@ -94,8 +202,8 @@ const MoneyOrderAnalysis = () => {
       }
     } catch (err) {
       console.error('Download error:', err);
-      // Fallback to current results
-      const dataStr = JSON.stringify(results, null, 2);
+      const payload = { ...results, extracted_sections: buildMoneyOrderSections(analysisData) };
+      const dataStr = JSON.stringify(payload, null, 2);
       const dataBlob = new Blob([dataStr], { type: 'application/json' });
       const url = URL.createObjectURL(dataBlob);
       const link = document.createElement('a');
@@ -184,13 +292,20 @@ const MoneyOrderAnalysis = () => {
     marginBottom: '1rem',
   };
 
+  const infoCardStyle = {
+    backgroundColor: colors.card,
+    padding: '1.5rem',
+    borderRadius: '0.5rem',
+    border: `1px solid ${colors.border}`,
+    marginBottom: '1rem',
+    color: colors.foreground,
+  };
+
   // Get the data from response (could be results.data or results directly)
   const analysisData = results?.data || results;
-  const hasSimplifiedFields = analysisData && (
-    analysisData.fraud_risk_score !== undefined ||
-    analysisData.model_confidence !== undefined ||
-    analysisData.ai_recommendation !== undefined
-  );
+  const mlAnalysis = analysisData?.ml_analysis || analysisData?.ml_fraud_analysis || {};
+  const aiAnalysis = analysisData?.ai_analysis || {};
+  const criticalFactors = analysisData ? buildCriticalFactors(analysisData, analysisData?.anomalies || []) : [];
 
   return (
     <div style={containerStyle}>
@@ -209,14 +324,15 @@ const MoneyOrderAnalysis = () => {
           </h2>
 
           <div style={warningBannerStyle}>
-            <p style={{ color: primary, fontSize: '0.875rem', margin: 0, fontWeight: '500' }}>
-              ⚠️ Only upload money order documents (Western Union, MoneyGram, USPS, etc.)
-            </p>
+            <div style={{ color: primary, fontSize: '0.875rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <FaExclamationTriangle />
+              <span>Only upload money order documents (Western Union, MoneyGram, USPS, etc.)</span>
+            </div>
           </div>
 
           <div {...getRootProps()} style={dropzoneStyle}>
             <input {...getInputProps()} />
-            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>💵</div>
+            <FaMoneyBillWave style={{ fontSize: '3rem', marginBottom: '1rem', color: colors.foreground }} />
             {isDragActive ? (
               <p style={{ color: primary, fontWeight: '500' }}>
                 Drop the money order image here...
@@ -320,131 +436,277 @@ const MoneyOrderAnalysis = () => {
 
           {loading && (
             <div style={{ textAlign: 'center', padding: '3rem' }}>
-              <div className="spin" style={{
+              <FaCog className="spin" style={{
                 fontSize: '3rem',
                 color: primary,
-              }}>⚙️</div>
+              }} />
               <p style={{ marginTop: '1rem', color: colors.mutedForeground }}>
                 Analyzing money order...
               </p>
             </div>
           )}
 
-          {/* Display Results - Simplified 3-field format */}
-          {results && results.success && hasSimplifiedFields && (
+          {/* Display Results */}
+          {results && results.success && analysisData && (
             <div className="fade-in">
-              {/* Fraud Risk Score Card */}
-              <div style={{
-                ...resultCardStyle,
-                marginBottom: '1.5rem',
-                backgroundColor: `${primary}20`,
-                borderLeft: `4px solid ${primary}`,
-              }}>
-                <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
-                  Fraud Risk Score
-                </div>
-                <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: primary }}>
-                  {(analysisData.fraud_risk_score * 100).toFixed(1)}%
-                </div>
-              </div>
+              {(() => {
+                const fraudRiskPercent = toPercent(
+                  analysisData.fraud_risk_score ?? mlAnalysis?.fraud_risk_score
+                );
+                const modelConfidencePercent = toPercent(
+                  analysisData.model_confidence ?? mlAnalysis?.model_confidence
+                );
+                const aiConfidencePercent = toPercent(
+                  analysisData.ai_confidence ?? aiAnalysis?.confidence
+                );
+                const aiRecommendation = (analysisData.ai_recommendation ||
+                  aiAnalysis.recommendation ||
+                  'UNKNOWN').toUpperCase();
+                const aiColor = aiRecommendation === 'APPROVE'
+                  ? colors.status.success
+                  : aiRecommendation === 'REJECT'
+                    ? primary
+                    : colors.status.warning;
 
-              {/* Model Confidence Card */}
-              <div style={{
-                ...resultCardStyle,
-                marginBottom: '1.5rem',
-                backgroundColor: `${colors.status.success}20`,
-                borderLeft: `4px solid ${colors.status.success}`,
-              }}>
-                <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
-                  Model Confidence
-                </div>
-                <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: colors.status.success }}>
-                  {(analysisData.model_confidence * 100).toFixed(1)}%
-                </div>
-              </div>
+                return (
+                  <>
+                    {/* Fraud Risk Score Card */}
+                    <div style={{
+                      ...resultCardStyle,
+                      marginBottom: '1.5rem',
+                      backgroundColor: `${primary}20`,
+                      borderLeft: `4px solid ${primary}`,
+                    }}>
+                      <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
+                        Fraud Risk Score
+                      </div>
+                      <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: primary }}>
+                        {fraudRiskPercent.toFixed(1)}%
+                      </div>
+                      {mlAnalysis?.risk_level && (
+                        <div style={{ marginTop: '0.25rem', color: colors.mutedForeground }}>
+                          Risk Level: <strong>{mlAnalysis.risk_level}</strong>
+                        </div>
+                      )}
+                    </div>
 
-              {/* AI Recommendation Card */}
-              <div style={{
-                ...resultCardStyle,
-                marginBottom: '1.5rem',
-                backgroundColor: analysisData.ai_recommendation === 'APPROVE' ? `${colors.status.success}20` :
-                                 analysisData.ai_recommendation === 'REJECT' ? `${primary}20` :
-                                 `${colors.status.warning}20`,
-                borderLeft: `4px solid ${analysisData.ai_recommendation === 'APPROVE' ? colors.status.success :
-                                           analysisData.ai_recommendation === 'REJECT' ? primary :
-                                           colors.status.warning}`,
-              }}>
-                <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
-                  AI Recommendation
-                </div>
+                    {/* Model Confidence Card */}
+                    <div style={{
+                      ...resultCardStyle,
+                      marginBottom: '1.5rem',
+                      backgroundColor: `${colors.status.success}20`,
+                      borderLeft: `4px solid ${colors.status.success}`,
+                    }}>
+                      <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
+                        Model Confidence
+                      </div>
+                      <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: colors.status.success }}>
+                        {modelConfidencePercent.toFixed(1)}%
+                      </div>
+                    </div>
+
+                    {/* AI Recommendation Card */}
+                    <div style={{
+                      ...resultCardStyle,
+                      marginBottom: '1.5rem',
+                      backgroundColor: `${aiColor}20`,
+                      borderLeft: `4px solid ${aiColor}`,
+                    }}>
+                      <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
+                        AI Recommendation
+                      </div>
+                      <div style={{ fontSize: '2rem', fontWeight: 'bold', color: aiColor }}>
+                        {aiRecommendation}
+                      </div>
+                      <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginTop: '0.25rem' }}>
+                        AI Confidence: {aiConfidencePercent.toFixed(1)}%
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+
+              {Array.isArray(analysisData.anomalies) && analysisData.anomalies.length > 0 && (
                 <div style={{
-                  fontSize: '2rem',
-                  fontWeight: 'bold',
-                  color: analysisData.ai_recommendation === 'APPROVE' ? colors.status.success :
-                         analysisData.ai_recommendation === 'REJECT' ? primary :
-                         colors.status.warning,
+                  ...infoCardStyle,
+                  marginTop: '1rem',
+                  backgroundColor: `${colors.status.warning}10`,
+                  borderLeft: `4px solid ${colors.status.warning}`,
                 }}>
-                  {analysisData.ai_recommendation || 'UNKNOWN'}
-                </div>
-              </div>
-
-              {/* Actionable Recommendations Card */}
-              {analysisData.actionable_recommendations && analysisData.actionable_recommendations.length > 0 && (
-                <div style={{
-                  ...resultCardStyle,
-                  marginBottom: '1.5rem',
-                  borderLeft: `4px solid ${colors.status?.info || '#3b82f6'}`,
-                }}>
-                  <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '1rem' }}>
-                    Actionable Recommendations
-                  </div>
-                  <ul style={{ margin: 0, paddingLeft: '1.5rem', color: colors.foreground }}>
-                    {analysisData.actionable_recommendations.map((rec, index) => (
-                      <li key={index} style={{ marginBottom: '0.5rem', fontSize: '1.1rem' }}>{rec}</li>
+                  <h4 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                      <line x1="12" y1="9" x2="12" y2="13"/>
+                      <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    Detected Anomalies
+                  </h4>
+                  <ul style={{ color: colors.mutedForeground, paddingLeft: '1.5rem' }}>
+                    {analysisData.anomalies.map((anomaly, idx) => (
+                      <li key={idx} style={{ marginBottom: '0.4rem' }}>
+                        {emphasizeAnomaly(anomaly)}
+                      </li>
                     ))}
                   </ul>
                 </div>
               )}
 
-              {/* Download Button */}
-              <button
-                style={{
-                  ...buttonStyle,
-                  backgroundColor: colors.card,
-                  color: colors.foreground,
-                  border: `2px solid ${colors.border}`,
-                  marginTop: '1.5rem',
-                }}
-                onClick={downloadJSON}
-                onMouseEnter={(e) => {
-                  e.target.style.borderColor = primary;
-                  e.target.style.backgroundColor = colors.muted;
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.borderColor = colors.border;
-                  e.target.style.backgroundColor = colors.card;
-                }}
-              >
-                Download Full Results (JSON)
-              </button>
-            </div>
-          )}
+              {criticalFactors.length > 0 && (
+                <div style={{
+                  ...infoCardStyle,
+                  marginTop: '1rem',
+                  backgroundColor: `${primary}10`,
+                  borderLeft: `4px solid ${primary}`,
+                }}>
+                  <h4 style={{
+                    color: colors.foreground,
+                    marginBottom: '0.75rem',
+                    fontSize: '1.05rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem'
+                  }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10"/>
+                      <line x1="12" y1="8" x2="12" y2="13"/>
+                      <line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
+                    Key Missing / Risk Factors
+                  </h4>
+                  <ul style={{ color: colors.foreground, paddingLeft: '1.5rem', marginBottom: 0 }}>
+                    {criticalFactors.map((factor, idx) => (
+                      <li key={idx} style={{ marginBottom: '0.35rem' }}>
+                        <strong>{factor}</strong>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
-          {/* Legacy format support (if old API response structure) */}
-          {results && results.success && !hasSimplifiedFields && results.data && (
-            <div className="fade-in">
+              {/* AI Analysis Details */}
+              {(aiAnalysis.summary || aiAnalysis.reasoning || (Array.isArray(aiAnalysis.key_indicators) && aiAnalysis.key_indicators.length) || aiAnalysis.verification_notes) && (
+                <div style={{
+                  ...infoCardStyle,
+                  marginTop: '1rem',
+                }}>
+                  <h4 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"/>
+                      <path d="M12 6v6l4 2"/>
+                    </svg>
+                    AI Analysis Details
+                  </h4>
+
+                  {aiAnalysis.summary && (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <strong>Summary:</strong>
+                      <p style={{ color: colors.mutedForeground, marginTop: '0.5rem' }}>{aiAnalysis.summary}</p>
+                    </div>
+                  )}
+                  {aiAnalysis.reasoning && (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <strong>Reasoning:</strong>
+                      <p style={{ color: colors.mutedForeground, marginTop: '0.5rem', whiteSpace: 'pre-wrap' }}>{aiAnalysis.reasoning}</p>
+                    </div>
+                  )}
+                  {Array.isArray(aiAnalysis.key_indicators) && aiAnalysis.key_indicators.length > 0 && (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <strong>Key Indicators:</strong>
+                      <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
+                        {aiAnalysis.key_indicators.map((indicator, idx) => (
+                          <li key={idx} style={{ marginBottom: '0.3rem' }}>{indicator}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {aiAnalysis.verification_notes && (
+                    <div>
+                      <strong>Verification Notes:</strong>
+                      <p style={{ color: colors.mutedForeground, marginTop: '0.5rem', whiteSpace: 'pre-wrap' }}>
+                        {aiAnalysis.verification_notes}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ML Analysis */}
+              {(mlAnalysis.risk_level || (Array.isArray(mlAnalysis.feature_importance) && mlAnalysis.feature_importance.length) || mlAnalysis.model_scores) && (
+                <div style={{
+                  ...infoCardStyle,
+                  marginTop: '1rem',
+                }}>
+                  <h4 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M3 3v18h18"/>
+                      <path d="M18 17V9"/>
+                      <path d="M13 17V5"/>
+                      <path d="M8 17v-3"/>
+                    </svg>
+                    ML Risk Analysis
+                  </h4>
+
+                  {mlAnalysis.risk_level && (
+                    <p style={{ marginBottom: '0.75rem' }}>
+                      <strong>Risk Level:</strong>{' '}
+                      <span style={{
+                        color: ['HIGH', 'CRITICAL'].includes(mlAnalysis.risk_level) ? primary : colors.status.success,
+                        fontWeight: 'bold',
+                      }}>
+                        {mlAnalysis.risk_level}
+                      </span>
+                    </p>
+                  )}
+
+                  {Array.isArray(mlAnalysis.feature_importance) && mlAnalysis.feature_importance.length > 0 && (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <strong>Top Risk Indicators:</strong>
+                      <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
+                        {mlAnalysis.feature_importance.slice(0, 5).map((item, idx) => {
+                          if (typeof item === 'string') {
+                            return <li key={idx} style={{ marginBottom: '0.3rem' }}>{item}</li>;
+                          }
+                          if (item?.feature && item?.importance !== undefined) {
+                            return (
+                              <li key={idx} style={{ marginBottom: '0.3rem' }}>
+                                {item.feature}: {(item.importance * 100).toFixed(1)}%
+                              </li>
+                            );
+                          }
+                          return null;
+                        })}
+                      </ul>
+                    </div>
+                  )}
+
+                  {mlAnalysis.model_scores && (
+                    <div style={{ fontSize: '0.85rem', color: colors.mutedForeground }}>
+                      <strong>Analysis Scores:</strong>
+                      {mlAnalysis.model_scores.random_forest !== undefined && (
+                        <div>Random Forest: {(mlAnalysis.model_scores.random_forest * 100).toFixed(1)}%</div>
+                      )}
+                      {mlAnalysis.model_scores.xgboost !== undefined && (
+                        <div>XGBoost: {(mlAnalysis.model_scores.xgboost * 100).toFixed(1)}%</div>
+                      )}
+                      {mlAnalysis.model_scores.ensemble !== undefined && (
+                        <div>Ensemble: {(mlAnalysis.model_scores.ensemble * 100).toFixed(1)}%</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div style={{
-                backgroundColor: colors.secondary,
-                padding: '1.5rem',
-                borderRadius: '0.5rem',
-                border: `1px solid ${colors.border}`,
-                color: colors.foreground,
+                ...infoCardStyle,
+                backgroundColor: colors.card,
+                border: `1px solid ${colors.border}`
               }}>
-                <p style={{ color: colors.mutedForeground }}>
-                  Analysis completed. Full results available for download.
+                <p style={{ margin: 0 }}>
+                  Full money order details (issuer, parties, location, etc.) are included in the downloaded JSON file as tabular sections.
                 </p>
               </div>
 
+              {/* Download Button */}
               <button
                 style={{
                   ...buttonStyle,
@@ -474,3 +736,10 @@ const MoneyOrderAnalysis = () => {
 };
 
 export default MoneyOrderAnalysis;
+  const emphasizeAnomaly = (text) => {
+    if (!text) return text;
+    const lower = text.toLowerCase();
+    const highlightKeywords = ['missing', 'invalid', 'mismatch', 'critical'];
+    const shouldEmphasize = highlightKeywords.some((keyword) => lower.includes(keyword));
+    return shouldEmphasize ? <strong>{text}</strong> : text;
+  };

@@ -32,7 +32,8 @@ class AdvancedFeatureExtractor:
             'CVS': r'^CVS\d{8,10}$',          # CVS uses CVS prefix
             'ACE Cash Express': r'^ACE\d{8,10}$',  # ACE uses ACE prefix
             'Money Mart': r'^MM\d{8,10}$',    # Money Mart uses MM prefix
-            'Check Into Cash': r'^CIC\d{8,10}$'  # Check Into Cash uses CIC prefix
+            'Check Into Cash': r'^CIC\d{8,10}$',  # Check Into Cash uses CIC prefix
+            'Payroll': r'^PAYROLL[A-Z0-9]{3,}$'
         }
 
         # Issuer-specific required fields
@@ -40,6 +41,7 @@ class AdvancedFeatureExtractor:
             'Western Union': ['serial_primary', 'recipient', 'amount_numeric', 'sender_name', 'date'],
             'MoneyGram': ['serial_primary', 'recipient', 'amount_numeric', 'sender_name'],
             'USPS': ['serial_primary', 'recipient', 'amount_numeric', 'date'],
+            'Payroll': ['serial_primary', 'recipient', 'amount_numeric', 'date'],
             'default': ['serial_primary', 'recipient', 'amount_numeric']
         }
 

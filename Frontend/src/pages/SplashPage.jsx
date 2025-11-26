@@ -29,7 +29,7 @@ const SplashPage = () => {
   };
   
   const logoImageStyle = {
-    height: '50px',
+    height: '80px',
     width: 'auto',
   };
   
@@ -59,8 +59,8 @@ const SplashPage = () => {
   const loginButtonStyle = {
     backgroundColor: colors.primary.blue,
     color: colors.neutral.white,
-    padding: '0.625rem 1.5rem',
-    borderRadius: '0.375rem',
+    padding: '0.5rem 1.25rem',
+    borderRadius: '9999px', // Pill shape
     border: 'none',
     cursor: 'pointer',
     fontSize: '1rem',
@@ -320,11 +320,11 @@ const SplashPage = () => {
     <div style={pageStyle}>
       {/* Header */}
       <header style={headerStyle}>
-        <div 
+        <div
           style={{ ...logoContainerStyle, cursor: 'pointer' }}
           onClick={() => navigate('/')}
         >
-          <img src="/logo.png" alt="XFORIA DAD Logo" style={logoImageStyle} />
+          <img src="/New_FD.png" alt="XFORIA DAD Logo" style={logoImageStyle} />
           <div style={taglineStyle}>Your Guardian against Fraud</div>
         </div>
         
@@ -675,4 +675,3 @@ const SplashPage = () => {
 };
 
 export default SplashPage;
-

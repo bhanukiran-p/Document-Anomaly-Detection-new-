@@ -1,0 +1,93 @@
+{
+  "model_type": "RandomForestClassifier",
+  "n_estimators": 150,
+  "max_depth": 12,
+  "min_samples_split": 10,
+  "min_samples_leaf": 4,
+  "max_features": "sqrt",
+  "class_weight": "balanced",
+  "feature_names": [
+    "opening_balance",
+    "ending_balance",
+    "total_credits",
+    "total_debits",
+    "amount",
+    "balance_after",
+    "is_credit",
+    "is_debit",
+    "abs_amount",
+    "is_large_transaction",
+    "amount_to_balance_ratio",
+    "transactions_past_1_day",
+    "transactions_past_7_days",
+    "cumulative_monthly_credits",
+    "cumulative_monthly_debits",
+    "is_new_merchant",
+    "weekday",
+    "day_of_month",
+    "is_weekend"
+  ],
+  "metrics": {
+    "model_type": "RandomForestClassifier",
+    "train_accuracy": 0.974,
+    "test_accuracy": 0.623,
+    "train_f1_score": 0.9816124469589816,
+    "test_f1_score": 0.757556270096463,
+    "train_precision": 0.9726699369306236,
+    "test_precision": 0.6888888888888889,
+    "train_recall": 0.9907209136331192,
+    "test_recall": 0.8414285714285714,
+    "test_roc_auc": 0.4855333333333333,
+    "n_features": 19,
+    "n_samples_train": 4000,
+    "n_samples_test": 1000,
+    "class_weights": {
+      "0": 1.669449081803005,
+      "1": 0.7137758743754461
+    }
+  },
+  "training_date": "2025-11-25T22:20:41.140790",
+  "training_file": "dataset/staement_fraud_5000.csv",
+  "top_features": [
+    {
+      "feature": "cumulative_monthly_debits",
+      "importance": 0.08841954309196992
+    },
+    {
+      "feature": "opening_balance",
+      "importance": 0.08701187089613827
+    },
+    {
+      "feature": "cumulative_monthly_credits",
+      "importance": 0.08515543088394116
+    },
+    {
+      "feature": "total_credits",
+      "importance": 0.08470562089128679
+    },
+    {
+      "feature": "balance_after",
+      "importance": 0.08328126881700705
+    },
+    {
+      "feature": "ending_balance",
+      "importance": 0.07981509032562273
+    },
+    {
+      "feature": "total_debits",
+      "importance": 0.07873641697312941
+    },
+    {
+      "feature": "amount_to_balance_ratio",
+      "importance": 0.0783803481588103
+    },
+    {
+      "feature": "amount",
+      "importance": 0.07749898853411921
+    },
+    {
+      "feature": "abs_amount",
+      "importance": 0.07428933747110815
+    }
+  ]
+}

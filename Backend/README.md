@@ -7,13 +7,15 @@ Flask API server providing document extraction endpoints for the React frontend.
 
 ```
 Backend/
-├── api_server.py                              (Main Flask API server)
-├── production_google_vision-extractor.py      (Check extraction logic)
-├── pages/
-│   └── paystub_extractor.py                   (Paystub extraction logic)
-├── check-ocr-project-469619-d18e1cdc414d.json (Google Cloud credentials)
-├── requirements.txt                            (Python dependencies)
-└── temp_uploads/                               (Temporary file storage)
+├── api_server.py                     (Main Flask API server)
+├── mindee_extractor.py               (Mindee-powered document extraction helpers)
+├── fraud_detection_service.py        (ML ensemble + PDF validation)
+├── ml_risk_scorer.py                 (Risk scoring helper for documents)
+├── models/                           (Serialized scaler/model artifacts)
+├── templates/                        (Web demo templates)
+├── temp_uploads/                     (Temporary file storage)
+├── requirements.txt                  (Python dependencies)
+└── README.md
 ```
 
 ## API Endpoints
@@ -71,8 +73,8 @@ Server will start on: **http://localhost:5000**
 
 ## Features
 
-✅ PDF to image conversion (PyMuPDF)
-✅ Google Vision API integration
+✅ Mindee Document AI extraction for checks, paystubs, money orders, statements
+✅ PDF to text extraction with PyMuPDF/pdfplumber fallback
 ✅ Improved confidence scoring
 ✅ CORS enabled for React frontend
 ✅ Automatic file cleanup
@@ -81,17 +83,16 @@ Server will start on: **http://localhost:5000**
 
 ## Dependencies
 
-- Flask - Web framework
-- Flask-CORS - CORS support
-- google-cloud-vision - OCR API
-- PyMuPDF (fitz) - PDF processing
-- Pillow - Image processing
+- Flask / Flask-CORS - REST API + CORS support
+- mindee - Document AI extraction SDK
+- PyMuPDF (fitz) & pdfplumber - PDF parsing
+- Pillow - Image processing utilities
 
 Install all: `pip install -r requirements.txt`
 
 ## Environment
 
 - Python 3.13
-- Google Cloud Vision API credentials required
-- Credentials file must be in Backend directory
+- `MINDEE_API_KEY` plus optional `MINDEE_MODEL_ID_*` environment variables
+- Temp folder write access for upload handling
 
