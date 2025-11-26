@@ -146,20 +146,32 @@ const MoneyOrderAnalysis = () => {
 
     setLoading(true);
     setError(null);
+    setResults(null);
 
     try {
       const response = await analyzeMoneyOrder(file);
+      console.log('✅ Money order analysis response received:', response);
+      console.log('Response success:', response.success);
+      console.log('Response has data:', !!response.data);
+
       if (response.success === false) {
+        console.log('❌ Analysis failed - showing error');
         setError(response.error || response.message || 'Failed to analyze money order. Please try again.');
         setResults(null);
+      } else if (response.success === true && response.data) {
+        console.log('✅ Analysis successful - displaying results');
+        setResults(response.data);
+        setError(null);
       } else {
-        setResults(response.data || response);
+        console.log('⚠️ Unexpected response format:', response);
+        setError('Received unexpected response format from server');
+        setResults(null);
       }
     } catch (err) {
+      console.error('❌ Money order analysis error caught:', err);
       const errorMessage = err.error || err.message || err.response?.data?.error || err.response?.data?.message || 'Failed to analyze money order. Please try again.';
       setError(errorMessage);
       setResults(null);
-      console.error('Money order analysis error:', err);
     } finally {
       setLoading(false);
     }
@@ -447,7 +459,7 @@ const MoneyOrderAnalysis = () => {
           )}
 
           {/* Display Results */}
-          {results && results.success && analysisData && (
+          {results && analysisData && (
             <div className="fade-in">
               {(() => {
                 const fraudRiskPercent = toPercent(
