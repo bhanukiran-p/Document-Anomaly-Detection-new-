@@ -15,9 +15,11 @@ import os
 try:
     from langchain_agent.fraud_analysis_agent import FraudAnalysisAgent
     from langchain_agent.tools import DataAccessTools
+    from normalization.normalizer_factory import NormalizerFactory
+    from ml_models.paystub_fraud_detector import PaystubFraudDetector
     ML_AVAILABLE = True
-except ImportError:
-    print("Warning: LangChain agent not available")
+except ImportError as e:
+    print(f"Warning: Components not available: {e}")
     ML_AVAILABLE = False
 
 class PaystubExtractor:
@@ -48,12 +50,18 @@ class PaystubExtractor:
                     model=os.getenv('AI_MODEL', 'gpt-4'),
                     data_tools=self.data_tools
                 )
-                print("Paystub AI Agent initialized")
+                
+                # Initialize ML Detector
+                self.fraud_detector = PaystubFraudDetector()
+                
+                print("Paystub AI Agent & ML Detector initialized")
             except Exception as e:
                 print(f"Failed to initialize Paystub AI Agent: {e}")
                 self.ai_agent = None
+                self.fraud_detector = None
         else:
             self.ai_agent = None
+            self.fraud_detector = None
     
     def extract_text(self, file_bytes, file_type='image'):
         """Extract text from image or PDF using Vision API"""
@@ -541,36 +549,32 @@ class PaystubExtractor:
         details['extraction_timestamp'] = datetime.now().isoformat()
         
         # Perform AI Analysis
-        if self.ai_agent:
+        if self.ai_agent and self.fraud_detector:
             try:
-                # Prepare data for AI
-                # Mock ML analysis for now as we don't have a specific Paystub ML model yet
-                # We'll generate a basic risk score based on extraction confidence
-                risk_score = 1.0 - (confidence / 100.0)
-                if risk_score < 0.1: risk_score = 0.1
+                # 1. Normalize Data
+                normalized_data = NormalizerFactory.normalize_data('paystub', details)
                 
-                ml_analysis = {
-                    'fraud_risk_score': risk_score,
-                    'risk_level': 'LOW' if risk_score < 0.3 else 'MEDIUM' if risk_score < 0.7 else 'HIGH',
-                    'model_confidence': confidence / 100.0,
-                    'feature_importance': ['extraction_confidence']
-                }
+                # 2. ML Fraud Prediction
+                ml_analysis = self.fraud_detector.predict_fraud(normalized_data, text)
                 
                 # Mock customer ID
                 customer_id = 'CUST_PAYSTUB_001'
                 
-                # Run AI analysis
-                ai_analysis = self.ai_agent.analyze_fraud(ml_analysis, details, customer_id)
+                # 3. AI Agent Analysis
+                ai_analysis = self.ai_agent.analyze_fraud(ml_analysis, normalized_data, customer_id)
                 
-                # Add AI results to details
+                # Add results to details
                 details['fraud_risk_score'] = ml_analysis['fraud_risk_score']
                 details['model_confidence'] = ml_analysis['model_confidence']
                 details['ai_recommendation'] = ai_analysis.get('recommendation', 'UNKNOWN')
                 details['actionable_recommendations'] = ai_analysis.get('actionable_recommendations', [])
                 details['ai_analysis'] = ai_analysis
+                details['normalized_data'] = normalized_data
                 
             except Exception as e:
                 print(f"Error in Paystub AI analysis: {e}")
+                import traceback
+                traceback.print_exc()
         
         return details
 

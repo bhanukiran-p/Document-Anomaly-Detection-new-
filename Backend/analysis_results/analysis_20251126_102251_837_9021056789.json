@@ -1,0 +1,67 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "MoneyGram",
+    "serial_number": "9021056789",
+    "amount": "$450.00",
+    "amount_in_words": "FOUR HUNDRED FIFTY AND 00/100 DOLLARS",
+    "payee": "SARAH CHEN",
+    "purchaser": "MICHAEL LEE",
+    "date": "11/24/2025",
+    "location": "ANYTOWN, CA 91234",
+    "receipt_number": null,
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "medium",
+      "type": "fraud_risk_medium",
+      "message": "[ESCALATE] Moderate fraud risk (56.6%). Requires manual review."
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Missing critical fields (score: 0.95)"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Invalid address format"
+    },
+    {
+      "severity": "medium",
+      "type": "ai_indicator",
+      "message": "Missing critical fields (score: 0.95)"
+    },
+    {
+      "severity": "medium",
+      "type": "ai_indicator",
+      "message": "Invalid address format"
+    }
+  ],
+  "confidence_score": 99,
+  "raw_text": "MoneyGram\nPAY TO: SARAH CHEN\nMONEYGRAM\u24c7\nMONEY ORDER\n9021056789\nAMOUNT:\n$450.00\nDATE: NOVEMBER 24, 2025\nFOUR HUNDRED FIFTY AND 00/100 DOLLARS\nFROM: MICHAEL LEE\n456 PINE ST, ANYTOWN, CA 91234\n9835647821\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-11-26T10:22:51.837439",
+  "normalized_data": {
+    "issuer_name": "MoneyGram",
+    "serial_primary": "9021056789",
+    "serial_secondary": null,
+    "recipient": "SARAH CHEN",
+    "sender_name": "MICHAEL LEE",
+    "sender_address": null,
+    "amount_numeric": {
+      "value": 450.0,
+      "currency": "USD"
+    },
+    "amount_written": "FOUR HUNDRED FIFTY AND 00/100 DOLLARS",
+    "date": "11-24-2025",
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 0.8,
+  "ml_analysis": {
+    "fraud_risk_score": 0.566,
+    "risk_level": "MEDIUM",
+    "model_confidence": 0.7,
+    "model_scores": {
+      "random_forest": 0.414,
+      "xgboost": 
