@@ -99,4 +99,7 @@
     "model_confidence": 0.986,
     "model_scores": {
       "random_forest": 0.99,
-      "xgboost": 
+      "xgboost": 0.982
+    }
+  }
+}

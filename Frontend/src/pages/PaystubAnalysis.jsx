@@ -311,7 +311,7 @@ const PaystubAnalysis = () => {
   };
   
   const headerStyle = {
-    background: colors.gradients.navy,
+    background: 'linear-gradient(135deg, #0f1820 0%, #1a2332 100%)',
     padding: '2rem',
     borderRadius: '0.75rem',
     color: colors.foreground,
@@ -348,7 +348,7 @@ const PaystubAnalysis = () => {
     backgroundColor: primary,
     color: colors.primaryForeground,
     padding: '1rem 2rem',
-    borderRadius: '0.5rem',
+    borderRadius: '50px',
     fontSize: '1rem',
     fontWeight: '600',
     width: '100%',
@@ -421,7 +421,9 @@ const PaystubAnalysis = () => {
   return (
     <div style={containerStyle}>
       <div style={headerStyle}>
-        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Paystub Analysis</h1>
+        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>
+          Paystub <span style={{ color: primary }}>Analysis</span>
+        </h1>
         <p>Analyze paystubs for payroll verification</p>
       </div>
       
@@ -560,11 +562,6 @@ const PaystubAnalysis = () => {
 
                 return (
                   <>
-                    <div style={confidenceStyle(confidencePercent)}>
-                      [{confidencePercent >= 70 ? 'HIGH' : confidencePercent >= 50 ? 'MEDIUM' : 'LOW'}]{' '}
-                      Confidence: {confidencePercent.toFixed(1)}%
-                    </div>
-
                     {/* Fraud Risk Score Card */}
                     <div style={{
                       ...resultCardStyle,
@@ -611,9 +608,6 @@ const PaystubAnalysis = () => {
                       </div>
                       <div style={{ fontSize: '2rem', fontWeight: 'bold', color: aiColor }}>
                         {aiRecommendation}
-                      </div>
-                      <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginTop: '0.25rem' }}>
-                        AI Confidence: {aiConfidencePercent.toFixed(1)}%
                       </div>
                     </div>
                   </>

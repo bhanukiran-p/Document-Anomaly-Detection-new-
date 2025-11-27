@@ -1,0 +1,229 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "bank_name": "Bank of America",
+    "country": null,
+    "check_type": null,
+    "payee_name": "John Smith Construction",
+    "amount_numeric": 950.25,
+    "amount": "$950.25",
+    "amount_words": "Nine hundred fifty and 25/100",
+    "date": "2023-10-26",
+    "check_number": "0001",
+    "routing_number": "111000025",
+    "account_number": "000123456789",
+    "memo": "Testing 123",
+    "signature_detected": true,
+    "currency": null,
+    "payer_name": "Michael A. Johnson",
+    "payer_address": "456 Maple Avenue\nAnytown, USA 67890",
+    "raw_ocr_text": "Michael A. Johnson ACCOUNT Bank of America COUNT ESCCOUNT 0150\n456 Maple Avenue\nAnytown, USA 67890\nESTABLISEE\nBIDEIN ACOBIN AICOQUATT\nPAY TO THE\nORDER OF OUNT\nACCOUNT\nESTAL\nACCOUNT ESTA COUNT ESV/CO October 26, 2023\nJohn Smith Construction SIED ACCOUNT ESTABILISED\nNine hundred fifty and 25/100 SUNT-\nESTADESACOUNT\nACCOUN\nMEMO\nESTABLISED ACOUN\nTesting 123\nVE\nSUNT ESTABLISED\nACCOUNT ESABISED\n$\nCO\n950.25\nCASOUNT\nDATE\nDOLLARS\nPLISIED ACCOUNT\nACCOUNT ABACOUNT ESTABELLISEDED ACCOUN\n\u2446111000025\u2446\nSTALISEID AC\n000123456789\u2448\nMichael A. Johnson\nESAAB SISED\n0001 TAI LED ISCCONNT\nCUN\n\n"
+  },
+  "raw_fields": {
+    "payer_name": "Michael A. Johnson",
+    "payer_address": "456 Maple Avenue\nAnytown, USA 67890",
+    "pay_to": "John Smith Construction",
+    "check_date": "2023-10-26",
+    "number_amount": 950.25,
+    "word_amount": "Nine hundred fifty and 25/100",
+    "bank_name": "Bank of America",
+    "routing_number": "111000025",
+    "account_number": "000123456789",
+    "check_number": "0001",
+    "signature": true,
+    "memo": "Testing 123"
+  },
+  "raw_text": "Michael A. Johnson ACCOUNT Bank of America COUNT ESCCOUNT 0150\n456 Maple Avenue\nAnytown, USA 67890\nESTABLISEE\nBIDEIN ACOBIN AICOQUATT\nPAY TO THE\nORDER OF OUNT\nACCOUNT\nESTAL\nACCOUNT ESTA COUNT ESV/CO October 26, 2023\nJohn Smith Construction SIED ACCOUNT ESTABILISED\nNine hundred fifty and 25/100 SUNT-\nESTADESACOUNT\nACCOUN\nMEMO\nESTABLISED ACOUN\nTesting 123\nVE\nSUNT ESTABLISED\nACCOUNT ESABISED\n$\nCO\n950.25\nCASOUNT\nDATE\nDOLLARS\nPLISIED ACCOUNT\nACCOUNT ABACOUNT ESTABELLISEDED ACCOUN\n\u2446111000025\u2446\nSTALISEID AC\n000123456789\u2448\nMichael A. Johnson\nESAAB SISED\n0001 TAI LED ISCCONNT\nCUN\n\n",
+  "timestamp": "2025-11-26T23:39:10.719467",
+  "anomalies": [
+    "High fraud risk detected: CRITICAL (score: 100.00%)",
+    "AI recommendation: REJECT"
+  ],
+  "confidence_score": 0.9982000000000001,
+  "normalized_data": {
+    "bank_name": "Bank of America",
+    "country": null,
+    "check_number": "0001",
+    "routing_number": "111000025",
+    "account_number": "000123456789",
+    "check_type": null,
+    "payer_name": "Michael A. Johnson",
+    "payer_address": "456 Maple Avenue Anytown, USA 67890",
+    "payee_name": "John Smith Construction",
+    "amount_numeric": 950.25,
+    "amount_words": "Nine hundred fifty and 25/100",
+    "currency": null,
+    "date": "10-26-2023",
+    "memo": "Testing 123",
+    "signature_detected": true
+  },
+  "missing_fields": [
+    "country",
+    "check_type",
+    "currency"
+  ],
+  "ml_analysis": {
+    "fraud_risk_score": 1.0,
+    "risk_level": "CRITICAL",
+    "model_confidence": 0.991,
+    "model_scores": {
+      "random_forest": 1.0,
+      "xgboost": 0.9950000047683716,
+      "ensemble": 0.997,
+      "adjusted": 1.0
+    },
+    "feature_importance": [
+      "Amount parsing confidence low",
+      "Suspicious amount pattern detected",
+      "Missing critical fields (score: 0.55)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "Invalid serial format: 'N/A'",
+      "Invalid issuer: 'Bank of America'"
+    ],
+    "missing_field_scores": [
+      {
+        "field": "Amount (numeric)",
+        "is_present": true,
+        "max_score_percent": 95,
+        "applied_score_percent": 0
+      },
+      {
+        "field": "Amount (written)",
+        "is_present": false,
+        "max_score_percent": 80,
+        "applied_score_percent": 80
+      },
+      {
+        "field": "Serial number",
+        "is_present": false,
+        "max_score_percent": 85,
+        "applied_score_percent": 85
+      },
+      {
+        "field": "Payee / recipient",
+        "is_present": true,
+        "max_score_percent": 75,
+        "applied_score_percent": 0
+      },
+      {
+        "field": "Sender / purchaser",
+        "is_present": true,
+        "max_score_percent": 60,
+        "applied_score_percent": 0
+      },
+      {
+        "field": "Issue date",
+        "is_present": true,
+        "max_score_percent": 40,
+        "applied_score_percent": 0
+      },
+      {
+        "field": "Signature",
+        "is_present": false,
+        "max_score_percent": 70,
+        "applied_score_percent": 70
+      },
+      {
+        "field": "Issuer",
+        "is_present": true,
+        "max_score_percent": 35,
+        "applied_score_percent": 0
+      }
+    ],
+    "prediction_type": "model"
+  },
+  "ml_fraud_analysis": {
+    "fraud_risk_score": 1.0,
+    "risk_level": "CRITICAL",
+    "model_confidence": 0.991,
+    "model_scores": {
+      "random_forest": 1.0,
+      "xgboost": 0.9950000047683716,
+      "ensemble": 0.997,
+      "adjusted": 1.0
+    },
+    "feature_importance": [
+      "Amount parsing confidence low",
+      "Suspicious amount pattern detected",
+      "Missing critical fields (score: 0.55)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "Invalid serial format: 'N/A'",
+      "Invalid issuer: 'Bank of America'"
+    ],
+    "missing_field_scores": [
+      {
+        "field": "Amount (numeric)",
+        "is_present": true,
+        "max_score_percent": 95,
+        "applied_score_percent": 0
+      },
+      {
+        "field": "Amount (written)",
+        "is_present": false,
+        "max_score_percent": 80,
+        "applied_score_percent": 80
+      },
+      {
+        "field": "Serial number",
+        "is_present": false,
+        "max_score_percent": 85,
+        "applied_score_percent": 85
+      },
+      {
+        "field": "Payee / recipient",
+        "is_present": true,
+        "max_score_percent": 75,
+        "applied_score_percent": 0
+      },
+      {
+        "field": "Sender / purchaser",
+        "is_present": true,
+        "max_score_percent": 60,
+        "applied_score_percent": 0
+      },
+      {
+        "field": "Issue date",
+        "is_present": true,
+        "max_score_percent": 40,
+        "applied_score_percent": 0
+      },
+      {
+        "field": "Signature",
+        "is_present": false,
+        "max_score_percent": 70,
+        "applied_score_percent": 70
+      },
+      {
+        "field": "Issuer",
+        "is_present": true,
+        "max_score_percent": 35,
+        "applied_score_percent": 0
+      }
+    ],
+    "prediction_type": "model"
+  },
+  "ai_analysis": {
+    "recommendation": "REJECT",
+    "confidence": 0.9,
+    "summary": "High fraud risk (100.0%). Multiple red flags detected.",
+    "reasoning": "ML models indicate high probability of fraud. Critical anomalies found.",
+    "key_indicators": [
+      "Amount parsing confidence low",
+      "Suspicious amount pattern detected",
+      "Missing critical fields (score: 0.55)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern"
+    ],
+    "verification_notes": "Manual verification recommended for borderline cases",
+    "training_insights": "N/A (fallback mode - training data not analyzed)",
+    "historical_comparison": "N/A (fallback mode - past cases not analyzed)",
+    "analysis_type": "rule_based",
+    "model_used": "fallback"
+  },
+  "analysis_id": "analysis_20251126_233910_719_0001",
+  "saved_timestamp": "2025-11-26T23:39:10.719950"
+}
