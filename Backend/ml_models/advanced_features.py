@@ -261,26 +261,38 @@ class AdvancedFeatureExtractor:
         Returns:
             Weighted missing fields score (higher = more missing)
         """
-        # Field weights (higher = more critical)
-        field_weights = {
-            'amount_numeric': 0.30,
-            'amount': 0.30,
-            'serial_primary': 0.25,
-            'serial_number': 0.25,
-            'recipient': 0.20,
-            'payee': 0.20,
-            'sender_name': 0.15,
-            'purchaser': 0.15,
-            'date': 0.10,
-            'signature': 0.05,
-            'issuer_name': 0.05,
-            'issuer': 0.05
-        }
+        # Define critical field groups (aliases) and their weights
+        # If ANY field in the group is present, the requirement is met
+        field_groups = [
+            # Amount (Weight: 0.30)
+            {'aliases': ['amount_numeric', 'amount'], 'weight': 0.30},
+            
+            # Serial Number (Weight: 0.25)
+            {'aliases': ['serial_primary', 'serial_number'], 'weight': 0.25},
+            
+            # Recipient (Weight: 0.20)
+            {'aliases': ['recipient', 'payee', 'pay_to'], 'weight': 0.20},
+            
+            # Sender (Weight: 0.15)
+            {'aliases': ['sender_name', 'purchaser', 'from', 'sender'], 'weight': 0.15},
+            
+            # Date (Weight: 0.10)
+            {'aliases': ['date'], 'weight': 0.10},
+            
+            # Signature (Weight: 0.05)
+            {'aliases': ['signature'], 'weight': 0.05},
+            
+            # Issuer (Weight: 0.05)
+            {'aliases': ['issuer_name', 'issuer'], 'weight': 0.05}
+        ]
 
         score = 0.0
-        for field, weight in field_weights.items():
-            if not data.get(field):
-                score += weight
+        for group in field_groups:
+            # Check if ANY alias in the group has a value
+            is_present = any(data.get(alias) for alias in group['aliases'])
+            
+            if not is_present:
+                score += group['weight']
 
         return min(5.0, score)  # Cap at 5.0
 
