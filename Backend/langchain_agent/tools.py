@@ -20,7 +20,7 @@ class DataAccessTools:
                  customer_history_path: str,
                  fraud_cases_path: str,
                  training_data_path: str = 'ml_models/training_data.csv',
-                 results_storage_dir: str = 'analysis_results'):
+                 results_storage_dir: str = '/Users/hareenedla/Hareen/Document-Anomaly-Detection-new--Testing/Backend/analysis_results'):
         """
         Initialize data access tools
 
@@ -65,22 +65,57 @@ class DataAccessTools:
         Returns:
             Dictionary with customer history
         """
-        if self.customer_history_df is None:
-            return {
-                'customer_id': customer_id,
-                'num_transactions': 0,
-                'num_fraud_incidents': 0,
-                'avg_amount': 0.0,
-                'transactions': []
-            }
+        # Initialize history from CSV or empty
+        if self.customer_history_df is not None:
+            customer_data = self.customer_history_df[
+                self.customer_history_df['customer_id'] == customer_id
+            ]
+            if not customer_data.empty:
+                # Use CSV data
+                num_transactions = len(customer_data)
+                num_fraud = len(customer_data[customer_data.get('is_fraud', False) == True])
+                avg_amount = customer_data['amount'].mean() if 'amount' in customer_data.columns else 0.0
+                recent = customer_data.tail(5).to_dict('records')
+                
+                return {
+                    'customer_id': customer_id,
+                    'num_transactions': num_transactions,
+                    'num_fraud_incidents': num_fraud,
+                    'avg_amount': float(avg_amount),
+                    'transactions': recent,
+                    'fraud_rate': f"{(num_fraud/num_transactions*100):.1f}%" if num_transactions > 0 else "0%"
+                }
 
-        # Filter transactions for this customer
-        customer_data = self.customer_history_df[
-            self.customer_history_df['customer_id'] == customer_id
-        ]
+        # If not in CSV, scan analysis results folder
+        return self._scan_results_for_history(customer_id)
 
-        if customer_data.empty:
-            return {
+    def _scan_results_for_history(self, customer_id: str) -> Dict:
+        """
+        Scan stored analysis results for a customer's history
+        """
+        all_results = self.result_storage.get_all_stored_results()
+        customer_txns = []
+        
+        for result in all_results:
+            # Check extracted data for customer name/ID match
+            extracted = result.get('extracted_data', {})
+            normalized = result.get('normalized_data', {})
+            
+            # Check purchaser name (since we don't have IDs in money orders usually)
+            purchaser = extracted.get('purchaser', '').upper()
+            sender = normalized.get('sender_name', '').upper()
+            target_id = customer_id.upper()
+            
+            if target_id in purchaser or target_id in sender:
+                txn = {
+                    'date': extracted.get('date', 'Unknown'),
+                    'amount': normalized.get('amount_numeric', {}).get('value', 0),
+                    'is_fraud': result.get('ai_analysis', {}).get('recommendation') == 'REJECT'
+                }
+                customer_txns.append(txn)
+
+        if not customer_txns:
+             return {
                 'customer_id': customer_id,
                 'num_transactions': 0,
                 'num_fraud_incidents': 0,
@@ -89,21 +124,20 @@ class DataAccessTools:
                 'note': 'New customer - no history found'
             }
 
-        # Calculate statistics
-        num_transactions = len(customer_data)
-        num_fraud = len(customer_data[customer_data.get('is_fraud', False) == True])
-        avg_amount = customer_data['amount'].mean() if 'amount' in customer_data.columns else 0.0
-
-        # Get recent transactions
-        recent = customer_data.tail(5).to_dict('records')
+        # Calculate stats from found results
+        num_transactions = len(customer_txns)
+        num_fraud = len([t for t in customer_txns if t['is_fraud']])
+        total_amount = sum(t['amount'] for t in customer_txns)
+        avg_amount = total_amount / num_transactions if num_transactions > 0 else 0
 
         return {
             'customer_id': customer_id,
             'num_transactions': num_transactions,
             'num_fraud_incidents': num_fraud,
             'avg_amount': float(avg_amount),
-            'transactions': recent,
-            'fraud_rate': f"{(num_fraud/num_transactions*100):.1f}%" if num_transactions > 0 else "0%"
+            'transactions': customer_txns[:5], # Last 5
+            'fraud_rate': f"{(num_fraud/num_transactions*100):.1f}%",
+            'source': 'analysis_history'
         }
 
     def search_similar_fraud_cases(self,

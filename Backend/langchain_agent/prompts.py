@@ -53,7 +53,6 @@ ANALYSIS_TEMPLATE = """Analyze this money order for fraud risk:
 - Purchaser: {purchaser}
 - Date: {date}
 - Location: {location}
-- Receipt Number: {receipt_number}
 - Signature: {signature}
 
 **ML-Identified Fraud Indicators:**

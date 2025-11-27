@@ -21,6 +21,21 @@ from auth_supabase import login_user_supabase, register_user_supabase, verify_to
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Load environment variables explicitly
+from dotenv import load_dotenv
+load_dotenv()
+
+# Check for critical environment variables
+if os.getenv('OPENAI_API_KEY'):
+    logger.info("✅ OPENAI_API_KEY found in environment")
+else:
+    logger.error("❌ OPENAI_API_KEY NOT found in environment")
+
+if os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
+    logger.info(f"✅ Google Credentials path: {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}")
+else:
+    logger.warning("⚠️ GOOGLE_APPLICATION_CREDENTIALS not set")
+
 # Load the production extractor
 spec = importlib.util.spec_from_file_location(
     "production_extractor", 
@@ -438,29 +453,31 @@ def analyze_money_order():
             if os.path.exists(filepath):
                 os.remove(filepath)
 
-            # Extract simplified response (only 3 fields)
-            simplified_data = {}
+            def convert_numpy_types(obj):
+                import numpy as np
+                if isinstance(obj, (np.int_, np.intc, np.intp, np.int8,
+                                  np.int16, np.int32, np.int64, np.uint8,
+                                  np.uint16, np.uint32, np.uint64)):
+                    return int(obj)
+                elif isinstance(obj, (np.float16, np.float32, np.float64)):
+                    return float(obj)
+                elif isinstance(obj, (np.ndarray,)):
+                    return obj.tolist()
+                elif isinstance(obj, dict):
+                    return {k: convert_numpy_types(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [convert_numpy_types(i) for i in obj]
+                return obj
+
+            # Return full response
             analysis_id = result.get('analysis_id')
-
-            # Check if we have ML and AI analysis
-            ml_analysis = result.get('ml_analysis', {})
-            ai_analysis = result.get('ai_analysis', {})
-
-            if ml_analysis and ai_analysis:
-                # Return simplified response
-                simplified_data = {
-                    'fraud_risk_score': ml_analysis.get('fraud_risk_score', 0),
-                    'model_confidence': ml_analysis.get('model_confidence', 0),
-                    'ai_recommendation': ai_analysis.get('recommendation', 'UNKNOWN'),
-                    'actionable_recommendations': ai_analysis.get('actionable_recommendations', [])
-                }
-            else:
-                # Fallback if ML/AI not available - return basic result
-                simplified_data = result
+            
+            # Ensure we return the complete result with converted types
+            response_data = convert_numpy_types(result)
 
             return jsonify({
                 'success': True,
-                'data': simplified_data,
+                'data': response_data,
                 'analysis_id': analysis_id,  # For download
                 'message': 'Money order analyzed successfully'
             })
