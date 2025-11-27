@@ -31,7 +31,8 @@ class MoneyGramNormalizer(BaseNormalizer):
             'money_order_number': 'serial_primary', # MoneyGram specific
             'reference_number': 'serial_secondary', # Reference number
             'control_number': 'serial_secondary',   # Control number
-            'receipt_number': 'serial_secondary',   # Receipt number
+            'serial_secondary': 'serial_secondary', # Direct match
+
 
             # Party information
             'pay_to': 'recipient',                  # Who receives money

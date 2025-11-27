@@ -132,13 +132,14 @@ class MoneyOrderExtractor:
         extracted_data = {
             'issuer': self._extract_issuer(text),
             'serial_number': self._extract_serial_number(text),
+            'serial_secondary': self._extract_secondary_serial(text),
             'amount': self._extract_amount(text),
             'amount_in_words': self._extract_amount_in_words(text),
             'payee': self._extract_payee(text),
             'purchaser': self._extract_purchaser(text),
+            'sender_address': self._extract_sender_address(text),
             'date': self._extract_date(text),
             'location': self._extract_location(text),
-            'receipt_number': self._extract_receipt_number(text),
             'signature': self._extract_signature(text),
         }
 
@@ -193,7 +194,7 @@ class MoneyOrderExtractor:
                 analysis_id = save_analysis_result(
                     response,
                     serial_number=serial_number,
-                    storage_dir='analysis_results'
+                    storage_dir='/Users/hareenedla/Hareen/Document-Anomaly-Detection-new--Testing/Backend/analysis_results'
                 )
                 if analysis_id:
                     response['analysis_id'] = analysis_id
@@ -244,6 +245,21 @@ class MoneyOrderExtractor:
             if match:
                 return match.group(1).strip()
 
+        return None
+
+    def _extract_secondary_serial(self, text: str) -> Optional[str]:
+        """Extract secondary serial number (often at bottom left)"""
+        # Look for long numeric strings that are NOT the primary serial
+        # This is a heuristic: usually 10-12 digits at the bottom
+        lines = text.split('\n')
+        
+        # Check bottom 3 lines
+        for line in lines[-3:]:
+            # Look for 10+ digit number
+            match = re.search(r'\b(\d{10,12})\b', line)
+            if match:
+                return match.group(1)
+                
         return None
 
     def _extract_amount(self, text: str) -> Optional[str]:
@@ -312,6 +328,25 @@ class MoneyOrderExtractor:
                 if len(purchaser) > 3:
                     return purchaser
 
+        return None
+
+    def _extract_sender_address(self, text: str) -> Optional[str]:
+        """Extract sender address (often below purchaser name)"""
+        # Look for address-like patterns (Number Street, City, State Zip)
+        # This is tricky without NER, but we can look for lines containing Zip codes
+        
+        lines = text.split('\n')
+        for i, line in enumerate(lines):
+            # Check if line looks like an address line (contains 5 digit zip)
+            if re.search(r'\b\d{5}\b', line) and re.search(r'[A-Z]{2}', line):
+                # If we found a city/state/zip line, the street address is likely the line before
+                if i > 0:
+                    street_line = lines[i-1]
+                    # Simple heuristic: starts with number
+                    if re.match(r'^\d+', street_line.strip()):
+                        return f"{street_line.strip()}, {line.strip()}"
+                return line.strip()
+                
         return None
 
     def _extract_date(self, text: str) -> Optional[str]:
@@ -457,24 +492,18 @@ class MoneyOrderExtractor:
             # Fallback to empty anomalies if ML not available
             return ([], None, None)
 
-        try:
-            # Run ML fraud detection
-            ml_analysis = self.fraud_detector.predict_fraud(data, text)
+        # Run ML fraud detection
+        ml_analysis = self.fraud_detector.predict_fraud(data, text)
 
-            # Run AI analysis (pass optional customer_id if available in context)
-            # For now, using a mock customer_id - in production, this would come from request
-            customer_id = data.get('customer_id', 'CUST001')  # Mock for testing
-            ai_analysis = self.ai_agent.analyze_fraud(ml_analysis, data, customer_id)
+        # Run AI analysis (pass optional customer_id if available in context)
+        # For now, using a mock customer_id - in production, this would come from request
+        customer_id = data.get('customer_id', 'CUST001')  # Mock for testing
+        ai_analysis = self.ai_agent.analyze_fraud(ml_analysis, data, customer_id)
 
-            # Convert ML fraud indicators into anomalies format for frontend
-            anomalies = self._convert_to_anomalies(ml_analysis, ai_analysis)
+        # Convert ML fraud indicators into anomalies format for frontend
+        anomalies = self._convert_to_anomalies(ml_analysis, ai_analysis)
 
-            return (anomalies, ml_analysis, ai_analysis)
-
-        except Exception as e:
-            print(f"Error in fraud detection: {e}")
-            # Return empty on error
-            return ([], None, None)
+        return (anomalies, ml_analysis, ai_analysis)
 
     def _convert_to_anomalies(self, ml_analysis: Dict, ai_analysis: Dict) -> list:
         """
@@ -549,7 +578,6 @@ class MoneyOrderExtractor:
             'signature': 6,
             'date': 3,
             'location': 1,
-            'receipt_number': 1
         }
 
         score = 0

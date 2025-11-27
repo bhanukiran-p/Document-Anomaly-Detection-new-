@@ -186,10 +186,14 @@ const MoneyOrderAnalysis = () => {
 
   // Get the data from response (could be results.data or results directly)
   const analysisData = results?.data || results;
-  const hasSimplifiedFields = analysisData && (
-    analysisData.fraud_risk_score !== undefined ||
-    analysisData.model_confidence !== undefined ||
-    analysisData.ai_recommendation !== undefined
+
+  // Check for new nested structure or old flat structure
+  const mlAnalysis = analysisData?.ml_analysis || analysisData;
+  const aiAnalysis = analysisData?.ai_analysis || analysisData;
+
+  const hasResults = analysisData && (
+    (mlAnalysis.fraud_risk_score !== undefined) ||
+    (aiAnalysis.recommendation !== undefined || aiAnalysis.ai_recommendation !== undefined)
   );
 
   return (
@@ -330,8 +334,8 @@ const MoneyOrderAnalysis = () => {
             </div>
           )}
 
-          {/* Display Results - Simplified 3-field format */}
-          {results && results.success && hasSimplifiedFields && (
+          {/* Display Results */}
+          {results && results.success && hasResults && (
             <div className="fade-in">
               {/* Fraud Risk Score Card */}
               <div style={{
@@ -344,7 +348,7 @@ const MoneyOrderAnalysis = () => {
                   Fraud Risk Score
                 </div>
                 <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: primary }}>
-                  {(analysisData.fraud_risk_score * 100).toFixed(1)}%
+                  {(mlAnalysis.fraud_risk_score * 100).toFixed(1)}%
                 </div>
               </div>
 
@@ -359,7 +363,7 @@ const MoneyOrderAnalysis = () => {
                   Model Confidence
                 </div>
                 <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: colors.status.success }}>
-                  {(analysisData.model_confidence * 100).toFixed(1)}%
+                  {(mlAnalysis.model_confidence * 100).toFixed(1)}%
                 </div>
               </div>
 
@@ -367,12 +371,12 @@ const MoneyOrderAnalysis = () => {
               <div style={{
                 ...resultCardStyle,
                 marginBottom: '1.5rem',
-                backgroundColor: analysisData.ai_recommendation === 'APPROVE' ? `${colors.status.success}20` :
-                                 analysisData.ai_recommendation === 'REJECT' ? `${primary}20` :
-                                 `${colors.status.warning}20`,
-                borderLeft: `4px solid ${analysisData.ai_recommendation === 'APPROVE' ? colors.status.success :
-                                           analysisData.ai_recommendation === 'REJECT' ? primary :
-                                           colors.status.warning}`,
+                backgroundColor: (aiAnalysis.recommendation || aiAnalysis.ai_recommendation) === 'APPROVE' ? `${colors.status.success}20` :
+                  (aiAnalysis.recommendation || aiAnalysis.ai_recommendation) === 'REJECT' ? `${primary}20` :
+                    `${colors.status.warning}20`,
+                borderLeft: `4px solid ${(aiAnalysis.recommendation || aiAnalysis.ai_recommendation) === 'APPROVE' ? colors.status.success :
+                  (aiAnalysis.recommendation || aiAnalysis.ai_recommendation) === 'REJECT' ? primary :
+                    colors.status.warning}`,
               }}>
                 <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
                   AI Recommendation
@@ -380,16 +384,16 @@ const MoneyOrderAnalysis = () => {
                 <div style={{
                   fontSize: '2rem',
                   fontWeight: 'bold',
-                  color: analysisData.ai_recommendation === 'APPROVE' ? colors.status.success :
-                         analysisData.ai_recommendation === 'REJECT' ? primary :
-                         colors.status.warning,
+                  color: (aiAnalysis.recommendation || aiAnalysis.ai_recommendation) === 'APPROVE' ? colors.status.success :
+                    (aiAnalysis.recommendation || aiAnalysis.ai_recommendation) === 'REJECT' ? primary :
+                      colors.status.warning,
                 }}>
-                  {analysisData.ai_recommendation || 'UNKNOWN'}
+                  {aiAnalysis.recommendation || aiAnalysis.ai_recommendation || 'UNKNOWN'}
                 </div>
               </div>
 
               {/* Actionable Recommendations Card */}
-              {analysisData.actionable_recommendations && analysisData.actionable_recommendations.length > 0 && (
+              {aiAnalysis.actionable_recommendations && aiAnalysis.actionable_recommendations.length > 0 && (
                 <div style={{
                   ...resultCardStyle,
                   marginBottom: '1.5rem',
@@ -399,7 +403,7 @@ const MoneyOrderAnalysis = () => {
                     Actionable Recommendations
                   </div>
                   <ul style={{ margin: 0, paddingLeft: '1.5rem', color: colors.foreground }}>
-                    {analysisData.actionable_recommendations.map((rec, index) => (
+                    {aiAnalysis.actionable_recommendations.map((rec, index) => (
                       <li key={index} style={{ marginBottom: '0.5rem', fontSize: '1.1rem' }}>{rec}</li>
                     ))}
                   </ul>
@@ -431,7 +435,7 @@ const MoneyOrderAnalysis = () => {
           )}
 
           {/* Legacy format support (if old API response structure) */}
-          {results && results.success && !hasSimplifiedFields && results.data && (
+          {results && results.success && !hasResults && results.data && (
             <div className="fade-in">
               <div style={{
                 backgroundColor: colors.secondary,
