@@ -9,6 +9,15 @@ from typing import Dict, List, Optional
 import numpy as np
 from .advanced_features import AdvancedFeatureExtractor
 
+# Import enhanced signature detector
+try:
+    from utils.signature_detector import get_signature_detector, get_signature_confidence
+    SIGNATURE_DETECTOR_AVAILABLE = True
+except ImportError:
+    SIGNATURE_DETECTOR_AVAILABLE = False
+    get_signature_detector = None
+    get_signature_confidence = None
+
 
 class FeatureExtractor:
     """
@@ -103,8 +112,9 @@ class FeatureExtractor:
         # Feature 12: Location present
         features.append(1.0 if location else 0.0)
 
-        # Feature 13: Signature present
-        features.append(1.0 if signature else 0.0)
+        # Feature 13: Signature present (enhanced detection)
+        signature_score = self._detect_signature_enhanced(extracted_data, raw_text, signature)
+        features.append(signature_score)
 
         # Feature 14: Receipt/Secondary serial present
         features.append(1.0 if receipt else 0.0)
@@ -359,6 +369,56 @@ class FeatureExtractor:
             return 2.0  # High
         else:
             return 3.0  # Very high
+
+    def _detect_signature_enhanced(self, extracted_data: Dict, raw_text: str, signature_field) -> float:
+        """
+        Enhanced signature detection using multiple methods.
+
+        Args:
+            extracted_data: Extracted document data
+            raw_text: Raw OCR text
+            signature_field: Direct signature field value
+
+        Returns:
+            float: Signature presence score 0.0-1.0
+        """
+        if SIGNATURE_DETECTOR_AVAILABLE:
+            try:
+                # Use enhanced signature detector
+                detector = get_signature_detector()
+                is_present, confidence, method = detector.detect_signature(extracted_data, raw_text)
+
+                if is_present:
+                    return confidence
+                else:
+                    return 0.0
+
+            except Exception as e:
+                # Fallback to basic detection on error
+                import logging
+                logging.warning(f"Enhanced signature detection failed: {e}")
+
+        # Fallback: Basic signature detection
+        if signature_field:
+            # Check if it's a boolean or has value
+            if isinstance(signature_field, bool):
+                return 1.0 if signature_field else 0.0
+            elif isinstance(signature_field, str) and signature_field.strip():
+                return 0.8
+            elif isinstance(signature_field, (int, float)) and signature_field > 0:
+                return min(1.0, float(signature_field))
+
+        # Check for signer name as fallback
+        signer = (
+            extracted_data.get('payer_name') or
+            extracted_data.get('purchaser') or
+            extracted_data.get('drawer')
+        )
+
+        if signer and len(str(signer).strip()) > 2:
+            return 0.5  # Indirect evidence
+
+        return 0.0
 
     def get_feature_names(self) -> List[str]:
         """Return all 30 feature names for interpretability"""

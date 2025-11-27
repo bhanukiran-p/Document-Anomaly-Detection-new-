@@ -1,8 +1,8 @@
 import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { analyzeCheck } from '../services/api';
+import { analyzeCheck, submitFeedback } from '../services/api';
 import { colors } from '../styles/colors';
-import { FaExclamationTriangle, FaLandmark, FaCog } from 'react-icons/fa';
+import { FaExclamationTriangle, FaLandmark, FaCog, FaThumbsUp, FaThumbsDown, FaCheckCircle } from 'react-icons/fa';
 
 const buildCheckSections = (data) => ({
   'Bank Information': [
@@ -93,6 +93,8 @@ const CheckAnalysis = () => {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
   const emphasizeAnomaly = (text) => {
     if (!text) return text;
     const lower = text.toLowerCase();
@@ -137,6 +139,7 @@ const CheckAnalysis = () => {
     setLoading(true);
     setError(null);
     setResults(null);
+    setFeedbackSubmitted(false);
 
     try {
       const response = await analyzeCheck(file);
@@ -164,6 +167,26 @@ const CheckAnalysis = () => {
       setResults(null);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleFeedback = async (isFraud) => {
+    if (!results || !results.analysis_id) {
+      console.error('No analysis ID available for feedback');
+      return;
+    }
+
+    setSubmittingFeedback(true);
+
+    try {
+      await submitFeedback(results.analysis_id, isFraud);
+      setFeedbackSubmitted(true);
+      console.log('✅ Feedback submitted successfully');
+    } catch (err) {
+      console.error('❌ Feedback submission error:', err);
+      setError('Failed to submit feedback. Please try again.');
+    } finally {
+      setSubmittingFeedback(false);
     }
   };
   
@@ -271,7 +294,7 @@ const CheckAnalysis = () => {
   };
   
   const headerStyle = {
-    background: colors.gradients.navy,
+    background: 'linear-gradient(135deg, #0f1820 0%, #1a2332 100%)',
     padding: '2rem',
     borderRadius: '0.75rem',
     color: colors.foreground,
@@ -308,7 +331,7 @@ const CheckAnalysis = () => {
     backgroundColor: primary,
     color: colors.primaryForeground,
     padding: '1rem 2rem',
-    borderRadius: '0.5rem',
+    borderRadius: '50px',
     fontSize: '1rem',
     fontWeight: '600',
     width: '100%',
@@ -342,7 +365,9 @@ const CheckAnalysis = () => {
   return (
     <div style={containerStyle}>
       <div style={headerStyle}>
-        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Check Analysis</h1>
+        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>
+          Check <span style={{ color: primary }}>Analysis</span>
+        </h1>
         <p>Analyze bank checks for fraud detection</p>
       </div>
       
@@ -522,11 +547,6 @@ const CheckAnalysis = () => {
                 }}>
                   {results.ai_recommendation || 'UNKNOWN'}
                 </div>
-                {results.ai_confidence !== undefined && (
-                  <div style={{ fontSize: '0.85rem', color: colors.mutedForeground, marginTop: '0.5rem' }}>
-                    AI Confidence: {(results.ai_confidence * 100).toFixed(1)}%
-                  </div>
-                )}
               </div>
 
               {/* Anomalies Section */}
@@ -721,45 +741,156 @@ const CheckAnalysis = () => {
               <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
                 <button
                   style={{
-                    ...buttonStyle,
-                    backgroundColor: colors.card,
-                    color: colors.foreground,
-                    border: `2px solid ${colors.border}`,
-                    marginTop: 0,
+                    backgroundColor: '#E53935',
+                    color: '#FFFFFF',
+                    padding: '1rem 2rem',
+                    borderRadius: '50px',
+                    fontSize: '1rem',
+                    fontWeight: '600',
+                    border: 'none',
+                    cursor: 'pointer',
                     flex: 1,
+                    transition: 'all 0.3s',
+                    boxShadow: '0 4px 12px rgba(229, 57, 53, 0.3)',
                   }}
                   onClick={downloadJSON}
                   onMouseEnter={(e) => {
-                    e.target.style.borderColor = primary;
-                    e.target.style.backgroundColor = colors.muted;
+                    e.target.style.backgroundColor = '#C62828';
+                    e.target.style.transform = 'translateY(-2px)';
+                    e.target.style.boxShadow = '0 6px 16px rgba(229, 57, 53, 0.4)';
                   }}
                   onMouseLeave={(e) => {
-                    e.target.style.borderColor = colors.border;
-                    e.target.style.backgroundColor = colors.card;
+                    e.target.style.backgroundColor = '#E53935';
+                    e.target.style.transform = 'translateY(0)';
+                    e.target.style.boxShadow = '0 4px 12px rgba(229, 57, 53, 0.3)';
                   }}
                 >
                   Download JSON
                 </button>
                 <button
                   style={{
-                    ...buttonStyle,
-                    backgroundColor: primary,
-                    color: colors.primaryForeground,
-                    border: `2px solid ${primary}`,
-                    marginTop: 0,
+                    backgroundColor: '#26A69A',
+                    color: '#FFFFFF',
+                    padding: '1rem 2rem',
+                    borderRadius: '50px',
+                    fontSize: '1rem',
+                    fontWeight: '600',
+                    border: 'none',
+                    cursor: 'pointer',
                     flex: 1,
+                    transition: 'all 0.3s',
+                    boxShadow: '0 4px 12px rgba(38, 166, 154, 0.3)',
                   }}
                   onClick={downloadCSV}
                   onMouseEnter={(e) => {
-                    e.target.style.backgroundColor = colors.accent.redDark;
+                    e.target.style.backgroundColor = '#00897B';
+                    e.target.style.transform = 'translateY(-2px)';
+                    e.target.style.boxShadow = '0 6px 16px rgba(38, 166, 154, 0.4)';
                   }}
                   onMouseLeave={(e) => {
-                    e.target.style.backgroundColor = primary;
+                    e.target.style.backgroundColor = '#26A69A';
+                    e.target.style.transform = 'translateY(0)';
+                    e.target.style.boxShadow = '0 4px 12px rgba(38, 166, 154, 0.3)';
                   }}
                 >
-                  Download CSV (Dashboard)
+                  Download CSV
                 </button>
               </div>
+
+              {/* Feedback Section */}
+              {results && results.analysis_id && (
+                <div style={{
+                  marginTop: '2rem',
+                  padding: '1.5rem',
+                  backgroundColor: colors.card,
+                  borderRadius: '0.75rem',
+                  border: `1px solid ${colors.border}`,
+                }}>
+                  <h4 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                      <circle cx="12" cy="7" r="4"/>
+                    </svg>
+                    Help Improve Our AI
+                  </h4>
+                  <p style={{ color: colors.mutedForeground, marginBottom: '1rem', fontSize: '0.9rem' }}>
+                    Was this analysis accurate? Your feedback helps our AI learn and improve.
+                  </p>
+
+                  {feedbackSubmitted ? (
+                    <div style={{
+                      backgroundColor: `${colors.status.success}15`,
+                      border: `1px solid ${colors.status.success}`,
+                      borderRadius: '0.5rem',
+                      padding: '1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      color: colors.status.success
+                    }}>
+                      <FaCheckCircle />
+                      <span style={{ fontWeight: '500' }}>Thank you! Your feedback has been recorded.</span>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: '1rem' }}>
+                      <button
+                        style={{
+                          backgroundColor: colors.status.success,
+                          color: '#FFFFFF',
+                          padding: '0.75rem 1.5rem',
+                          borderRadius: '50px',
+                          fontSize: '0.95rem',
+                          fontWeight: '600',
+                          border: 'none',
+                          cursor: submittingFeedback ? 'not-allowed' : 'pointer',
+                          flex: 1,
+                          transition: 'all 0.3s',
+                          opacity: submittingFeedback ? 0.6 : 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.5rem',
+                          boxShadow: `0 4px 12px ${colors.status.success}40`,
+                        }}
+                        onClick={() => handleFeedback(false)}
+                        disabled={submittingFeedback}
+                        onMouseEnter={(e) => !submittingFeedback && (e.target.style.transform = 'translateY(-2px)')}
+                        onMouseLeave={(e) => !submittingFeedback && (e.target.style.transform = 'translateY(0)')}
+                      >
+                        <FaThumbsUp />
+                        Accurate (Legitimate)
+                      </button>
+                      <button
+                        style={{
+                          backgroundColor: '#E53935',
+                          color: '#FFFFFF',
+                          padding: '0.75rem 1.5rem',
+                          borderRadius: '50px',
+                          fontSize: '0.95rem',
+                          fontWeight: '600',
+                          border: 'none',
+                          cursor: submittingFeedback ? 'not-allowed' : 'pointer',
+                          flex: 1,
+                          transition: 'all 0.3s',
+                          opacity: submittingFeedback ? 0.6 : 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.5rem',
+                          boxShadow: '0 4px 12px rgba(229, 57, 53, 0.3)',
+                        }}
+                        onClick={() => handleFeedback(true)}
+                        disabled={submittingFeedback}
+                        onMouseEnter={(e) => !submittingFeedback && (e.target.style.transform = 'translateY(-2px)')}
+                        onMouseLeave={(e) => !submittingFeedback && (e.target.style.transform = 'translateY(0)')}
+                      >
+                        <FaThumbsDown />
+                        Inaccurate (Fraud)
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

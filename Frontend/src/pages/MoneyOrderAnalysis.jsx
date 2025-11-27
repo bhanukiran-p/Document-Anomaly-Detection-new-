@@ -317,7 +317,7 @@ const MoneyOrderAnalysis = () => {
   };
 
   const headerStyle = {
-    background: colors.gradients.dark,
+    background: 'linear-gradient(135deg, #0f1820 0%, #1a2332 100%)',
     padding: '2rem',
     borderRadius: '0.75rem',
     color: colors.foreground,
@@ -355,7 +355,7 @@ const MoneyOrderAnalysis = () => {
     backgroundColor: primary,
     color: colors.primaryForeground,
     padding: '1rem 2rem',
-    borderRadius: '0.5rem',
+    borderRadius: '50px',
     fontSize: '1rem',
     fontWeight: '600',
     width: '100%',
@@ -403,8 +403,8 @@ const MoneyOrderAnalysis = () => {
   return (
     <div style={containerStyle}>
       <div style={headerStyle}>
-        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem', color: colors.foreground }}>
-          Money Order Analysis
+        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>
+          Money Order <span style={{ color: primary }}>Analysis</span>
         </h1>
         <p style={{ color: colors.mutedForeground }}>Analyze money orders for fraud and anomaly detection</p>
       </div>
@@ -610,9 +610,6 @@ const MoneyOrderAnalysis = () => {
                       </div>
                       <div style={{ fontSize: '2rem', fontWeight: 'bold', color: aiColor }}>
                         {aiRecommendation}
-                      </div>
-                      <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginTop: '0.25rem' }}>
-                        AI Confidence: {aiConfidencePercent.toFixed(1)}%
                       </div>
                     </div>
                   </>

@@ -125,5 +125,31 @@ export const getFraudModelsStatus = async () => {
   }
 };
 
+// Feedback API
+export const submitFeedback = async (analysisId, isFraud, notes = '', userId = null) => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/feedback/submit`, {
+      analysis_id: analysisId,
+      is_fraud: isFraud,
+      notes,
+      user_id: userId
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Feedback submission error:', error);
+    throw error.response?.data || { error: 'Failed to submit feedback' };
+  }
+};
+
+export const getFeedbackStats = async () => {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/feedback/stats`);
+    return response.data;
+  } catch (error) {
+    console.error('Feedback stats error:', error);
+    throw error.response?.data || { error: 'Failed to get feedback stats' };
+  }
+};
+
 export default api;
 
