@@ -20,7 +20,7 @@ class DataAccessTools:
                  customer_history_path: str,
                  fraud_cases_path: str,
                  training_data_path: str = 'ml_models/training_data.csv',
-                 results_storage_dir: str = '/Users/hareenedla/Hareen/Document-Anomaly-Detection-new--Testing/Backend/analysis_results'):
+                 results_storage_dir: str = None):
         """
         Initialize data access tools
 
@@ -42,7 +42,9 @@ class DataAccessTools:
         self.fraud_cases_df = self._load_csv(fraud_cases_path)
         self.training_data_df = self._load_csv(training_data_path)
 
-        # Initialize result storage
+        # Initialize result storage with default if not provided
+        if results_storage_dir is None:
+            results_storage_dir = os.path.join(os.path.dirname(__file__), '..', 'analysis_results')
         self.result_storage = ResultStorage(results_storage_dir)
 
     def _load_csv(self, path: str) -> Optional[pd.DataFrame]:

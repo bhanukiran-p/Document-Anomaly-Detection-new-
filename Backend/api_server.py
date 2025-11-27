@@ -13,9 +13,10 @@ import importlib.util
 import re
 import fitz
 from google.cloud import vision
-from auth import login_user, register_user, token_required
-from supabase_client import get_supabase, check_connection as check_supabase_connection
-from auth_supabase import login_user_supabase, register_user_supabase, verify_token
+from auth import login_user, register_user
+from database.supabase_client import get_supabase, check_connection as check_supabase_connection
+from auth.supabase_auth import login_user_supabase, register_user_supabase, verify_token
+from database.document_storage import store_money_order_analysis, store_bank_statement_analysis, store_paystub_analysis, store_check_analysis
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -37,15 +38,20 @@ else:
     logger.warning("⚠️ GOOGLE_APPLICATION_CREDENTIALS not set")
 
 # Load the production extractor
-spec = importlib.util.spec_from_file_location(
-    "production_extractor", 
-    "production_google_vision-extractor.py"
-)
-production_extractor = importlib.util.module_from_spec(spec)
-sys.modules["production_extractor"] = production_extractor
-spec.loader.exec_module(production_extractor)
-
-ProductionCheckExtractor = production_extractor.ProductionCheckExtractor
+try:
+    spec = importlib.util.spec_from_file_location(
+        "production_extractor",
+        "production_google_vision-extractor.py"
+    )
+    production_extractor = importlib.util.module_from_spec(spec)
+    sys.modules["production_extractor"] = production_extractor
+    spec.loader.exec_module(production_extractor)
+    ProductionCheckExtractor = production_extractor.ProductionCheckExtractor
+    PRODUCTION_EXTRACTOR_AVAILABLE = True
+except Exception as e:
+    logger.warning(f"Production extractor not available: {e}. Using Mindee extractor instead.")
+    ProductionCheckExtractor = None
+    PRODUCTION_EXTRACTOR_AVAILABLE = False
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for React frontend
@@ -252,39 +258,52 @@ def analyze_check():
             extractor = ProductionCheckExtractor(CREDENTIALS_PATH)
 
             # Get raw text for document type detection
-            if vision_client is None:
-                raise RuntimeError("Vision API client not initialized. Check credentials.")
+            raw_text = ""
+            if vision_client is not None:
+                try:
+                    with open(filepath, 'rb') as image_file:
+                        content = image_file.read()
+                    image = vision.Image(content=content)
+                    response = vision_client.text_detection(image=image)
+                    raw_text = response.text_annotations[0].description if response.text_annotations else ""
+                    logger.info("Successfully extracted text using Vision API")
+                except Exception as e:
+                    logger.warning(f"Vision API text extraction failed: {e}. Proceeding without OCR text.")
+                    raw_text = ""
+            else:
+                logger.warning("Vision API client not initialized. Proceeding without OCR text.")
 
-            with open(filepath, 'rb') as image_file:
-                content = image_file.read()
-            image = vision.Image(content=content)
-            response = vision_client.text_detection(image=image)
-            raw_text = response.text_annotations[0].description if response.text_annotations else ""
-            logger.info(f"Detected document type: check")
-            
-            # Validate document type
-            detected_type = detect_document_type(raw_text)
-            if detected_type != 'check' and detected_type != 'unknown':
-                # Clean up
-                if os.path.exists(filepath):
-                    os.remove(filepath)
-                return jsonify({
-                    'success': False,
-                    'error': f'Wrong document type detected. This appears to be a {detected_type}, not a check. Please upload a bank check.',
-                    'message': 'Document type mismatch'
-                }), 400
+            # Validate document type only if we have text
+            if raw_text:
+                logger.info(f"Detected document type: check")
+                detected_type = detect_document_type(raw_text)
+                if detected_type != 'check' and detected_type != 'unknown':
+                    # Clean up
+                    if os.path.exists(filepath):
+                        os.remove(filepath)
+                    return jsonify({
+                        'success': False,
+                        'error': f'Wrong document type detected. This appears to be a {detected_type}, not a check. Please upload a bank check.',
+                        'message': 'Document type mismatch'
+                    }), 400
             
             # Analyze check details
             details = extractor.extract_check_details(filepath)
-            
+
             # Clean up temp file
             if os.path.exists(filepath):
                 os.remove(filepath)
-            
+
+            # Store to database
+            user_id = request.form.get('user_id', 'public')
+            document_id = store_check_analysis(user_id, filename, details)
+            logger.info(f"Check stored to database: {document_id}")
+
             return jsonify({
                 'success': True,
                 'data': details,
-                'message': 'Check analyzed successfully'
+                'document_id': document_id,
+                'message': 'Check analyzed and stored successfully'
             })
             
         except Exception as e:
@@ -349,15 +368,21 @@ def analyze_paystub():
             
             # Extract and analyze
             details = extractor.extract_paystub(text)
-            
+
             # Clean up
             if os.path.exists(filepath):
                 os.remove(filepath)
-            
+
+            # Store to database
+            user_id = request.form.get('user_id', 'public')
+            document_id = store_paystub_analysis(user_id, filename, details)
+            logger.info(f"Paystub stored to database: {document_id}")
+
             return jsonify({
                 'success': True,
                 'data': details,
-                'message': 'Paystub analyzed successfully'
+                'document_id': document_id,
+                'message': 'Paystub analyzed and stored successfully'
             })
             
         except Exception as e:
@@ -414,26 +439,33 @@ def analyze_money_order():
                     raise
 
             # Get raw text for document type detection
-            if vision_client is None:
-                raise RuntimeError("Vision API client not initialized. Check credentials.")
+            raw_text = ""
+            if vision_client is not None:
+                try:
+                    with open(filepath, 'rb') as image_file:
+                        content = image_file.read()
+                    image = vision.Image(content=content)
+                    response = vision_client.text_detection(image=image)
+                    raw_text = response.text_annotations[0].description if response.text_annotations else ""
+                    logger.info("Successfully extracted text using Vision API")
+                except Exception as e:
+                    logger.warning(f"Vision API text extraction failed: {e}. Proceeding without OCR text.")
+                    raw_text = ""
+            else:
+                logger.warning("Vision API client not initialized. Proceeding without OCR text.")
 
-            with open(filepath, 'rb') as image_file:
-                content = image_file.read()
-            image = vision.Image(content=content)
-            response = vision_client.text_detection(image=image)
-            raw_text = response.text_annotations[0].description if response.text_annotations else ""
-
-            # Validate document type
-            detected_type = detect_document_type(raw_text)
-            if detected_type != 'money_order' and detected_type != 'unknown':
-                # Clean up
-                if os.path.exists(filepath):
-                    os.remove(filepath)
-                return jsonify({
-                    'success': False,
-                    'error': f'Wrong document type detected. This appears to be a {detected_type}, not a money order. Please upload a money order document.',
-                    'message': 'Document type mismatch'
-                }), 400
+            # Validate document type only if we have text
+            if raw_text:
+                detected_type = detect_document_type(raw_text)
+                if detected_type != 'money_order' and detected_type != 'unknown':
+                    # Clean up
+                    if os.path.exists(filepath):
+                        os.remove(filepath)
+                    return jsonify({
+                        'success': False,
+                        'error': f'Wrong document type detected. This appears to be a {detected_type}, not a money order. Please upload a money order document.',
+                        'message': 'Document type mismatch'
+                    }), 400
 
             # Try to import and use money order extractor
             try:
@@ -471,15 +503,21 @@ def analyze_money_order():
 
             # Return full response
             analysis_id = result.get('analysis_id')
-            
+
             # Ensure we return the complete result with converted types
             response_data = convert_numpy_types(result)
+
+            # Store to database
+            user_id = request.form.get('user_id', 'public')
+            document_id = store_money_order_analysis(user_id, filename, result)
+            logger.info(f"Money order stored to database: {document_id}")
 
             return jsonify({
                 'success': True,
                 'data': response_data,
                 'analysis_id': analysis_id,  # For download
-                'message': 'Money order analyzed successfully'
+                'document_id': document_id,  # Database record ID
+                'message': 'Money order analyzed and stored successfully'
             })
 
         except Exception as e:
@@ -609,10 +647,16 @@ def analyze_bank_statement():
             if os.path.exists(filepath):
                 os.remove(filepath)
 
+            # Store to database
+            user_id = request.form.get('user_id', 'public')
+            document_id = store_bank_statement_analysis(user_id, filename, result)
+            logger.info(f"Bank statement stored to database: {document_id}")
+
             return jsonify({
                 'success': True,
                 'data': result,
-                'message': 'Bank statement analyzed successfully'
+                'document_id': document_id,
+                'message': 'Bank statement analyzed and stored successfully'
             })
 
         except Exception as e:

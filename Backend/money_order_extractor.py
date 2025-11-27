@@ -191,10 +191,12 @@ class MoneyOrderExtractor:
         if ML_AVAILABLE and (ml_analysis or ai_analysis):
             try:
                 serial_number = extracted_data.get('serial_number', 'unknown')
+                # Use relative path for analysis results
+                storage_dir = os.path.join(os.path.dirname(__file__), 'analysis_results')
                 analysis_id = save_analysis_result(
                     response,
                     serial_number=serial_number,
-                    storage_dir='/Users/hareenedla/Hareen/Document-Anomaly-Detection-new--Testing/Backend/analysis_results'
+                    storage_dir=storage_dir
                 )
                 if analysis_id:
                     response['analysis_id'] = analysis_id
