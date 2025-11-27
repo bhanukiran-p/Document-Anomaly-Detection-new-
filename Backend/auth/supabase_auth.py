@@ -60,7 +60,7 @@ def verify_token(token):
 def register_user_supabase(email, password):
     """Register a new user in Supabase"""
     try:
-        from supabase_client import get_supabase
+        from database.supabase_client import get_supabase
         supabase = get_supabase()
 
         # Validate email and password
@@ -120,7 +120,7 @@ def register_user_supabase(email, password):
 def login_user_supabase(email, password):
     """Login user and return JWT token"""
     try:
-        from supabase_client import get_supabase
+        from database.supabase_client import get_supabase
         supabase = get_supabase()
 
         # Fetch user from Supabase using Email column
