@@ -257,7 +257,7 @@ const TransactionTypePage = () => {
       
       {/* Main Content */}
       <main style={mainContentStyle}>
-        <img src="/DAD_red_white.png" alt="DAD Logo" style={dadLogoStyle} />
+        <img src="/New_FD.png" alt="DAD Logo" style={dadLogoStyle} />
         <h1 style={titleStyle}>Choose Transaction Type</h1>
         <p style={subtitleStyle}>Select your preferred fraud detection method</p>
         
