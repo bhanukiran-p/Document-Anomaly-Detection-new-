@@ -62,7 +62,7 @@ class FeatureExtractor:
         signature = self._get_field(extracted_data, 'signature', 'signature')
 
         # Get receipt/secondary serial
-        receipt = self._get_field(extracted_data, 'receipt_number', 'serial_secondary')
+        # receipt = self._get_field(extracted_data, 'receipt_number', 'serial_secondary')
 
         # Get location (old field only, not in normalized schema)
         location = extracted_data.get('location')
@@ -106,8 +106,8 @@ class FeatureExtractor:
         # Feature 13: Signature present
         features.append(1.0 if signature else 0.0)
 
-        # Feature 14: Receipt/Secondary serial present
-        features.append(1.0 if receipt else 0.0)
+        # Feature 14: Receipt/Secondary serial present (REMOVED)
+        features.append(0.0)
 
         # Feature 15: Missing critical fields count
         features.append(self._count_missing_fields(extracted_data))

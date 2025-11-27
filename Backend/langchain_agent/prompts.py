@@ -32,6 +32,7 @@ Always provide:
 4. Specific fraud indicators found (if any)
 5. Risk mitigation suggestions
 6. References to training patterns and past cases (if relevant)
+7. **3 Specific, Actionable Recommendations** for the user (e.g., "Verify ID", "Call Bank", "Check Signature")
 
 Be thorough but concise. Focus on actionable insights backed by data."""
 
@@ -52,7 +53,6 @@ ANALYSIS_TEMPLATE = """Analyze this money order for fraud risk:
 - Purchaser: {purchaser}
 - Date: {date}
 - Location: {location}
-- Receipt Number: {receipt_number}
 - Signature: {signature}
 
 **ML-Identified Fraud Indicators:**
@@ -79,6 +79,10 @@ SUMMARY: [1-2 sentence overview]
 REASONING: [Detailed analysis in bullet points, referencing training patterns and past cases when relevant]
 KEY_INDICATORS: [Specific fraud indicators found, if any]
 VERIFICATION_NOTES: [What should be manually verified, if escalated]
+ACTIONABLE_RECOMMENDATIONS:
+- [Recommendation 1]
+- [Recommendation 2]
+- [Recommendation 3]
 TRAINING_INSIGHTS: [How training dataset patterns support or contradict this analysis]
 HISTORICAL_COMPARISON: [Comparison to similar past cases, if available]"""
 

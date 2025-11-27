@@ -46,7 +46,7 @@
     {
       "severity": "medium",
       "type": "ml_indicator",
-      "message": "Very old (389 days)"
+      "message": "Very old (394 days)"
     },
     {
       "severity": "critical",
@@ -76,7 +76,7 @@
   ],
   "confidence_score": 85,
   "raw_text": "MoneyGram\nPAY TO: SARAH CHEN\nMONEYGRAM\u00ae\nMONEY ORDER\n9021056789\nAMOUNT:\n$450.00\nDATE:\nOCTOBER 26, 2024\nFOUN HUNDRED FISTY AND 00//100 DOLLARS\nFROM: MICHAEL LEE\n456 PINE ST, ANYTOWN, CA 91234\n9835647821\nAGENT AUTHORIZED SIGNATURE",
-  "timestamp": "2025-11-19T14:18:32.258394",
+  "timestamp": "2025-11-24T19:51:49.672331",
   "normalized_data": {
     "issuer_name": "MoneyGram",
     "serial_primary": "9021056789",
