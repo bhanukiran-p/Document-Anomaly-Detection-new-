@@ -53,6 +53,8 @@ except Exception as e:
     ProductionCheckExtractor = None
     PRODUCTION_EXTRACTOR_AVAILABLE = False
 
+from check_analysis.orchestrator import CheckAnalysisOrchestrator
+
 app = Flask(__name__)
 CORS(app)  # Enable CORS for React frontend
 
@@ -254,9 +256,6 @@ def analyze_check():
                     logger.error(f"PDF conversion failed: {e}")
                     raise
 
-            # Initialize extractor and get text for validation
-            extractor = ProductionCheckExtractor(CREDENTIALS_PATH)
-
             # Get raw text for document type detection
             raw_text = ""
             if vision_client is not None:
@@ -287,8 +286,23 @@ def analyze_check():
                         'message': 'Document type mismatch'
                     }), 400
             
-            # Analyze check details
-            details = extractor.extract_check_details(filepath)
+            # Use ProductionCheckExtractor if available, otherwise use check.extract_check
+            if PRODUCTION_EXTRACTOR_AVAILABLE and ProductionCheckExtractor:
+                try:
+                    extractor = ProductionCheckExtractor(CREDENTIALS_PATH)
+                    details = extractor.extract_check_details(filepath)
+                    logger.info("Check extracted using ProductionCheckExtractor")
+                except Exception as e:
+                    logger.warning(f"Production extractor failed: {e}. Falling back to Mindee extractor.")
+                    # Fall through to use check.extract_check
+                    from check import extract_check
+                    details = extract_check(filepath)
+                    logger.info("Check extracted using Mindee extractor (fallback)")
+            else:
+                # Use Mindee-based extractor as fallback
+                from check import extract_check
+                details = extract_check(filepath)
+                logger.info("Check extracted using Mindee extractor")
 
             # Clean up temp file
             if os.path.exists(filepath):
