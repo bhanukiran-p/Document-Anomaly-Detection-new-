@@ -104,6 +104,31 @@ except Exception as e:
     logger.warning(f"Failed to initialize Supabase: {e}")
     supabase = None
 
+def get_agent_service():
+    """
+    Return an agent service instance. Tries to import a real implementation if available;
+    otherwise returns a lightweight fallback that provides the expected interface.
+    The agent service must implement generate_comprehensive_analysis(full_analysis_result)
+    and return a dict with at least a 'success' boolean.
+    """
+    try:
+        # Import the actual agent service from real_time module
+        from real_time.agent_endpoint import AgentAnalysisService
+        logger.info("Successfully loaded AgentAnalysisService")
+        return AgentAnalysisService()
+    except Exception as e:
+        logger.warning(f"Failed to load AgentAnalysisService: {e}")
+        # Fallback agent service that returns a non-failing response indicating
+        # the agent is not configured. This prevents NameError and keeps endpoints working.
+        class FallbackAgentService:
+            def generate_comprehensive_analysis(self, full_analysis_result):
+                # Minimal, safe response the caller expects
+                return {
+                    'success': False,
+                    'error': f'Agent service not configured: {str(e)}'
+                }
+        return FallbackAgentService()
+
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -549,6 +574,11 @@ def analyze_real_time_transactions():
     try:
         logger.info("Received real-time transaction analysis request")
 
+
+
+
+
+
         # Check for CSV file
         if 'file' not in request.files:
             return jsonify({
@@ -611,6 +641,45 @@ def analyze_real_time_transactions():
                     'recommendations': []
                 }
 
+            # Step 4: Generate LLM agent analysis
+            logger.info("Step 4: Generating LLM agent analysis")
+            agent_analysis = None
+            try:
+                # Combine all data for agent analysis
+                full_analysis_result = {
+                    'csv_info': {
+                        'total_count': csv_result['total_count'],
+                        'date_range': csv_result['date_range'],
+                        'summary': csv_result['summary'],
+                        'columns': csv_result.get('columns', [])
+                    },
+                    'fraud_detection': {
+                        'fraud_count': fraud_result['fraud_count'],
+                        'legitimate_count': fraud_result['legitimate_count'],
+                        'fraud_percentage': fraud_result['fraud_percentage'],
+                        'legitimate_percentage': fraud_result['legitimate_percentage'],
+                        'total_fraud_amount': fraud_result['total_fraud_amount'],
+                        'total_legitimate_amount': fraud_result['total_legitimate_amount'],
+                        'total_amount': fraud_result['total_amount'],
+                        'average_fraud_probability': fraud_result['average_fraud_probability'],
+                        'model_type': fraud_result['model_type']
+                    },
+                    'transactions': fraud_result['transactions'],
+                    'insights': insights_result
+                }
+
+                # Get agent service and generate analysis
+                agent_service = get_agent_service()
+                agent_result = agent_service.generate_comprehensive_analysis(full_analysis_result)
+
+                if agent_result.get('success'):
+                    agent_analysis = agent_result.get('agent_analysis')
+                    logger.info("LLM agent analysis generated successfully")
+                else:
+                    logger.warning(f"Agent analysis failed: {agent_result.get('error')}")
+            except Exception as agent_error:
+                logger.warning(f"Could not generate agent analysis: {agent_error}")
+
             # Cleanup file
             cleanup_file(filepath)
 
@@ -635,6 +704,7 @@ def analyze_real_time_transactions():
                 },
                 'transactions': fraud_result['transactions'],
                 'insights': insights_result,
+                'agent_analysis': agent_analysis,  # Include LLM agent analysis
                 'analyzed_at': datetime.now().isoformat()
             }
 

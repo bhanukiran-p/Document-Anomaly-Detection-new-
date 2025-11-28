@@ -60,13 +60,16 @@ def process_transaction_csv(file_path: str) -> Dict[str, Any]:
         # Get date range
         date_range = _get_date_range(df)
 
+        # Get detailed column information
+        column_info = _get_column_info(df)
+
         result = {
             'success': True,
             'transactions': transactions,
             'total_count': len(transactions),
             'date_range': date_range,
             'summary': summary,
-            'columns': list(df.columns),
+            'columns': column_info,
             'processed_at': datetime.now().isoformat()
         }
 
@@ -103,22 +106,35 @@ def _standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
         'customer': 'customer_id',
         'cust_id': 'customer_id',
         'user_id': 'customer_id',
-        'account_number': 'customer_id',
+        'customerid': 'customer_id',
 
         'txn_id': 'transaction_id',
         'trans_id': 'transaction_id',
         'id': 'transaction_id',
+        'transactionid': 'transaction_id',
 
         'balance_after': 'account_balance',
         'balance': 'account_balance',
         'ending_balance': 'account_balance',
 
-        'type': 'category',
-        'transaction_type': 'category',
+        'type': 'transaction_type',
+        'trans_type': 'transaction_type',
+
         'cat': 'category',
         'transaction_description': 'description',
         'desc': 'description',
-        'description': 'description',
+
+        # New mappings for your data structure
+        'firstname': 'first_name',
+        'lastname': 'last_name',
+        'homecity': 'home_city',
+        'homecountry': 'home_country',
+        'transactionlocationcity': 'transaction_city',
+        'transactionlocationcountry': 'transaction_country',
+        'loginlocationcity': 'login_city',
+        'loginlocationcountry': 'login_country',
+        'isbycheck': 'is_by_check',
+        'accountnumber': 'account_number',
     }
 
     # Apply mappings
@@ -207,6 +223,43 @@ def _get_date_range(df: pd.DataFrame) -> Dict[str, str]:
         'start': None,
         'end': None
     }
+
+
+def _get_column_info(df: pd.DataFrame) -> List[Dict[str, Any]]:
+    """
+    Get detailed information about each column in the DataFrame.
+
+    Args:
+        df: Pandas DataFrame
+
+    Returns:
+        List of dictionaries with column information
+    """
+    column_info = []
+
+    for col in df.columns:
+        info = {
+            'name': col,
+            'type': str(df[col].dtype),
+            'non_null_count': int(df[col].notna().sum()),
+            'null_count': int(df[col].isna().sum()),
+            'unique_values': int(df[col].nunique())
+        }
+
+        # Add sample values for non-numeric columns
+        if df[col].dtype == 'object':
+            sample_values = df[col].dropna().unique()[:3].tolist()
+            info['sample_values'] = sample_values
+
+        # Add statistics for numeric columns
+        elif pd.api.types.is_numeric_dtype(df[col]):
+            info['min'] = float(df[col].min()) if df[col].notna().any() else None
+            info['max'] = float(df[col].max()) if df[col].notna().any() else None
+            info['mean'] = float(df[col].mean()) if df[col].notna().any() else None
+
+        column_info.append(info)
+
+    return column_info
 
 
 def validate_csv_format(df: pd.DataFrame) -> Dict[str, Any]:

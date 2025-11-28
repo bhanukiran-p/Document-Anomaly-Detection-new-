@@ -1,7 +1,13 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { colors } from '../styles/colors';
-import { FaLink, FaUpload, FaArrowLeft, FaChartBar } from 'react-icons/fa';
+import {
+  FaLink,
+  FaUpload,
+  FaArrowLeft,
+  FaChartBar,
+  FaRobot
+} from 'react-icons/fa';
 import { analyzeRealTimeTransactions } from '../services/api';
 
 const RealTimeAnalysis = () => {
@@ -15,6 +21,7 @@ const RealTimeAnalysis = () => {
   const [showInsights, setShowInsights] = useState(false);
   const [csvPreview, setCsvPreview] = useState(null);
   const [hoveredPlotIndex, setHoveredPlotIndex] = useState(null);
+  const [zoomedPlot, setZoomedPlot] = useState(null);
 
   const primary = colors.primaryColor || colors.accent?.red || '#E53935';
 
@@ -528,6 +535,47 @@ const RealTimeAnalysis = () => {
       lineHeight: 1.2,
       border: '1px solid rgba(148, 163, 184, 0.3)',
     },
+    zoomModalOverlay: {
+      position: 'fixed',
+      inset: 0,
+      backgroundColor: 'rgba(6, 11, 23, 0.85)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 999,
+      padding: '2rem',
+      backdropFilter: 'blur(6px)',
+    },
+    zoomModalContent: {
+      backgroundColor: '#0f172a',
+      borderRadius: '1.5rem',
+      padding: '2rem',
+      maxWidth: '90vw',
+      maxHeight: '90vh',
+      overflow: 'auto',
+      border: `1px solid ${colors.border}`,
+      boxShadow: '0 35px 60px rgba(0,0,0,0.65)',
+      width: 'min(1000px, 90vw)',
+    },
+    zoomModalHeader: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: '1.5rem',
+      color: '#f8fafc',
+    },
+    zoomModalImg: {
+      width: '100%',
+      borderRadius: '1rem',
+      display: 'block',
+    },
+    zoomModalClose: {
+      border: 'none',
+      background: 'transparent',
+      color: '#cbd5f5',
+      fontSize: '1.25rem',
+      cursor: 'pointer',
+    },
     recommendationsList: {
       listStyle: 'none',
       padding: 0,
@@ -993,34 +1041,6 @@ const RealTimeAnalysis = () => {
             </button>
           </div>
 
-          {/* Top Fraud Cases */}
-          {analysisResult.insights?.top_fraud_cases?.length > 0 && (
-            <div style={{ marginTop: '2rem' }}>
-              <h3 style={{ color: colors.foreground, fontSize: '1.1rem', marginBottom: '1rem' }}>
-                Top Fraud Cases
-              </h3>
-              <div style={styles.transactionList}>
-                {analysisResult.insights.top_fraud_cases.map((txn, idx) => (
-                  <div key={idx} style={{ ...styles.transactionItem, ...styles.fraudTransaction }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                      <strong style={{ color: colors.foreground }}>
-                        {txn.merchant || 'Unknown Merchant'}
-                      </strong>
-                      <span style={{ color: '#ef4444', fontWeight: '700' }}>
-                        ${txn.amount.toFixed(2)}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: '0.85rem', color: colors.mutedForeground }}>
-                      Fraud Probability: {(txn.fraud_probability * 100).toFixed(1)}%
-                    </div>
-                    <div style={{ fontSize: '0.85rem', color: colors.mutedForeground, marginTop: '0.25rem' }}>
-                      {txn.reason}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       )}
 
@@ -1032,38 +1052,90 @@ const RealTimeAnalysis = () => {
             <h2 style={styles.sectionTitle}>Detailed Insights</h2>
           </div>
 
-          {/* Recommendations */}
-          {analysisResult.insights.recommendations?.length > 0 && (
+          {/* AI Analysis - Minimal Version */}
+          {analysisResult.agent_analysis && (
             <div style={{ marginBottom: '2rem' }}>
-              <h3 style={{ color: colors.foreground, fontSize: '1.1rem', marginBottom: '1rem' }}>
-                Recommendations
+              <h3 style={{ color: colors.foreground, fontSize: '1.2rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <FaRobot style={{ color: primary }} />
+                AI Analysis
               </h3>
-              <ul style={styles.recommendationsList}>
-                {analysisResult.insights.recommendations.map((rec, idx) => (
-                  <li key={idx} style={styles.recommendationItem}>
-                    {rec}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
 
-          {/* Fraud Patterns */}
-          {analysisResult.insights.fraud_patterns?.patterns?.length > 0 && (
-            <div style={{ marginBottom: '2rem' }}>
-              <h3 style={{ color: colors.foreground, fontSize: '1.1rem', marginBottom: '1rem' }}>
-                Fraud Patterns Detected
-              </h3>
-              {analysisResult.insights.fraud_patterns.patterns.map((pattern, idx) => (
-                <div key={idx} style={styles.patternCard}>
-                  <div style={{ fontWeight: '600', color: colors.foreground, marginBottom: '0.25rem' }}>
-                    {pattern.type.replace(/_/g, ' ').toUpperCase()}
-                  </div>
-                  <div style={{ fontSize: '0.9rem', color: colors.mutedForeground }}>
-                    {pattern.description}
+              {/* Top Suspicious Transactions - Condensed */}
+              {analysisResult.agent_analysis.top_transactions?.transactions?.length > 0 && (
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <h4 style={{ color: colors.foreground, fontSize: '0.95rem', marginBottom: '0.75rem', fontWeight: '600' }}>
+                    Top Suspicious Transactions
+                  </h4>
+                  {analysisResult.agent_analysis.top_transactions.transactions.slice(0, 3).map((txn, idx) => (
+                    <div key={idx} style={{
+                      backgroundColor: colors.muted,
+                      padding: '0.75rem',
+                      borderRadius: '0.5rem',
+                      border: `1px solid ${colors.border}`,
+                      borderLeft: `3px solid #ef4444`,
+                      marginBottom: '0.5rem'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontWeight: '600', color: colors.foreground, fontSize: '0.9rem' }}>
+                          {txn.merchant || 'Unknown'}
+                        </span>
+                        <span style={{ fontWeight: '700', color: '#ef4444', fontSize: '0.95rem' }}>
+                          ${txn.amount.toFixed(2)}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: colors.mutedForeground, marginTop: '0.25rem' }}>
+                        {txn.category || 'N/A'} • {(txn.fraud_probability * 100).toFixed(0)}% probability
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Key Insights - Condensed */}
+              {analysisResult.agent_analysis.detailed_insights && (
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <h4 style={{ color: colors.foreground, fontSize: '0.95rem', marginBottom: '0.75rem', fontWeight: '600' }}>
+                    Key Insights
+                  </h4>
+                  <div style={{
+                    backgroundColor: colors.muted,
+                    padding: '1rem',
+                    borderRadius: '0.5rem',
+                    border: `1px solid ${colors.border}`,
+                    fontSize: '0.9rem',
+                    color: colors.foreground,
+                    lineHeight: '1.6',
+                    maxHeight: '200px',
+                    overflowY: 'auto'
+                  }}>
+                    {analysisResult.agent_analysis.detailed_insights}
                   </div>
                 </div>
-              ))}
+              )}
+
+              {/* Recommendations - Condensed */}
+              {analysisResult.agent_analysis.recommendations?.length > 0 && (
+                <div>
+                  <h4 style={{ color: colors.foreground, fontSize: '0.95rem', marginBottom: '0.75rem', fontWeight: '600' }}>
+                    Recommendations
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {analysisResult.agent_analysis.recommendations.slice(0, 5).map((rec, idx) => (
+                      <div key={idx} style={{
+                        backgroundColor: colors.muted,
+                        padding: '0.75rem',
+                        borderRadius: '0.5rem',
+                        border: `1px solid ${colors.border}`,
+                        borderLeft: `3px solid ${primary}`,
+                        fontSize: '0.85rem',
+                        color: colors.foreground
+                      }}>
+                        {rec}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1085,31 +1157,15 @@ const RealTimeAnalysis = () => {
                         boxShadow: isHovered
                           ? '0 30px 55px rgba(5, 7, 15, 0.6)'
                           : styles.plotCard.boxShadow,
+                        cursor: 'zoom-in',
                       }}
                       onMouseEnter={() => setHoveredPlotIndex(idx)}
                       onMouseLeave={() => setHoveredPlotIndex(null)}
+                      onClick={() => setZoomedPlot(plot)}
                     >
                       <div style={styles.plotTitle}>{plot.title}</div>
                       <div style={styles.plotImageWrapper}>
                         <img src={plot.image} alt={plot.title} style={styles.plotImage} />
-                        {plot.details?.length > 0 && (
-                          <div
-                            style={{
-                              ...styles.plotHoverOverlay,
-                              opacity: isHovered ? 1 : 0,
-                            }}
-                          >
-                            <div style={styles.plotOverlayTitle}>Key Highlights</div>
-                            {plot.details.map((detail, detailIdx) => (
-                              <div key={detailIdx} style={styles.plotDetailItem}>
-                                <span style={{ color: 'rgba(226, 232, 240, 0.8)' }}>
-                                  {detail.label}
-                                </span>
-                                <strong>{detail.value}</strong>
-                              </div>
-                            ))}
-                          </div>
-                        )}
                       </div>
                       {plot.description && (
                         <div style={styles.plotDescription}>{plot.description}</div>
@@ -1130,6 +1186,48 @@ const RealTimeAnalysis = () => {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {zoomedPlot && (
+        <div style={styles.zoomModalOverlay} onClick={() => setZoomedPlot(null)}>
+          <div style={styles.zoomModalContent} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.zoomModalHeader}>
+              <h3 style={{ margin: 0 }}>{zoomedPlot.title}</h3>
+              <button style={styles.zoomModalClose} onClick={() => setZoomedPlot(null)}>
+                &times;
+              </button>
+            </div>
+            <img
+              src={zoomedPlot.image}
+              alt={zoomedPlot.title}
+              style={styles.zoomModalImg}
+            />
+            {zoomedPlot.description && (
+              <p style={{ color: '#cbd5f5', marginTop: '1rem' }}>{zoomedPlot.description}</p>
+            )}
+            {zoomedPlot.details?.length > 0 && (
+              <div style={{ marginTop: '1.25rem', display: 'grid', gap: '0.75rem' }}>
+                {zoomedPlot.details.map((detail, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      padding: '0.75rem 1rem',
+                      backgroundColor: 'rgba(15, 23, 42, 0.85)',
+                      borderRadius: '0.75rem',
+                      border: '1px solid rgba(148, 163, 184, 0.25)',
+                      color: '#e2e8f0',
+                    }}
+                  >
+                    <span style={{ opacity: 0.75 }}>{detail.label}</span>
+                    <strong>{detail.value}</strong>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

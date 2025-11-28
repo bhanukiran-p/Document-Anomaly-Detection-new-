@@ -311,6 +311,55 @@ def _extract_training_features(df: pd.DataFrame) -> pd.DataFrame:
         features['amount_to_balance_ratio'] = 0
         features['low_balance'] = 0
 
+    # Location mismatch features (fraud indicator)
+    if 'home_country' in df.columns and 'transaction_country' in df.columns:
+        features['country_mismatch'] = (df['home_country'] != df['transaction_country']).astype(int)
+    else:
+        features['country_mismatch'] = 0
+
+    if 'transaction_country' in df.columns and 'login_country' in df.columns:
+        features['login_transaction_mismatch'] = (df['login_country'] != df['transaction_country']).astype(int)
+    else:
+        features['login_transaction_mismatch'] = 0
+
+    # Check-based transaction features
+    if 'is_by_check' in df.columns:
+        features['is_by_check'] = pd.to_numeric(df['is_by_check'], errors='coerce').fillna(0).astype(int)
+        # High-value checks are riskier
+        features['high_value_check'] = ((features['is_by_check'] == 1) & (df['amount'] > 1000)).astype(int)
+    else:
+        features['is_by_check'] = 0
+        features['high_value_check'] = 0
+
+    # Transaction type features
+    if 'transaction_type' in df.columns:
+        features['is_transfer'] = df['transaction_type'].str.lower().str.contains('transfer', na=False).astype(int)
+        features['is_credit'] = df['transaction_type'].str.lower().str.contains('credit', na=False).astype(int)
+        features['is_debit'] = df['transaction_type'].str.lower().str.contains('debit', na=False).astype(int)
+    else:
+        features['is_transfer'] = 0
+        features['is_credit'] = 0
+        features['is_debit'] = 0
+
+    # Currency features (if non-USD could be risky)
+    if 'currency' in df.columns:
+        features['is_usd'] = (df['currency'] == 'USD').astype(int)
+        features['is_foreign_currency'] = (df['currency'] != 'USD').astype(int)
+    else:
+        features['is_usd'] = 1
+        features['is_foreign_currency'] = 0
+
+    # Gender-based statistics (for pattern analysis, not discrimination)
+    if 'gender' in df.columns and 'customer_id' in df.columns:
+        gender_stats = df.groupby('gender')['amount'].agg(['mean', 'std'])
+        gender_stats.columns = ['gender_avg_amount', 'gender_std_amount']
+        df_temp = df.merge(gender_stats, left_on='gender', right_index=True, how='left')
+        features['gender_amount_deviation'] = np.abs(
+            features['amount'] - df_temp['gender_avg_amount'].fillna(features['amount'])
+        ) / (df_temp['gender_std_amount'].fillna(1) + 1)
+    else:
+        features['gender_amount_deviation'] = 0
+
     # Statistical features
     features['amount_zscore'] = (features['amount'] - features['amount'].mean()) / (features['amount'].std() + 1)
     features['is_outlier'] = (np.abs(features['amount_zscore']) > 2).astype(int)

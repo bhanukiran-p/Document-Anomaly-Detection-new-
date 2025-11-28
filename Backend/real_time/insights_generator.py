@@ -207,7 +207,12 @@ def _generate_plots(df: pd.DataFrame, analysis_result: Dict) -> List[Dict[str, s
     """Generate visualization plots as base64 encoded images."""
     plots = []
 
+    if not PLOTTING_AVAILABLE:
+        logger.warning("Matplotlib not available - cannot generate plots")
+        return plots
+
     sns.set_style("whitegrid")
+    logger.info("Starting plot generation with matplotlib")
 
     try:
         # Plot 1: Fraud vs Legitimate Distribution (Pie Chart)
@@ -504,6 +509,7 @@ def _generate_plots(df: pd.DataFrame, analysis_result: Dict) -> List[Dict[str, s
     except Exception as e:
         logger.error(f"Error generating plots: {e}", exc_info=True)
 
+    logger.info(f"Generated {len(plots)} plots successfully")
     return plots
 
 

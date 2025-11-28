@@ -135,12 +135,12 @@ const CheckAnalysis = () => {
       setError('Please upload a check image first');
       return;
     }
-
+    
     setLoading(true);
     setError(null);
     setResults(null);
     setFeedbackSubmitted(false);
-
+    
     try {
       const response = await analyzeCheck(file);
       console.log('✅ Check analysis response received:', response);
@@ -153,7 +153,7 @@ const CheckAnalysis = () => {
         setResults(null);
       } else if (response.success === true && response.data) {
         console.log('✅ Analysis successful - displaying results');
-        setResults(response.data);
+      setResults(response.data);
         setError(null);
       } else {
         console.log('⚠️ Unexpected response format:', response);
@@ -279,7 +279,7 @@ const CheckAnalysis = () => {
     link.download = `check_analysis_${new Date().getTime()}.csv`;
     link.click();
   };
-
+  
   // Styles
   // Use primaryColor for new design system red
   const primary = colors.primaryColor || colors.accent?.red || '#E53935';
@@ -739,8 +739,8 @@ const CheckAnalysis = () => {
               </div>
 
               <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
-                <button
-                  style={{
+              <button
+                style={{
                     backgroundColor: '#E53935',
                     color: '#FFFFFF',
                     padding: '1rem 2rem',
@@ -752,9 +752,9 @@ const CheckAnalysis = () => {
                     flex: 1,
                     transition: 'all 0.3s',
                     boxShadow: '0 4px 12px rgba(229, 57, 53, 0.3)',
-                  }}
-                  onClick={downloadJSON}
-                  onMouseEnter={(e) => {
+                }}
+                onClick={downloadJSON}
+                onMouseEnter={(e) => {
                     e.target.style.backgroundColor = '#C62828';
                     e.target.style.transform = 'translateY(-2px)';
                     e.target.style.boxShadow = '0 6px 16px rgba(229, 57, 53, 0.4)';
@@ -786,8 +786,8 @@ const CheckAnalysis = () => {
                     e.target.style.backgroundColor = '#00897B';
                     e.target.style.transform = 'translateY(-2px)';
                     e.target.style.boxShadow = '0 6px 16px rgba(38, 166, 154, 0.4)';
-                  }}
-                  onMouseLeave={(e) => {
+                }}
+                onMouseLeave={(e) => {
                     e.target.style.backgroundColor = '#26A69A';
                     e.target.style.transform = 'translateY(0)';
                     e.target.style.boxShadow = '0 4px 12px rgba(38, 166, 154, 0.3)';
@@ -886,7 +886,7 @@ const CheckAnalysis = () => {
                       >
                         <FaThumbsDown />
                         Inaccurate (Fraud)
-                      </button>
+              </button>
                     </div>
                   )}
                 </div>
