@@ -22,6 +22,12 @@ Your analysis should consider:
 - **Patterns from training data** (e.g., "45% of fraud cases have amount mismatch")
 - **Similar past analysis cases** and how they were resolved
 
+CRITICAL INSTRUCTIONS FOR HIGH FRAUD SCORES:
+- If Fraud Risk Score is 100.0% or >= 95%, you MUST recommend REJECT
+- High fraud scores indicate the ML ensemble detected critical fraud indicators
+- Your role is to contextualize this with additional intelligence, not to override high scores
+- For scores >= 95%, your recommendation should always be REJECT unless you find strong evidence this is a false positive
+
 Use the training dataset patterns and past analysis results to strengthen your recommendations.
 Compare the current case to similar historical cases for better accuracy.
 
@@ -43,6 +49,10 @@ ANALYSIS_TEMPLATE = """Analyze this money order for fraud risk:
 - Model Confidence: {model_confidence:.1%}
 - Random Forest Score: {rf_score:.1%}
 - XGBoost Score: {xgb_score:.1%}
+
+**Customer Information:**
+- Customer Type: {customer_type}
+- Customer ID: {customer_id}
 
 **Extracted Money Order Data:**
 - Issuer: {issuer}
@@ -115,6 +125,24 @@ Identify any similarities to known fraud patterns and explain the significance."
 RECOMMENDATION_GUIDELINES = """
 Recommendation Guidelines:
 
+=== FOR REPEAT CUSTOMERS (known from database) ===
+If this is a REPEAT CUSTOMER with fraud history:
+- Fraud risk score >= 30% → REJECT (This customer has committed fraud before, be strict)
+- Fraud risk score < 30% → APPROVE (Clean customer with no fraud history)
+
+If this is a REPEAT CUSTOMER with clean history:
+- Fraud risk score > 85% → REJECT
+- Fraud risk score 30-85% → ESCALATE (Review to be sure)
+- Fraud risk score < 30% → APPROVE
+
+=== FOR NEW CUSTOMERS (not in database) ===
+If this is a NEW CUSTOMER:
+- Fraud risk score 100% or >= 95% → ESCALATE (High risk but need human verification)
+- Fraud risk score 85-95% → ESCALATE (High risk but could be legitimate)
+- Fraud risk score 30-85% → ESCALATE (Moderate risk, needs review)
+- Fraud risk score < 30% → APPROVE
+
+=== GENERAL RULES ===
 APPROVE:
 - Fraud risk score < 30%
 - All critical fields present and validated
@@ -122,18 +150,21 @@ APPROVE:
 - Clean customer history
 - High model confidence (> 80%)
 
-REJECT:
-- Fraud risk score > 85%
-- Multiple critical red flags
-- Known fraud pattern match
-- Date in future or invalid
-- Amount mismatch between numeric and written
+REJECT (for repeat fraudsters only):
+- Fraud risk score > 30% AND customer has previous fraud incidents
+- Fraud risk score > 85% AND repeat customer with clean history
+- If score is 100%, ALWAYS recommend REJECT for repeat customers, ESCALATE for new customers
 
 ESCALATE:
-- Fraud risk score 30-85%
-- Moderate risk indicators
+- Fraud risk score >= 30% AND new customer (not in database)
+- Fraud risk score 30-85% AND repeat customer
+- Moderate to high risk indicators requiring manual verification
 - Low model confidence (< 75%)
 - Unusual but not conclusive patterns
-- Customer history has minor concerns
-- Missing non-critical fields
+
+CRITICAL RULES:
+1. If fraud_risk_score is 100.0% or >= 95% AND customer is REPEAT with fraud history → MUST REJECT
+2. If fraud_risk_score is 100.0% or >= 95% AND customer is NEW → MUST ESCALATE
+3. New customers with high risk should be escalated for human review, not auto-rejected
+4. Repeat fraudsters should face stricter thresholds (REJECT at >= 30% risk)
 """

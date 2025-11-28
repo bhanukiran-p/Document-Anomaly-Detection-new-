@@ -145,6 +145,57 @@ class DocumentStorage:
             logger.warning(f"Error getting/creating employer: {e}")
             return None
 
+    def _get_or_create_money_order_customer(self, customer_data: Optional[Dict]) -> Optional[str]:
+        """Get or create money order customer, return customer_id"""
+        if not customer_data:
+            return None
+
+        name = customer_data.get('name')
+        if not name:
+            return None
+
+        try:
+            name = self._safe_string(name)
+            if not name:
+                return None
+
+            # Check if customer exists with same name and address (for exact match)
+            address = self._safe_string(customer_data.get('address'))
+            payee_name = self._safe_string(customer_data.get('payee_name'))
+
+            query = self.supabase.table('money_order_customers').select('customer_id').eq('name', name)
+
+            if address:
+                query = query.eq('address', address)
+
+            response = query.execute()
+
+            if response.data:
+                logger.info(f"Found existing money order customer: {name}")
+                return response.data[0]['customer_id']
+
+            # Create new customer
+            customer_id = str(uuid.uuid4())
+            new_customer = {
+                'customer_id': customer_id,
+                'name': name,
+                'payee_name': payee_name,
+                'address': address,
+                'city': self._safe_string(customer_data.get('city')),
+                'state': self._safe_string(customer_data.get('state')),
+                'zip_code': self._safe_string(customer_data.get('zip')),
+                'phone': self._safe_string(customer_data.get('phone')),
+                'email': self._safe_string(customer_data.get('email'))
+            }
+
+            self.supabase.table('money_order_customers').insert([new_customer]).execute()
+            logger.info(f"Created new money order customer: {name} ({customer_id})")
+            return customer_id
+
+        except Exception as e:
+            logger.warning(f"Error getting/creating money order customer: {e}")
+            return None
+
     def _store_document(self, user_id: str, document_type: str, file_name: str) -> str:
         """Store document record in documents table, return document_id"""
         try:
@@ -201,6 +252,14 @@ class DocumentStorage:
             }
             institution_id = self._get_or_create_institution(institution_data)
 
+            # Extract and create/find purchaser customer with payee information in same row
+            purchaser_data = {
+                'name': extracted.get('purchaser'),
+                'address': extracted.get('sender_address'),
+                'payee_name': extracted.get('payee')
+            }
+            purchaser_customer_id = self._get_or_create_money_order_customer(purchaser_data)
+
             # Prepare money order data with AI analysis
             money_order_data = {
                 'money_order_id': str(uuid.uuid4()),
@@ -214,6 +273,7 @@ class DocumentStorage:
                 'institution_id': institution_id,
                 'purchaser_name': self._safe_string(extracted.get('purchaser')),
                 'purchaser_address': self._safe_string(extracted.get('sender_address')),
+                'purchaser_customer_id': purchaser_customer_id,
                 'payee_name': self._safe_string(extracted.get('payee')),
                 'serial_number_primary': self._safe_string(extracted.get('serial_number')),
                 'serial_number_secondary': self._safe_string(extracted.get('serial_secondary')),
@@ -230,6 +290,7 @@ class DocumentStorage:
             }
 
             # Insert money order record
+            logger.info(f"Attempting to insert money order with data: {money_order_data}")
             self.supabase.table('money_orders').insert([money_order_data]).execute()
             logger.info(f"Stored money order: {money_order_data['money_order_id']}")
 
@@ -239,7 +300,10 @@ class DocumentStorage:
             return document_id
 
         except Exception as e:
+            import traceback
             logger.error(f"Error storing money order: {e}")
+            logger.error(f"Stack trace: {traceback.format_exc()}")
+            logger.error(f"Attempted to insert data: {money_order_data if 'money_order_data' in locals() else 'N/A'}")
             if document_id:
                 self._update_document_status(document_id, 'failed')
             return None

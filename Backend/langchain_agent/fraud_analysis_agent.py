@@ -68,41 +68,47 @@ class FraudAnalysisAgent:
     def analyze_fraud(self,
                       ml_analysis: Dict,
                       extracted_data: Dict,
-                      customer_id: Optional[str] = None) -> Dict:
+                      customer_id: Optional[str] = None,
+                      is_repeat_customer: bool = False) -> Dict:
         """
         Perform AI-powered fraud analysis
-        
+
         Args:
             ml_analysis: ML model fraud analysis results
             extracted_data: Extracted money order fields
             customer_id: Customer ID for history lookup
-            
+            is_repeat_customer: Whether this is a repeat customer from database
+
         Returns:
             Dictionary with AI analysis and recommendation
         """
         if self.llm is None:
             raise ValueError("AI Agent not initialized. OpenAI API key missing or invalid.")
-            
-        return self._llm_analysis(ml_analysis, extracted_data, customer_id)
 
-    def _llm_analysis(self, ml_analysis: Dict, extracted_data: Dict, customer_id: Optional[str] = None) -> Dict:
+        return self._llm_analysis(ml_analysis, extracted_data, customer_id, is_repeat_customer)
+
+    def _llm_analysis(self, ml_analysis: Dict, extracted_data: Dict, customer_id: Optional[str] = None, is_repeat_customer: bool = False) -> Dict:
         """
         Perform fraud analysis using LangChain and OpenAI
         """
+        # Store ML analysis and customer status for later validation
+        self._current_ml_analysis = ml_analysis
+        self._is_repeat_customer = is_repeat_customer
+
         # Get customer history if ID provided
         customer_history = "No customer ID provided"
         if customer_id and self.data_tools:
             history = self.data_tools.get_customer_history(customer_id)
             if history:
                 customer_history = str(history)
-        
+
         # Search for similar fraud cases
         similar_cases = "No similar cases found"
         if self.data_tools:
             cases = self.data_tools.search_similar_fraud_cases(
                 issuer=extracted_data.get('issuer'),
                 amount_range=(
-                    extracted_data.get('amount', 0) * 0.9, 
+                    extracted_data.get('amount', 0) * 0.9,
                     extracted_data.get('amount', 0) * 1.1
                 )
             )
@@ -111,14 +117,14 @@ class FraudAnalysisAgent:
 
         # Get training insights (mocked for now, but would come from vector DB or stats)
         training_patterns = "High correlation between amount mismatch and fraud (45% of cases)."
-        
+
         # Get historical analysis results
         past_similar_cases = "No past analysis found."
         if self.data_tools:
             past_results = self.data_tools.search_stored_analyses(
                 issuer=extracted_data.get('issuer'),
                 amount_range=(
-                    extracted_data.get('amount', 0) * 0.9, 
+                    extracted_data.get('amount', 0) * 0.9,
                     extracted_data.get('amount', 0) * 1.1
                 )
             )
@@ -140,6 +146,18 @@ class FraudAnalysisAgent:
             return val
 
         # Prepare prompt variables
+        # Check if repeat customer has fraud history
+        has_fraud_history = False
+        if is_repeat_customer and customer_history and isinstance(customer_history, str):
+            has_fraud_history = 'fraud' in customer_history.lower() or 'num_fraud_incidents' in customer_history.lower() or ('[FRAUD]' in customer_history)
+
+        if is_repeat_customer and has_fraud_history:
+            customer_type = "REPEAT CUSTOMER WITH FRAUD HISTORY (known fraudster in database)"
+        elif is_repeat_customer:
+            customer_type = "REPEAT CUSTOMER WITH CLEAN HISTORY (no fraud incidents)"
+        else:
+            customer_type = "NEW CUSTOMER (not in database)"
+
         prompt_vars = {
             "fraud_risk_score": ml_analysis.get('fraud_score', 0),
             "risk_level": ml_analysis.get('risk_level', 'UNKNOWN'),
@@ -157,6 +175,7 @@ class FraudAnalysisAgent:
             "signature": get_val(['signature']),
             "fraud_indicators": str(ml_analysis.get('anomalies', [])),
             "customer_id": customer_id or "N/A",
+            "customer_type": customer_type,
             "customer_history": customer_history,
             "similar_cases": similar_cases,
             "training_patterns": training_patterns,
@@ -168,11 +187,11 @@ class FraudAnalysisAgent:
             SystemMessagePromptTemplate.from_template(SYSTEM_PROMPT),
             HumanMessagePromptTemplate.from_template(ANALYSIS_TEMPLATE)
         ])
-        
+
         # Generate analysis
         messages = prompt.format_messages(**prompt_vars)
         response = self.llm.invoke(messages)
-        
+
         # Parse response
         return self._parse_llm_response(response.content)
 
