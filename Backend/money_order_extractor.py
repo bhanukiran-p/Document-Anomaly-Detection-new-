@@ -497,10 +497,36 @@ class MoneyOrderExtractor:
         # Run ML fraud detection
         ml_analysis = self.fraud_detector.predict_fraud(data, text)
 
-        # Run AI analysis (pass optional customer_id if available in context)
-        # For now, using a mock customer_id - in production, this would come from request
-        customer_id = data.get('customer_id', 'CUST001')  # Mock for testing
-        ai_analysis = self.ai_agent.analyze_fraud(ml_analysis, data, customer_id)
+        # Look up customer by name and address to determine if repeat customer
+        customer_id = None
+        is_repeat_customer = False
+        try:
+            from database.supabase_client import get_supabase
+            supabase = get_supabase()
+
+            purchaser_name = data.get('purchaser')
+            sender_address = data.get('sender_address')
+
+            if purchaser_name:
+                # Query for existing customer with same name and address
+                query = supabase.table('money_order_customers').select('customer_id').eq('name', purchaser_name)
+
+                if sender_address:
+                    query = query.eq('address', sender_address)
+
+                response = query.execute()
+
+                if response.data:
+                    customer_id = response.data[0]['customer_id']
+                    is_repeat_customer = True
+        except Exception as e:
+            # If database lookup fails, treat as new customer
+            import logging
+            logging.warning(f"Could not look up customer in database: {e}")
+            is_repeat_customer = False
+
+        # Pass customer info to AI analysis
+        ai_analysis = self.ai_agent.analyze_fraud(ml_analysis, data, customer_id, is_repeat_customer)
 
         # Convert ML fraud indicators into anomalies format for frontend
         anomalies = self._convert_to_anomalies(ml_analysis, ai_analysis)
