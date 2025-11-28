@@ -165,7 +165,7 @@ const TransactionTypePage = () => {
     backgroundColor: primary,
     color: colors.primaryForeground,
     padding: '0.875rem 2rem',
-    borderRadius: '0.5rem',
+    borderRadius: '9999px', // Pill shape
     border: 'none',
     cursor: 'pointer',
     fontSize: '1rem',
@@ -174,12 +174,12 @@ const TransactionTypePage = () => {
     transition: 'all 0.3s',
     boxShadow: `0 0 20px ${primary}40`,
   };
-  
+
   const disabledButtonStyle = {
     backgroundColor: colors.muted,
     color: colors.mutedForeground,
     padding: '0.875rem 2rem',
-    borderRadius: '0.5rem',
+    borderRadius: '9999px', // Pill shape
     border: `1px solid ${colors.border}`,
     cursor: 'not-allowed',
     fontSize: '1rem',
@@ -300,9 +300,9 @@ const TransactionTypePage = () => {
             </button>
           </div>
           
-          {/* Real Time Transaction - RIGHT SIDE - COMING SOON */}
+          {/* Real Time Transaction - RIGHT SIDE - ACTIVE */}
           <div
-            style={{ ...cardStyle, opacity: 0.7 }}
+            style={cardStyle}
           >
             <div style={iconCircleStyle}>
               <FaChartLine />
@@ -311,9 +311,20 @@ const TransactionTypePage = () => {
             <p style={cardDescStyle}>
               Analyze transactions instantly with real-time fraud detection
             </p>
-            
-            <button style={disabledButtonStyle}>
-              COMING SOON
+
+            <button
+              style={activeButtonStyle}
+              onMouseEnter={(e) => {
+                e.target.style.transform = 'translateY(-2px)';
+                e.target.style.boxShadow = `0 6px 30px ${primary}60`;
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.transform = 'translateY(0)';
+                e.target.style.boxShadow = `0 0 20px ${primary}40`;
+              }}
+              onClick={() => navigate('/real-time-analysis')}
+            >
+              Real Time Transactions
             </button>
           </div>
         </div>

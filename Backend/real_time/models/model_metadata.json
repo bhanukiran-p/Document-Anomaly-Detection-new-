@@ -1,0 +1,41 @@
+{
+  "trained_at": "2025-11-27T18:21:52.856781",
+  "training_samples": 10,
+  "metrics": {
+    "accuracy": 1.0,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1_score": 0.0,
+    "auc": NaN,
+    "feature_importance": {
+      "amount": 0.0,
+      "amount_log": 0.0,
+      "amount_squared": 0.0,
+      "amount_sqrt": 0.0,
+      "hour": 0.0,
+      "day_of_week": 0.0,
+      "day_of_month": 0.0,
+      "is_weekend": 0.0,
+      "is_night": 0.0,
+      "is_business_hours": 0.0,
+      "high_risk_category": 0.0,
+      "cat_retail": 0.0,
+      "cat_food": 0.0,
+      "cat_travel": 0.0,
+      "cat_entertainment": 0.0,
+      "cat_utilities": 0.0,
+      "merchant_length": 0.0,
+      "merchant_has_numbers": 0.0,
+      "customer_avg_amount": 0.0,
+      "customer_std_amount": 0.0,
+      "customer_txn_count": 0.0,
+      "amount_deviation": 0.0,
+      "account_balance": 0.0,
+      "amount_to_balance_ratio": 0.0,
+      "low_balance": 0.0,
+      "amount_zscore": 0.0,
+      "is_outlier": 0.0
+    }
+  },
+  "model_version": "1.0"
+}

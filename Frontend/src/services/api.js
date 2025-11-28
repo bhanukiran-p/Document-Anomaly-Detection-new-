@@ -151,5 +151,24 @@ export const getFeedbackStats = async () => {
   }
 };
 
+// Real-time Transaction Analysis API
+export const analyzeRealTimeTransactions = async (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const response = await axios.post(`${API_BASE_URL}/real-time/analyze`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  } catch (error) {
+    const errorData = error.response?.data || { error: 'Failed to analyze transactions', message: error.message || 'Network error' };
+    console.error('Real-time transaction analysis API error:', errorData);
+    throw errorData;
+  }
+};
+
 export default api;
 
