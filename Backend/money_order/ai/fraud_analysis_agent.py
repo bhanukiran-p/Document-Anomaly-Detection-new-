@@ -79,7 +79,7 @@ class FraudAnalysisAgent:
             extracted_data: Extracted money order fields
             customer_id: Customer ID for history lookup
             is_repeat_customer: Whether this is a repeat customer from database
-            customer_fraud_history: Dict with fraud history (escalate_count, fraud_count, has_fraud_history)
+            customer_fraud_history: Dict with fraud history from database
 
         Returns:
             Dictionary with AI analysis and recommendation
@@ -97,51 +97,42 @@ class FraudAnalysisAgent:
         - If customer has escalate_count > 0 (previous ESCALATE recommendations), force REJECT
         - This means second and subsequent uploads by same payer always get REJECT
         """
-        import logging
-        # Log what we received
-        purchaser = extracted_data.get('purchaser', 'Unknown')
-        logging.info(f"[FRAUD_ANALYSIS] Analyzing {purchaser}: is_repeat_customer={is_repeat_customer}, customer_fraud_history={customer_fraud_history}")
+        # Store ML analysis and customer status for later validation
+        self._current_ml_analysis = ml_analysis
+        self._is_repeat_customer = is_repeat_customer
 
-        # Store escalate_count for later use in recommendation logic
-        # Will be used in RECOMMENDATION_GUIDELINES to determine REJECT vs ESCALATE
+        # Check if this payer already has escalate history - if so, force REJECT
+        # This is critical for payer-based fraud tracking
         escalate_count = 0
         if customer_fraud_history:
             escalate_count = customer_fraud_history.get('escalate_count', 0)
-            logging.info(f"[FRAUD_ANALYSIS] Extracted escalate_count={escalate_count} from customer_fraud_history")
 
-        # MANDATORY RULE: If escalate_count >= 1, REJECT immediately
-        # Repeat customers with any previous escalation are automatically rejected
-        if escalate_count >= 1:
-            fraud_risk_score = ml_analysis.get('fraud_score', 0)
-            logging.info(f"[FRAUD_ANALYSIS] MANDATORY REJECT: Customer has escalation history (escalate_count={escalate_count})")
+        if escalate_count > 0:
+            # Customer has previous ESCALATE records - force REJECT recommendation
             return {
                 'recommendation': 'REJECT',
-                'confidence_score': 0.95,
-                'summary': f'MANDATORY REJECT: Customer has escalation history (count={escalate_count})',
+                'confidence_score': 1.0,
+                'summary': f'Payer has escalate_count={escalate_count} from previous uploads. Forcing REJECT per payer-based fraud tracking rules.',
                 'reasoning': [
-                    f'Customer has been escalated {escalate_count} time(s) in previous uploads',
-                    'Per system policy: Repeat customers with any escalation history are automatically rejected',
-                    f'Current fraud risk score: {fraud_risk_score:.0%}'
+                    f'Customer escalate_count is {escalate_count} (> 0)',
+                    'Per system policy: second and subsequent uploads by same payer are automatically REJECTED',
+                    'This overrides ML and AI scoring to enforce strict repeat customer fraud policy'
                 ],
                 'key_indicators': [
-                    f'Customer escalation count: {escalate_count}',
-                    f'Fraud risk score: {fraud_risk_score:.0%}'
+                    f'Repeat payer detected with {escalate_count} previous escalation(s)',
+                    'Policy: Force REJECT on repeat offenders'
                 ],
-                'verification_notes': 'Mandatory rejection based on escalation history and current fraud score',
+                'verification_notes': 'Forced rejection based on customer fraud history, not AI analysis',
                 'actionable_recommendations': [
                     'Block this transaction immediately',
                     'Flag customer account for review',
                     'Consider deactivating customer'
                 ],
-                'training_insights': 'Customers with escalation history have demonstrated fraud risk patterns',
+                'training_insights': 'Repeat customers with escalation history have high fraud probability',
                 'historical_comparison': 'Similar to other repeat fraud cases',
                 'analysis_type': 'policy_enforcement',
-                'model_used': 'escalation_policy'
+                'model_used': 'payer_fraud_policy'
             }
-
-        # Store ML analysis and customer status for later validation
-        self._current_ml_analysis = ml_analysis
-        self._is_repeat_customer = is_repeat_customer
 
         # Get customer history if ID provided
         customer_history = "No customer ID provided"
@@ -194,14 +185,30 @@ class FraudAnalysisAgent:
             return val
 
         # Prepare prompt variables
-        # Determine customer type based on escalate_count
-        if is_repeat_customer:
-            if escalate_count >= 1:
-                customer_type = f"REPEAT CUSTOMER WITH ESCALATION HISTORY (escalate_count={escalate_count}, previously flagged)"
-            else:
-                customer_type = "REPEAT CUSTOMER WITH CLEAN HISTORY (escalate_count=0, no previous escalations)"
+        # Check if repeat customer has fraud history from database
+        has_fraud_history = False
+        if is_repeat_customer and customer_fraud_history:
+            # Use the fraud flag from database (more reliable than string search)
+            has_fraud_history = customer_fraud_history.get('has_fraud_history', False)
+
+        if is_repeat_customer and has_fraud_history:
+            customer_type = "REPEAT CUSTOMER WITH FRAUD HISTORY (known fraudster in database)"
+        elif is_repeat_customer:
+            customer_type = "REPEAT CUSTOMER WITH CLEAN HISTORY (no fraud incidents)"
         else:
             customer_type = "NEW CUSTOMER (not in database)"
+
+        # Extract escalation tracking info for LLM context
+        escalate_count = 0
+        fraud_count = 0
+        if customer_fraud_history:
+            escalate_count = customer_fraud_history.get('escalate_count', 0)
+            fraud_count = customer_fraud_history.get('fraud_count', 0)
+
+        # Format escalation status for clear LLM understanding
+        escalation_status = f"Escalate Count: {escalate_count} | Fraud Count: {fraud_count}"
+        if escalate_count > 0:
+            escalation_status += " | ⚠️ PAYER HAS BEEN ESCALATED BEFORE - MUST REJECT"
 
         prompt_vars = {
             "fraud_risk_score": ml_analysis.get('fraud_score', 0),
@@ -221,6 +228,7 @@ class FraudAnalysisAgent:
             "fraud_indicators": str(ml_analysis.get('anomalies', [])),
             "customer_id": customer_id or "N/A",
             "customer_type": customer_type,
+            "escalation_status": escalation_status,
             "customer_history": customer_history,
             "similar_cases": similar_cases,
             "training_patterns": training_patterns,

@@ -12,6 +12,12 @@ CREATE TABLE IF NOT EXISTS money_order_customers (
     zip_code TEXT,
     phone TEXT,
     email TEXT,
+    -- Fraud tracking fields
+    has_fraud_history BOOLEAN DEFAULT FALSE,
+    fraud_count INTEGER DEFAULT 0,
+    escalate_count INTEGER DEFAULT 0,
+    last_recommendation TEXT,
+    last_analysis_date TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

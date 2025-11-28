@@ -497,9 +497,10 @@ class MoneyOrderExtractor:
         # Run ML fraud detection
         ml_analysis = self.fraud_detector.predict_fraud(data, text)
 
-        # Look up customer by name and address to determine if repeat customer
+        # Look up customer by name to determine if repeat customer and get fraud history
         customer_id = None
         is_repeat_customer = False
+        customer_fraud_history = None
         try:
             from database.supabase_client import get_supabase
             supabase = get_supabase()
@@ -508,25 +509,33 @@ class MoneyOrderExtractor:
             sender_address = data.get('sender_address')
 
             if purchaser_name:
-                # Query for existing customer with same name and address
-                query = supabase.table('money_order_customers').select('customer_id').eq('name', purchaser_name)
-
-                if sender_address:
-                    query = query.eq('address', sender_address)
-
-                response = query.execute()
+                # Query for existing customer by name ONLY (payer-based tracking)
+                # Fetch fraud history fields: escalate_count, fraud_count, has_fraud_history
+                # NOTE: We query by name only (not address) because the same payer might use different addresses
+                response = supabase.table('money_order_customers').select('customer_id, escalate_count, fraud_count, has_fraud_history').eq('name', purchaser_name).order('created_at', desc=True).limit(1).execute()
 
                 if response.data:
-                    customer_id = response.data[0]['customer_id']
+                    # Found existing customer record
+                    customer_record = response.data[0]
+                    customer_id = customer_record['customer_id']
                     is_repeat_customer = True
+                    escalate_count = customer_record.get('escalate_count', 0)
+
+                    # Extract fraud history for AI agent
+                    customer_fraud_history = {
+                        'escalate_count': escalate_count,
+                        'fraud_count': customer_record.get('fraud_count', 0),
+                        'has_fraud_history': customer_record.get('has_fraud_history', False)
+                    }
         except Exception as e:
             # If database lookup fails, treat as new customer
             import logging
-            logging.warning(f"Could not look up customer in database: {e}")
+            logging.warning(f"[MONEY_ORDER_EXTRACTOR] Exception during customer lookup: {str(e)}")
             is_repeat_customer = False
+            customer_fraud_history = None
 
-        # Pass customer info to AI analysis
-        ai_analysis = self.ai_agent.analyze_fraud(ml_analysis, data, customer_id, is_repeat_customer)
+        # Pass customer info and fraud history to AI analysis
+        ai_analysis = self.ai_agent.analyze_fraud(ml_analysis, data, customer_id, is_repeat_customer, customer_fraud_history)
 
         # Convert ML fraud indicators into anomalies format for frontend
         anomalies = self._convert_to_anomalies(ml_analysis, ai_analysis)

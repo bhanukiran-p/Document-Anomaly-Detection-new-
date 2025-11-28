@@ -483,7 +483,7 @@ def analyze_money_order():
 
             # Try to import and use money order extractor
             try:
-                from money_order_extractor import MoneyOrderExtractor
+                from money_order.extractor import MoneyOrderExtractor
                 extractor = MoneyOrderExtractor(CREDENTIALS_PATH)
                 result = extractor.extract_money_order(filepath)
                 logger.info("Money order extracted successfully")

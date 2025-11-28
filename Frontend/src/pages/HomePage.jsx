@@ -1,10 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { colors } from '../styles/colors';
 import { useScrollAnimation } from '../hooks/useScrollAnimation';
+import APIConnection from '../components/APIConnection';
+import CSVUpload from '../components/CSVUpload';
 
 const HomePage = () => {
   const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState(null);
   
   // Use primaryColor for new design system red
   const primary = colors.primaryColor || colors.accent?.red || '#E53935';
@@ -109,7 +112,45 @@ const HomePage = () => {
     marginBottom: '1.5rem',
     transition: 'all 0.3s',
   };
-  
+
+  const insightsSection = {
+    backgroundColor: colors.card,
+    borderRadius: '0.75rem',
+    padding: '2rem',
+    boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)',
+    border: `1px solid ${colors.border}`,
+    marginTop: '2rem',
+    maxWidth: '1200px',
+    margin: '2rem auto 0',
+  };
+
+  const insightsTitleStyle = {
+    fontSize: '1.75rem',
+    fontWeight: 'bold',
+    color: colors.foreground,
+    marginBottom: '1.5rem',
+    textAlign: 'center',
+  };
+
+  const tabsContainerStyle = {
+    display: 'flex',
+    gap: '1rem',
+    marginBottom: '2rem',
+    justifyContent: 'center',
+  };
+
+  const tabButtonStyle = (isActive) => ({
+    padding: '0.75rem 1.5rem',
+    borderRadius: '0.5rem',
+    fontSize: '1rem',
+    fontWeight: '600',
+    border: `2px solid ${isActive ? primary : colors.border}`,
+    backgroundColor: isActive ? `${primary}20` : 'transparent',
+    color: isActive ? primary : colors.mutedForeground,
+    cursor: 'pointer',
+    transition: 'all 0.3s',
+  });
+
   const { ref, isVisible } = useScrollAnimation();
   
   return (
@@ -305,7 +346,53 @@ const HomePage = () => {
           </button>
         </div>
       </div>
-      
+
+      <div style={insightsSection}>
+        <h2 style={insightsTitleStyle}>Financial Insights</h2>
+        <p style={{ color: colors.mutedForeground, textAlign: 'center', marginBottom: '2rem' }}>
+          Connect to APIs or upload CSV files to visualize and analyze financial data
+        </p>
+
+        <div style={tabsContainerStyle}>
+          <button
+            style={tabButtonStyle(activeTab === 'api')}
+            onMouseEnter={(e) => {
+              if (activeTab !== 'api') {
+                e.target.style.backgroundColor = colors.muted;
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (activeTab !== 'api') {
+                e.target.style.backgroundColor = 'transparent';
+              }
+            }}
+            onClick={() => setActiveTab(activeTab === 'api' ? null : 'api')}
+          >
+            Connect API
+          </button>
+          <span style={{ color: colors.mutedForeground }}>or</span>
+          <button
+            style={tabButtonStyle(activeTab === 'csv')}
+            onMouseEnter={(e) => {
+              if (activeTab !== 'csv') {
+                e.target.style.backgroundColor = colors.muted;
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (activeTab !== 'csv') {
+                e.target.style.backgroundColor = 'transparent';
+              }
+            }}
+            onClick={() => setActiveTab(activeTab === 'csv' ? null : 'csv')}
+          >
+            Upload CSV
+          </button>
+        </div>
+
+        {activeTab === 'api' && <APIConnection />}
+        {activeTab === 'csv' && <CSVUpload />}
+      </div>
+
     </div>
   );
 };
