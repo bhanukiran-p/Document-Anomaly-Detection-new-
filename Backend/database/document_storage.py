@@ -146,7 +146,14 @@ class DocumentStorage:
             return None
 
     def _get_or_create_money_order_customer(self, customer_data: Optional[Dict]) -> Optional[str]:
-        """Get or create money order customer, return customer_id"""
+        """Get or create a money order customer record using payer-based tracking.
+
+        For payer-based fraud tracking (Option 2):
+        - If payer (name) already exists: reuse their customer_id, create new row
+        - If payer (name) is new: create new customer_id only once
+        - Multiple rows can have same customer_id (one row per upload/payee combination)
+        - Fraud counts are cumulative across all rows with same customer_id
+        """
         if not customer_data:
             return None
 
@@ -159,22 +166,47 @@ class DocumentStorage:
             if not name:
                 return None
 
-            # Check if customer exists with same name and address (for exact match)
             address = self._safe_string(customer_data.get('address'))
             payee_name = self._safe_string(customer_data.get('payee_name'))
 
-            query = self.supabase.table('money_order_customers').select('customer_id').eq('name', name)
+            # Step 1: Check if this payer (name) already exists
+            # Query by name ONLY to find existing customer_id for this payer
+            # NOTE: We query by name only (not address) because the same payer might use different addresses
+            try:
+                response = self.supabase.table('money_order_customers').select('customer_id, escalate_count, fraud_count, has_fraud_history').eq('name', name).order('created_at', desc=True).limit(1).execute()
+                if response.data and len(response.data) > 0:
+                    # Payer already exists - reuse their customer_id
+                    existing_customer_record = response.data[0]
+                    existing_customer_id = existing_customer_record.get('customer_id')
+                    previous_escalate_count = existing_customer_record.get('escalate_count', 0)
+                    previous_fraud_count = existing_customer_record.get('fraud_count', 0)
+                    previous_has_fraud_history = existing_customer_record.get('has_fraud_history', False)
 
-            if address:
-                query = query.eq('address', address)
+                    logger.info(f"Found existing payer: {name} with customer_id={existing_customer_id}, escalate_count={previous_escalate_count}, fraud_count={previous_fraud_count}")
 
-            response = query.execute()
+                    # Create a new row for this upload with same customer_id and preserved fraud history
+                    new_customer = {
+                        'customer_id': existing_customer_id,
+                        'name': name,
+                        'payee_name': payee_name,
+                        'address': address,
+                        'city': self._safe_string(customer_data.get('city')),
+                        'state': self._safe_string(customer_data.get('state')),
+                        'zip_code': self._safe_string(customer_data.get('zip')),
+                        'phone': self._safe_string(customer_data.get('phone')),
+                        'email': self._safe_string(customer_data.get('email')),
+                        # Preserve fraud history from previous uploads
+                        'escalate_count': previous_escalate_count,
+                        'fraud_count': previous_fraud_count,
+                        'has_fraud_history': previous_has_fraud_history
+                    }
+                    self.supabase.table('money_order_customers').insert([new_customer]).execute()
+                    logger.info(f"Created new row for existing payer: {name} to {payee_name} (customer_id={existing_customer_id}) with fraud history: escalate_count={previous_escalate_count}")
+                    return existing_customer_id
+            except Exception as e:
+                logger.warning(f"Error querying existing payer: {e}")
 
-            if response.data:
-                logger.info(f"Found existing money order customer: {name}")
-                return response.data[0]['customer_id']
-
-            # Create new customer
+            # Step 2: Payer doesn't exist - create new customer_id only once
             customer_id = str(uuid.uuid4())
             new_customer = {
                 'customer_id': customer_id,
@@ -185,16 +217,114 @@ class DocumentStorage:
                 'state': self._safe_string(customer_data.get('state')),
                 'zip_code': self._safe_string(customer_data.get('zip')),
                 'phone': self._safe_string(customer_data.get('phone')),
-                'email': self._safe_string(customer_data.get('email'))
+                'email': self._safe_string(customer_data.get('email')),
+                # Initialize fraud counts to 0 - will be set by _update_customer_fraud_history_after_analysis
+                'escalate_count': 0,
+                'fraud_count': 0,
+                'has_fraud_history': False
             }
 
             self.supabase.table('money_order_customers').insert([new_customer]).execute()
-            logger.info(f"Created new money order customer: {name} ({customer_id})")
+            logger.info(f"Created new money order customer record: {name} to {payee_name} ({customer_id})")
             return customer_id
 
         except Exception as e:
-            logger.warning(f"Error getting/creating money order customer: {e}")
+            logger.warning(f"Error creating money order customer: {e}")
             return None
+
+    def _update_customer_fraud_history_after_analysis(self, customer_id: Optional[str], ai_analysis: Optional[Dict]) -> None:
+        """
+        Update customer fraud history in database after analysis completes.
+
+        Logic (Payer-Based Fraud Tracking):
+        - Always creates new customer row per upload (done in _get_or_create_money_order_customer)
+        - For ESCALATE: Set escalate_count = previous_escalate_count + 1 (from other records for same payer)
+        - For REJECT: Set fraud_count = previous_fraud_count + 1 and has_fraud_history = True
+        - For APPROVE: Just update recommendation timestamp
+
+        Args:
+            customer_id: The customer ID to update
+            ai_analysis: The AI analysis result containing the recommendation
+        """
+        if not customer_id or not ai_analysis:
+            return
+
+        try:
+            recommendation = ai_analysis.get('recommendation', 'APPROVE')
+
+            logger.info(f"[FRAUD_UPDATE_AFTER_ANALYSIS] Starting fraud history update: customer_id={customer_id}, recommendation={recommendation}")
+
+            # Fetch the current customer record to get the payer name
+            current_customer_response = self.supabase.table('money_order_customers').select('name').eq('customer_id', customer_id).execute()
+
+            if not current_customer_response.data:
+                logger.warning(f"[FRAUD_UPDATE_AFTER_ANALYSIS] Could not fetch customer record: {customer_id}")
+                return
+
+            payer_name = current_customer_response.data[0].get('name')
+            logger.info(f"[FRAUD_UPDATE_AFTER_ANALYSIS] Fetched payer name: {payer_name}")
+
+            # Fetch PREVIOUS records for same payer to get cumulative counts
+            # Order by created_at DESC to get the most recent record first
+            previous_records_response = self.supabase.table('money_order_customers').select('escalate_count, fraud_count').eq('name', payer_name).order('created_at', desc=True).execute()
+
+            # The first result should be the current record we just created, skip it
+            previous_escalate_count = 0
+            previous_fraud_count = 0
+
+            if previous_records_response.data and len(previous_records_response.data) > 1:
+                # Get counts from the previous record (index 1, since index 0 is current)
+                previous_record = previous_records_response.data[1]
+                previous_escalate_count = previous_record.get('escalate_count', 0)
+                previous_fraud_count = previous_record.get('fraud_count', 0)
+                logger.info(f"[FRAUD_UPDATE_AFTER_ANALYSIS] Found previous record - escalate_count={previous_escalate_count}, fraud_count={previous_fraud_count}")
+            else:
+                logger.info(f"[FRAUD_UPDATE_AFTER_ANALYSIS] No previous records found for payer {payer_name}")
+
+            # Determine what to update based on recommendation
+            from datetime import timezone
+            update_data = {
+                'last_recommendation': recommendation,
+                'last_analysis_date': datetime.now(timezone.utc).isoformat()
+            }
+
+            if recommendation == 'ESCALATE':
+                # Increment escalate_count based on previous record's count
+                new_escalate_count = previous_escalate_count + 1
+                update_data['escalate_count'] = new_escalate_count
+                logger.info(f"[FRAUD_UPDATE_AFTER_ANALYSIS] ESCALATE: escalate_count = {previous_escalate_count} + 1 = {new_escalate_count}")
+
+            elif recommendation == 'REJECT':
+                # Increment fraud_count based on previous record's count, mark as fraudster
+                new_fraud_count = previous_fraud_count + 1
+                update_data['fraud_count'] = new_fraud_count
+                update_data['has_fraud_history'] = True
+                logger.info(f"[FRAUD_UPDATE_AFTER_ANALYSIS] REJECT: fraud_count = {previous_fraud_count} + 1 = {new_fraud_count}, marked as fraudster")
+
+            else:
+                # APPROVE or other - just update recommendation timestamp, no counts
+                logger.info(f"[FRAUD_UPDATE_AFTER_ANALYSIS] APPROVE: updating timestamp only")
+
+            # Execute the update on the current customer record ONLY
+            # Get the most recently created row (the one we just inserted) by selecting the MAX id
+            # Then update only that specific row to avoid updating all rows with same customer_id
+            logger.info(f"[FRAUD_UPDATE_AFTER_ANALYSIS] Executing UPDATE with data: {update_data}")
+
+            # Get the latest row ID for this customer_id (the one we just created)
+            latest_row_response = self.supabase.table('money_order_customers').select('id').eq('customer_id', customer_id).order('created_at', desc=True).limit(1).execute()
+
+            if latest_row_response.data and len(latest_row_response.data) > 0:
+                latest_row_id = latest_row_response.data[0].get('id')
+                # Update only this specific row by id, not all rows with same customer_id
+                self.supabase.table('money_order_customers').update(update_data).eq('id', latest_row_id).execute()
+                logger.info(f"[FRAUD_UPDATE_AFTER_ANALYSIS] Successfully updated row id={latest_row_id} for customer {payer_name}")
+            else:
+                logger.warning(f"[FRAUD_UPDATE_AFTER_ANALYSIS] Could not find latest row for customer_id={customer_id}")
+
+        except Exception as e:
+            logger.error(f"[FRAUD_UPDATE_AFTER_ANALYSIS] Error updating customer fraud history: {e}")
+            import traceback
+            logger.error(f"[FRAUD_UPDATE_AFTER_ANALYSIS] Traceback: {traceback.format_exc()}")
 
     def _store_document(self, user_id: str, document_type: str, file_name: str) -> str:
         """Store document record in documents table, return document_id"""
@@ -259,6 +389,9 @@ class DocumentStorage:
                 'payee_name': extracted.get('payee')
             }
             purchaser_customer_id = self._get_or_create_money_order_customer(purchaser_data)
+
+            # Update customer fraud history based on AI analysis recommendation
+            self._update_customer_fraud_history_after_analysis(purchaser_customer_id, ai_analysis)
 
             # Prepare money order data with AI analysis
             money_order_data = {
