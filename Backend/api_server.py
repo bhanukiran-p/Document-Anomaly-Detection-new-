@@ -21,6 +21,9 @@ from bank_statement.parser import (
 )
 from bank_statement.risk_analyzer import evaluate_risk, build_ai_analysis, collect_anomalies
 
+# Import real-time transaction analysis
+from real_time import process_transaction_csv, detect_fraud_in_transactions, generate_insights
+
 try:
     from google.cloud import vision
     VISION_AVAILABLE = True
@@ -537,6 +540,120 @@ def analyze_bank_statement():
         }), 500
 
 
+@app.route('/api/real-time/analyze', methods=['POST'])
+def analyze_real_time_transactions():
+    """
+    Analyze real-time transaction CSV file.
+    Uses ML-based fraud detection with automatic model training.
+    """
+    try:
+        logger.info("Received real-time transaction analysis request")
+
+        # Check for CSV file
+        if 'file' not in request.files:
+            return jsonify({
+                'success': False,
+                'error': 'No file provided'
+            }), 400
+
+        file = request.files['file']
+
+        if not file or file.filename == '':
+            return jsonify({
+                'success': False,
+                'error': 'No file selected'
+            }), 400
+
+        # Validate CSV file
+        if not file.filename.lower().endswith('.csv'):
+            return jsonify({
+                'success': False,
+                'error': 'Only CSV files are supported'
+            }), 400
+
+        # Save file
+        filepath = save_uploaded_file(file, 'csv')
+        logger.info(f"CSV file saved: {filepath}")
+
+        try:
+            # Step 1: Process CSV file
+            logger.info("Step 1: Processing CSV file")
+            csv_result = process_transaction_csv(filepath)
+
+            if not csv_result.get('success'):
+                cleanup_file(filepath)
+                return jsonify(csv_result), 400
+
+            transactions = csv_result['transactions']
+            logger.info(f"Processed {len(transactions)} transactions")
+
+            # Step 2: Detect fraud using ML
+            logger.info("Step 2: Running ML fraud detection")
+            fraud_result = detect_fraud_in_transactions(transactions, auto_train=True)
+
+            if not fraud_result.get('success'):
+                cleanup_file(filepath)
+                return jsonify(fraud_result), 500
+
+            logger.info(f"Fraud detection complete: {fraud_result['fraud_count']} fraudulent transactions")
+
+            # Step 3: Generate insights
+            logger.info("Step 3: Generating insights and plots")
+            insights_result = generate_insights(fraud_result)
+
+            if not insights_result.get('success'):
+                logger.warning(f"Insight generation failed: {insights_result.get('error')}")
+                insights_result = {
+                    'success': True,
+                    'statistics': {},
+                    'plots': [],
+                    'fraud_patterns': {},
+                    'recommendations': []
+                }
+
+            # Cleanup file
+            cleanup_file(filepath)
+
+            # Combine results
+            response = {
+                'success': True,
+                'csv_info': {
+                    'total_count': csv_result['total_count'],
+                    'date_range': csv_result['date_range'],
+                    'summary': csv_result['summary']
+                },
+                'fraud_detection': {
+                    'fraud_count': fraud_result['fraud_count'],
+                    'legitimate_count': fraud_result['legitimate_count'],
+                    'fraud_percentage': fraud_result['fraud_percentage'],
+                    'legitimate_percentage': fraud_result['legitimate_percentage'],
+                    'total_fraud_amount': fraud_result['total_fraud_amount'],
+                    'total_legitimate_amount': fraud_result['total_legitimate_amount'],
+                    'total_amount': fraud_result['total_amount'],
+                    'average_fraud_probability': fraud_result['average_fraud_probability'],
+                    'model_type': fraud_result['model_type']
+                },
+                'transactions': fraud_result['transactions'],
+                'insights': insights_result,
+                'analyzed_at': datetime.now().isoformat()
+            }
+
+            logger.info("Real-time transaction analysis complete")
+            return jsonify(response)
+
+        except Exception as e:
+            cleanup_file(filepath)
+            raise e
+
+    except Exception as e:
+        logger.error(f"Real-time analysis error: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to analyze transactions'
+        }), 500
+
+
 if __name__ == '__main__':
     print("=" * 60)
     print("XFORIA DAD API Server")
@@ -547,6 +664,8 @@ if __name__ == '__main__':
     print(f"  - POST /api/check/analyze")
     print(f"  - POST /api/paystub/analyze")
     print(f"  - POST /api/money-order/analyze")
+    print(f"  - POST /api/bank-statement/analyze")
+    print(f"  - POST /api/real-time/analyze")
     print(f"  - POST /api/bank-statement/analyze")
     print("=" * 60)
 

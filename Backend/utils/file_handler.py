@@ -9,23 +9,38 @@ from werkzeug.utils import secure_filename
 logger = logging.getLogger(__name__)
 
 UPLOAD_FOLDER = 'temp_uploads'
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'pdf'}
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'pdf', 'csv'}
 
 # Ensure upload folder exists
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 
-def allowed_file(filename):
-    """Check if file has an allowed extension."""
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+def allowed_file(filename, file_type=None):
+    """
+    Check if file has an allowed extension.
+
+    Args:
+        filename: Name of the file
+        file_type: Optional specific file type to check (e.g., 'csv')
+    """
+    if not filename or '.' not in filename:
+        return False
+
+    ext = filename.rsplit('.', 1)[1].lower()
+
+    if file_type:
+        return ext == file_type.lower()
+
+    return ext in ALLOWED_EXTENSIONS
 
 
-def save_uploaded_file(file):
+def save_uploaded_file(file, file_type=None):
     """
     Save uploaded file to temporary location.
 
     Args:
         file: Flask uploaded file object
+        file_type: Optional specific file type to validate (e.g., 'csv')
 
     Returns:
         str: Path to saved file
@@ -39,8 +54,11 @@ def save_uploaded_file(file):
     if file.filename == '':
         raise ValueError('No file selected')
 
-    if not allowed_file(file.filename):
-        raise ValueError('Invalid file type. Allowed: JPG, JPEG, PNG, PDF')
+    if not allowed_file(file.filename, file_type):
+        if file_type:
+            raise ValueError(f'Invalid file type. Expected: {file_type.upper()}')
+        else:
+            raise ValueError('Invalid file type. Allowed: JPG, JPEG, PNG, PDF, CSV')
 
     filename = secure_filename(file.filename)
     filepath = os.path.join(UPLOAD_FOLDER, filename)

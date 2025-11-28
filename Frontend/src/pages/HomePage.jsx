@@ -102,7 +102,7 @@ const HomePage = () => {
     color: colors.foreground,
     border: `2px solid ${colors.border}`,
     padding: '0.75rem 1.5rem',
-    borderRadius: '0.5rem',
+    borderRadius: '9999px', // Pill shape
     fontSize: '0.95rem',
     fontWeight: '600',
     cursor: 'pointer',

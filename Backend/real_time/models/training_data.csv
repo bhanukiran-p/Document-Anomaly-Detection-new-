@@ -1,0 +1,11 @@
+transaction_id,customer_id,amount,merchant,category,timestamp,location,account_balance,card_type,is_fraud,added_at
+TXN001,CUST12345,45.99,Amazon,retail,2024-01-15 14:30:00,New York,2500.0,credit,0,2025-11-27T18:21:52.851601
+TXN002,CUST67890,1250.0,Crypto Exchange,cryptocurrency,2024-01-15 23:45:00,London,5000.0,debit,0,2025-11-27T18:21:52.851601
+TXN003,CUST12345,12.5,Starbucks,food,2024-01-16 08:15:00,New York,2450.0,credit,0,2025-11-27T18:21:52.851601
+TXN004,CUST54321,850.0,Best Buy,retail,2024-01-16 11:20:00,Los Angeles,3200.0,credit,0,2025-11-27T18:21:52.851601
+TXN005,CUST67890,5000.0,Wire Transfer,wire_transfer,2024-01-16 02:30:00,London,4500.0,debit,0,2025-11-27T18:21:52.851601
+TXN006,CUST12345,35.75,Uber,travel,2024-01-16 18:45:00,New York,2415.0,credit,0,2025-11-27T18:21:52.851601
+TXN007,CUST99999,2500.0,Casino Royal,gambling,2024-01-17 03:15:00,Las Vegas,1000.0,credit,0,2025-11-27T18:21:52.851601
+TXN008,CUST54321,67.89,Whole Foods,food,2024-01-17 09:30:00,Los Angeles,3100.0,credit,0,2025-11-27T18:21:52.851601
+TXN009,CUST12345,150.0,Shell Gas Station,utilities,2024-01-17 16:00:00,New York,2265.0,debit,0,2025-11-27T18:21:52.851601
+TXN010,CUST88888,9999.99,Unknown Merchant 123,retail,2024-01-17 04:20:00,Unknown,500.0,credit,1,2025-11-27T18:21:52.851601

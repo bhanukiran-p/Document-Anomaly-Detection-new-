@@ -14,6 +14,7 @@ import CheckAnalysis from './pages/CheckAnalysis';
 import PaystubAnalysis from './pages/PaystubAnalysis';
 import MoneyOrderAnalysis from './pages/MoneyOrderAnalysis';
 import BankStatementAnalysis from './pages/BankStatementAnalysis';
+import RealTimeAnalysis from './pages/RealTimeAnalysis';
 import './styles/GlobalStyles.css';
 
 function AppContent() {
@@ -46,6 +47,7 @@ function AppContent() {
           <Route path="/paystub-analysis" element={<PaystubAnalysis />} />
           <Route path="/money-order-analysis" element={<MoneyOrderAnalysis />} />
           <Route path="/bank-statement-analysis" element={<BankStatementAnalysis />} />
+          <Route path="/real-time-analysis" element={<RealTimeAnalysis />} />
         </Routes>
       </main>
       {!isCustomLayout && <Footer />}
