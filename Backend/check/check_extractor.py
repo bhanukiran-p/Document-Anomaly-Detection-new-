@@ -75,13 +75,14 @@ class CheckExtractor:
 
     def extract_and_analyze(self, image_path: str) -> Dict:
         """
-        Complete check analysis pipeline
+        Complete check analysis pipeline - NO EARLY EXITS
+        Always runs full evaluation regardless of missing fields
 
         Args:
             image_path: Path to check image file
 
         Returns:
-            Complete analysis results dict
+            Complete analysis results dict with all rule outputs, issues, and final decision
         """
         logger.info(f"Starting check analysis for: {image_path}")
 
@@ -93,27 +94,22 @@ class CheckExtractor:
         bank_name = extracted_data.get('bank_name', '')
         normalized_data = self._normalize_data(extracted_data, bank_name)
 
-        # Stage 3: Validation & Auto-Reject Checks
-        auto_reject_reason = self._check_auto_reject_conditions(normalized_data)
-        if auto_reject_reason:
-            logger.warning(f"Auto-reject triggered: {auto_reject_reason}")
-            return self._create_auto_reject_response(
-                extracted_data, normalized_data, auto_reject_reason
-            )
+        # Stage 3: Validation Rules (collects issues but doesn't exit early)
+        validation_issues = self._collect_validation_issues(normalized_data)
+        logger.info(f"Validation issues found: {len(validation_issues)}")
 
         # Stage 4: ML Fraud Detection
         ml_analysis = self._run_ml_fraud_detection(normalized_data, raw_text)
         logger.info(f"ML fraud analysis complete: {ml_analysis.get('risk_level')}")
 
-        # Stage 5: Customer History & Duplicate Detection
+        # Stage 5: Customer History & Duplicate Detection (continue regardless)
         customer_info = self._get_customer_info(normalized_data)
         duplicate_check = self._check_duplicate(normalized_data)
-
         if duplicate_check:
-            logger.warning("Duplicate check detected")
-            return self._create_duplicate_response(extracted_data, normalized_data, ml_analysis)
+            logger.warning("Duplicate check detected - will be included in issues")
+            validation_issues.append("Duplicate check submission detected")
 
-        # Stage 6: AI Fraud Analysis
+        # Stage 6: AI Fraud Analysis (always runs unless initialization failed)
         ai_analysis = self._run_ai_analysis(normalized_data, ml_analysis, customer_info)
         logger.info(f"AI analysis complete: {ai_analysis.get('recommendation') if ai_analysis else 'N/A'}")
 
@@ -123,14 +119,25 @@ class CheckExtractor:
         # Stage 8: Calculate Confidence Score
         confidence_score = self._calculate_confidence(normalized_data, ml_analysis, ai_analysis)
 
-        # Stage 9: Build Final Response
-        return self._build_final_response(
+        # Stage 9: Determine Final Decision Based on All Collected Issues
+        overall_decision = self._determine_final_decision(
+            validation_issues=validation_issues,
+            ml_analysis=ml_analysis,
+            ai_analysis=ai_analysis,
+            normalized_data=normalized_data
+        )
+
+        # Stage 10: Build Final Response with ALL results
+        return self._build_complete_response(
             extracted_data=extracted_data,
             normalized_data=normalized_data,
             ml_analysis=ml_analysis,
             ai_analysis=ai_analysis,
             anomalies=anomalies,
             confidence_score=confidence_score,
+            validation_issues=validation_issues,
+            overall_decision=overall_decision,
+            duplicate_detected=duplicate_check,
             raw_text=raw_text
         )
 
@@ -168,7 +175,7 @@ class CheckExtractor:
             logger.info(f"Raw response keys: {list(raw_response.keys()) if isinstance(raw_response, dict) else 'Not a dict'}")
             logger.info(f"Raw response type: {type(raw_response)}")
             if raw_response and isinstance(raw_response, dict):
-                logger.info(f"Raw response sample: {str(raw_response)[:500]}")
+                logger.info(f"Raw response sample: {str(raw_response)[:1000]}")
 
             if not raw_response or 'inference' not in raw_response:
                 raise ValueError(f"Invalid Mindee API response - no inference in response. Keys: {list(raw_response.keys()) if isinstance(raw_response, dict) else 'unknown'}")
@@ -177,24 +184,57 @@ class CheckExtractor:
             if not inference:
                 raise ValueError("Invalid Mindee API response - inference is empty")
 
+            logger.info(f"Inference keys: {list(inference.keys()) if isinstance(inference, dict) else 'Not a dict'}")
+
             # ClientV2 returns fields inside inference.result.fields
             result = inference.get('result', {}) if isinstance(inference, dict) else {}
-            fields = result.get('fields', {}) if isinstance(result, dict) else {}
+            logger.info(f"Result keys: {list(result.keys()) if isinstance(result, dict) else 'Not a dict'}")
 
-            # Convert Mindee fields to simple dict
+            fields = result.get('fields', {}) if isinstance(result, dict) else {}
+            logger.info(f"Fields type: {type(fields)}, count: {len(fields) if isinstance(fields, dict) else 'N/A'}")
+
+            if not fields:
+                logger.warning(f"No fields found in Mindee response. Result: {result}")
+
+            # Convert Mindee fields to simple dict and normalize field names
             extracted = {}
+            field_mapping = {
+                'number_amount': 'amount_numeric',
+                'word_amount': 'amount_written',
+                'pay_to': 'payee_name',
+                'signature': 'signature_detected',  # Note: Mindee returns boolean
+                'amount_in_words': 'amount_written',
+                'sender_name': 'payer_name',
+                'sender_address': 'payer_address',
+                'recipient': 'payee_name',
+            }
+
             for name, field_data in fields.items():
+                logger.debug(f"Processing field {name}: {field_data}")
+
+                # Extract the actual value
+                value = None
                 if isinstance(field_data, dict):
                     if 'value' in field_data:
-                        extracted[name] = field_data['value']
-                        logger.debug(f"Mindee field {name}: {field_data['value']}")
+                        value = field_data['value']
                     elif 'values' in field_data:
-                        # Handle list fields
-                        extracted[name] = field_data['values']
+                        value = field_data['values']
                     elif 'content' in field_data:
-                        extracted[name] = field_data['content']
+                        value = field_data['content']
+                    else:
+                        logger.warning(f"  → Field {name} has no value/values/content. Keys: {list(field_data.keys())}")
+                        continue
                 else:
-                    extracted[name] = field_data
+                    value = field_data
+
+                # Map field name to standard name if needed
+                standard_name = field_mapping.get(name, name)
+                extracted[standard_name] = value
+
+                if standard_name != name:
+                    logger.info(f"  → Extracted {name} → {standard_name}: {value}")
+                else:
+                    logger.info(f"  → Extracted {name}: {value}")
 
             # Get raw OCR text (ClientV2 doesn't include OCR in the response)
             raw_text = ""
@@ -202,7 +242,8 @@ class CheckExtractor:
             if extracted:
                 raw_text = " ".join([str(v) for v in extracted.values() if v])
 
-            logger.info(f"Successfully extracted {len(extracted)} fields from Mindee")
+            logger.info(f"Successfully extracted {len(extracted)} fields from Mindee: {list(extracted.keys())}")
+            logger.info(f"Extracted data summary: {extracted}")
             return extracted, raw_text
 
         except Exception as e:
@@ -237,40 +278,67 @@ class CheckExtractor:
             extracted_data['bank_name'] = bank_name
             return extracted_data
 
-    def _check_auto_reject_conditions(self, data: Dict) -> Optional[str]:
-        """Check for auto-reject conditions"""
+    def _collect_validation_issues(self, data: Dict) -> List[str]:
+        """
+        Collect all validation issues without early termination
+        Returns a list of all issues found - pipeline continues regardless
+        """
+        issues = []
 
-        # 1. Unsupported bank
+        # 1. Check signature_detected field (boolean, not detected)
+        # Mindee returns 'signature' field which gets mapped to 'signature_detected'
+        # Also check 'signature_present' for backwards compatibility
+        signature_detected = data.get('signature_detected', data.get('signature_present', False))
+        logger.info(f"Signature check: signature_detected={signature_detected}, raw value={data.get('signature_detected', 'NOT FOUND')}")
+        if not signature_detected:
+            issues.append("Missing signature - required for check validation")
+            logger.warning("Signature not detected")
+
+        # 2. Unsupported bank
         if not data.get('is_supported_bank', False):
             bank_name = data.get('bank_name', 'Unknown')
-            return f"Unsupported bank: {bank_name}. Only Bank of America and Chase are accepted."
+            issues.append(f"Unsupported bank: {bank_name}. Only Bank of America and Chase are accepted.")
 
-        # 2. Missing critical fields
+        # 3. Missing critical fields
         critical_missing = data.get('critical_missing_fields', [])
         if len(critical_missing) >= 3:
-            return f"Too many critical fields missing: {', '.join(critical_missing)}"
-
-        # 3. Missing signature
-        if not data.get('signature_detected'):
-            return "Signature not detected - required for check validation"
+            issues.append(f"Too many critical fields missing: {', '.join(critical_missing)}")
+        elif critical_missing:
+            issues.append(f"Missing critical fields: {', '.join(critical_missing)}")
 
         # 4. Missing check number
         if not data.get('check_number'):
-            return "Check number missing - required for processing"
+            issues.append("Check number missing - required for processing")
 
         # 5. Missing payer or payee
         if not data.get('payer_name'):
-            return "Payer name missing - required field"
+            issues.append("Payer name missing - required field")
         if not data.get('payee_name'):
-            return "Payee name missing - required field"
+            issues.append("Payee name missing - required field")
 
         # 6. Same payer and payee (can't pay yourself)
         payer = str(data.get('payer_name', '')).lower().strip()
         payee = str(data.get('payee_name', '')).lower().strip()
         if payer and payee and payer == payee:
-            return "Payer and payee cannot be the same person"
+            issues.append("Payer and payee cannot be the same person")
 
-        return None
+        # 7. Check amount validations
+        amount_dict = data.get('amount_numeric', {})
+        if isinstance(amount_dict, dict):
+            amount = amount_dict.get('value', 0)
+        else:
+            amount = amount_dict or 0
+
+        if amount > 10000:
+            issues.append(f"High amount: ${amount:,.2f} - requires additional verification")
+
+        # Log all issues collected (for debugging)
+        if issues:
+            logger.info(f"Validation issues collected: {issues}")
+        else:
+            logger.info("No validation issues found")
+
+        return issues
 
     def _run_ml_fraud_detection(self, data: Dict, raw_text: str) -> Dict:
         """Run ML fraud detection"""
@@ -389,62 +457,72 @@ class CheckExtractor:
 
         return min(1.0, max(0.0, confidence))
 
-    def _create_auto_reject_response(self, extracted: Dict, normalized: Dict, reason: str) -> Dict:
-        """Create response for auto-rejected checks"""
-        return {
-            'status': 'rejected',
-            'extracted_data': extracted,
-            'normalized_data': normalized,
-            'ml_analysis': {
-                'fraud_risk_score': 1.0,
-                'risk_level': 'CRITICAL',
-                'model_confidence': 1.0,
-                'auto_reject': True
-            },
-            'ai_analysis': {
-                'recommendation': 'REJECT',
-                'confidence_score': 1.0,
-                'summary': f'Auto-rejected: {reason}',
-                'reasoning': [reason, 'Auto-reject policy triggered'],
-                'key_indicators': ['Auto-reject condition met'],
-                'actionable_recommendations': ['Transaction blocked - do not process']
-            },
-            'anomalies': [reason],
-            'confidence_score': 1.0,
-            'timestamp': datetime.now().isoformat(),
-            'auto_reject_reason': reason
-        }
+    def _determine_final_decision(
+        self,
+        validation_issues: List[str],
+        ml_analysis: Dict,
+        ai_analysis: Optional[Dict],
+        normalized_data: Dict
+    ) -> str:
+        """
+        Determine final decision based on all collected issues
+        - REJECT if signature missing or critical issues exist
+        - Otherwise defer to AI or ML analysis
+        """
+        # Check for signature (most critical)
+        has_signature = normalized_data.get('signature_present', False)
+        if not has_signature:
+            logger.warning("Decision: REJECT due to missing signature")
+            return "REJECT"
 
-    def _create_duplicate_response(self, extracted: Dict, normalized: Dict, ml_analysis: Dict) -> Dict:
-        """Create response for duplicate checks"""
-        check_number = normalized.get('check_number')
-        payer_name = normalized.get('payer_name')
+        # Check for other critical issues
+        critical_keywords = [
+            "unsupported bank",
+            "missing check number",
+            "missing payer name",
+            "missing payee name",
+            "cannot be the same person",
+            "too many critical fields missing"
+        ]
 
-        return {
-            'status': 'rejected',
-            'extracted_data': extracted,
-            'normalized_data': normalized,
-            'ml_analysis': ml_analysis,
-            'ai_analysis': {
-                'recommendation': 'REJECT',
-                'confidence_score': 1.0,
-                'summary': f'Duplicate check detected: #{check_number} from {payer_name}',
-                'reasoning': [
-                    f'Check #{check_number} from {payer_name} was previously submitted',
-                    'Duplicate submissions are automatically rejected'
-                ],
-                'key_indicators': ['Duplicate check detected'],
-                'actionable_recommendations': ['Block transaction', 'Investigate potential fraud']
-            },
-            'anomalies': ['Duplicate check submission'],
-            'confidence_score': 1.0,
-            'timestamp': datetime.now().isoformat(),
-            'duplicate_detected': True
-        }
+        for issue in validation_issues:
+            if any(keyword in issue.lower() for keyword in critical_keywords):
+                logger.warning(f"Decision: REJECT due to critical issue: {issue}")
+                return "REJECT"
 
-    def _build_final_response(self, **kwargs) -> Dict:
-        """Build final response with all analysis data"""
-        return {
+        # Check for duplicate
+        if "duplicate check" in " ".join(validation_issues).lower():
+            logger.warning("Decision: REJECT due to duplicate check")
+            return "REJECT"
+
+        # Defer to AI analysis if available
+        if ai_analysis:
+            recommendation = ai_analysis.get('recommendation', 'ESCALATE').upper()
+            logger.info(f"Decision: {recommendation} (from AI analysis)")
+            return recommendation
+
+        # Fall back to ML analysis
+        fraud_score = ml_analysis.get('fraud_risk_score', 0.5)
+        if fraud_score >= 0.7:
+            logger.info(f"Decision: REJECT (ML fraud score: {fraud_score})")
+            return "REJECT"
+        elif fraud_score >= 0.3:
+            logger.info(f"Decision: ESCALATE (ML fraud score: {fraud_score})")
+            return "ESCALATE"
+        else:
+            logger.info(f"Decision: APPROVE (ML fraud score: {fraud_score})")
+            return "APPROVE"
+
+    def _build_complete_response(self, **kwargs) -> Dict:
+        """
+        Build complete response with ALL analysis results, issues, and decision
+        No data is excluded or hidden
+        """
+        validation_issues = kwargs.get('validation_issues', [])
+        overall_decision = kwargs.get('overall_decision', 'UNKNOWN')
+        duplicate_detected = kwargs.get('duplicate_detected', False)
+
+        response = {
             'status': 'success',
             'extracted_data': kwargs['extracted_data'],
             'normalized_data': kwargs['normalized_data'],
@@ -452,9 +530,18 @@ class CheckExtractor:
             'ai_analysis': kwargs['ai_analysis'],
             'anomalies': kwargs['anomalies'],
             'confidence_score': kwargs['confidence_score'],
-            'raw_text': kwargs['raw_text'],
-            'timestamp': datetime.now().isoformat()
+            'timestamp': datetime.now().isoformat(),
+            # NEW: Include all validation issues
+            'validation_issues': validation_issues,
+            # NEW: Include overall decision
+            'overall_decision': overall_decision,
+            # NEW: Flag if duplicate
+            'duplicate_detected': duplicate_detected,
+            # Raw text for audit trail
+            'raw_text': kwargs.get('raw_text', '')
         }
+
+        return response
 
 
 # Legacy function for backward compatibility

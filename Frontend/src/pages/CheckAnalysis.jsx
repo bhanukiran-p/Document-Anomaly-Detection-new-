@@ -150,7 +150,18 @@ const CheckAnalysis = () => {
         setResults(null);
       } else if (response.success === true && response.data) {
         console.log('✅ Analysis successful - displaying results');
-        setResults(response.data);
+        // Process results with proper nested data access
+        const processedResults = {
+          ...response.data,
+          // Extract ML analysis fields
+          fraud_risk_score: response.data.ml_analysis?.fraud_risk_score || 0,
+          risk_level: response.data.ml_analysis?.risk_level || 'UNKNOWN',
+          model_confidence: response.data.ml_analysis?.model_confidence || 0,
+          // Extract AI analysis fields with proper naming
+          ai_recommendation: response.data.ai_analysis?.recommendation || 'UNKNOWN',
+          ai_confidence: response.data.ai_analysis?.confidence_score || 0,
+        };
+        setResults(processedResults);
         setError(null);
       } else {
         console.log('⚠️ Unexpected response format:', response);
