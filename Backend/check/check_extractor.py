@@ -5,19 +5,20 @@ Orchestrates: Mindee OCR → Normalization → ML Detection → AI Analysis → 
 
 import os
 import logging
+import json
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
-# Import Mindee - use new API
+# Import Mindee - use ClientV2 API
 try:
-    from mindee import Client
-    from mindee.product import CustomV1
+    from mindee import ClientV2
+    from mindee.input.inference_parameters import InferenceParameters
     MINDEE_AVAILABLE = True
 except ImportError as e:
     logging.getLogger(__name__).error(f"Mindee library not properly installed: {e}")
     MINDEE_AVAILABLE = False
-    Client = None
-    CustomV1 = None
+    ClientV2 = None
+    InferenceParameters = None
 
 # Import check-specific components
 from normalization.check_normalizer_factory import CheckNormalizerFactory
@@ -31,6 +32,9 @@ logger = logging.getLogger(__name__)
 MINDEE_API_KEY = os.getenv("MINDEE_API_KEY", "").strip()
 MINDEE_MODEL_ID_CHECK = os.getenv("MINDEE_MODEL_ID_CHECK", "046edc76-e8a4-4e11-a9a3-bb8632250446").strip()
 
+logger.info(f"Mindee API Key loaded: {MINDEE_API_KEY[:20]}..." if MINDEE_API_KEY else "Mindee API Key NOT SET")
+logger.info(f"Mindee Model ID: {MINDEE_MODEL_ID_CHECK}")
+
 if not MINDEE_API_KEY:
     logger.warning("MINDEE_API_KEY is not set - check extraction may fail")
     mindee_client = None
@@ -38,7 +42,8 @@ elif not MINDEE_AVAILABLE:
     logger.error("Mindee library not available")
     mindee_client = None
 else:
-    mindee_client = Client(api_key=MINDEE_API_KEY)
+    mindee_client = ClientV2(api_key=MINDEE_API_KEY)
+    logger.info("Mindee ClientV2 initialized successfully")
 
 
 class CheckExtractor:
@@ -61,7 +66,7 @@ class CheckExtractor:
             data_tools = CheckDataAccessTools()
             self.ai_agent = CheckFraudAnalysisAgent(
                 api_key=openai_key,
-                model=os.getenv('AI_MODEL', 'gpt-4'),
+                model=os.getenv('AI_MODEL', 'o4-mini'),
                 data_tools=data_tools
             )
             logger.info("Initialized CheckFraudAnalysisAgent")
@@ -135,47 +140,67 @@ class CheckExtractor:
             raise RuntimeError("Mindee client not initialized. Check API key and installation.")
 
         try:
-            # Use new Mindee API
+            # Use ClientV2 Mindee API
             input_source = mindee_client.source_from_path(file_path)
 
-            # Create custom endpoint
-            custom_endpoint = mindee_client.create_endpoint(
-                endpoint_name=MINDEE_MODEL_ID_CHECK,
-                account_name="xforia",  # Replace with your account name if different
-                version="1"
+            # Create inference parameters with the model ID
+            inference_params = InferenceParameters(
+                model_id=MINDEE_MODEL_ID_CHECK
             )
 
-            # Parse document using custom model
-            result = mindee_client.enqueue_and_parse(
-                product_class=CustomV1,
+            # Parse document using ClientV2 custom model
+            result = mindee_client.enqueue_and_get_inference(
                 input_source=input_source,
-                endpoint=custom_endpoint
+                params=inference_params
             )
 
-            # Extract fields from the result
-            doc = result.document
-            if not doc or not doc.inference or not doc.inference.prediction:
-                raise ValueError("Invalid Mindee API response")
+            # Extract fields from the raw HTTP response
+            raw_response_data = result.raw_http
 
-            fields = doc.inference.prediction.fields if hasattr(doc.inference.prediction, 'fields') else {}
+            # Parse JSON string response if needed
+            if isinstance(raw_response_data, str):
+                raw_response = json.loads(raw_response_data)
+                logger.info(f"Parsed JSON response successfully")
+            else:
+                raw_response = raw_response_data
+                logger.info(f"Response was already a dict")
+
+            logger.info(f"Raw response keys: {list(raw_response.keys()) if isinstance(raw_response, dict) else 'Not a dict'}")
+            logger.info(f"Raw response type: {type(raw_response)}")
+            if raw_response and isinstance(raw_response, dict):
+                logger.info(f"Raw response sample: {str(raw_response)[:500]}")
+
+            if not raw_response or 'inference' not in raw_response:
+                raise ValueError(f"Invalid Mindee API response - no inference in response. Keys: {list(raw_response.keys()) if isinstance(raw_response, dict) else 'unknown'}")
+
+            inference = raw_response['inference']
+            if not inference:
+                raise ValueError("Invalid Mindee API response - inference is empty")
+
+            # ClientV2 returns fields inside inference.result.fields
+            result = inference.get('result', {}) if isinstance(inference, dict) else {}
+            fields = result.get('fields', {}) if isinstance(result, dict) else {}
 
             # Convert Mindee fields to simple dict
             extracted = {}
-            for name, field in fields.items():
-                if hasattr(field, "value"):
-                    extracted[name] = field.value
-                    logger.debug(f"Mindee field {name}: {field.value}")
-                elif hasattr(field, "values"):
-                    # Handle list fields
-                    extracted[name] = [v.value if hasattr(v, 'value') else v for v in field.values]
-                elif hasattr(field, "content"):
-                    # Some fields use 'content' instead of 'value'
-                    extracted[name] = field.content
+            for name, field_data in fields.items():
+                if isinstance(field_data, dict):
+                    if 'value' in field_data:
+                        extracted[name] = field_data['value']
+                        logger.debug(f"Mindee field {name}: {field_data['value']}")
+                    elif 'values' in field_data:
+                        # Handle list fields
+                        extracted[name] = field_data['values']
+                    elif 'content' in field_data:
+                        extracted[name] = field_data['content']
+                else:
+                    extracted[name] = field_data
 
-            # Get raw OCR text
+            # Get raw OCR text (ClientV2 doesn't include OCR in the response)
             raw_text = ""
-            if hasattr(doc, 'ocr') and doc.ocr:
-                raw_text = str(doc.ocr)
+            # For now, use extracted field values as raw text
+            if extracted:
+                raw_text = " ".join([str(v) for v in extracted.values() if v])
 
             logger.info(f"Successfully extracted {len(extracted)} fields from Mindee")
             return extracted, raw_text

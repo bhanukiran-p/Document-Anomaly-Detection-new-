@@ -77,7 +77,7 @@ class MoneyOrderExtractor:
             openai_key = os.getenv('OPENAI_API_KEY')
             self.ai_agent = FraudAnalysisAgent(
                 api_key=openai_key,
-                model=os.getenv('AI_MODEL', 'gpt-4'),
+                model=os.getenv('AI_MODEL', 'o4-mini'),
                 data_tools=self.data_tools
             )
 
