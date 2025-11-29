@@ -1,10 +1,7 @@
--- Create check_customers table to store payer/customer information
--- This normalizes customer data and tracks fraud history for check payers
-
--- Step 1: Create the new check_customers table
+-- Create check_customers table to store payer/customer information for checks
 CREATE TABLE IF NOT EXISTS check_customers (
     customer_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL,
+    name TEXT NOT NULL UNIQUE,
     payee_name TEXT,
     address TEXT,
     city TEXT,
@@ -12,7 +9,6 @@ CREATE TABLE IF NOT EXISTS check_customers (
     zip_code TEXT,
     phone TEXT,
     email TEXT,
-    -- Fraud tracking fields
     has_fraud_history BOOLEAN DEFAULT FALSE,
     fraud_count INTEGER DEFAULT 0,
     escalate_count INTEGER DEFAULT 0,
@@ -22,20 +18,11 @@ CREATE TABLE IF NOT EXISTS check_customers (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create index for faster lookups by name
+-- Create index on customer name for fast lookups
 CREATE INDEX IF NOT EXISTS idx_check_customers_name ON check_customers(name);
 
--- Step 2: Add payer_customer_id foreign key to checks table if it doesn't exist
-ALTER TABLE checks
-ADD COLUMN IF NOT EXISTS payer_customer_id UUID REFERENCES check_customers(customer_id) ON DELETE SET NULL;
+-- Add payer_customer_id foreign key to checks table
+ALTER TABLE checks ADD COLUMN IF NOT EXISTS payer_customer_id UUID REFERENCES check_customers(customer_id) ON DELETE SET NULL;
 
--- Step 3: Create indexes for performance
+-- Create index on foreign key for performance
 CREATE INDEX IF NOT EXISTS idx_checks_payer_customer ON checks(payer_customer_id);
-
--- Step 4: Add audit timestamp columns to checks table if missing
-ALTER TABLE checks
-ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
-
--- Step 5: Add duplicate detection index (check_number + payer_name)
-CREATE INDEX IF NOT EXISTS idx_checks_duplicate_detection ON checks(check_number, payer_name);

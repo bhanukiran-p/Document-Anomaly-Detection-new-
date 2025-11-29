@@ -1,13 +1,28 @@
 """
-Check Fraud Analysis AI Agent
-Uses GPT-4 to analyze check fraud and make final decisions
-Completely independent from Money Order AI agent
+Check Fraud Analysis AI Agent using LangChain
+Uses LangChain + OpenAI to analyze check fraud and make final decisions
+Completely independent from Money Order AI agent - follows same LangChain pattern
 """
 
 import json
 import logging
 from typing import Dict, Optional
-from openai import OpenAI
+from dotenv import load_dotenv
+import os
+
+# Load environment variables
+load_dotenv()
+
+# Import LangChain components
+try:
+    from langchain_openai import ChatOpenAI
+    from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
+    LANGCHAIN_AVAILABLE = True
+except ImportError as e:
+    LANGCHAIN_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.warning(f"LangChain not available: {e}")
+
 from .check_prompts import (
     SYSTEM_PROMPT,
     RECOMMENDATION_GUIDELINES,
@@ -20,23 +35,41 @@ logger = logging.getLogger(__name__)
 
 class CheckFraudAnalysisAgent:
     """
-    AI-powered fraud analysis agent for checks
-    Uses GPT-4 to make final fraud determination decisions
+    AI-powered fraud analysis agent for checks using LangChain
+    Uses LangChain + ChatOpenAI to make final fraud determination decisions
     """
 
     def __init__(self, api_key: str, model: str = "gpt-4", data_tools: Optional[CheckDataAccessTools] = None):
         """
-        Initialize the check fraud analysis agent
+        Initialize the check fraud analysis agent with LangChain
 
         Args:
             api_key: OpenAI API key
-            model: Model to use (default: gpt-4)
+            model: Model to use (default: o4-mini)
             data_tools: Data access tools for querying customer history, etc.
         """
-        self.client = OpenAI(api_key=api_key)
-        self.model = model
+        self.api_key = api_key or os.getenv('OPENAI_API_KEY')
+        self.model_name = model
         self.data_tools = data_tools or CheckDataAccessTools()
-        logger.info(f"Initialized CheckFraudAnalysisAgent with model: {model}")
+        self.llm = None
+
+        if LANGCHAIN_AVAILABLE and self.api_key:
+            try:
+                self.llm = ChatOpenAI(
+                    model=self.model_name,
+                    openai_api_key=self.api_key,
+                    max_tokens=1500
+                )
+                logger.info(f"Initialized CheckFraudAnalysisAgent with LangChain model: {model}")
+            except Exception as e:
+                logger.warning(f"Could not initialize LangChain: {e}")
+                self.llm = None
+        else:
+            if not LANGCHAIN_AVAILABLE:
+                logger.warning("LangChain not available - AI analysis will be skipped")
+            elif not self.api_key:
+                logger.warning("OPENAI_API_KEY not set - AI analysis will be skipped")
+            self.llm = None
 
     def analyze_fraud(
         self,
@@ -46,7 +79,7 @@ class CheckFraudAnalysisAgent:
         payer_name: Optional[str] = None
     ) -> Dict:
         """
-        Analyze check for fraud using AI
+        Analyze check for fraud using AI with LangChain
 
         Args:
             extracted_data: Extracted check data from Mindee
@@ -56,6 +89,15 @@ class CheckFraudAnalysisAgent:
 
         Returns:
             AI analysis dict with recommendation, confidence, reasoning, etc.
+        """
+        if self.llm is None:
+            raise ValueError("AI Agent not initialized. OpenAI API key missing or invalid.")
+
+        return self._llm_analysis(extracted_data, ml_analysis, customer_id, payer_name)
+
+    def _llm_analysis(self, extracted_data: Dict, ml_analysis: Dict, customer_id: Optional[str] = None, payer_name: Optional[str] = None) -> Dict:
+        """
+        Perform fraud analysis using LangChain and OpenAI
         """
         try:
             # Get customer information
@@ -85,20 +127,21 @@ class CheckFraudAnalysisAgent:
             # Add recommendation guidelines
             full_prompt = f"{analysis_prompt}\n\n{RECOMMENDATION_GUIDELINES}"
 
-            # Call GPT-4
-            logger.info("Calling GPT-4 for fraud analysis...")
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": full_prompt}
-                ],
-                max_tokens=1500
-            )
+            # Create LangChain prompt - full_prompt is already formatted, so pass it directly
+            # Don't use .from_template() since full_prompt already has { } in JSON schema
+            from langchain_core.messages import SystemMessage, HumanMessage
+
+            system_msg = SystemMessage(content=SYSTEM_PROMPT)
+            user_msg = HumanMessage(content=full_prompt)
+            messages = [system_msg, user_msg]
+
+            # Generate analysis using LangChain
+            logger.info("Calling LangChain LLM for check fraud analysis...")
+            response = self.llm.invoke(messages)
 
             # Parse response
-            ai_response = response.choices[0].message.content
-            logger.info("Received GPT-4 response")
+            ai_response = response.content
+            logger.info("Received LLM response")
 
             # Try to parse as JSON
             try:

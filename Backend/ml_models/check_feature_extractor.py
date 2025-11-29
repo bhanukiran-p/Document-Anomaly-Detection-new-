@@ -32,6 +32,14 @@ class CheckFeatureExtractor:
         Returns:
             List of 30 float values representing features
         """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # Log the input data to understand what we're working with
+        logger.info(f"Feature extractor received data: {extracted_data}")
+        logger.info(f"Extracted data keys: {list(extracted_data.keys())}")
+        logger.info(f"Raw text length: {len(raw_text) if raw_text else 0}")
+
         features = []
 
         # Get fields from data
@@ -39,6 +47,8 @@ class CheckFeatureExtractor:
         check_number = self._get_field(extracted_data, 'check_number')
         routing_number = self._get_field(extracted_data, 'routing_number')
         account_number = self._get_field(extracted_data, 'account_number')
+
+        logger.info(f"Basic fields: bank={bank_name}, check={check_number}, routing={routing_number}, account={account_number}")
 
         # Amount handling
         amount_raw = self._get_field(extracted_data, 'amount', 'amount_numeric')
