@@ -246,93 +246,32 @@ def api_register():
 
 @app.route('/api/check/analyze', methods=['POST'])
 def analyze_check():
-    """Analyze check image endpoint"""
+    """Analyze check image endpoint using new isolated check pipeline"""
     try:
         # Check if file is in request
         if 'file' not in request.files:
             return jsonify({'error': 'No file provided'}), 400
-        
+
         file = request.files['file']
-        
+
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
-        
+
         if not allowed_file(file.filename):
             return jsonify({'error': 'Invalid file type. Allowed: JPG, JPEG, PNG, PDF'}), 400
-        
+
         # Save file temporarily
         filename = secure_filename(file.filename)
         filepath = os.path.join(UPLOAD_FOLDER, filename)
         file.save(filepath)
-        
+
         try:
-            # Handle PDF conversion if needed
-            if filename.lower().endswith('.pdf'):
-                try:
-                    pdf_document = fitz.open(filepath)
-                    page = pdf_document[0]
-                    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-                    img_bytes = pix.tobytes("png")
-                    pdf_document.close()
+            # Use new CheckExtractor (Mindee-only, with normalization, ML, AI)
+            from check.check_extractor import CheckExtractor
 
-                    # Save as PNG
-                    new_filepath = filepath.replace('.pdf', '.png')
-                    with open(new_filepath, 'wb') as f:
-                        f.write(img_bytes)
-                    os.remove(filepath)
-                    filepath = new_filepath
-                    logger.info(f"Successfully converted PDF to PNG: {new_filepath}")
-                except Exception as e:
-                    logger.error(f"PDF conversion failed: {e}")
-                    raise
-
-            # Get raw text for document type detection
-            raw_text = ""
-            if vision_client is not None:
-                try:
-                    with open(filepath, 'rb') as image_file:
-                        content = image_file.read()
-                    image = vision.Image(content=content)
-                    response = vision_client.text_detection(image=image)
-                    raw_text = response.text_annotations[0].description if response.text_annotations else ""
-                    logger.info("Successfully extracted text using Vision API")
-                except Exception as e:
-                    logger.warning(f"Vision API text extraction failed: {e}. Proceeding without OCR text.")
-                    raw_text = ""
-            else:
-                logger.warning("Vision API client not initialized. Proceeding without OCR text.")
-
-            # Validate document type only if we have text
-            if raw_text:
-                logger.info(f"Detected document type: check")
-                detected_type = detect_document_type(raw_text)
-                if detected_type != 'check' and detected_type != 'unknown':
-                    # Clean up
-                    if os.path.exists(filepath):
-                        os.remove(filepath)
-                    return jsonify({
-                        'success': False,
-                        'error': f'Wrong document type detected. This appears to be a {detected_type}, not a check. Please upload a bank check.',
-                        'message': 'Document type mismatch'
-                    }), 400
-            
-            # Use ProductionCheckExtractor if available, otherwise use check.extract_check
-            if PRODUCTION_EXTRACTOR_AVAILABLE and ProductionCheckExtractor:
-                try:
-                    extractor = ProductionCheckExtractor(CREDENTIALS_PATH)
-                    details = extractor.extract_check_details(filepath)
-                    logger.info("Check extracted using ProductionCheckExtractor")
-                except Exception as e:
-                    logger.warning(f"Production extractor failed: {e}. Falling back to Mindee extractor.")
-                    # Fall through to use check.extract_check
-                    from check import extract_check
-                    details = extract_check(filepath)
-                    logger.info("Check extracted using Mindee extractor (fallback)")
-            else:
-                # Use Mindee-based extractor as fallback
-                from check import extract_check
-                details = extract_check(filepath)
-                logger.info("Check extracted using Mindee extractor")
+            logger.info(f"Analyzing check using new CheckExtractor: {filename}")
+            extractor = CheckExtractor()
+            analysis_results = extractor.extract_and_analyze(filepath)
 
             # Clean up temp file
             if os.path.exists(filepath):
@@ -340,23 +279,50 @@ def analyze_check():
 
             # Store to database
             user_id = request.form.get('user_id', 'public')
-            document_id = store_check_analysis(user_id, filename, details)
-            logger.info(f"Check stored to database: {document_id}")
+            document_id = store_check_analysis(user_id, filename, analysis_results)
+            logger.info(f"Check analysis stored to database: {document_id}")
+
+            # Update customer fraud status if AI analysis available
+            ai_analysis = analysis_results.get('ai_analysis')
+            if ai_analysis:
+                recommendation = ai_analysis.get('recommendation')
+                normalized_data = analysis_results.get('normalized_data', {})
+                payer_name = normalized_data.get('payer_name')
+
+                if payer_name and recommendation:
+                    try:
+                        from database.check_customer_storage import CheckCustomerStorage
+                        customer_storage = CheckCustomerStorage()
+
+                        # Get or create customer
+                        customer_id = customer_storage.get_or_create_customer(
+                            payer_name=payer_name,
+                            payee_name=normalized_data.get('payee_name'),
+                            address=normalized_data.get('payer_address')
+                        )
+
+                        # Update fraud status
+                        if customer_id:
+                            customer_storage.update_customer_fraud_status(customer_id, recommendation)
+                            logger.info(f"Updated customer {customer_id} fraud status: {recommendation}")
+                    except Exception as e:
+                        logger.error(f"Failed to update customer fraud status: {e}")
 
             return jsonify({
                 'success': True,
-                'data': details,
+                'data': analysis_results,
                 'document_id': document_id,
-                'message': 'Check analyzed and stored successfully'
+                'message': 'Check analyzed successfully'
             })
-            
+
         except Exception as e:
             # Clean up on error
             if os.path.exists(filepath):
                 os.remove(filepath)
             raise e
-            
+
     except Exception as e:
+        logger.error(f"Check analysis failed: {e}", exc_info=True)
         return jsonify({
             'success': False,
             'error': str(e),
