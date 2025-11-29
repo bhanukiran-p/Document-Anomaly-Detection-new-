@@ -97,6 +97,15 @@ class FraudAnalysisAgent:
         - If customer has escalate_count > 0 (previous ESCALATE recommendations), force REJECT
         - This means second and subsequent uploads by same payer always get REJECT
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # Log input parameters for debugging
+        purchaser = extracted_data.get('purchaser', 'Unknown')
+        logger.info(f"[FRAUD_ANALYSIS] Starting analysis for {purchaser}")
+        logger.info(f"[FRAUD_ANALYSIS] Input params: is_repeat_customer={is_repeat_customer}, customer_id={customer_id}")
+        logger.info(f"[FRAUD_ANALYSIS] customer_fraud_history={customer_fraud_history}")
+
         # Store ML analysis and customer status for later validation
         self._current_ml_analysis = ml_analysis
         self._is_repeat_customer = is_repeat_customer
@@ -105,11 +114,31 @@ class FraudAnalysisAgent:
         # This is critical for payer-based fraud tracking
         escalate_count = 0
         if customer_fraud_history:
-            escalate_count = customer_fraud_history.get('escalate_count', 0)
+            raw_escalate_count = customer_fraud_history.get('escalate_count', 0)
+            # CRITICAL: Convert to int to handle string/None values
+            try:
+                if raw_escalate_count is None:
+                    escalate_count = 0
+                else:
+                    escalate_count = int(raw_escalate_count)
+            except (ValueError, TypeError) as e:
+                logger.error(f"[FRAUD_ANALYSIS] Error converting escalate_count to int: {raw_escalate_count}, error: {e}")
+                escalate_count = 0
+            
+            logger.info(f"[FRAUD_ANALYSIS] Extracted escalate_count={escalate_count} (raw={raw_escalate_count}, type={type(raw_escalate_count)}) from customer_fraud_history")
+            logger.info(f"[FRAUD_ANALYSIS] Full customer_fraud_history dict: {customer_fraud_history}")
+        else:
+            logger.info(f"[FRAUD_ANALYSIS] No customer_fraud_history provided, escalate_count=0")
 
-        if escalate_count > 0:
+        # CRITICAL CHECK: MANDATORY REJECT if escalate_count > 0
+        # This MUST happen before any LLM analysis
+        # Double-check with explicit comparison to handle edge cases
+        if escalate_count is not None and int(escalate_count) > 0:
+            logger.warning(f"[FRAUD_ANALYSIS] ⚠️ MANDATORY REJECT TRIGGERED: escalate_count={escalate_count} > 0")
+            logger.warning(f"[FRAUD_ANALYSIS] Customer has previous ESCALATE records - forcing REJECT recommendation")
+            
             # Customer has previous ESCALATE records - force REJECT recommendation
-            return {
+            reject_result = {
                 'recommendation': 'REJECT',
                 'confidence_score': 1.0,
                 'summary': f'Payer has escalate_count={escalate_count} from previous uploads. Forcing REJECT per payer-based fraud tracking rules.',
@@ -133,6 +162,11 @@ class FraudAnalysisAgent:
                 'analysis_type': 'policy_enforcement',
                 'model_used': 'payer_fraud_policy'
             }
+            
+            logger.info(f"[FRAUD_ANALYSIS] Returning REJECT result: {reject_result}")
+            return reject_result
+        else:
+            logger.info(f"[FRAUD_ANALYSIS] escalate_count={escalate_count}, proceeding with LLM analysis")
 
         # Get customer history if ID provided
         customer_history = "No customer ID provided"

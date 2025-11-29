@@ -8,6 +8,7 @@ from flask_cors import CORS
 import os
 import sys
 import logging
+from logging.handlers import RotatingFileHandler
 from werkzeug.utils import secure_filename
 import importlib.util
 import re
@@ -18,9 +19,38 @@ from database.supabase_client import get_supabase, check_connection as check_sup
 from auth.supabase_auth import login_user_supabase, register_user_supabase, verify_token
 from database.document_storage import store_money_order_analysis, store_bank_statement_analysis, store_paystub_analysis, store_check_analysis
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Create logs directory if it doesn't exist
+log_dir = os.path.join(os.path.dirname(__file__), 'logs')
+os.makedirs(log_dir, exist_ok=True)
+log_file = os.path.join(log_dir, 'api_server.log')
+
+# Configure logging to both console and file
+log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+formatter = logging.Formatter(log_format)
+
+# File handler with rotation
+file_handler = RotatingFileHandler(
+    log_file, 
+    maxBytes=10*1024*1024,  # 10MB
+    backupCount=5
+)
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(formatter)
+
+# Console handler
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(formatter)
+
+# Configure root logger
+logging.basicConfig(
+    level=logging.INFO,
+    format=log_format,
+    handlers=[file_handler, console_handler]
+)
+
 logger = logging.getLogger(__name__)
+logger.info(f"Logging configured. Log file: {log_file}")
 
 # Load environment variables explicitly
 from dotenv import load_dotenv
