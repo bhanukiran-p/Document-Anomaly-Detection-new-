@@ -52,7 +52,6 @@ class FraudAnalysisAgent:
                 self.llm = ChatOpenAI(
                     model=self.model_name,
                     openai_api_key=self.api_key,
-                    temperature=0.3,  # Lower temperature for consistent analysis
                     max_tokens=1500
                 )
             except Exception as e:

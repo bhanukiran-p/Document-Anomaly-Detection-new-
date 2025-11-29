@@ -93,7 +93,6 @@ class CheckFraudAnalysisAgent:
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": full_prompt}
                 ],
-                temperature=0.3,  # Low temperature for consistency
                 max_tokens=1500
             )
 

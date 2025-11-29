@@ -6,7 +6,7 @@ import json
 import logging
 from typing import Dict, Any, Optional
 from langchain_openai import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from .prompts import CHECK_SYSTEM_PROMPT, CHECK_ANALYSIS_TEMPLATE
 
 logger = logging.getLogger(__name__)
