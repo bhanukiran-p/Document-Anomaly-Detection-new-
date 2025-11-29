@@ -508,8 +508,8 @@ class MoneyOrderExtractor:
             supabase = get_supabase()
             logger = logging.getLogger(__name__)
 
-            purchaser_name = data.get('purchaser')
-            sender_address = data.get('sender_address')
+            # Check both normalized field name (sender_name) and raw field name (purchaser)
+            purchaser_name = data.get('sender_name') or data.get('purchaser')
 
             if purchaser_name:
                 # Query for existing customer records by name (payer-based fraud tracking)
