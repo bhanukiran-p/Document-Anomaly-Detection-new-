@@ -128,9 +128,10 @@ class CheckFraudAnalysisAgent:
             )
             return self._create_repeat_offender_rejection(payer_name, escalate_count)
 
-        # If we reach here, payer has no escalations logged → mandatory ESCALATE
-        is_new_customer = not customer_info or not customer_info.get('customer_id')
-        return self._create_first_time_escalation(payer_name, is_new_customer=is_new_customer)
+        # If we reach here, payer has no escalations logged → proceed to LLM for decision
+        # LLM will follow the decision table based on fraud score and customer history
+        logger.info(f"Customer {payer_name} has no escalations; proceeding to LLM analysis.")
+        return None
 
     def _llm_analysis(
         self,
