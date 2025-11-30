@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { analyzeMoneyOrder } from '../services/api';
 import { colors } from '../styles/colors';
+import MoneyOrderInsights from '../components/MoneyOrderInsights';
 
 const MoneyOrderAnalysis = () => {
   const [file, setFile] = useState(null);
@@ -9,6 +10,7 @@ const MoneyOrderAnalysis = () => {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState('analyze');
 
   // Use primaryColor for new design system red
   const primary = colors.primaryColor || colors.accent?.red || '#E53935';
@@ -184,6 +186,18 @@ const MoneyOrderAnalysis = () => {
     marginBottom: '1rem',
   };
 
+  const tabStyle = (isActive) => ({
+    padding: '1rem 2rem',
+    borderRadius: '0.75rem 0.75rem 0 0',
+    backgroundColor: isActive ? primary : colors.secondary,
+    color: isActive ? colors.primaryForeground : colors.foreground,
+    border: `1px solid ${colors.border}`,
+    borderBottom: isActive ? 'none' : `1px solid ${colors.border}`,
+    cursor: 'pointer',
+    fontWeight: isActive ? '600' : '500',
+    transition: 'all 0.3s',
+  });
+
   // Get the data from response (could be results.data or results directly)
   const analysisData = results?.data || results;
 
@@ -205,6 +219,28 @@ const MoneyOrderAnalysis = () => {
         <p style={{ color: colors.mutedForeground }}>Analyze money orders for fraud and anomaly detection</p>
       </div>
 
+      {/* Tab Navigation */}
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
+        <button
+          onClick={() => setActiveTab('analyze')}
+          style={tabStyle(activeTab === 'analyze')}
+          onMouseEnter={(e) => !activeTab && (e.target.style.backgroundColor = colors.muted)}
+          onMouseLeave={(e) => !activeTab && (e.target.style.backgroundColor = colors.secondary)}
+        >
+          Single Money Order Analysis
+        </button>
+        <button
+          onClick={() => setActiveTab('insights')}
+          style={tabStyle(activeTab === 'insights')}
+          onMouseEnter={(e) => !activeTab && (e.target.style.backgroundColor = colors.muted)}
+          onMouseLeave={(e) => !activeTab && (e.target.style.backgroundColor = colors.secondary)}
+        >
+          CSV Insights
+        </button>
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === 'analyze' && (
       <div style={gridStyle}>
         {/* Upload Section */}
         <div style={cardStyle}>
@@ -473,6 +509,12 @@ const MoneyOrderAnalysis = () => {
           )}
         </div>
       </div>
+      )}
+
+      {/* CSV Insights Tab */}
+      {activeTab === 'insights' && (
+        <MoneyOrderInsights />
+      )}
     </div>
   );
 };
