@@ -8,6 +8,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 from mindee import ClientV2, InferenceParameters, PathInput
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv(override=True)
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +54,16 @@ except ImportError as e:
     CheckFraudAnalysisAgent = None
     CheckDataAccessTools = None
 
+# Import Check Normalization
+try:
+    from check_normalization.check_normalizer_factory import CheckNormalizerFactory
+
+    NORMALIZATION_AVAILABLE = True
+except ImportError as e:
+    logger.warning("Check normalization not available: %s", e)
+    NORMALIZATION_AVAILABLE = False
+    CheckNormalizerFactory = None
+
 MINDEE_API_KEY = os.getenv("MINDEE_API_KEY", "").strip()
 MINDEE_MODEL_ID_CHECK = os.getenv("MINDEE_MODEL_ID_CHECK", "046edc76-e8a4-4e11-a9a3-bb8632250446").strip()
 
@@ -62,7 +76,7 @@ mindee_client = ClientV2(MINDEE_API_KEY)
 def _run_model(file_path: str) -> Dict[str, Any]:
     """Run Mindee model inference on a document."""
     try:
-        params = InferenceParameters(model_id=MINDEE_MODEL_ID_CHECK, raw_text=True, confidence=True)
+        params = InferenceParameters(model_id=MINDEE_MODEL_ID_CHECK, raw_text=True)
         input_source = PathInput(file_path)
         response = mindee_client.enqueue_and_get_inference(input_source, params)
 
@@ -230,8 +244,36 @@ def _run_ai_analysis(ml_analysis: Dict[str, Any], extracted: Dict[str, Any]) -> 
 
 
 def _generate_anomalies(extracted: Dict[str, Any], ml_analysis: Optional[Dict], ai_analysis: Optional[Dict]) -> List[str]:
-    """Generate list of anomalies based on ML and AI analysis."""
+    """Generate list of anomalies based on ML, AI analysis, and normalization validation."""
     anomalies: List[str] = []
+
+    # Add specific check fraud indicators (MICR mismatch, font signature, etc.)
+    try:
+        from utils.check_fraud_indicators import detect_check_fraud_indicators
+        raw_text = extracted.get('raw_ocr_text', '')
+        fraud_indicators = detect_check_fraud_indicators(extracted, raw_text)
+        anomalies.extend(fraud_indicators)
+    except ImportError:
+        logger.warning("Check fraud indicators module not available")
+    except Exception as e:
+        logger.warning(f"Failed to detect check fraud indicators: {e}")
+
+    # Check normalization-based fraud indicators
+    if NORMALIZATION_AVAILABLE and CheckNormalizerFactory:
+        try:
+            bank_name = extracted.get("bank_name")
+            normalizer = CheckNormalizerFactory.get_normalizer(bank_name)
+            normalized_check = normalizer.normalize(extracted)
+
+            # Get fraud indicators from normalized check
+            fraud_indicators = normalized_check.get_fraud_indicators()
+            anomalies.extend(fraud_indicators)
+
+            # Log normalization info
+            logger.info(f"Check normalized using {normalizer.__class__.__name__}")
+            logger.info(f"Completeness score: {normalized_check.get_completeness_score()}")
+        except Exception as e:
+            logger.warning(f"Check normalization validation failed: {e}")
 
     if ml_analysis:
         risk_level = ml_analysis.get("risk_level", "LOW")
@@ -270,13 +312,6 @@ def _generate_anomalies(extracted: Dict[str, Any], ml_analysis: Optional[Dict], 
         if amount < 1:
             anomalies.append("Amount is suspiciously low")
 
-    if not extracted.get("signature_detected"):
-        anomalies.append("Missing signature")
-    if not extracted.get("check_number"):
-        anomalies.append("Missing check number")
-    if not extracted.get("routing_number") or not extracted.get("account_number"):
-        anomalies.append("Missing banking information")
-
     return anomalies
 
 
@@ -303,6 +338,7 @@ def _build_response(
     ai_analysis: Optional[Dict[str, Any]],
     anomalies: List[str],
     confidence_score: float,
+    normalized_data: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Assemble the final payload returned to the API layer."""
     result = {
@@ -314,6 +350,14 @@ def _build_response(
         "anomalies": anomalies,
         "confidence_score": confidence_score,
     }
+
+    # Add normalized data if available
+    if normalized_data:
+        result["normalized_data"] = normalized_data
+        # Extract missing fields and key factors
+        missing_fields = [k for k, v in normalized_data.items() if v is None or v == '']
+        result["missing_fields"] = missing_fields
+        logger.info(f"Normalized data added with {len(missing_fields)} missing fields")
 
     if ml_analysis:
         serializable_ml = convert_to_json_serializable(ml_analysis)
@@ -346,10 +390,36 @@ def extract_check(file_path: str) -> Dict[str, Any]:
     raw_text = mindee_out.get("raw_text", "")
 
     extracted = _build_extracted(fields, raw_text)
+
+    # Normalize check data
+    normalized_data = None
+    if NORMALIZATION_AVAILABLE and CheckNormalizerFactory:
+        try:
+            bank_name = extracted.get("bank_name")
+            normalizer = CheckNormalizerFactory.get_normalizer(bank_name)
+            normalized_check = normalizer.normalize(extracted)
+            normalized_data = normalized_check.to_dict()
+            logger.info(f"Check normalized using {normalizer.__class__.__name__}")
+        except Exception as e:
+            logger.warning(f"Check normalization failed: {e}")
+
     ml_analysis = _run_ml_analysis(extracted, raw_text)
     ai_analysis = _run_ai_analysis(ml_analysis, extracted)
 
     anomalies = _generate_anomalies(extracted, ml_analysis, ai_analysis)
     confidence_score = float(_calculate_confidence_score(extracted, ml_analysis or {}))
 
-    return _build_response(extracted, fields, raw_text, ml_analysis, ai_analysis, anomalies, confidence_score)
+    result = _build_response(extracted, fields, raw_text, ml_analysis, ai_analysis, anomalies, confidence_score, normalized_data)
+
+    # Save analysis result for feedback system
+    try:
+        from langchain_agent.result_storage import save_analysis_result
+        check_number = extracted.get("check_number", "unknown")
+        analysis_id = save_analysis_result(result, check_number)
+        if analysis_id:
+            result["analysis_id"] = analysis_id
+            logger.info(f"Analysis saved with ID: {analysis_id}")
+    except Exception as e:
+        logger.warning(f"Failed to save analysis result: {e}")
+
+    return result

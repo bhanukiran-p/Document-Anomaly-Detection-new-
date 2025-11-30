@@ -140,7 +140,7 @@ const RegisterPage = () => {
       fontSize: '16px',
       fontWeight: '600',
       border: 'none',
-      borderRadius: '0.5rem',
+      borderRadius: '9999px', // Pill shape
       cursor: 'pointer',
       transition: 'all 0.3s ease',
       backgroundColor: primary,

@@ -1,0 +1,229 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "bank_name": "Bank of America.",
+    "country": null,
+    "check_type": null,
+    "payee_name": "Sample Check",
+    "amount_numeric": 347.0,
+    "amount": "$347.00",
+    "amount_words": "three hundred and forty-seven & 00/100",
+    "date": "2018-01-05",
+    "check_number": "0001",
+    "routing_number": "111000025",
+    "account_number": "000123456789",
+    "memo": "Payment",
+    "signature_detected": null,
+    "currency": null,
+    "payer_name": "Sophie B. Micah",
+    "payer_address": "123 YOUR ADDRESS\nSOMEWHERE. U.S.A. 12345",
+    "raw_ocr_text": "Sophie B. Micah\n123 YOUR ADDRESS\nSOMEWHERE. U.S.A. 12345\nPAY TO THE\nORDER OF\nSample Check\nBank of America.\n0001\nJanuary 05, 2018\nDATE\n$\n347.00\nthree hundred and forty-seven & 00/100\nMEMO\nPayment\n\u2446111000025\u2446\nSophie B. Micah\n000123456789 =\n0001\nDOLLARS\n"
+  },
+  "raw_fields": {
+    "payer_name": "Sophie B. Micah",
+    "payer_address": "123 YOUR ADDRESS\nSOMEWHERE. U.S.A. 12345",
+    "pay_to": "Sample Check",
+    "check_date": "2018-01-05",
+    "number_amount": 347.0,
+    "word_amount": "three hundred and forty-seven & 00/100",
+    "bank_name": "Bank of America.",
+    "routing_number": "111000025",
+    "account_number": "000123456789",
+    "check_number": "0001",
+    "signature": null,
+    "memo": "Payment"
+  },
+  "raw_text": "Sophie B. Micah\n123 YOUR ADDRESS\nSOMEWHERE. U.S.A. 12345\nPAY TO THE\nORDER OF\nSample Check\nBank of America.\n0001\nJanuary 05, 2018\nDATE\n$\n347.00\nthree hundred and forty-seven & 00/100\nMEMO\nPayment\n\u2446111000025\u2446\nSophie B. Micah\n000123456789 =\n0001\nDOLLARS\n",
+  "timestamp": "2025-11-26T23:27:03.112445",
+  "anomalies": [
+    "No signature detected",
+    "High fraud risk detected: CRITICAL (score: 100.00%)",
+    "AI recommendation: REJECT"
+  ],
+  "confidence_score": 0.9952000000000001,
+  "normalized_data": {
+    "bank_name": "Bank of America.",
+    "country": null,
+    "check_number": "0001",
+    "routing_number": "111000025",
+    "account_number": "000123456789",
+    "check_type": null,
+    "payer_name": "Sophie B. Micah",
+    "payer_address": "123 YOUR ADDRESS SOMEWHERE. U.S.A. 12345",
+    "payee_name": "Sample Check",
+    "amount_numeric": 347.0,
+    "amount_words": "three hundred and forty-seven & 00/100",
+    "currency": null,
+    "date": "01-05-2018",
+    "memo": "Payment",
+    "signature_detected": null
+  },
+  "missing_fields": [
+    "country",
+    "check_type",
+    "currency",
+    "signature_detected"
+  ],
+  "ml_analysis": {
+    "fraud_risk_score": 1.0,
+    "risk_level": "CRITICAL",
+    "model_confidence": 0.976,
+    "model_scores": {
+      "random_forest": 0.983,
+      "xgboost": 0.9950000047683716,
+      "ensemble": 0.99,
+      "adjusted": 1.0
+    },
+    "feature_importance": [
+      "Amount parsing confidence low",
+      "Missing critical fields (score: 0.55)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "Invalid serial format: 'N/A'",
+      "Invalid issuer: 'Bank of America.'"
+    ],
+    "missing_field_scores": [
+      {
+        "field": "Amount (numeric)",
+        "is_present": true,
+        "max_score_percent": 95,
+        "applied_score_percent": 0
+      },
+      {
+        "field": "Amount (written)",
+        "is_present": false,
+        "max_score_percent": 80,
+        "applied_score_percent": 80
+      },
+      {
+        "field": "Serial number",
+        "is_present": false,
+        "max_score_percent": 85,
+        "applied_score_percent": 85
+      },
+      {
+        "field": "Payee / recipient",
+        "is_present": true,
+        "max_score_percent": 75,
+        "applied_score_percent": 0
+      },
+      {
+        "field": "Sender / purchaser",
+        "is_present": true,
+        "max_score_percent": 60,
+        "applied_score_percent": 0
+      },
+      {
+        "field": "Issue date",
+        "is_present": true,
+        "max_score_percent": 40,
+        "applied_score_percent": 0
+      },
+      {
+        "field": "Signature",
+        "is_present": false,
+        "max_score_percent": 70,
+        "applied_score_percent": 70
+      },
+      {
+        "field": "Issuer",
+        "is_present": true,
+        "max_score_percent": 35,
+        "applied_score_percent": 0
+      }
+    ],
+    "prediction_type": "model"
+  },
+  "ml_fraud_analysis": {
+    "fraud_risk_score": 1.0,
+    "risk_level": "CRITICAL",
+    "model_confidence": 0.976,
+    "model_scores": {
+      "random_forest": 0.983,
+      "xgboost": 0.9950000047683716,
+      "ensemble": 0.99,
+      "adjusted": 1.0
+    },
+    "feature_importance": [
+      "Amount parsing confidence low",
+      "Missing critical fields (score: 0.55)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "Invalid serial format: 'N/A'",
+      "Invalid issuer: 'Bank of America.'"
+    ],
+    "missing_field_scores": [
+      {
+        "field": "Amount (numeric)",
+        "is_present": true,
+        "max_score_percent": 95,
+        "applied_score_percent": 0
+      },
+      {
+        "field": "Amount (written)",
+        "is_present": false,
+        "max_score_percent": 80,
+        "applied_score_percent": 80
+      },
+      {
+        "field": "Serial number",
+        "is_present": false,
+        "max_score_percent": 85,
+        "applied_score_percent": 85
+      },
+      {
+        "field": "Payee / recipient",
+        "is_present": true,
+        "max_score_percent": 75,
+        "applied_score_percent": 0
+      },
+      {
+        "field": "Sender / purchaser",
+        "is_present": true,
+        "max_score_percent": 60,
+        "applied_score_percent": 0
+      },
+      {
+        "field": "Issue date",
+        "is_present": true,
+        "max_score_percent": 40,
+        "applied_score_percent": 0
+      },
+      {
+        "field": "Signature",
+        "is_present": false,
+        "max_score_percent": 70,
+        "applied_score_percent": 70
+      },
+      {
+        "field": "Issuer",
+        "is_present": true,
+        "max_score_percent": 35,
+        "applied_score_percent": 0
+      }
+    ],
+    "prediction_type": "model"
+  },
+  "ai_analysis": {
+    "recommendation": "REJECT",
+    "confidence": 0.9,
+    "summary": "High fraud risk (100.0%). Multiple red flags detected.",
+    "reasoning": "ML models indicate high probability of fraud. Critical anomalies found.",
+    "key_indicators": [
+      "Amount parsing confidence low",
+      "Missing critical fields (score: 0.55)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format"
+    ],
+    "verification_notes": "Manual verification recommended for borderline cases",
+    "training_insights": "N/A (fallback mode - training data not analyzed)",
+    "historical_comparison": "N/A (fallback mode - past cases not analyzed)",
+    "analysis_type": "rule_based",
+    "model_used": "fallback"
+  },
+  "analysis_id": "analysis_20251126_232703_113_0001",
+  "saved_timestamp": "2025-11-26T23:27:03.113690"
+}

@@ -1,0 +1,131 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "bank_name": "Axis Bank Ltd",
+    "country": null,
+    "check_type": null,
+    "payee_name": "Germa de Geus",
+    "amount_numeric": 9487.0,
+    "amount": "$9,487.00",
+    "amount_words": "Nine Thousand Four Hundred and Eighty Seven",
+    "date": "2022-05-06",
+    "check_number": "426160",
+    "routing_number": "500211012",
+    "account_number": "04 594 409 5440 988049 80",
+    "memo": null,
+    "signature_detected": true,
+    "currency": null,
+    "payer_name": "AXIS BANK LTD",
+    "payer_address": "MCH-PATNAVI, HYDERABAD (AP) - HYDERABAD 500029",
+    "raw_ocr_text": "AXIS BANK LTD\nMEHDIPATNAM HYDERABAD[AP] HYDERABAD 500028\nIFS CODE UTIB0000406 VALID FOR THREE MONTHS FROM THE DATE OF ISSUE\nDATE\n\u0926\u093f\u0928\u093e\u0902\u0915 06 05 22\nDDMMYYYY\n\nPAY Germa de Geus OR BEARER / \u092f\u093e \u0927\u093e\u0930\u0915 \u0915\u094b\n\nRUPEES Nine Thousand Four Hundred and Eighty Seven \u20b9 9487\n\u0930\u0941\u092a\u092f\u0947 \u0905\u0926\u093e \u0915\u0930\u0947\u0902\n\nA/C NO 04 594 409 5440 988049 80\nSAPPM 426160\n\nPayable at par at all branches of Axis Bank Ltd in India\nPlease sign above\n\n\" 000006\u2448 500211012\u2446 426160\u2448 31\n\n"
+  },
+  "raw_fields": {
+    "payer_name": "AXIS BANK LTD",
+    "payer_address": "MCH-PATNAVI, HYDERABAD (AP) - HYDERABAD 500029",
+    "pay_to": "Germa de Geus",
+    "check_date": "2022-05-06",
+    "number_amount": 9487.0,
+    "word_amount": "Nine Thousand Four Hundred and Eighty Seven",
+    "bank_name": "Axis Bank Ltd",
+    "routing_number": "500211012",
+    "account_number": "04 594 409 5440 988049 80",
+    "check_number": "426160",
+    "signature": true,
+    "memo": null
+  },
+  "raw_text": "AXIS BANK LTD\nMEHDIPATNAM HYDERABAD[AP] HYDERABAD 500028\nIFS CODE UTIB0000406 VALID FOR THREE MONTHS FROM THE DATE OF ISSUE\nDATE\n\u0926\u093f\u0928\u093e\u0902\u0915 06 05 22\nDDMMYYYY\n\nPAY Germa de Geus OR BEARER / \u092f\u093e \u0927\u093e\u0930\u0915 \u0915\u094b\n\nRUPEES Nine Thousand Four Hundred and Eighty Seven \u20b9 9487\n\u0930\u0941\u092a\u092f\u0947 \u0905\u0926\u093e \u0915\u0930\u0947\u0902\n\nA/C NO 04 594 409 5440 988049 80\nSAPPM 426160\n\nPayable at par at all branches of Axis Bank Ltd in India\nPlease sign above\n\n\" 000006\u2448 500211012\u2446 426160\u2448 31\n\n",
+  "timestamp": "2025-11-27T00:00:20.971952",
+  "anomalies": [
+    "Missing security features: No microprinting, padlock icon, or security background - real checks have built-in protection",
+    "Check is 1301 days old (stale check)",
+    "High fraud risk detected: CRITICAL (score: 100.00%)",
+    "AI recommendation: REJECT"
+  ],
+  "confidence_score": 0.9982000000000001,
+  "normalized_data": {
+    "bank_name": "Axis Bank Ltd",
+    "routing_number": "500211012",
+    "account_number": "04594409544098804980",
+    "check_number": "426160",
+    "check_date": "2022-05-06",
+    "check_type": null,
+    "amount_numeric": 9487.0,
+    "amount_words": "Nine Thousand Four Hundred and Eighty Seven",
+    "currency": "USD",
+    "payee_name": "Germa de Geus",
+    "payer_name": "AXIS BANK LTD",
+    "payer_address": "MCH-PATNAVI, HYDERABAD (AP) - HYDERABAD 500029",
+    "memo": null,
+    "signature_detected": true,
+    "amount_match": null,
+    "date_valid": true,
+    "fields_complete": true
+  },
+  "missing_fields": [
+    "check_type",
+    "memo",
+    "amount_match"
+  ],
+  "ml_analysis": {
+    "fraud_risk_score": 1.0,
+    "risk_level": "CRITICAL",
+    "model_confidence": 0.991,
+    "model_scores": {
+      "random_forest": 1.0,
+      "xgboost": 0.9950000047683716,
+      "ensemble": 0.997,
+      "adjusted": 1.0
+    },
+    "feature_importance": [
+      "Amount parsing confidence low",
+      "Missing critical fields (score: 0.95)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "Invalid serial format: 'N/A'",
+      "Invalid issuer: 'Axis Bank Ltd'"
+    ],
+    "prediction_type": "model"
+  },
+  "ml_fraud_analysis": {
+    "fraud_risk_score": 1.0,
+    "risk_level": "CRITICAL",
+    "model_confidence": 0.991,
+    "model_scores": {
+      "random_forest": 1.0,
+      "xgboost": 0.9950000047683716,
+      "ensemble": 0.997,
+      "adjusted": 1.0
+    },
+    "feature_importance": [
+      "Amount parsing confidence low",
+      "Missing critical fields (score: 0.95)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "Invalid serial format: 'N/A'",
+      "Invalid issuer: 'Axis Bank Ltd'"
+    ],
+    "prediction_type": "model"
+  },
+  "ai_analysis": {
+    "recommendation": "REJECT",
+    "confidence": 0.9,
+    "summary": "High fraud risk (100.0%). Multiple red flags detected.",
+    "reasoning": "ML models indicate high probability of fraud. Critical anomalies found.",
+    "key_indicators": [
+      "Amount parsing confidence low",
+      "Missing critical fields (score: 0.95)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format"
+    ],
+    "verification_notes": "Manual verification recommended for borderline cases",
+    "training_insights": "N/A (fallback mode - training data not analyzed)",
+    "historical_comparison": "N/A (fallback mode - past cases not analyzed)",
+    "analysis_type": "rule_based",
+    "model_used": "fallback"
+  },
+  "analysis_id": "analysis_20251127_000020_972_426160",
+  "saved_timestamp": "2025-11-27T00:00:20.972614"
+}
