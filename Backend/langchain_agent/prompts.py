@@ -76,11 +76,11 @@ Based on all this information, provide your analysis in the following format:
 RECOMMENDATION: [APPROVE/REJECT/ESCALATE]
 CONFIDENCE: [0-100]%
 SUMMARY: [1-2 sentence overview]
-REASONING: [Detailed analysis in bullet points, referencing training patterns and past cases when relevant]
-KEY_INDICATORS: [Specific fraud indicators found, if any]
-VERIFICATION_NOTES: [What should be manually verified, if escalated]
-TRAINING_INSIGHTS: [How training dataset patterns support or contradict this analysis]
-HISTORICAL_COMPARISON: [Comparison to similar past cases, if available]"""
+REASONING: [2-3 key points only, be concise]
+KEY_INDICATORS: [Top 2-3 fraud indicators found, if any]
+VERIFICATION_NOTES: [Critical items to verify - 1 sentence max]
+
+Keep it brief and actionable. Omit TRAINING_INSIGHTS and HISTORICAL_COMPARISON sections."""
 
 CUSTOMER_HISTORY_PROMPT = """Review this customer's transaction history and identify any patterns that might indicate fraud risk:
 

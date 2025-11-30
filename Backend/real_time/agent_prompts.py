@@ -29,7 +29,7 @@ When analyzing transactions:
 
 Be thorough, data-driven, and prioritize insights that help prevent future fraud."""
 
-INSIGHTS_PROMPT = """Analyze this real-time transaction dataset and provide detailed insights:
+INSIGHTS_PROMPT = """Analyze this real-time transaction dataset and provide concise insights:
 
 **Dataset Overview:**
 - Total Transactions: {total_transactions}
@@ -43,25 +43,15 @@ INSIGHTS_PROMPT = """Analyze this real-time transaction dataset and provide deta
 **CSV Features:**
 {csv_features}
 
-Please provide a comprehensive analysis covering:
+Provide a brief analysis (3-4 sentences max per section):
 
-1. **Overall Assessment**: What is the fraud situation in this dataset? Is it critical, moderate, or low risk?
+1. **Risk Level**: Critical/Moderate/Low and why (1-2 sentences)
 
-2. **Top 3 Transactions Analysis**: Deep dive into the most suspicious transactions. What makes them fraudulent? Are there common characteristics?
+2. **Key Findings**: Top 2-3 fraud indicators found in the data (bullet points)
 
-3. **Key Features Analysis**: Which CSV features are most important for fraud detection? What patterns do they reveal?
+3. **Main Pattern**: The most significant fraud pattern detected (1 sentence)
 
-4. **Detailed Insights**:
-   - What are the main fraud indicators?
-   - Are there any unusual patterns in amounts, categories, or timing?
-   - What percentage of total value is at risk?
-   - How does the fraud rate compare to industry standards (typically 1-3%)?
-
-5. **Fraud Patterns**: What specific patterns have been detected (time-based, category-based, high-value)?
-
-6. **Actionable Recommendations**: What should be done immediately? What preventive measures should be implemented?
-
-Provide your analysis in a clear, structured format with specific numbers and actionable insights."""
+Keep it concise and actionable. Focus only on the most critical insights."""
 
 FRAUD_PATTERNS_PROMPT = """Analyze the fraud patterns detected in this dataset:
 
@@ -180,29 +170,16 @@ CSV_FEATURES_PROMPT = """Analyze the CSV dataset features and provide:
 
 Focus on features that provide the most value for fraud detection."""
 
-RECOMMENDATIONS_PROMPT = """Based on the fraud analysis below, provide 5-7 actionable recommendations:
+RECOMMENDATIONS_PROMPT = """Based on the fraud analysis below, provide 3-5 concise, actionable recommendations:
 
 {context}
 
-Please provide specific, practical recommendations in the following areas:
+Provide ONLY the most critical recommendations in this format:
+- [Action Item]: [Brief 1-sentence description]
 
-**Immediate Actions (Next 24-48 hours):**
-- What needs urgent attention?
-- Which transactions should be reviewed manually?
-- What alerts should be set up?
+Focus on:
+1. Most urgent immediate action (if any)
+2. Top 2-3 prevention measures
+3. One monitoring/alert suggestion
 
-**Short-term Measures (Next 1-2 weeks):**
-- Process improvements
-- Enhanced monitoring
-- Staff training needs
-
-**Long-term Strategies (Next 1-3 months):**
-- System enhancements
-- Policy changes
-- Fraud prevention tools
-
-**Monitoring KPIs:**
-- What metrics should be tracked?
-- What thresholds should trigger alerts?
-
-Be specific, practical, and prioritize by impact and urgency. Format each recommendation as a clear, actionable statement."""
+Keep each recommendation to ONE sentence. Be specific and actionable."""
