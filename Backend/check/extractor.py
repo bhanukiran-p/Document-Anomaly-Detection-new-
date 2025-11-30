@@ -31,24 +31,24 @@ def convert_to_json_serializable(obj: Any) -> Any:
 
 # Import ML models and AI agent
 try:
-    from ml_models.fraud_detector import MoneyOrderFraudDetector
+    from check.fraud_detector import CheckFraudDetectorWrapper
 
     ML_AVAILABLE = True
 except ImportError as e:
     logger.warning("ML fraud detector not available: %s", e)
     ML_AVAILABLE = False
-    MoneyOrderFraudDetector = None
+    CheckFraudDetectorWrapper = None
 
 try:
-    from langchain_agent.fraud_analysis_agent import FraudAnalysisAgent
-    from langchain_agent.tools import DataAccessTools
+    from check.ai.check_fraud_analysis_agent import CheckFraudAnalysisAgent
+    from check.ai.check_tools import CheckDataAccessTools
 
     AI_AVAILABLE = True
 except ImportError as e:
     logger.warning("AI fraud analysis agent not available: %s", e)
     AI_AVAILABLE = False
-    FraudAnalysisAgent = None
-    DataAccessTools = None
+    CheckFraudAnalysisAgent = None
+    CheckDataAccessTools = None
 
 MINDEE_API_KEY = os.getenv("MINDEE_API_KEY", "").strip()
 MINDEE_MODEL_ID_CHECK = os.getenv("MINDEE_MODEL_ID_CHECK", "046edc76-e8a4-4e11-a9a3-bb8632250446").strip()
@@ -167,14 +167,14 @@ def _ml_not_available_reason() -> Dict[str, Any]:
 
 def _run_ml_analysis(extracted: Dict[str, Any], raw_text: str) -> Dict[str, Any]:
     """Invoke the fraud detector if available."""
-    if not (ML_AVAILABLE and MoneyOrderFraudDetector):
+    if not (ML_AVAILABLE and CheckFraudDetectorWrapper):
         logger.warning("ML fraud detection not available - ML_AVAILABLE: %s", ML_AVAILABLE)
         return _ml_not_available_reason()
 
     try:
         logger.info("Starting ML fraud detection for check...")
         model_dir = os.getenv("ML_MODEL_DIR", "ml_models")
-        fraud_detector = MoneyOrderFraudDetector(model_dir=model_dir)
+        fraud_detector = CheckFraudDetectorWrapper(model_dir=model_dir)
         logger.info("Fraud detector initialized, models loaded: %s", fraud_detector.models_loaded)
 
         check_data_for_ml = {
@@ -203,32 +203,25 @@ def _run_ml_analysis(extracted: Dict[str, Any], raw_text: str) -> Dict[str, Any]
 
 def _run_ai_analysis(ml_analysis: Dict[str, Any], extracted: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Invoke the LangChain-based AI agent when configured."""
-    if not (AI_AVAILABLE and FraudAnalysisAgent and DataAccessTools):
+    if not (AI_AVAILABLE and CheckFraudAnalysisAgent and CheckDataAccessTools):
         logger.info("AI analysis not available (LangChain not installed or OpenAI key not set)")
         return None
 
     try:
-        ml_scores_path = os.getenv("ML_SCORES_CSV", "ml_models/mock_data/ml_scores.csv")
-        customer_history_path = os.getenv("CUSTOMER_HISTORY_CSV", "ml_models/mock_data/customer_history.csv")
-        fraud_cases_path = os.getenv("FRAUD_CASES_CSV", "ml_models/mock_data/fraud_cases.csv")
-
-        data_tools = DataAccessTools(
-            ml_scores_path=ml_scores_path,
-            customer_history_path=customer_history_path,
-            fraud_cases_path=fraud_cases_path,
-        )
+        data_tools = CheckDataAccessTools()
 
         openai_key = os.getenv("OPENAI_API_KEY")
-        if not openai_key:
-            logger.info("AI analysis skipped (OPENAI_API_KEY missing)")
-            return None
-
-        ai_agent = FraudAnalysisAgent(
+        ai_agent = CheckFraudAnalysisAgent(
             api_key=openai_key,
             model=os.getenv("AI_MODEL", "gpt-4"),
             data_tools=data_tools,
         )
-        analysis = ai_agent.analyze_fraud(ml_analysis, extracted, customer_id=None)
+        analysis = ai_agent.analyze_fraud(
+            extracted_data=extracted,
+            ml_analysis=ml_analysis,
+            customer_id=None,
+            payer_name=extracted.get("payer_name")
+        )
         logger.info("AI fraud analysis completed: recommendation=%s", analysis.get("recommendation"))
         return analysis
     except Exception as exc:  # pragma: no cover - defensive logging
