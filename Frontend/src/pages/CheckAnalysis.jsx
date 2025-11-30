@@ -3,6 +3,7 @@ import { useDropzone } from 'react-dropzone';
 import { analyzeCheck } from '../services/api';
 import { colors } from '../styles/colors';
 import { FaExclamationTriangle, FaLandmark, FaCog } from 'react-icons/fa';
+import CheckInsights from '../components/CheckInsights';
 
 const buildCheckSections = (data) => ({
   'Bank Information': [
@@ -93,6 +94,7 @@ const CheckAnalysis = () => {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState('analyze');
   const emphasizeAnomaly = (text) => {
     if (!text) return text;
     const lower = text.toLowerCase();
@@ -350,13 +352,47 @@ const CheckAnalysis = () => {
 
   const criticalFactors = results ? buildCheckCriticalFactors(results, results?.anomalies || []) : [];
 
+  const tabStyle = (isActive) => ({
+    padding: '1rem 2rem',
+    borderRadius: '0.75rem 0.75rem 0 0',
+    backgroundColor: isActive ? primary : colors.secondary,
+    color: isActive ? colors.primaryForeground : colors.foreground,
+    border: `1px solid ${colors.border}`,
+    borderBottom: isActive ? 'none' : `1px solid ${colors.border}`,
+    cursor: 'pointer',
+    fontWeight: isActive ? '600' : '500',
+    transition: 'all 0.3s',
+  });
+
   return (
     <div style={containerStyle}>
       <div style={headerStyle}>
         <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Check Analysis</h1>
         <p>Analyze bank checks for fraud detection</p>
       </div>
-      
+
+      {/* Tab Navigation */}
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
+        <button
+          onClick={() => setActiveTab('analyze')}
+          style={tabStyle(activeTab === 'analyze')}
+          onMouseEnter={(e) => !activeTab && (e.target.style.backgroundColor = colors.muted)}
+          onMouseLeave={(e) => !activeTab && (e.target.style.backgroundColor = colors.secondary)}
+        >
+          Single Check Analysis
+        </button>
+        <button
+          onClick={() => setActiveTab('insights')}
+          style={tabStyle(activeTab === 'insights')}
+          onMouseEnter={(e) => !activeTab && (e.target.style.backgroundColor = colors.muted)}
+          onMouseLeave={(e) => !activeTab && (e.target.style.backgroundColor = colors.secondary)}
+        >
+          CSV Insights
+        </button>
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === 'analyze' && (
       <div style={gridStyle}>
         {/* Upload Section */}
         <div style={cardStyle}>
@@ -745,6 +781,12 @@ const CheckAnalysis = () => {
           )}
         </div>
       </div>
+      )}
+
+      {/* CSV Insights Tab */}
+      {activeTab === 'insights' && (
+        <CheckInsights />
+      )}
     </div>
   );
 };
