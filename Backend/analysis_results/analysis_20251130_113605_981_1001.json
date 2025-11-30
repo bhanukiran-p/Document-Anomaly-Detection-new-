@@ -1,0 +1,130 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "bank_name": "CHASE BANK",
+    "country": null,
+    "check_type": null,
+    "payee_name": "City Water Department",
+    "amount_numeric": 125.75,
+    "amount": "$125.75",
+    "amount_words": "One Hundred Twenty-Five and 75/100 DOLLARS",
+    "date": "2025-10-26",
+    "check_number": "1001",
+    "routing_number": "021000021",
+    "account_number": "987654321",
+    "memo": "Water Bill - Act 789",
+    "signature_detected": true,
+    "currency": null,
+    "payer_name": "JENNIFER CHEN",
+    "payer_address": "456 OAK AVE, ANYTOWN, NY 12345",
+    "raw_ocr_text": "CHASE BANK\nJENNIFER CHEN\n456 OAK AVE, ANYTOWN, NY 12345\n\nPAY TO THE\nORDER OF\nCity Water Department\n$125.75\n\nOne Hundred Twenty-Five and 75/100 DOLLARS\n\nMEMO\nWater Bill - Act 789\n\n021000021 987654321 1007\nCHECK # 1001\n\nDATE\n10/26/2025\n\nDOLLARS\n\nAUTHORIZED SIGNATURE\n\nJennifer Ciher\n\nORIGINAL DOCUMENT\n\n"
+  },
+  "raw_fields": {
+    "payer_name": "JENNIFER CHEN",
+    "payer_address": "456 OAK AVE, ANYTOWN, NY 12345",
+    "pay_to": "City Water Department",
+    "check_date": "2025-10-26",
+    "number_amount": 125.75,
+    "word_amount": "One Hundred Twenty-Five and 75/100 DOLLARS",
+    "bank_name": "CHASE BANK",
+    "routing_number": "021000021",
+    "account_number": "987654321",
+    "check_number": "1001",
+    "signature": true,
+    "memo": "Water Bill - Act 789"
+  },
+  "raw_text": "CHASE BANK\nJENNIFER CHEN\n456 OAK AVE, ANYTOWN, NY 12345\n\nPAY TO THE\nORDER OF\nCity Water Department\n$125.75\n\nOne Hundred Twenty-Five and 75/100 DOLLARS\n\nMEMO\nWater Bill - Act 789\n\n021000021 987654321 1007\nCHECK # 1001\n\nDATE\n10/26/2025\n\nDOLLARS\n\nAUTHORIZED SIGNATURE\n\nJennifer Ciher\n\nORIGINAL DOCUMENT\n\n",
+  "timestamp": "2025-11-30T11:36:05.981080",
+  "anomalies": [
+    "MICR mismatch: Check number on top (1001) doesn't match bottom MICR line (1007) - instant fraud flag",
+    "Bank logo may be incorrect - Chase logo should have official blue octagon design",
+    "Missing security features: No microprinting, padlock icon, or security background - real checks have built-in protection",
+    "High fraud risk detected: CRITICAL (score: 100.00%)",
+    "AI recommendation: REJECT"
+  ],
+  "confidence_score": 0.9944000000000001,
+  "normalized_data": {
+    "bank_name": "CHASE BANK",
+    "routing_number": "021000021",
+    "account_number": "987654321",
+    "check_number": "1001",
+    "check_date": "2025-10-26",
+    "check_type": null,
+    "amount_numeric": 125.75,
+    "amount_words": "One Hundred Twenty-Five and 75/100 DOLLARS",
+    "currency": "USD",
+    "payee_name": "City Water Department",
+    "payer_name": "JENNIFER CHEN",
+    "payer_address": "456 OAK AVE, ANYTOWN, NY 12345",
+    "memo": "Water Bill - Act 789",
+    "signature_detected": true,
+    "amount_match": null,
+    "date_valid": true,
+    "fields_complete": true
+  },
+  "missing_fields": [
+    "check_type",
+    "amount_match"
+  ],
+  "ml_analysis": {
+    "fraud_risk_score": 1.0,
+    "risk_level": "CRITICAL",
+    "model_confidence": 0.972,
+    "model_scores": {
+      "random_forest": 0.983,
+      "xgboost": 0.996999979019165,
+      "ensemble": 0.992,
+      "adjusted": 1.0
+    },
+    "feature_importance": [
+      "Amount parsing confidence low",
+      "Missing critical fields (score: 0.95)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "Invalid serial format: 'N/A'",
+      "Invalid issuer: 'CHASE BANK'"
+    ],
+    "prediction_type": "model"
+  },
+  "ml_fraud_analysis": {
+    "fraud_risk_score": 1.0,
+    "risk_level": "CRITICAL",
+    "model_confidence": 0.972,
+    "model_scores": {
+      "random_forest": 0.983,
+      "xgboost": 0.996999979019165,
+      "ensemble": 0.992,
+      "adjusted": 1.0
+    },
+    "feature_importance": [
+      "Amount parsing confidence low",
+      "Missing critical fields (score: 0.95)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "Invalid serial format: 'N/A'",
+      "Invalid issuer: 'CHASE BANK'"
+    ],
+    "prediction_type": "model"
+  },
+  "ai_analysis": {
+    "recommendation": "REJECT",
+    "confidence": 0.97,
+    "summary": "The money order is missing all critical fields, fails issuer and serial validations, and carries a 100% ML fraud risk score with 97.2% confidence\u2014strong indicators of counterfeit or invalid documentation.",
+    "reasoning": "- ML Model Scores: Fraud risk 100.0%, RF 98.3%, XGBoost 99.7%, overall confidence 97.2% (well above the 85% reject threshold).  \n- Missing Critical Fields: No issuer, serial number, written amount, payee, purchaser or location\u2014matches \u201cMissing Fields\u201d fraud pattern in 12.8% of training fraud cases.  \n- Invalid Issuer/Serial: \u201cCHASE BANK\u201d not recognized; serial pattern fails issuer-specific validation; aligns with \u201cInvalid Serial\u201d pattern (12.4%).  \n- Amount Parsing Low Confidence: No written amount to cross-verify numeric value; ties to \u201cAmount Mismatch\u201d (12.8%) and \u201cAltered Amount\u201d (12.4%) patterns.  \n- Date Inconsistency: Dated 2025-10-26\u2014future-dated orders are a known red flag (12.4%).  \n- No Customer History: Unable to corroborate purchaser credibility or past behavior.  \n- Similar Past Cases: Three prior analyses with identical missing-data profile yielded 100% risk and ended in REJECT or ERROR.",
+    "key_indicators": [
+      "Missing issuer, serial, payee, purchaser fields",
+      "Low amount-parsing confidence",
+      "Invalid issuer name and serial format",
+      "Future-dated order"
+    ],
+    "verification_notes": "(If manually reviewed before final disposition)  \n- Confirm issuer legitimacy and branch details directly with CHASE BANK operations  \n- Validate any underlying receipt or purchaser ID to rule out data-entry error",
+    "training_insights": "- \u201cMissing Fields\u201d and \u201cInvalid Serial\u201d appear in ~12.8% and ~12.4% of fraudulent orders respectively, reinforcing this case\u2019s high-risk status.  \n- Future-dated instruments constitute ~12.4% of fraud patterns, supporting rejection.",
+    "historical_comparison": "All three past money orders of $125.75 with missing fields and invalid issuer/serial patterns were recommended for REJECT (or resulted in ERROR), mirroring the current case\u2019s profile.",
+    "analysis_type": "llm",
+    "model_used": "o4-mini"
+  },
+  "analysis_id": "analysis_20251130_113605_981_1001",
+  "saved_timestamp": "2025-11-30T11:36:05.981330"
+}

@@ -43,30 +43,36 @@ class RealTimeAnalysisAgent:
 
     def __init__(self,
                  api_key: Optional[str] = None,
-                 model: str = "gpt-4",
+                 model: Optional[str] = None,
                  analysis_tools: Optional[TransactionAnalysisTools] = None):
         """
         Initialize real-time analysis agent
 
         Args:
             api_key: OpenAI API key (if None, reads from env)
-            model: OpenAI model to use (gpt-4, gpt-3.5-turbo, etc.)
+            model: OpenAI model to use (if None, reads from AI_MODEL env var)
             analysis_tools: Transaction analysis tools
         """
         self.api_key = api_key or os.getenv('OPENAI_API_KEY')
-        self.model_name = model
+        self.model_name = model or os.getenv('AI_MODEL', 'gpt-4')
         self.analysis_tools = analysis_tools
         self.llm = None
         self.agent_executor = None
 
         if LANGCHAIN_AVAILABLE and self.api_key:
             try:
-                self.llm = ChatOpenAI(
-                    model=self.model_name,
-                    openai_api_key=self.api_key,
-                    temperature=0.3,
-                    max_tokens=2000
-                )
+                # Build ChatOpenAI kwargs based on model capabilities
+                llm_kwargs = {
+                    'model': self.model_name,
+                    'openai_api_key': self.api_key,
+                    'max_tokens': 2000
+                }
+
+                # o4-mini doesn't support custom temperature, only uses default (1)
+                if not self.model_name.startswith('o4'):
+                    llm_kwargs['temperature'] = 0.3
+
+                self.llm = ChatOpenAI(**llm_kwargs)
                 logger.info(f"Initialized LangChain agent with {self.model_name} - GPT-4 mode active!")
 
             except Exception as e:
@@ -95,10 +101,24 @@ class RealTimeAnalysisAgent:
                 return self._llm_insights(analysis_result)
             except Exception as e:
                 logger.error(f"Error in LLM insights generation: {e}")
-                logger.warning("Falling back to rule-based insights")
-                return self._fallback_insights(analysis_result)
+                # Return error instead of falling back
+                return {
+                    'success': False,
+                    'error': str(e),
+                    'message': 'GPT-4 API unavailable. Please check your OpenAI API key or usage limits.',
+                    'insights': f'AI Analysis unavailable: {str(e)}',
+                    'analysis_type': 'failed',
+                    'model_used': 'gpt-4'
+                }
         else:
-            return self._fallback_insights(analysis_result)
+            return {
+                'success': False,
+                'error': 'OpenAI API key not configured',
+                'message': 'GPT-4 API key is required for AI analysis.',
+                'insights': 'AI Analysis unavailable: OpenAI API key not configured',
+                'analysis_type': 'failed',
+                'model_used': 'none'
+            }
 
     def _llm_insights(self, analysis_result: Dict[str, Any]) -> Dict[str, Any]:
         """Generate insights using LLM"""
@@ -146,7 +166,7 @@ class RealTimeAnalysisAgent:
         )
 
         # Get LLM response
-        response = self.llm(messages)
+        response = self.llm.invoke(messages)
         insights_text = response.content
 
         # Parse response
@@ -167,9 +187,19 @@ class RealTimeAnalysisAgent:
                 return self._llm_fraud_patterns(analysis_result)
             except Exception as e:
                 logger.error(f"Error in fraud pattern explanation: {e}")
-                return self._fallback_fraud_patterns(analysis_result)
+                return {
+                    'success': False,
+                    'error': str(e),
+                    'explanation': f'⚠️ AI Pattern Analysis unavailable: {str(e)}',
+                    'patterns_detected': 0
+                }
         else:
-            return self._fallback_fraud_patterns(analysis_result)
+            return {
+                'success': False,
+                'error': 'OpenAI API key not configured',
+                'explanation': '⚠️ AI Pattern Analysis unavailable: OpenAI API key not configured',
+                'patterns_detected': 0
+            }
 
     def _llm_fraud_patterns(self, analysis_result: Dict[str, Any]) -> Dict[str, Any]:
         """Generate fraud pattern explanations using LLM"""
@@ -194,7 +224,7 @@ class RealTimeAnalysisAgent:
             patterns=patterns_text
         )
 
-        response = self.llm(messages)
+        response = self.llm.invoke(messages)
 
         return {
             'success': True,
@@ -217,9 +247,9 @@ class RealTimeAnalysisAgent:
                 return self._llm_recommendations(analysis_result)
             except Exception as e:
                 logger.error(f"Error generating recommendations: {e}")
-                return self._fallback_recommendations(analysis_result)
+                return [f"⚠️ AI Recommendations unavailable: {str(e)}", "Please check your OpenAI API key or usage limits."]
         else:
-            return self._fallback_recommendations(analysis_result)
+            return ["⚠️ AI Recommendations unavailable: OpenAI API key not configured"]
 
     def _llm_recommendations(self, analysis_result: Dict[str, Any]) -> List[str]:
         """Generate recommendations using LLM"""
@@ -258,7 +288,7 @@ Please provide 5-7 actionable recommendations prioritized by urgency and impact.
 
         messages = chat_prompt.format_messages(context=context)
 
-        response = self.llm(messages)
+        response = self.llm.invoke(messages)
 
         # Parse recommendations (split by lines or bullet points)
         recommendations_text = response.content
@@ -347,7 +377,7 @@ Please provide 5-7 actionable recommendations prioritized by urgency and impact.
             plot_details=details_text
         )
 
-        response = self.llm(messages)
+        response = self.llm.invoke(messages)
         return response.content
 
     def _format_transactions(self, transactions: List[Dict]) -> str:

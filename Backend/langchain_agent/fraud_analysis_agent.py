@@ -34,29 +34,35 @@ class FraudAnalysisAgent:
 
     def __init__(self,
                  api_key: Optional[str] = None,
-                 model: str = "gpt-4",
+                 model: Optional[str] = None,
                  data_tools: Optional[DataAccessTools] = None):
         """
         Initialize fraud analysis agent
 
         Args:
             api_key: OpenAI API key (if None, reads from env)
-            model: OpenAI model to use (gpt-4, gpt-3.5-turbo, etc.)
+            model: OpenAI model to use (if None, reads from AI_MODEL env var)
             data_tools: Data access tools for CSV reading
         """
         self.api_key = api_key or os.getenv('OPENAI_API_KEY')
-        self.model_name = model
+        self.model_name = model or os.getenv('AI_MODEL', 'gpt-4')
         self.data_tools = data_tools
         self.llm = None
 
         if LANGCHAIN_AVAILABLE and self.api_key:
             try:
-                self.llm = ChatOpenAI(
-                    model=self.model_name,
-                    openai_api_key=self.api_key,
-                    temperature=0.3,  # Lower temperature for consistent analysis
-                    max_tokens=1500
-                )
+                # Build ChatOpenAI kwargs based on model capabilities
+                llm_kwargs = {
+                    'model': self.model_name,
+                    'openai_api_key': self.api_key,
+                    'max_tokens': 1500
+                }
+
+                # o4-mini doesn't support custom temperature, only uses default (1)
+                if not self.model_name.startswith('o4'):
+                    llm_kwargs['temperature'] = 0.3  # Lower temperature for consistent analysis
+
+                self.llm = ChatOpenAI(**llm_kwargs)
                 print(f"Initialized LangChain agent with {self.model_name}")
             except Exception as e:
                 print(f"Warning: Could not initialize LangChain: {e}")
@@ -89,10 +95,28 @@ class FraudAnalysisAgent:
                 return self._llm_analysis(ml_analysis, extracted_data, customer_id)
             except Exception as e:
                 print(f"Error in LLM analysis: {e}")
-                print("Falling back to rule-based analysis")
-                return self._fallback_analysis(ml_analysis, extracted_data)
+                # Return error instead of falling back
+                return {
+                    'recommendation': 'ERROR',
+                    'confidence': 0.0,
+                    'summary': f'⚠️ AI Analysis unavailable: {str(e)}',
+                    'reasoning': 'GPT-4 API error. Please check your OpenAI API key or usage limits.',
+                    'key_indicators': ml_analysis.get('key_indicators', []),
+                    'verification_notes': 'Manual review required - AI analysis failed',
+                    'analysis_type': 'failed',
+                    'model_used': 'gpt-4'
+                }
         else:
-            return self._fallback_analysis(ml_analysis, extracted_data)
+            return {
+                'recommendation': 'ERROR',
+                'confidence': 0.0,
+                'summary': '⚠️ AI Analysis unavailable: OpenAI API key not configured',
+                'reasoning': 'GPT-4 API key is required for AI-powered fraud analysis.',
+                'key_indicators': ml_analysis.get('key_indicators', []),
+                'verification_notes': 'Manual review required - AI not configured',
+                'analysis_type': 'failed',
+                'model_used': 'none'
+            }
 
     def _llm_analysis(self,
                       ml_analysis: Dict,
@@ -187,7 +211,7 @@ class FraudAnalysisAgent:
         )
 
         # Get LLM response
-        response = self.llm(messages)
+        response = self.llm.invoke(messages)
         analysis_text = response.content
 
         # Parse the response
