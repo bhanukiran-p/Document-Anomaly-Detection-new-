@@ -566,37 +566,7 @@ const CheckAnalysis = () => {
                 </div>
               )}
 
-              {criticalFactors.length > 0 && (
-                <div style={{
-                  ...infoCardStyle,
-                  marginTop: '-0.25rem',
-                  backgroundColor: `${primary}10`,
-                  borderLeft: `4px solid ${primary}`,
-                }}>
-                  <h4 style={{
-                    color: colors.foreground,
-                    marginBottom: '0.75rem',
-                    fontSize: '1.05rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem'
-                  }}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="12" cy="12" r="10" />
-                      <line x1="12" y1="8" x2="12" y2="13" />
-                      <line x1="12" y1="16" x2="12.01" y2="16" />
-                    </svg>
-                    Key Missing / Risk Factors
-                  </h4>
-                  <ul style={{ color: colors.foreground, paddingLeft: '1.5rem', marginBottom: 0 }}>
-                    {criticalFactors.map((factor, idx) => (
-                      <li key={idx} style={{ marginBottom: '0.35rem' }}>
-                        <strong>{factor}</strong>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+              {/* Key Missing / Risk Factors section - HIDDEN */}
 
               {/* AI Analysis Details - Reasoning */}
               {results.ai_analysis && (
