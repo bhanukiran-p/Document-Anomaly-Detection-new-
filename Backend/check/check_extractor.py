@@ -470,7 +470,7 @@ class CheckExtractor:
         - Otherwise defer to AI or ML analysis
         """
         # Check for signature (most critical)
-        has_signature = normalized_data.get('signature_present', False)
+        has_signature = normalized_data.get('signature_detected', False)
         if not has_signature:
             logger.warning("Decision: REJECT due to missing signature")
             return "REJECT"

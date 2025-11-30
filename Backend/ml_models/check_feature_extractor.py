@@ -238,8 +238,11 @@ class CheckFeatureExtractor:
             return 0.0
         try:
             check_date = self._parse_date(date_str)
-            if check_date and check_date > datetime.now():
-                return 1.0
+            if check_date:
+                now = datetime.now()
+                # Compare only date parts (ignore time)
+                if check_date.date() > now.date():
+                    return 1.0
         except:
             pass
         return 0.0

@@ -109,6 +109,13 @@ class CheckFraudAnalysisAgent:
                 customer_info = self.data_tools.get_customer_history(payer_name)
                 logger.info(f"Retrieved customer history for: {payer_name}")
 
+            # MANDATORY REPEAT OFFENDER CHECK - BEFORE ANY LLM ANALYSIS
+            # If escalate_count > 0, this MUST trigger automatic rejection (per policy)
+            escalate_count = customer_info.get('escalate_count', 0)
+            if escalate_count > 0:
+                logger.warning(f"REPEAT OFFENDER DETECTED: {payer_name} has escalate_count={escalate_count}. Auto-rejecting.")
+                return self._create_repeat_offender_rejection(payer_name, escalate_count)
+
             # Check for duplicates
             check_number = extracted_data.get('check_number')
             if check_number and payer_name:
@@ -160,6 +167,29 @@ class CheckFraudAnalysisAgent:
             logger.error(f"Error in AI fraud analysis: {e}", exc_info=True)
             # Return safe fallback decision
             return self._create_fallback_decision(ml_analysis)
+
+    def _create_repeat_offender_rejection(self, payer_name: str, escalate_count: int) -> Dict:
+        """Create rejection response for repeat offenders (escalate_count > 0)"""
+        return {
+            'recommendation': 'REJECT',
+            'confidence_score': 1.0,
+            'summary': f'Automatic rejection: {payer_name} is a flagged repeat offender',
+            'reasoning': [
+                f'Payer {payer_name} has escalate_count = {escalate_count}',
+                'Per payer-based fraud tracking policy: repeat offenders are automatically rejected',
+                'This payer was previously escalated and is now subject to automatic rejection',
+                'LLM analysis skipped - mandatory reject rule applies'
+            ],
+            'key_indicators': [
+                'Repeat offender detected',
+                f'Escalation count: {escalate_count}'
+            ],
+            'actionable_recommendations': [
+                'Block this transaction immediately',
+                'Flag customer account for fraud investigation',
+                'Contact payer to verify legitimacy of future transactions'
+            ]
+        }
 
     def _create_duplicate_rejection(self, check_number: str, payer_name: str) -> Dict:
         """Create rejection response for duplicate checks"""

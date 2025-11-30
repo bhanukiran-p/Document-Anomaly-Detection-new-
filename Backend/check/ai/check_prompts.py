@@ -14,14 +14,17 @@ You have access to:
 3. Customer history and transaction patterns
 4. Historical fraud cases and patterns
 
+CRITICAL: You MUST follow the Decision Guidelines below STRICTLY. These are RULES, not suggestions.
+The decision rules provided are MANDATORY and take precedence over subjective judgment.
+
 Your decisions must be:
 - Data-driven and evidence-based
 - Consistent with banking regulations
-- Conservative (err on the side of caution)
+- Strictly adherent to the decision rules provided
 - Clearly explained with specific reasoning
 
 Always provide:
-1. recommendation: APPROVE, REJECT, or ESCALATE
+1. recommendation: APPROVE, REJECT, or ESCALATE (MUST follow decision rules)
 2. confidence_score: Your confidence in the decision (0.0-1.0)
 3. reasoning: List of specific factors that led to your decision
 4. key_indicators: Critical fraud indicators or validation points
@@ -30,6 +33,8 @@ Always provide:
 
 # Template for check fraud analysis
 ANALYSIS_TEMPLATE = """Analyze this check for fraud indicators:
+
+**IMPORTANT: Today's date is {analysis_date} for determining if checks are future-dated.**
 
 ## CHECK INFORMATION
 Bank: {bank_name}
@@ -73,100 +78,58 @@ Return your analysis in the following JSON format:
 
 # Decision guidelines based on customer type and ML scores
 RECOMMENDATION_GUIDELINES = """
-## DECISION GUIDELINES FOR CHECK FRAUD ANALYSIS
+## MANDATORY DECISION TABLE FOR CHECK FRAUD ANALYSIS
 
-### CRITICAL PAYER-BASED ESCALATION POLICY (HIGHEST PRIORITY)
-**Rule 1: Auto-Reject Repeat Offenders**
-- IF escalate_count > 0:
-  → ALWAYS REJECT (no exceptions)
-  → This payer was previously flagged/escalated
-  → Automatic rejection policy for second occurrence
+**CRITICAL: Repeat offenders (escalate_count > 0) are auto-rejected BEFORE LLM processes the check.**
+**The LLM must strictly follow this decision table for all other cases. NO EXCEPTIONS.**
 
-### FOR REPEAT CUSTOMERS WITH FRAUD HISTORY (fraud_count > 0, escalate_count = 0)
-**Strict Threshold for Known Fraudsters:**
-- IF fraud_risk_score >= 30%:
-  → REJECT (strict threshold for customers with fraud history)
-  → Reasoning: "Customer has previous fraud record. Even moderate risk warrants rejection."
-- IF fraud_risk_score < 30%:
-  → APPROVE
-  → Reasoning: "Despite fraud history, current check shows low risk indicators."
+### DECISION MATRIX
+| Customer Type | Risk Score | Decision |
+|---|---|---|
+| New Customer | < 30% | APPROVE |
+| New Customer | 30–95% | ESCALATE |
+| New Customer | ≥ 95% | ESCALATE |
+| Clean History | < 30% | APPROVE |
+| Clean History | 30–85% | ESCALATE |
+| Clean History | > 85% | REJECT |
+| Fraud History | < 30% | APPROVE |
+| Fraud History | ≥ 30% | REJECT |
+| Repeat Offender (escalate_count > 0) | Any | REJECT (auto, before LLM) |
 
-### FOR REPEAT CUSTOMERS WITH CLEAN HISTORY (fraud_count = 0, escalate_count = 0)
-**Standard Evaluation:**
-- IF fraud_risk_score > 85%:
-  → REJECT
-  → Reasoning: "Critical fraud risk despite clean customer history."
-- IF fraud_risk_score between 30% and 85%:
-  → ESCALATE (human review needed)
-  → Reasoning: "Moderate to high risk. Customer has clean history but check shows concerning indicators."
-- IF fraud_risk_score < 30%:
-  → APPROVE
-  → Reasoning: "Low fraud risk, customer has clean transaction history."
+### CUSTOMER CLASSIFICATION
+**New Customer:**
+- No record in check_customers table, OR
+- escalate_count = 0 AND fraud_count = 0
 
-### FOR NEW CUSTOMERS (No Previous Records)
-**Conservative Approach:**
-- IF fraud_risk_score >= 95%:
-  → ESCALATE (very high risk, needs verification)
-  → Reasoning: "Critical fraud indicators for new customer. Requires manual verification."
-- IF fraud_risk_score between 30% and 95%:
-  → ESCALATE (moderate to high risk)
-  → Reasoning: "Elevated risk level for new customer. Human review recommended."
-- IF fraud_risk_score < 30%:
-  → APPROVE
-  → Reasoning: "Low fraud risk for new customer. Standard verification passed."
+**Clean History:**
+- fraud_count = 0 AND escalate_count = 0
 
-### SPECIFIC CHECK FRAUD INDICATORS (OVERRIDE ML SCORES IF PRESENT)
+**Fraud History:**
+- fraud_count > 0 AND escalate_count = 0
 
-**Auto-Reject Conditions (Regardless of ML Score):**
-1. Unsupported Bank (not Bank of America or Chase)
-   → REJECT immediately
-   → "Only Bank of America and Chase checks are accepted"
+**Repeat Offender:**
+- escalate_count > 0
+- ALWAYS REJECTED before LLM processes the check
+- LLM is skipped entirely for these cases
 
-2. Missing Critical Fields
+### AUTOMATIC REJECTION CONDITIONS (Regardless of ML Score)
+1. Unsupported Bank (not Bank of America or Chase) → REJECT
+2. Missing Critical Fields:
    - Missing check number → REJECT
    - Missing payer name → REJECT
    - Missing payee name → REJECT
-   - Missing signature → REJECT
-   → "Critical validation fields missing"
-
-3. Invalid Banking Information
+3. Invalid Banking Information:
    - Invalid routing number (not 9 digits) → REJECT
    - Invalid check number format → REJECT
+4. Future-Dated Check → REJECT
+5. Duplicate Check Detected → REJECT
 
-4. Future-Dated Check
-   → REJECT
-   → "Check date is in the future - potential fraud"
-
-5. Duplicate Check Detected (same check_number + payer_name)
-   → REJECT
-   → "Duplicate check submission detected"
-
-**High-Risk Indicators (Escalate if ML score > 30%):**
-1. Very old check (>180 days) → ESCALATE
-2. Weekend/holiday check → Consider in risk assessment
-3. High amount (>$10,000) → ESCALATE for additional verification
-4. Amount mismatch (numeric vs written) → ESCALATE
-5. Suspicious amount patterns ($9,999.99, $4,999.00) → ESCALATE
-6. Payer and payee are the same person → REJECT
-
-### CONFIDENCE SCORING GUIDELINES111
-- confidence_score = 1.0: Clear-cut case, very confident in decision
-- confidence_score = 0.8-0.9: Strong evidence supports decision
-- confidence_score = 0.6-0.7: Moderate confidence, some ambiguity
-- confidence_score < 0.6: Low confidence, recommend human review
-
-### REASONING REQUIREMENTS
-Always include:
-1. Primary decision factor (e.g., "ML fraud score: 92%")
-2. Customer history context (e.g., "New customer" vs "Repeat customer with 2 previous frauds")
-3. Specific fraud indicators (e.g., "Missing signature", "Unsupported bank")
-4. Policy reference (e.g., "Per escalation policy for repeat offenders")
-
-### ACTIONABLE RECOMMENDATIONS
-Provide specific next steps:
-- For APPROVE: "Process check normally", "No additional verification needed"
-- For REJECT: "Block transaction", "Flag customer account", "Notify fraud department"
-- For ESCALATE: "Request manual review", "Verify customer identity", "Contact payer for confirmation"
+### IMPORTANT NOTES
+- Missing signature is NOT an auto-reject condition
+- Signature absence is evaluated based on fraud risk score and customer history only
+- ML score determines the risk_score bucket only
+- LLM must follow the decision table exactly - no special cases
+- No interpretation or override of the decision matrix is permitted
 """
 
 # Prompt for customer history analysis
@@ -212,6 +175,8 @@ def format_analysis_template(check_data: dict, ml_analysis: dict, customer_info:
     Returns:
         Formatted prompt string
     """
+    from datetime import datetime
+
     # Extract check fields with defaults
     bank_name = check_data.get('bank_name', 'Unknown')
     check_number = check_data.get('check_number', 'N/A')
@@ -251,8 +216,12 @@ def format_analysis_template(check_data: dict, ml_analysis: dict, customer_info:
     escalate_count = customer_info.get('escalate_count', 0)
     last_recommendation = customer_info.get('last_recommendation', 'None')
 
+    # Get current date for analysis
+    analysis_date = datetime.now().strftime('%Y-%m-%d')
+
     # Format the template
     return ANALYSIS_TEMPLATE.format(
+        analysis_date=analysis_date,
         bank_name=bank_name,
         check_number=check_number,
         amount=f"{amount:,.2f}",
