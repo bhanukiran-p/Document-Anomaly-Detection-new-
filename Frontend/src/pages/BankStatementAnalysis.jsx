@@ -299,7 +299,7 @@ const BankStatementAnalysis = () => {
   };
 
   const headerStyle = {
-    background: colors.gradients.navy,
+    background: 'linear-gradient(135deg, #0f1820 0%, #1a2332 100%)',
     padding: '2rem',
     borderRadius: '0.75rem',
     color: colors.foreground,
@@ -336,7 +336,7 @@ const BankStatementAnalysis = () => {
     backgroundColor: primary,
     color: colors.primaryForeground,
     padding: '1rem 2rem',
-    borderRadius: '0.5rem',
+    borderRadius: '50px',
     fontSize: '1rem',
     fontWeight: '600',
     width: '100%',
@@ -398,7 +398,9 @@ const BankStatementAnalysis = () => {
   return (
     <div style={containerStyle}>
       <div style={headerStyle}>
-        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Bank Statement Analysis</h1>
+        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>
+          Bank Statement <span style={{ color: primary }}>Analysis</span>
+        </h1>
         <p>Extract and analyze bank statement details with transaction history</p>
       </div>
 
@@ -525,13 +527,6 @@ const BankStatementAnalysis = () => {
 
           {analysisData && (
             <div className="fade-in">
-              {analysisData.summary?.confidence && (
-                <div style={confidenceStyle(analysisData.summary.confidence)}>
-                  [{analysisData.summary.confidence >= 80 ? 'HIGH' : analysisData.summary.confidence >= 60 ? 'MEDIUM' : 'LOW'}]
-                  Confidence: {analysisData.summary.confidence?.toFixed(1)}%
-                </div>
-              )}
-
               {/* Risk Cards */}
               {(() => {
                 const fraudRiskPercent = toPercent(analysisData.fraud_risk_score ?? mlAnalysis.fraud_risk_score);
@@ -586,9 +581,6 @@ const BankStatementAnalysis = () => {
                       </div>
                       <div style={{ fontSize: '2rem', fontWeight: 'bold', color: aiColor }}>
                         {aiRecommendation}
-                      </div>
-                      <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginTop: '0.25rem' }}>
-                        AI Confidence: {aiConfidencePercent.toFixed(1)}%
                       </div>
                     </div>
                   </>

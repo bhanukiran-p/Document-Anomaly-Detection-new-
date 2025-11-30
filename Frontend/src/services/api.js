@@ -125,5 +125,50 @@ export const getFraudModelsStatus = async () => {
   }
 };
 
+// Feedback API
+export const submitFeedback = async (analysisId, isFraud, notes = '', userId = null) => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/feedback/submit`, {
+      analysis_id: analysisId,
+      is_fraud: isFraud,
+      notes,
+      user_id: userId
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Feedback submission error:', error);
+    throw error.response?.data || { error: 'Failed to submit feedback' };
+  }
+};
+
+export const getFeedbackStats = async () => {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/feedback/stats`);
+    return response.data;
+  } catch (error) {
+    console.error('Feedback stats error:', error);
+    throw error.response?.data || { error: 'Failed to get feedback stats' };
+  }
+};
+
+// Real-time Transaction Analysis API
+export const analyzeRealTimeTransactions = async (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const response = await axios.post(`${API_BASE_URL}/real-time/analyze`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  } catch (error) {
+    const errorData = error.response?.data || { error: 'Failed to analyze transactions', message: error.message || 'Network error' };
+    console.error('Real-time transaction analysis API error:', errorData);
+    throw errorData;
+  }
+};
+
 export default api;
 

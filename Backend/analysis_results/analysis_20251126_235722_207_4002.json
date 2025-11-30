@@ -1,0 +1,131 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "bank_name": "CHASE",
+    "country": null,
+    "check_type": null,
+    "payee_name": "Premier Insurance Group",
+    "amount_numeric": 1875.25,
+    "amount": "$1,875.25",
+    "amount_words": "One Thousand Eight Hundred Seventy Five and 25/100",
+    "date": "2025-11-22",
+    "check_number": "4002",
+    "routing_number": "322271627",
+    "account_number": "9517532468",
+    "memo": "Insurance Premium",
+    "signature_detected": null,
+    "currency": null,
+    "payer_name": "CHARLES WILSON",
+    "payer_address": "567 Broadway, Floor 12\nNew York, NY 10012",
+    "raw_ocr_text": "CHASE\nCHARLES WILSON\n567 Broadway, Floor 12\nNew York, NY 10012\nPAY TO THE\nORDER OF\nCHECK\n4002\nDate\n11/22/2025\nPremier Insurance Group\nOne Thousand Eight Hundred Seventy Five and 25/100\nDOLLARS\n$ 1,875.25\nMEMO\nInsurance Premium\nVOID AFTER 180 DAYS\n322271627 9517532468 4002\nAuthorized Signature\nORIGINAL DOCUMENT\n\n"
+  },
+  "raw_fields": {
+    "payer_name": "CHARLES WILSON",
+    "payer_address": "567 Broadway, Floor 12\nNew York, NY 10012",
+    "pay_to": "Premier Insurance Group",
+    "check_date": "2025-11-22",
+    "number_amount": 1875.25,
+    "word_amount": "One Thousand Eight Hundred Seventy Five and 25/100",
+    "bank_name": "CHASE",
+    "routing_number": "322271627",
+    "account_number": "9517532468",
+    "check_number": "4002",
+    "signature": false,
+    "memo": "Insurance Premium"
+  },
+  "raw_text": "CHASE\nCHARLES WILSON\n567 Broadway, Floor 12\nNew York, NY 10012\nPAY TO THE\nORDER OF\nCHECK\n4002\nDate\n11/22/2025\nPremier Insurance Group\nOne Thousand Eight Hundred Seventy Five and 25/100\nDOLLARS\n$ 1,875.25\nMEMO\nInsurance Premium\nVOID AFTER 180 DAYS\n322271627 9517532468 4002\nAuthorized Signature\nORIGINAL DOCUMENT\n\n",
+  "timestamp": "2025-11-26T23:57:22.206964",
+  "anomalies": [
+    "Bank logo may be incorrect - Chase logo should have official blue octagon design",
+    "Missing security features: No microprinting, padlock icon, or security background - real checks have built-in protection",
+    "No signature detected",
+    "High fraud risk detected: CRITICAL (score: 100.00%)",
+    "AI recommendation: REJECT"
+  ],
+  "confidence_score": 0.9950000000000001,
+  "normalized_data": {
+    "bank_name": "CHASE",
+    "routing_number": "322271627",
+    "account_number": "9517532468",
+    "check_number": "4002",
+    "check_date": "2025-11-22",
+    "check_type": null,
+    "amount_numeric": 1875.25,
+    "amount_words": "One Thousand Eight Hundred Seventy Five and 25/100",
+    "currency": "USD",
+    "payee_name": "Premier Insurance Group",
+    "payer_name": "CHARLES WILSON",
+    "payer_address": "567 Broadway, Floor 12\nNew York, NY 10012",
+    "memo": "Insurance Premium",
+    "signature_detected": null,
+    "amount_match": true,
+    "date_valid": true,
+    "fields_complete": true
+  },
+  "missing_fields": [
+    "check_type",
+    "signature_detected"
+  ],
+  "ml_analysis": {
+    "fraud_risk_score": 1.0,
+    "risk_level": "CRITICAL",
+    "model_confidence": 0.975,
+    "model_scores": {
+      "random_forest": 0.983,
+      "xgboost": 0.9959999918937683,
+      "ensemble": 0.991,
+      "adjusted": 1.0
+    },
+    "feature_importance": [
+      "Amount parsing confidence low",
+      "Missing critical fields (score: 0.95)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "Invalid serial format: 'N/A'",
+      "Invalid issuer: 'CHASE'"
+    ],
+    "prediction_type": "model"
+  },
+  "ml_fraud_analysis": {
+    "fraud_risk_score": 1.0,
+    "risk_level": "CRITICAL",
+    "model_confidence": 0.975,
+    "model_scores": {
+      "random_forest": 0.983,
+      "xgboost": 0.9959999918937683,
+      "ensemble": 0.991,
+      "adjusted": 1.0
+    },
+    "feature_importance": [
+      "Amount parsing confidence low",
+      "Missing critical fields (score: 0.95)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "Invalid serial format: 'N/A'",
+      "Invalid issuer: 'CHASE'"
+    ],
+    "prediction_type": "model"
+  },
+  "ai_analysis": {
+    "recommendation": "REJECT",
+    "confidence": 0.9,
+    "summary": "High fraud risk (100.0%). Multiple red flags detected.",
+    "reasoning": "ML models indicate high probability of fraud. Critical anomalies found.",
+    "key_indicators": [
+      "Amount parsing confidence low",
+      "Missing critical fields (score: 0.95)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format"
+    ],
+    "verification_notes": "Manual verification recommended for borderline cases",
+    "training_insights": "N/A (fallback mode - training data not analyzed)",
+    "historical_comparison": "N/A (fallback mode - past cases not analyzed)",
+    "analysis_type": "rule_based",
+    "model_used": "fallback"
+  },
+  "analysis_id": "analysis_20251126_235722_207_4002",
+  "saved_timestamp": "2025-11-26T23:57:22.207360"
+}
