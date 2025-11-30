@@ -90,12 +90,56 @@ class CheckFraudAnalysisAgent:
         Returns:
             AI analysis dict with recommendation, confidence, reasoning, etc.
         """
+        if not payer_name:
+            payer_name = extracted_data.get('payer_name')
+
+        customer_info: Dict = {}
+        if payer_name:
+            customer_info = self.data_tools.get_customer_history(payer_name)
+            logger.info(f"Retrieved customer history for: {payer_name}")
+
+        policy_decision = self._apply_policy_rules(payer_name, customer_info)
+        if policy_decision:
+            return policy_decision
+
         if self.llm is None:
             raise ValueError("AI Agent not initialized. OpenAI API key missing or invalid.")
 
-        return self._llm_analysis(extracted_data, ml_analysis, customer_id, payer_name)
+        return self._llm_analysis(
+            extracted_data,
+            ml_analysis,
+            customer_id,
+            payer_name,
+            customer_info
+        )
 
-    def _llm_analysis(self, extracted_data: Dict, ml_analysis: Dict, customer_id: Optional[str] = None, payer_name: Optional[str] = None) -> Dict:
+    def _apply_policy_rules(self, payer_name: Optional[str], customer_info: Optional[Dict]) -> Optional[Dict]:
+        """Enforce mandatory payer-history policy before any LLM call."""
+        if not payer_name:
+            logger.warning("Payer name missing; defaulting to ESCALATE per policy.")
+            return self._create_first_time_escalation("Unknown Payer", is_new_customer=True)
+
+        customer_info = customer_info or {}
+        escalate_count = customer_info.get('escalate_count', 0) or 0
+
+        if escalate_count > 0:
+            logger.warning(
+                f"REPEAT OFFENDER DETECTED: {payer_name} has escalate_count={escalate_count}. Auto-rejecting."
+            )
+            return self._create_repeat_offender_rejection(payer_name, escalate_count)
+
+        # If we reach here, payer has no escalations logged → mandatory ESCALATE
+        is_new_customer = not customer_info or not customer_info.get('customer_id')
+        return self._create_first_time_escalation(payer_name, is_new_customer=is_new_customer)
+
+    def _llm_analysis(
+        self,
+        extracted_data: Dict,
+        ml_analysis: Dict,
+        customer_id: Optional[str] = None,
+        payer_name: Optional[str] = None,
+        customer_info: Optional[Dict] = None
+    ) -> Dict:
         """
         Perform fraud analysis using LangChain and OpenAI
         """
@@ -104,10 +148,11 @@ class CheckFraudAnalysisAgent:
             if not payer_name:
                 payer_name = extracted_data.get('payer_name')
 
-            customer_info = {}
-            if payer_name:
-                customer_info = self.data_tools.get_customer_history(payer_name)
-                logger.info(f"Retrieved customer history for: {payer_name}")
+            if customer_info is None:
+                customer_info = {}
+                if payer_name:
+                    customer_info = self.data_tools.get_customer_history(payer_name)
+                    logger.info(f"Retrieved customer history for: {payer_name}")
 
             # MANDATORY REPEAT OFFENDER CHECK - BEFORE ANY LLM ANALYSIS
             # If escalate_count > 0, this MUST trigger automatic rejection (per policy)
@@ -167,6 +212,32 @@ class CheckFraudAnalysisAgent:
             logger.error(f"Error in AI fraud analysis: {e}", exc_info=True)
             # Return safe fallback decision
             return self._create_fallback_decision(ml_analysis)
+
+    def _create_first_time_escalation(self, payer_name: str, is_new_customer: bool = False) -> Dict:
+        """Create escalation response for first-time or clean-history customers."""
+        customer_state = "new customer" if is_new_customer else "customer with no prior escalations"
+        summary_reason = (
+            f"Automatic escalation: {payer_name} is a {customer_state} per payer-based fraud policy."
+        )
+        return {
+            'recommendation': 'ESCALATE',
+            'confidence_score': 1.0,
+            'summary': summary_reason,
+            'reasoning': [
+                f"Payer {payer_name} has no recorded escalations (escalate_count = 0)",
+                'First-time or clean-history uploads must be escalated for manual review',
+                'LLM and ML outputs cannot override this customer-history rule'
+            ],
+            'key_indicators': [
+                'Customer escalation count: 0',
+                'Policy: first-time uploads require escalation'
+            ],
+            'actionable_recommendations': [
+                'Route this check to the manual review queue',
+                'Create a customer record if one does not exist',
+                'Monitor future uploads for this payer to enforce repeat-offender rules'
+            ]
+        }
 
     def _create_repeat_offender_rejection(self, payer_name: str, escalate_count: int) -> Dict:
         """Create rejection response for repeat offenders (escalate_count > 0)"""
