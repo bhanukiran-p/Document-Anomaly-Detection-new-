@@ -242,7 +242,9 @@ class FeatureExtractor:
             # Try multiple date formats including month names
             date_obj = self._parse_date_flexible(date_str)
             if date_obj:
-                return 1.0 if date_obj > datetime.now() else 0.0
+                now = datetime.now()
+                # Compare only date parts (ignore time)
+                return 1.0 if date_obj.date() > now.date() else 0.0
             return 0.0
         except Exception:
             return 0.0

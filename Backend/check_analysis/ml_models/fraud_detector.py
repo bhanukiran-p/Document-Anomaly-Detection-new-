@@ -38,9 +38,8 @@ class CheckFraudDetector:
         # (Logic would go here)
 
         # 3. Signature Check
-        if not extracted_data.get('signature_detected'):
-            score += 0.2
-            anomalies.append("Missing Signature")
+        # NOTE: Signature absence is evaluated based on fraud risk score and customer history,
+        # not as an automatic penalty. This allows the decision rules to handle it properly.
 
         # Normalize score
         score = min(1.0, score)
