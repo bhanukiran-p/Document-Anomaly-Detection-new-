@@ -366,7 +366,7 @@ const HomePage = () => {
             }}
             onClick={() => navigate('/all-documents-insights')}
           >
-            All Documents Insights
+            Unified Document Insights Dashboard
           </button>
         </div>
       </div>

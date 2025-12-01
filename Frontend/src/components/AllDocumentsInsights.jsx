@@ -6,6 +6,8 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 import { FaUpload, FaCog } from 'react-icons/fa';
+import CheckInsights from './CheckInsights';
+import MoneyOrderInsights from './MoneyOrderInsights';
 
 const AllDocumentsInsights = () => {
   const [csvData, setCsvData] = useState(null);
@@ -25,6 +27,18 @@ const AllDocumentsInsights = () => {
   const [availableDocumentTypes, setAvailableDocumentTypes] = useState([]);
   const [availableRiskLevels, setAvailableRiskLevels] = useState([]);
   const [availableStatuses, setAvailableStatuses] = useState([]);
+
+  // Normalize document type filter for comparison
+  const normalizedDocumentType = documentTypeFilter 
+    ? documentTypeFilter.toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_')
+    : null;
+  
+  // Determine which component to render based on document type filter
+  const shouldRenderDedicatedDashboard = normalizedDocumentType && 
+    (normalizedDocumentType === 'check' || 
+     normalizedDocumentType === 'money_order' || 
+     normalizedDocumentType === 'paystub' || 
+     normalizedDocumentType === 'bank_statement');
 
   const parseCSV = (text) => {
     const lines = text.trim().split('\n');
@@ -196,21 +210,7 @@ const AllDocumentsInsights = () => {
       }))
       .sort((a, b) => parseFloat(b.avgRisk) - parseFloat(a.avgRisk));
 
-    // 6. Documents Over Time (grouped by date)
-    const dateCounts = {};
-    rows.forEach(r => {
-      const dateStr = r['upload_date'] || r['UploadDate'] || r['created_at'] || '';
-      if (dateStr) {
-        const date = dateStr.split('T')[0]; // Get YYYY-MM-DD
-        dateCounts[date] = (dateCounts[date] || 0) + 1;
-      }
-    });
-    const documentsOverTime = Object.entries(dateCounts)
-      .map(([date, count]) => ({ date, count }))
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .slice(-30); // Last 30 days
-
-    // 7. Risk Score Trends Over Time
+    // 6. Risk Score Trends Over Time
     const dateRisks = {};
     rows.forEach(r => {
       const dateStr = r['upload_date'] || r['UploadDate'] || r['created_at'] || '';
@@ -244,7 +244,6 @@ const AllDocumentsInsights = () => {
       riskLevelData,
       riskScoreRangeData,
       riskByTypeData,
-      documentsOverTime,
       riskTrends,
       metrics: {
         totalDocuments,
@@ -499,11 +498,137 @@ const AllDocumentsInsights = () => {
     textAlign: 'center',
   };
 
+  // Render dedicated dashboard component if a specific document type is selected
+  if (shouldRenderDedicatedDashboard) {
+    const primary = colors.primaryColor || colors.accent?.red || '#E53935';
+    const backButtonStyle = {
+      backgroundColor: 'transparent',
+      color: colors.foreground,
+      border: `2px solid ${colors.border}`,
+      padding: '0.75rem 1.5rem',
+      borderRadius: '0.5rem',
+      fontSize: '0.95rem',
+      fontWeight: '600',
+      cursor: 'pointer',
+      marginBottom: '1.5rem',
+      transition: 'all 0.3s',
+    };
+
+    if (normalizedDocumentType === 'check') {
+      return (
+        <div style={containerStyle}>
+          <button
+            style={backButtonStyle}
+            onMouseEnter={(e) => {
+              e.target.style.backgroundColor = colors.muted;
+              e.target.style.borderColor = primary;
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.backgroundColor = 'transparent';
+              e.target.style.borderColor = colors.border;
+            }}
+            onClick={() => {
+              setDocumentTypeFilter(null);
+              setCsvData(null);
+              setError(null);
+            }}
+          >
+            ← Back to Unified Dashboard
+          </button>
+          <CheckInsights />
+        </div>
+      );
+    } else if (normalizedDocumentType === 'money_order') {
+      return (
+        <div style={containerStyle}>
+          <button
+            style={backButtonStyle}
+            onMouseEnter={(e) => {
+              e.target.style.backgroundColor = colors.muted;
+              e.target.style.borderColor = primary;
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.backgroundColor = 'transparent';
+              e.target.style.borderColor = colors.border;
+            }}
+            onClick={() => {
+              setDocumentTypeFilter(null);
+              setCsvData(null);
+              setError(null);
+            }}
+          >
+            ← Back to Unified Dashboard
+          </button>
+          <MoneyOrderInsights />
+        </div>
+      );
+    } else if (normalizedDocumentType === 'paystub') {
+      return (
+        <div style={containerStyle}>
+          <button
+            style={backButtonStyle}
+            onMouseEnter={(e) => {
+              e.target.style.backgroundColor = colors.muted;
+              e.target.style.borderColor = primary;
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.backgroundColor = 'transparent';
+              e.target.style.borderColor = colors.border;
+            }}
+            onClick={() => {
+              setDocumentTypeFilter(null);
+              setCsvData(null);
+              setError(null);
+            }}
+          >
+            ← Back to Unified Dashboard
+          </button>
+          <h2 style={{ color: colors.foreground, marginBottom: '1.5rem' }}>
+            Paystub Insights
+          </h2>
+          <div style={{ padding: '2rem', textAlign: 'center', color: colors.mutedForeground }}>
+            Paystub Insights dashboard coming soon...
+          </div>
+        </div>
+      );
+    } else if (normalizedDocumentType === 'bank_statement') {
+      return (
+        <div style={containerStyle}>
+          <button
+            style={backButtonStyle}
+            onMouseEnter={(e) => {
+              e.target.style.backgroundColor = colors.muted;
+              e.target.style.borderColor = primary;
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.backgroundColor = 'transparent';
+              e.target.style.borderColor = colors.border;
+            }}
+            onClick={() => {
+              setDocumentTypeFilter(null);
+              setCsvData(null);
+              setError(null);
+            }}
+          >
+            ← Back to Unified Dashboard
+          </button>
+          <h2 style={{ color: colors.foreground, marginBottom: '1.5rem' }}>
+            Bank Statement Insights
+          </h2>
+          <div style={{ padding: '2rem', textAlign: 'center', color: colors.mutedForeground }}>
+            Bank Statement Insights dashboard coming soon...
+          </div>
+        </div>
+      );
+    }
+  }
+
+  // Render unified dashboard for all document types or when no filter is selected
   return (
     <div style={containerStyle}>
       <div style={cardStyle}>
         <h2 style={{ color: colors.foreground, marginBottom: '1.5rem' }}>
-          {inputMode === 'upload' ? 'All Documents Insights from CSV' : 'All Documents Insights from Database'}
+          {inputMode === 'upload' ? 'Unified Document Insights Dashboard (CSV)' : 'Unified Document Insights Dashboard (Live Data)'}
         </h2>
 
         {/* Input Mode Toggle */}
@@ -552,7 +677,7 @@ const AllDocumentsInsights = () => {
               transition: 'all 0.3s',
             }}
           >
-            Connect API
+            Live Data
           </button>
         </div>
 
@@ -1019,28 +1144,6 @@ const AllDocumentsInsights = () => {
                   />
                   <Bar dataKey="avgRisk" fill={primary} />
                 </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-
-          {/* Documents Over Time */}
-          {csvData.documentsOverTime && csvData.documentsOverTime.length > 0 && (
-            <div style={chartContainerStyle}>
-              <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>Documents Uploaded Over Time</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <AreaChart data={csvData.documentsOverTime}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                  <XAxis dataKey="date" stroke={colors.mutedForeground} />
-                  <YAxis stroke={colors.mutedForeground} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: colors.card,
-                      border: `1px solid ${colors.border}`,
-                      color: colors.foreground
-                    }}
-                  />
-                  <Area type="monotone" dataKey="count" stroke={primary} fill={primary} fillOpacity={0.6} />
-                </AreaChart>
               </ResponsiveContainer>
             </div>
           )}
