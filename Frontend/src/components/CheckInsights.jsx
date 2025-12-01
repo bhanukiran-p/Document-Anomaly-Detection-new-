@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { colors } from '../styles/colors';
 import {
-  BarChart, Bar, PieChart, Pie, Cell,
+  BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 import { FaUpload, FaCog } from 'react-icons/fa';
@@ -106,7 +106,95 @@ const CheckInsights = () => {
       .sort((a, b) => parseFloat(b.avgRisk) - parseFloat(a.avgRisk))
       .slice(0, 10); // Top 10 banks
 
-    // 4. Summary Metrics
+    // 4. Top High-Risk Payers
+    const payerRisks = {};
+    rows.forEach(r => {
+      const payer = r['PayerName'] || r['payer_name'] || 'Unknown';
+      if (payer && payer !== 'Unknown') {
+        if (!payerRisks[payer]) {
+          payerRisks[payer] = { count: 0, totalRisk: 0, maxRisk: 0 };
+        }
+        const risk = parseFloat_(r['RiskScore'] || r['fraud_risk_score'] || 0) * 100;
+        payerRisks[payer].count++;
+        payerRisks[payer].totalRisk += risk;
+        payerRisks[payer].maxRisk = Math.max(payerRisks[payer].maxRisk, risk);
+      }
+    });
+    const topHighRiskPayers = Object.entries(payerRisks)
+      .map(([name, data]) => ({
+        name: name, // Keep full name, let chart handle display
+        fullName: name,
+        avgRisk: (data.totalRisk / data.count).toFixed(1),
+        count: data.count,
+        maxRisk: data.maxRisk.toFixed(1)
+      }))
+      .filter(item => parseFloat(item.avgRisk) >= 50)
+      .sort((a, b) => parseFloat(b.avgRisk) - parseFloat(a.avgRisk))
+      .slice(0, 10);
+
+    // 5. Top High-Risk Payees
+    const payeeRisks = {};
+    rows.forEach(r => {
+      const payee = r['PayeeName'] || r['payee_name'] || 'Unknown';
+      if (payee && payee !== 'Unknown') {
+        if (!payeeRisks[payee]) {
+          payeeRisks[payee] = { count: 0, totalRisk: 0 };
+        }
+        const risk = parseFloat_(r['RiskScore'] || r['fraud_risk_score'] || 0) * 100;
+        payeeRisks[payee].count++;
+        payeeRisks[payee].totalRisk += risk;
+      }
+    });
+    const topHighRiskPayees = Object.entries(payeeRisks)
+      .map(([name, data]) => ({
+        name: name, // Keep full name, let chart handle display
+        fullName: name,
+        avgRisk: (data.totalRisk / data.count).toFixed(1),
+        count: data.count
+      }))
+      .filter(item => parseFloat(item.avgRisk) >= 50)
+      .sort((a, b) => parseFloat(b.avgRisk) - parseFloat(a.avgRisk))
+      .slice(0, 10);
+
+    // 6. Fraud Over Time (High-Risk Count and Avg Risk)
+    const fraudOverTime = {};
+    rows.forEach(r => {
+      const dateStr = r['CheckDate'] || r['check_date'] || r['created_at'] || '';
+      if (dateStr) {
+        const date = dateStr.split('T')[0];
+        if (!fraudOverTime[date]) {
+          fraudOverTime[date] = { count: 0, highRiskCount: 0, totalRisk: 0 };
+        }
+        const risk = parseFloat_(r['RiskScore'] || r['fraud_risk_score'] || 0) * 100;
+        fraudOverTime[date].count++;
+        fraudOverTime[date].totalRisk += risk;
+        if (risk >= 75) {
+          fraudOverTime[date].highRiskCount++;
+        }
+      }
+    });
+    const fraudTrendData = Object.entries(fraudOverTime)
+      .map(([date, data]) => ({
+        date,
+        avgRisk: (data.totalRisk / data.count).toFixed(1),
+        highRiskCount: data.highRiskCount,
+        totalCount: data.count
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(-30);
+
+
+
+    // 9. Repeat Offenders (Payers with multiple high-risk checks)
+    const repeatOffenders = Object.entries(payerRisks)
+      .filter(([name, data]) => data.count > 1 && parseFloat((data.totalRisk / data.count).toFixed(1)) >= 50)
+      .length;
+
+
+    // 11. High-Risk Count (>75%)
+    const highRiskCount = riskScoresPercent.filter(s => s >= 75).length;
+
+    // 12. Summary Metrics
     const totalChecks = rows.length;
     const avgRiskScore = (riskScores.reduce((a, b) => a + b, 0) / riskScores.length * 100).toFixed(1);
     const approveCount = recommendations.filter(d => d === 'APPROVE').length;
@@ -119,12 +207,17 @@ const CheckInsights = () => {
         { name: 'No Data', value: rows.length }
       ],
       riskByBankData,
+      topHighRiskPayers,
+      topHighRiskPayees,
+      fraudTrendData,
       metrics: {
         totalChecks,
         avgRiskScore,
         approveCount,
         rejectCount,
-        escalateCount
+        escalateCount,
+        highRiskCount,
+        repeatOffenders
       }
     };
   };
@@ -269,10 +362,25 @@ const CheckInsights = () => {
       // Transform database records to format expected by processData
       const rows = checks.map(check => ({
         'fraud_risk_score': check.fraud_risk_score || 0,
+        'RiskScore': check.fraud_risk_score || 0,
         'ai_recommendation': check.ai_recommendation || 'UNKNOWN',
+        'Decision': check.ai_recommendation || 'UNKNOWN',
         'bank_name': check.bank_name || 'Unknown',
+        'BankName': check.bank_name || 'Unknown',
         'check_number': check.check_number || 'N/A',
+        'CheckNumber': check.check_number || 'N/A',
         'amount': check.amount || 0,
+        'Amount': check.amount || 0,
+        'payer_name': check.payer_name || '',
+        'PayerName': check.payer_name || '',
+        'payee_name': check.payee_name || '',
+        'PayeeName': check.payee_name || '',
+        'check_date': check.check_date || '',
+        'CheckDate': check.check_date || '',
+        'created_at': check.created_at || check.timestamp || '',
+        'model_confidence': check.model_confidence || 0,
+        'Confidence': check.model_confidence || 0,
+        'confidence': check.model_confidence || 0,
       }));
 
       const processed = processData(rows);
@@ -705,49 +813,56 @@ const CheckInsights = () => {
       {csvData && (
         <div data-metrics-section>
           {/* Summary Metrics */}
-          <div style={metricsGridStyle}>
-            <div style={metricCardStyle}>
-              <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
-                Total Checks
+          <div style={cardStyle}>
+            <h2 style={{ color: colors.foreground, marginBottom: '1.5rem' }}>Summary Metrics</h2>
+            <div style={metricsGridStyle}>
+              <div style={metricCardStyle}>
+                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: primary, marginBottom: '0.5rem' }}>
+                  {csvData.metrics.totalChecks}
+                </div>
+                <div style={{ color: colors.mutedForeground }}>Total Checks</div>
               </div>
-              <div style={{ fontSize: '2rem', fontWeight: 'bold', color: primary }}>
-                {csvData.metrics.totalChecks}
-              </div>
-            </div>
 
-            <div style={metricCardStyle}>
-              <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
-                Avg Risk Score
+              <div style={metricCardStyle}>
+                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: primary, marginBottom: '0.5rem' }}>
+                  {csvData.metrics.avgRiskScore}%
+                </div>
+                <div style={{ color: colors.mutedForeground }}>Avg Risk Score</div>
               </div>
-              <div style={{ fontSize: '2rem', fontWeight: 'bold', color: colors.status.warning }}>
-                {csvData.metrics.avgRiskScore}%
-              </div>
-            </div>
 
-            <div style={metricCardStyle}>
-              <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
-                APPROVE
+              <div style={metricCardStyle}>
+                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#10b981', marginBottom: '0.5rem' }}>
+                  {csvData.metrics.approveCount}
+                </div>
+                <div style={{ color: colors.mutedForeground }}>Approve</div>
               </div>
-              <div style={{ fontSize: '2rem', fontWeight: 'bold', color: colors.status.success }}>
-                {csvData.metrics.approveCount}
-              </div>
-            </div>
 
-            <div style={metricCardStyle}>
-              <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
-                REJECT
+              <div style={metricCardStyle}>
+                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#ef4444', marginBottom: '0.5rem' }}>
+                  {csvData.metrics.rejectCount}
+                </div>
+                <div style={{ color: colors.mutedForeground }}>Reject</div>
               </div>
-              <div style={{ fontSize: '2rem', fontWeight: 'bold', color: colors.accent.red }}>
-                {csvData.metrics.rejectCount}
-              </div>
-            </div>
 
-            <div style={metricCardStyle}>
-              <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
-                ESCALATE
+              <div style={metricCardStyle}>
+                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#f59e0b', marginBottom: '0.5rem' }}>
+                  {csvData.metrics.escalateCount}
+                </div>
+                <div style={{ color: colors.mutedForeground }}>Escalate</div>
               </div>
-              <div style={{ fontSize: '2rem', fontWeight: 'bold', color: colors.status.warning }}>
-                {csvData.metrics.escalateCount}
+
+              <div style={metricCardStyle}>
+                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: primary, marginBottom: '0.5rem' }}>
+                  {csvData.metrics.highRiskCount || 0}
+                </div>
+                <div style={{ color: colors.mutedForeground }}>High-Risk Count (&gt;75%)</div>
+              </div>
+
+              <div style={metricCardStyle}>
+                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: primary, marginBottom: '0.5rem' }}>
+                  {csvData.metrics.repeatOffenders || 0}
+                </div>
+                <div style={{ color: colors.mutedForeground }}>Repeat Offenders</div>
               </div>
             </div>
           </div>
@@ -829,6 +944,108 @@ const CheckInsights = () => {
               </BarChart>
             </ResponsiveContainer>
           </div>
+
+          {/* Top High-Risk Payers */}
+          {csvData.topHighRiskPayers && csvData.topHighRiskPayers.length > 0 && (
+            <div style={chartContainerStyle}>
+              <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>Top High-Risk Payers</h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={csvData.topHighRiskPayers} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+                  <XAxis 
+                    type="number" 
+                    stroke={colors.mutedForeground}
+                    label={{ value: 'Average Risk Score (%)', position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fill: colors.foreground } }}
+                  />
+                  <YAxis 
+                    dataKey="name" 
+                    type="category" 
+                    stroke={colors.mutedForeground} 
+                    width={180}
+                    tick={{ fill: colors.foreground, fontSize: 12 }}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: colors.card,
+                      border: `1px solid ${colors.border}`,
+                      color: colors.foreground
+                    }}
+                    formatter={(value, name) => {
+                      if (name === 'avgRisk') return [`${value}%`, 'Avg Risk'];
+                      if (name === 'count') return [value, 'Checks'];
+                      return [value, name];
+                    }}
+                    labelFormatter={(label) => `Payer: ${label}`}
+                  />
+                  <Bar dataKey="avgRisk" fill={primary} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Top High-Risk Payees */}
+          {csvData.topHighRiskPayees && csvData.topHighRiskPayees.length > 0 && (
+            <div style={chartContainerStyle}>
+              <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>Top High-Risk Payees</h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={csvData.topHighRiskPayees} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+                  <XAxis 
+                    type="number" 
+                    stroke={colors.mutedForeground}
+                    label={{ value: 'Average Risk Score (%)', position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fill: colors.foreground } }}
+                  />
+                  <YAxis 
+                    dataKey="name" 
+                    type="category" 
+                    stroke={colors.mutedForeground} 
+                    width={180}
+                    tick={{ fill: colors.foreground, fontSize: 12 }}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: colors.card,
+                      border: `1px solid ${colors.border}`,
+                      color: colors.foreground
+                    }}
+                    formatter={(value, name) => {
+                      if (name === 'avgRisk') return [`${value}%`, 'Avg Risk'];
+                      if (name === 'count') return [value, 'Checks'];
+                      return [value, name];
+                    }}
+                    labelFormatter={(label) => `Payee: ${label}`}
+                  />
+                  <Bar dataKey="avgRisk" fill={primary} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Fraud Over Time */}
+          {csvData.fraudTrendData && csvData.fraudTrendData.length > 0 && (
+            <div style={chartContainerStyle}>
+              <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>Fraud Trend Over Time</h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={csvData.fraudTrendData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+                  <XAxis dataKey="date" stroke={colors.mutedForeground} />
+                  <YAxis yAxisId="left" stroke={colors.mutedForeground} />
+                  <YAxis yAxisId="right" orientation="right" stroke={colors.mutedForeground} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: colors.card,
+                      border: `1px solid ${colors.border}`,
+                      color: colors.foreground
+                    }}
+                  />
+                  <Legend />
+                  <Line yAxisId="left" type="monotone" dataKey="avgRisk" stroke={primary} strokeWidth={2} name="Avg Risk Score %" />
+                  <Line yAxisId="right" type="monotone" dataKey="highRiskCount" stroke="#ef4444" strokeWidth={2} name="High-Risk Count" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
         </div>
       )}
     </div>

@@ -1103,6 +1103,127 @@ def get_documents_list():
         }), 500
 
 
+@app.route('/api/documents/enriched', methods=['GET'])
+def get_enriched_documents():
+    """Fetch documents with enriched data from individual tables (payer, payee, amount, etc.)"""
+    try:
+        from datetime import datetime
+        supabase = get_supabase()
+        
+        # Get base documents from view
+        date_filter = request.args.get('date_filter', default=None)
+        document_type_filter = request.args.get('document_type', default=None)
+        risk_level_filter = request.args.get('risk_level', default=None)
+        status_filter = request.args.get('status', default=None)
+        
+        # Build query for base documents
+        query = supabase.table('v_documents_with_risk').select('*')
+        
+        if date_filter:
+            # Apply date filter logic (similar to list endpoint)
+            # For now, fetch all and filter in Python
+            pass
+        
+        response = query.order('upload_date', desc=True).limit(5000).execute()
+        base_docs = response.data or []
+        
+        # Apply filters
+        if date_filter:
+            now = datetime.utcnow()
+            filtered = []
+            for doc in base_docs:
+                upload_date_str = doc.get('upload_date')
+                if not upload_date_str:
+                    continue
+                try:
+                    if 'T' in upload_date_str:
+                        upload_date = datetime.fromisoformat(upload_date_str.replace('Z', '+00:00').split('+')[0])
+                    else:
+                        upload_date = datetime.fromisoformat(upload_date_str)
+                    days_old = (now - upload_date).days
+                    if date_filter == 'last_30' and days_old <= 30:
+                        filtered.append(doc)
+                    elif date_filter == 'last_60' and days_old <= 60:
+                        filtered.append(doc)
+                    elif date_filter == 'last_90' and days_old <= 90:
+                        filtered.append(doc)
+                    elif date_filter == 'older' and days_old > 90:
+                        filtered.append(doc)
+                except:
+                    continue
+            base_docs = filtered
+        
+        if document_type_filter:
+            base_docs = [d for d in base_docs if d.get('document_type', '').lower() == document_type_filter.lower()]
+        if risk_level_filter:
+            base_docs = [d for d in base_docs if (d.get('risk_level') or '').upper().replace(' ', '') == risk_level_filter.upper()]
+        if status_filter:
+            base_docs = [d for d in base_docs if (d.get('status') or '').lower() == status_filter.lower()]
+        
+        # Enrich with data from individual tables
+        enriched_docs = []
+        for doc in base_docs:
+            doc_type = doc.get('document_type', '').lower()
+            doc_id = doc.get('document_id')
+            
+            enriched = {**doc}
+            
+            # Fetch additional fields based on document type
+            try:
+                if doc_type == 'check':
+                    check_resp = supabase.table('checks').select('payer_name,payee_name,amount,check_number,ai_recommendation,model_confidence').eq('document_id', doc_id).limit(1).execute()
+                    if check_resp.data:
+                        check_data = check_resp.data[0]
+                        enriched['payer_name'] = check_data.get('payer_name')
+                        enriched['payee_name'] = check_data.get('payee_name')
+                        enriched['amount'] = check_data.get('amount')
+                        enriched['check_number'] = check_data.get('check_number')
+                        enriched['ai_recommendation'] = enriched.get('ai_recommendation') or check_data.get('ai_recommendation')
+                        enriched['model_confidence'] = enriched.get('confidence') or enriched.get('model_confidence') or check_data.get('model_confidence')
+                elif doc_type == 'money_order' or doc_type == 'money order':
+                    mo_resp = supabase.table('money_orders').select('purchaser_name,payee_name,amount,money_order_number,ai_recommendation,model_confidence').eq('document_id', doc_id).limit(1).execute()
+                    if mo_resp.data:
+                        mo_data = mo_resp.data[0]
+                        enriched['purchaser_name'] = mo_data.get('purchaser_name')
+                        enriched['payee_name'] = mo_data.get('payee_name')
+                        enriched['amount'] = mo_data.get('amount')
+                        enriched['money_order_number'] = mo_data.get('money_order_number')
+                        enriched['ai_recommendation'] = enriched.get('ai_recommendation') or mo_data.get('ai_recommendation')
+                        enriched['model_confidence'] = enriched.get('confidence') or enriched.get('model_confidence') or mo_data.get('model_confidence')
+                elif doc_type == 'paystub':
+                    ps_resp = supabase.table('paystubs').select('employee_name,employer_name,gross_pay,ai_recommendation,model_confidence').eq('document_id', doc_id).limit(1).execute()
+                    if ps_resp.data:
+                        ps_data = ps_resp.data[0]
+                        enriched['employee_name'] = ps_data.get('employee_name')
+                        enriched['amount'] = ps_data.get('gross_pay')
+                        enriched['ai_recommendation'] = enriched.get('ai_recommendation') or ps_data.get('ai_recommendation')
+                        enriched['model_confidence'] = enriched.get('confidence') or enriched.get('model_confidence') or ps_data.get('model_confidence')
+                elif doc_type == 'bank_statement' or doc_type == 'bank statement':
+                    bs_resp = supabase.table('bank_statements').select('account_holder,ai_recommendation,model_confidence').eq('document_id', doc_id).limit(1).execute()
+                    if bs_resp.data:
+                        bs_data = bs_resp.data[0]
+                        enriched['account_holder'] = bs_data.get('account_holder')
+                        enriched['ai_recommendation'] = enriched.get('ai_recommendation') or bs_data.get('ai_recommendation')
+                        enriched['model_confidence'] = enriched.get('confidence') or enriched.get('model_confidence') or bs_data.get('model_confidence')
+            except Exception as e:
+                logger.warning(f"Could not enrich document {doc_id}: {e}")
+            
+            enriched_docs.append(enriched)
+        
+        return jsonify({
+            'success': True,
+            'data': enriched_docs,
+            'count': len(enriched_docs)
+        })
+    except Exception as e:
+        logger.error(f"Failed to fetch enriched documents: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to fetch enriched documents'
+        }), 500
+
+
 @app.route('/api/documents/search', methods=['GET'])
 def search_documents():
     """Search documents by file_name or document_id"""
