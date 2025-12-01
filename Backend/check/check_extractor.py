@@ -9,31 +9,44 @@ import json
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
-# Import Mindee - use ClientV2 API
+# Load environment variables first
+from dotenv import load_dotenv
+load_dotenv()
+
+# Import Mindee - use ClientV2 API (requires mindee>=4.31.0)
 try:
-    from mindee import ClientV2
-    from mindee.input.inference_parameters import InferenceParameters
+    from mindee import ClientV2, InferenceParameters, PathInput
     MINDEE_AVAILABLE = True
 except ImportError as e:
     logging.getLogger(__name__).error(f"Mindee library not properly installed: {e}")
+    logging.getLogger(__name__).error("Requires mindee>=4.31.0. Install with: pip install --upgrade 'mindee>=4.31.0'")
     MINDEE_AVAILABLE = False
     ClientV2 = None
     InferenceParameters = None
+    PathInput = None
 
-# Import check-specific components
-from normalization.check_normalizer_factory import CheckNormalizerFactory
-from ml_models.check_fraud_detector import CheckFraudDetector
-from check.ai.check_fraud_analysis_agent import CheckFraudAnalysisAgent
-from check.ai.check_tools import CheckDataAccessTools
+# Import check-specific components from local modules
+from .normalization.check_normalizer_factory import CheckNormalizerFactory
+from .ml.check_fraud_detector import CheckFraudDetector
+from .ai.check_fraud_analysis_agent import CheckFraudAnalysisAgent
+from .ai.check_tools import CheckDataAccessTools
 
 logger = logging.getLogger(__name__)
 
-# Mindee configuration
+# Mindee configuration - read after load_dotenv()
 MINDEE_API_KEY = os.getenv("MINDEE_API_KEY", "").strip()
 MINDEE_MODEL_ID_CHECK = os.getenv("MINDEE_MODEL_ID_CHECK", "046edc76-e8a4-4e11-a9a3-bb8632250446").strip()
+# Endpoint name is the "API name" from Mindee API Builder Settings page
+# Try model name first, then model ID as fallback
+MINDEE_ENDPOINT_NAME_CHECK = os.getenv("MINDEE_ENDPOINT_NAME_CHECK", "").strip() or "bank-check" or MINDEE_MODEL_ID_CHECK
+# Account name is your organization's username on Mindee API Builder
+# From screenshot: "Vikram Ramanathan's Organization" - try slugified version
+MINDEE_ACCOUNT_NAME = os.getenv("MINDEE_ACCOUNT_NAME", "").strip() or "vikram-ramanathan"
 
 logger.info(f"Mindee API Key loaded: {MINDEE_API_KEY[:20]}..." if MINDEE_API_KEY else "Mindee API Key NOT SET")
 logger.info(f"Mindee Model ID: {MINDEE_MODEL_ID_CHECK}")
+logger.info(f"Mindee Endpoint Name: {MINDEE_ENDPOINT_NAME_CHECK}")
+logger.info(f"Mindee Account Name: {MINDEE_ACCOUNT_NAME or 'Not set (will use default)'}")
 
 if not MINDEE_API_KEY:
     logger.warning("MINDEE_API_KEY is not set - check extraction may fail")
@@ -147,22 +160,48 @@ class CheckExtractor:
             raise RuntimeError("Mindee client not initialized. Check API key and installation.")
 
         try:
-            # Use ClientV2 Mindee API
-            input_source = mindee_client.source_from_path(file_path)
-
-            # Create inference parameters with the model ID
-            inference_params = InferenceParameters(
-                model_id=MINDEE_MODEL_ID_CHECK
-            )
-
-            # Parse document using ClientV2 custom model
-            result = mindee_client.enqueue_and_get_inference(
-                input_source=input_source,
-                params=inference_params
-            )
-
-            # Extract fields from the raw HTTP response
-            raw_response_data = result.raw_http
+            # Use ClientV2 API with InferenceParameters (as shown in Mindee API docs)
+            logger.info(f"Extracting with Mindee using model ID: {MINDEE_MODEL_ID_CHECK}")
+            
+            # Create inference parameters with the model ID (as per API docs)
+            params = InferenceParameters(model_id=MINDEE_MODEL_ID_CHECK, raw_text=True)
+            input_source = PathInput(file_path)
+            
+            # Parse document using ClientV2 with model ID (as per API docs)
+            logger.info(f"Calling Mindee API with model ID...")
+            response = mindee_client.enqueue_and_get_inference(input_source, params)
+            
+            # Extract fields from the response (as per API docs structure)
+            logger.info(f"Processing Mindee response...")
+            
+            if not response or not hasattr(response, 'inference'):
+                raise ValueError("Invalid Mindee API response: missing inference object")
+            
+            if not response.inference or not hasattr(response.inference, 'result'):
+                raise ValueError("Invalid Mindee API response: missing result object")
+            
+            result = response.inference.result
+            if not result:
+                raise ValueError("Invalid Mindee API response: result is None")
+            
+            fields = result.fields or {}
+            logger.info(f"Extracted {len(fields)} fields from Mindee response")
+            
+            # Get raw text
+            raw_text = getattr(result, "raw_text", "") or ""
+            if raw_text and not isinstance(raw_text, str):
+                raw_text = str(raw_text)
+            
+            # Convert to expected format (matching the old format)
+            raw_response = {
+                'inference': {
+                    'result': {
+                        'fields': fields
+                    }
+                }
+            }
+            
+            raw_response_data = raw_response
 
             # Parse JSON string response if needed
             if isinstance(raw_response_data, str):
@@ -210,11 +249,14 @@ class CheckExtractor:
             }
 
             for name, field_data in fields.items():
-                logger.debug(f"Processing field {name}: {field_data}")
+                logger.debug(f"Processing field {name}: {field_data} (type: {type(field_data)})")
 
-                # Extract the actual value
+                # Extract the actual value from SimpleField object
                 value = None
-                if isinstance(field_data, dict):
+                if hasattr(field_data, 'value'):
+                    # SimpleField object - extract the value
+                    value = field_data.value
+                elif isinstance(field_data, dict):
                     if 'value' in field_data:
                         value = field_data['value']
                     elif 'values' in field_data:
@@ -225,6 +267,7 @@ class CheckExtractor:
                         logger.warning(f"  → Field {name} has no value/values/content. Keys: {list(field_data.keys())}")
                         continue
                 else:
+                    # Already a plain value
                     value = field_data
 
                 # Map field name to standard name if needed

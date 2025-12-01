@@ -11,12 +11,12 @@ from google.oauth2 import service_account
 import fitz  # PyMuPDF
 import os
 
-# Import AI agent
+# Import paystub-specific components
 try:
     from langchain_agent.fraud_analysis_agent import FraudAnalysisAgent
     from langchain_agent.tools import DataAccessTools
-    from normalization.normalizer_factory import NormalizerFactory
-    from ml_models.paystub_fraud_detector import PaystubFraudDetector
+    from paystub.normalization import PaystubNormalizerFactory
+    from paystub.ml import PaystubFraudDetector
     ML_AVAILABLE = True
 except ImportError as e:
     print(f"Warning: Components not available: {e}")
@@ -552,7 +552,12 @@ class PaystubExtractor:
         if self.ai_agent and self.fraud_detector:
             try:
                 # 1. Normalize Data
-                normalized_data = NormalizerFactory.normalize_data('paystub', details)
+                normalizer = PaystubNormalizerFactory.get_normalizer()
+                if normalizer:
+                    normalized_paystub = normalizer.normalize(details)
+                    normalized_data = normalized_paystub.to_dict()
+                else:
+                    normalized_data = details
                 
                 # 2. ML Fraud Prediction
                 ml_analysis = self.fraud_detector.predict_fraud(normalized_data, text)

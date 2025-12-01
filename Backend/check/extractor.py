@@ -56,7 +56,7 @@ except ImportError as e:
 
 # Import Check Normalization
 try:
-    from check_normalization.check_normalizer_factory import CheckNormalizerFactory
+    from .normalization.check_normalizer_factory import CheckNormalizerFactory
 
     NORMALIZATION_AVAILABLE = True
 except ImportError as e:

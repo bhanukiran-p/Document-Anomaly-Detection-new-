@@ -16,7 +16,9 @@ production_extractor = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(production_extractor)
 ProductionCheckExtractor = production_extractor.ProductionCheckExtractor
 
-from normalization.normalizer_factory import NormalizerFactory
+# Legacy file - normalization removed, use check.normalization instead
+# from normalization.normalizer_factory import NormalizerFactory
+from check.normalization import CheckNormalizerFactory
 from langchain_agent.fraud_analysis_agent import FraudAnalysisAgent
 from langchain_agent.tools import DataAccessTools
 
@@ -66,7 +68,7 @@ class CheckExtractor:
         print(f"Normalizing data for bank: {bank_name}...")
         
         normalized_data = None
-        normalizer = NormalizerFactory.get_normalizer(bank_name)
+        normalizer = CheckNormalizerFactory.get_normalizer(bank_name)
         
         if normalizer:
             normalized_object = normalizer.normalize(extracted_data)

@@ -28,7 +28,8 @@ class CheckDataAccessTools:
 
         if not use_mock:
             try:
-                from database.check_customer_storage import CheckCustomerStorage
+                # Use local check database module
+                from ..database.check_customer_storage import CheckCustomerStorage
                 self.customer_storage = CheckCustomerStorage()
                 logger.info("Initialized CheckDataAccessTools with database connection")
             except Exception as e:

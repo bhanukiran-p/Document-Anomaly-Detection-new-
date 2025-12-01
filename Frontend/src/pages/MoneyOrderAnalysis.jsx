@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { analyzeMoneyOrder } from '../services/api';
 import { colors } from '../styles/colors';
-import MoneyOrderInsights from '../components/MoneyOrderInsights';
+import MoneyOrderInsights from '../components/MoneyOrderInsights.jsx';
 
 const MoneyOrderAnalysis = () => {
   const [file, setFile] = useState(null);
@@ -445,6 +445,186 @@ const MoneyOrderAnalysis = () => {
                   </ul>
                 </div>
               )}
+
+              {/* AI Analysis Details - Reasoning */}
+              <div style={{
+                ...resultCardStyle,
+                marginBottom: '1.5rem',
+                backgroundColor: colors.card,
+                border: `1px solid ${colors.border}`,
+              }}>
+                <h4 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"/>
+                    <path d="M12 6v6l4 2"/>
+                  </svg>
+                  Analysis Details
+                </h4>
+
+                {aiAnalysis && aiAnalysis.summary ? (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <strong style={{ color: colors.foreground }}>Summary:</strong>
+                    <p style={{ color: colors.mutedForeground, marginTop: '0.5rem' }}>
+                      {aiAnalysis.summary}
+                    </p>
+                  </div>
+                ) : mlAnalysis ? (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <strong style={{ color: colors.foreground }}>Summary:</strong>
+                    <p style={{ color: colors.mutedForeground, marginTop: '0.5rem' }}>
+                      {mlAnalysis.risk_level === 'HIGH' || mlAnalysis.risk_level === 'CRITICAL' 
+                        ? 'High fraud risk - requires immediate review'
+                        : mlAnalysis.risk_level === 'MEDIUM'
+                        ? 'Moderate fraud risk - requires human review'
+                        : 'Low fraud risk - proceed with caution'}
+                    </p>
+                  </div>
+                ) : null}
+
+                {aiAnalysis && aiAnalysis.reasoning ? (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <strong style={{ color: colors.foreground }}>Reasoning:</strong>
+                    <p style={{ color: colors.mutedForeground, marginTop: '0.5rem', whiteSpace: 'pre-wrap' }}>
+                      {typeof aiAnalysis.reasoning === 'string' 
+                        ? aiAnalysis.reasoning 
+                        : Array.isArray(aiAnalysis.reasoning) 
+                          ? aiAnalysis.reasoning.join('\n') 
+                          : 'AI analysis unavailable - using ML-based fallback decision'}
+                    </p>
+                    {mlAnalysis && (
+                      <p style={{ color: colors.mutedForeground, marginTop: '0.5rem' }}>
+                        ML fraud score: {((mlAnalysis.fraud_risk_score || 0) * 100).toFixed(2)}%<br/>
+                        Risk level: {mlAnalysis.risk_level || 'UNKNOWN'}
+                      </p>
+                    )}
+                  </div>
+                ) : mlAnalysis ? (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <strong style={{ color: colors.foreground }}>Reasoning:</strong>
+                    <p style={{ color: colors.mutedForeground, marginTop: '0.5rem' }}>
+                      AI analysis unavailable - using ML-based fallback decision<br/>
+                      ML fraud score: {((mlAnalysis.fraud_risk_score || 0) * 100).toFixed(2)}%<br/>
+                      Risk level: {mlAnalysis.risk_level || 'UNKNOWN'}
+                    </p>
+                  </div>
+                ) : (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <strong style={{ color: colors.foreground }}>Reasoning:</strong>
+                    <p style={{ color: colors.mutedForeground, marginTop: '0.5rem' }}>
+                      Analysis data not available
+                    </p>
+                  </div>
+                )}
+
+                {aiAnalysis && aiAnalysis.key_indicators && aiAnalysis.key_indicators.length > 0 ? (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <strong style={{ color: colors.foreground }}>Key Fraud Indicators:</strong>
+                    <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
+                      {aiAnalysis.key_indicators.map((indicator, idx) => (
+                        <li key={idx} style={{ marginBottom: '0.3rem' }}>{indicator}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <strong style={{ color: colors.foreground }}>Key Fraud Indicators:</strong>
+                    <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
+                      <li>No significant risk factors</li>
+                    </ul>
+                  </div>
+                )}
+
+                {aiAnalysis && aiAnalysis.verification_notes && (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <strong style={{ color: colors.foreground }}>Verification Notes:</strong>
+                    <p style={{ color: colors.mutedForeground, marginTop: '0.5rem', whiteSpace: 'pre-wrap' }}>
+                      {aiAnalysis.verification_notes}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Risk Analysis Details - Feature Importance */}
+              <div style={{
+                ...resultCardStyle,
+                marginBottom: '1.5rem',
+                backgroundColor: colors.card,
+                border: `1px solid ${colors.border}`,
+              }}>
+                <h4 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M3 3v18h18"/>
+                    <path d="M18 17V9"/>
+                    <path d="M13 17V5"/>
+                    <path d="M8 17v-3"/>
+                  </svg>
+                  Risk Analysis
+                </h4>
+
+                {mlAnalysis && mlAnalysis.risk_level ? (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <strong style={{ color: colors.foreground }}>Risk Level:</strong>
+                    <span style={{
+                      marginLeft: '0.5rem',
+                      color: mlAnalysis.risk_level === 'HIGH' || mlAnalysis.risk_level === 'CRITICAL' ? primary : 
+                             mlAnalysis.risk_level === 'MEDIUM' ? colors.status.warning : colors.status.success,
+                      fontWeight: 'bold'
+                    }}>
+                      {mlAnalysis.risk_level}
+                    </span>
+                  </div>
+                ) : null}
+
+                {mlAnalysis && Array.isArray(mlAnalysis.feature_importance) && mlAnalysis.feature_importance.length > 0 ? (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <strong style={{ color: colors.foreground }}>Top Risk Indicators:</strong>
+                    <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
+                      {mlAnalysis.feature_importance.slice(0, 5).map((item, idx) => {
+                        if (typeof item === 'string') {
+                          return <li key={idx} style={{ marginBottom: '0.3rem' }}>{item}</li>;
+                        } else if (item.feature && item.importance) {
+                          return (
+                            <li key={idx} style={{ marginBottom: '0.3rem' }}>
+                              {item.feature}: {(item.importance * 100).toFixed(1)}%
+                            </li>
+                          );
+                        }
+                        return null;
+                      })}
+                    </ul>
+                  </div>
+                ) : (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <strong style={{ color: colors.foreground }}>Top Risk Indicators:</strong>
+                    <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
+                      <li>No significant risk factors</li>
+                    </ul>
+                  </div>
+                )}
+
+                {mlAnalysis && mlAnalysis.model_scores ? (
+                  <div style={{ fontSize: '0.85rem', color: colors.mutedForeground, marginTop: '1rem' }}>
+                    <strong>Analysis Scores:</strong>
+                    {mlAnalysis.model_scores.random_forest !== undefined && (
+                      <div>Primary Analysis: {(mlAnalysis.model_scores.random_forest * 100).toFixed(1)}%</div>
+                    )}
+                    {mlAnalysis.model_scores.xgboost !== undefined && (
+                      <div>Secondary Analysis: {(mlAnalysis.model_scores.xgboost * 100).toFixed(1)}%</div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Informational Message */}
+              <div style={{
+                ...resultCardStyle,
+                backgroundColor: colors.card,
+                border: `1px solid ${colors.border}`
+              }}>
+                <p style={{ margin: 0, color: colors.mutedForeground }}>
+                  Detailed extracted money order information is available in the downloaded JSON file in a structured table format.
+                </p>
+              </div>
 
               {/* Download Button */}
               <button
