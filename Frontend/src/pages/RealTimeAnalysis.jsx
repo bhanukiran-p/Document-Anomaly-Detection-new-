@@ -12,6 +12,55 @@ import {
 } from 'react-icons/fa';
 import { analyzeRealTimeTransactions, regeneratePlotsWithFilters } from '../services/api';
 
+const getInsightPoints = (insightsText) => {
+  if (!insightsText) return [];
+
+  const points = [];
+  const numberedMatches = [...insightsText.matchAll(/\*\*(\d+)\.\s*(.+?)(?=(\*\*\d+\.)|$)/gs)];
+
+  if (numberedMatches.length > 0) {
+    numberedMatches.forEach((match) => {
+      const number = match[1];
+      const content = match[2] || '';
+
+      const cleaned = content
+        .replace(/\*\*/g, '')
+        .replace(/–/g, '-')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      const subSegments = cleaned.split(/\s+-\s+/).map((segment) => segment.trim()).filter(Boolean);
+
+      subSegments.forEach((segment, idx) => {
+        if (idx === 0) {
+          points.push(`${number}. ${segment}`);
+        } else {
+          points.push(`- ${segment}`);
+        }
+      });
+    });
+    return points;
+  }
+
+  let normalized = insightsText
+    .replace(/\*\*/g, '')
+    .replace(/•/g, '-')
+    .replace(/–/g, '-')
+    .trim();
+
+  normalized = normalized
+    .replace(/(?=\d+\.)/g, '\n')
+    .replace(/\s+-\s+/g, '\n- ')
+    .replace(/ - /g, '\n- ')
+    .replace(/\. -/g, '.\n-')
+    .replace(/;\s*/g, ';\n');
+
+  return normalized
+    .split(/\n+/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+};
+
 const RealTimeAnalysis = () => {
   const navigate = useNavigate();
   const [bankingUrl, setBankingUrl] = useState('');
@@ -59,6 +108,8 @@ const RealTimeAnalysis = () => {
     : [];
 
   const fraudTypeBreakdown = analysisResult?.fraud_detection?.fraud_type_breakdown || [];
+  const agentInsights = analysisResult?.agent_analysis?.detailed_insights || '';
+  const insightPoints = getInsightPoints(agentInsights);
 
   const handleDownloadCSV = () => {
     if (!analysisResult?.transactions?.length) return;
@@ -100,6 +151,8 @@ const RealTimeAnalysis = () => {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
+
+  
 
   const handleUrlSubmit = async (e) => {
     e.preventDefault();
@@ -1500,24 +1553,50 @@ const RealTimeAnalysis = () => {
               )}
 
               {/* Key Insights - Condensed */}
-              {analysisResult.agent_analysis.detailed_insights && (
+              {agentInsights && (
                 <div style={{ marginBottom: '1.5rem' }}>
                   <h4 style={{ color: colors.foreground, fontSize: '0.95rem', marginBottom: '0.75rem', fontWeight: '600' }}>
                     Key Insights
                   </h4>
-                  <div style={{
-                    backgroundColor: colors.muted,
-                    padding: '1rem',
-                    borderRadius: '0.5rem',
-                    border: `1px solid ${colors.border}`,
-                    fontSize: '0.9rem',
-                    color: colors.foreground,
-                    lineHeight: '1.6',
-                    maxHeight: '200px',
-                    overflowY: 'auto'
-                  }}>
-                    {analysisResult.agent_analysis.detailed_insights}
-                  </div>
+                  {insightPoints.length > 0 ? (
+                    <ul style={{
+                      backgroundColor: colors.muted,
+                      padding: '1rem 1.25rem',
+                      borderRadius: '0.5rem',
+                      border: `1px solid ${colors.border}`,
+                      fontSize: '0.9rem',
+                      color: colors.foreground,
+                      lineHeight: '1.6',
+                      maxHeight: '220px',
+                      overflowY: 'auto',
+                      margin: 0,
+                      listStyle: 'disc',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.5rem'
+                    }}>
+                      {insightPoints.map((point, idx) => (
+                        <li key={idx} style={{ marginLeft: '1rem' }}>
+                          {point}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div style={{
+                      backgroundColor: colors.muted,
+                      padding: '1rem',
+                      borderRadius: '0.5rem',
+                      border: `1px solid ${colors.border}`,
+                      fontSize: '0.9rem',
+                      color: colors.foreground,
+                      lineHeight: '1.6',
+                      maxHeight: '200px',
+                      overflowY: 'auto',
+                      whiteSpace: 'pre-line'
+                    }}>
+                      {agentInsights}
+                    </div>
+                  )}
                 </div>
               )}
 
