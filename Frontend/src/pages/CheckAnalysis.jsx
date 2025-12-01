@@ -387,7 +387,7 @@ const CheckAnalysis = () => {
           onMouseEnter={(e) => !activeTab && (e.target.style.backgroundColor = colors.muted)}
           onMouseLeave={(e) => !activeTab && (e.target.style.backgroundColor = colors.secondary)}
         >
-          CSV Insights
+          Insights
         </button>
       </div>
 
@@ -783,7 +783,7 @@ const CheckAnalysis = () => {
       </div>
       )}
 
-      {/* CSV Insights Tab */}
+      {/* Insights Tab */}
       {activeTab === 'insights' && (
         <CheckInsights />
       )}
