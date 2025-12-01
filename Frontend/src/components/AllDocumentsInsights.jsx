@@ -236,7 +236,6 @@ const AllDocumentsInsights = () => {
     const avgRiskScore = riskScores.length > 0 
       ? (riskScores.reduce((a, b) => a + b, 0) / riskScores.length * 100).toFixed(1)
       : '0.0';
-    // Count HIGH risk from both HIGH and CRITICAL, and also calculate from scores if needed
     const highRiskCount = (riskLevelCounts['HIGH'] || 0) + (riskLevelCounts['CRITICAL'] || 0);
 
     return {
@@ -1067,6 +1066,7 @@ const AllDocumentsInsights = () => {
               </ResponsiveContainer>
             </div>
           )}
+
         </>
       )}
     </div>
