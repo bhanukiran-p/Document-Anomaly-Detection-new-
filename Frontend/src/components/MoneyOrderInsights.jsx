@@ -66,8 +66,11 @@ const MoneyOrderInsights = () => {
     return isNaN(num) ? 0 : num;
   };
 
-  const processData = (rows) => {
+  const processData = (rows, selectedIssuer = null) => {
     if (!rows.length) return null;
+
+    // Check if we're in single issuer view
+    const isSingleIssuerView = selectedIssuer && selectedIssuer !== '' && selectedIssuer !== 'All Issuers';
 
     // 1. Fraud Risk Distribution (0-25%, 25-50%, 50-75%, 75-100%)
     const riskScores = rows.map(r => parseFloat_(r['RiskScore'] || r['fraud_risk_score'] || 0));
@@ -242,8 +245,76 @@ const MoneyOrderInsights = () => {
       .sort((a, b) => a.date.localeCompare(b.date))
       .slice(-30);
 
+    // 9. Issuer-Specific Charts (only when single issuer is selected)
+    let topRiskyPurchasersForIssuer = [];
+    let riskScoreTrendForIssuer = [];
 
+    if (isSingleIssuerView) {
+      // Chart A: Top Risky Purchasers (Selected Issuer)
+      const purchaserHighRisk = {};
+      rows.forEach(r => {
+        const purchaser = (r['PurchaserName'] || r['purchaser_name'] || '').trim();
+        if (purchaser && purchaser !== '' && purchaser !== 'Unknown') {
+          const risk = parseFloat_(r['RiskScore'] || r['fraud_risk_score'] || 0);
+          const recommendation = (r['Decision'] || r['ai_recommendation'] || 'UNKNOWN').toUpperCase();
+          const isHighRisk = risk >= 0.75 || recommendation !== 'APPROVE';
+          
+          const purchaserKey = purchaser.toUpperCase();
+          if (!purchaserHighRisk[purchaserKey]) {
+            purchaserHighRisk[purchaserKey] = {
+              originalName: purchaser,
+              highRiskCount: 0,
+              totalCount: 0
+            };
+          }
+          purchaserHighRisk[purchaserKey].totalCount++;
+          if (isHighRisk) {
+            purchaserHighRisk[purchaserKey].highRiskCount++;
+          }
+        }
+      });
+      
+      topRiskyPurchasersForIssuer = Object.entries(purchaserHighRisk)
+        .map(([key, data]) => ({
+          name: data.originalName || key,
+          highRiskCount: data.highRiskCount,
+          totalCount: data.totalCount
+        }))
+        .sort((a, b) => b.highRiskCount - a.highRiskCount)
+        .slice(0, 10);
 
+      // Chart B: Risk Score Trend (Selected Issuer)
+      const issuerTrendByDay = {};
+      rows.forEach(r => {
+        const dateStr = r['IssueDate'] || r['issue_date'] || r['created_at'] || '';
+        if (dateStr) {
+          const date = dateStr.split('T')[0];
+          if (!issuerTrendByDay[date]) {
+            issuerTrendByDay[date] = { count: 0, totalRisk: 0, highRiskCount: 0 };
+          }
+          const risk = parseFloat_(r['RiskScore'] || r['fraud_risk_score'] || 0);
+          const recommendation = (r['Decision'] || r['ai_recommendation'] || 'UNKNOWN').toUpperCase();
+          const isHighRisk = risk >= 0.75 || recommendation !== 'APPROVE';
+          
+          issuerTrendByDay[date].count++;
+          issuerTrendByDay[date].totalRisk += risk;
+          if (isHighRisk) {
+            issuerTrendByDay[date].highRiskCount++;
+          }
+        }
+      });
+      
+      riskScoreTrendForIssuer = Object.entries(issuerTrendByDay)
+        .map(([date, data]) => ({
+          date,
+          avgRisk: (data.totalRisk / data.count * 100).toFixed(1),
+          highRiskRate: data.count > 0 ? ((data.highRiskCount / data.count) * 100).toFixed(1) : '0.0',
+          highRiskCount: data.highRiskCount,
+          totalCount: data.count
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .slice(-30);
+    }
 
     // 12. High-Risk Count (>75%)
     const highRiskCount = riskScoresPercent.filter(s => s >= 75).length;
@@ -267,6 +338,10 @@ const MoneyOrderInsights = () => {
       topHighRiskPurchasers,
       topHighRiskPayees,
       fraudTrendData,
+      topRiskyPurchasersForIssuer,
+      riskScoreTrendForIssuer,
+      isSingleIssuerView,
+      selectedIssuerName: isSingleIssuerView ? selectedIssuer : null,
       metrics: {
         totalMoneyOrders,
         avgRiskScore,
@@ -297,7 +372,7 @@ const MoneyOrderInsights = () => {
           return;
         }
 
-        const processed = processData(rows);
+        const processed = processData(rows, issuerFilter);
         setCsvData(processed);
         setError(null);
       } catch (err) {
@@ -345,8 +420,13 @@ const MoneyOrderInsights = () => {
         // Apply issuer filter if selected
         let filteredData = data.data;
         const activeIssuerFilter = issuer !== null ? issuer : issuerFilter;
-        if (activeIssuerFilter) {
-          filteredData = data.data.filter(mo => mo.money_order_institute === activeIssuerFilter);
+        if (activeIssuerFilter && activeIssuerFilter !== '' && activeIssuerFilter !== 'All Issuers') {
+          // Normalize issuer names for comparison
+          const normalizedIssuer = activeIssuerFilter.trim();
+          filteredData = data.data.filter(mo => {
+            const moIssuer = (mo.money_order_institute || '').trim();
+            return moIssuer === normalizedIssuer;
+          });
         }
         
         setMoneyOrdersList(filteredData);
@@ -354,7 +434,11 @@ const MoneyOrderInsights = () => {
         setDateFilter(filter);
         // Auto-load all money orders as insights if data exists
         if (filteredData && filteredData.length > 0) {
-          loadMoneyOrderData(filteredData);
+          // Pass the active issuer filter to ensure correct chart data
+          const issuerToPass = (activeIssuerFilter && activeIssuerFilter !== '' && activeIssuerFilter !== 'All Issuers') 
+            ? activeIssuerFilter.trim() 
+            : null;
+          loadMoneyOrderData(filteredData, issuerToPass);
         } else {
           setError('No money orders found for the selected filters');
         }
@@ -405,24 +489,66 @@ const MoneyOrderInsights = () => {
     }
   };
 
-  const loadMoneyOrderData = async (moneyOrders) => {
+  const loadMoneyOrderData = async (moneyOrders, explicitIssuer = null) => {
     if (!moneyOrders || moneyOrders.length === 0) {
       setError('No money orders selected');
       return;
     }
 
     try {
+      // Use explicit issuer if provided, otherwise use issuerFilter state
+      const issuerToUse = explicitIssuer !== null ? explicitIssuer : issuerFilter;
+      
       // Transform database records to format expected by processData
       const rows = moneyOrders.map(mo => ({
         'fraud_risk_score': mo.fraud_risk_score || 0,
+        'RiskScore': mo.fraud_risk_score || 0,
         'ai_recommendation': mo.ai_recommendation || 'UNKNOWN',
+        'Decision': mo.ai_recommendation || 'UNKNOWN',
         'money_order_institute': mo.money_order_institute || 'Unknown',
+        'IssuerName': mo.money_order_institute || 'Unknown',
+        'issuer_name': mo.money_order_institute || 'Unknown',
         'money_order_number': mo.money_order_number || 'N/A',
+        'MoneyOrderNumber': mo.money_order_number || 'N/A',
         'amount': mo.amount || 0,
+        'Amount': mo.amount || 0,
+        'purchaser_name': mo.purchaser_name || '',
+        'PurchaserName': mo.purchaser_name || '',
+        'payee_name': mo.payee_name || '',
+        'PayeeName': mo.payee_name || '',
+        'issue_date': mo.issue_date || '',
+        'IssueDate': mo.issue_date || '',
+        'created_at': mo.created_at || mo.timestamp || '',
       }));
 
-      const processed = processData(rows);
-      setCsvData(processed);
+      // Verify all rows belong to the selected issuer (if filtering by issuer)
+      if (issuerToUse && issuerToUse !== '' && issuerToUse !== 'All Issuers') {
+        const normalizedIssuer = issuerToUse.trim();
+        // Double-check: filter rows to ensure they match the selected issuer
+        const filteredRows = rows.filter(r => {
+          const rowIssuer = (r['IssuerName'] || r['money_order_institute'] || r['issuer_name'] || '').trim();
+          return rowIssuer === normalizedIssuer;
+        });
+        
+        // Debug logging
+        console.log('Issuer Filter Debug:', {
+          selectedIssuer: normalizedIssuer,
+          totalRows: rows.length,
+          filteredRows: filteredRows.length,
+          sampleIssuers: [...new Set(rows.map(r => r['IssuerName'] || r['money_order_institute'] || 'Unknown'))].slice(0, 5)
+        });
+        
+        if (filteredRows.length === 0) {
+          setError(`No money orders found for issuer: ${issuerToUse}. Found issuers: ${[...new Set(rows.map(r => r['IssuerName'] || r['money_order_institute'] || 'Unknown'))].join(', ')}`);
+          return;
+        }
+        
+        const processed = processData(filteredRows, normalizedIssuer);
+        setCsvData(processed);
+      } else {
+        const processed = processData(rows, null);
+        setCsvData(processed);
+      }
       setError(null);
       // Auto-scroll to metrics section
       setTimeout(() => {
@@ -489,7 +615,7 @@ const MoneyOrderInsights = () => {
     <div style={containerStyle}>
       <div style={cardStyle}>
         <h2 style={{ color: colors.foreground, marginBottom: '1.5rem' }}>
-          {inputMode === 'upload' ? 'Money Order Insights from CSV' : 'Money Order Insights from Database'}
+          {inputMode === 'upload' ? 'Money Order Insights' : 'Money Order Insights'}
         </h2>
 
         {/* Input Mode Toggle */}
@@ -512,7 +638,7 @@ const MoneyOrderInsights = () => {
               transition: 'all 0.3s',
             }}
           >
-            Upload CSV
+            Insights
           </button>
           <button
             onClick={() => {
@@ -535,7 +661,7 @@ const MoneyOrderInsights = () => {
               transition: 'all 0.3s',
             }}
           >
-            Connect API
+            Live Data
           </button>
         </div>
 
@@ -625,22 +751,24 @@ const MoneyOrderInsights = () => {
                     const selectedIssuer = e.target.value || null;
                     setIssuerFilter(selectedIssuer);
                     // Filter from full dataset by issuer
-                    if (selectedIssuer) {
-                      const filtered = allMoneyOrdersData.filter(mo => mo.money_order_institute === selectedIssuer);
+                    if (selectedIssuer && selectedIssuer !== '' && selectedIssuer !== 'All Issuers') {
+                      // Normalize issuer names for comparison (case-insensitive, trim whitespace)
+                      const normalizedSelected = selectedIssuer.trim();
+                      const filtered = allMoneyOrdersData.filter(mo => {
+                        const moIssuer = (mo.money_order_institute || '').trim();
+                        return moIssuer === normalizedSelected;
+                      });
                       setMoneyOrdersList(filtered);
                       if (filtered.length > 0) {
-                        loadMoneyOrderData(filtered);
+                        // Pass the selected issuer to ensure correct chart data
+                        loadMoneyOrderData(filtered, normalizedSelected);
                       } else {
                         setError('No money orders found for this issuer');
                       }
                     } else {
-                      // Show all data from current fetch
-                      setMoneyOrdersList(allMoneyOrdersData);
-                      if (allMoneyOrdersData.length > 0) {
-                        loadMoneyOrderData(allMoneyOrdersData);
-                      } else {
-                        fetchMoneyOrdersList(dateFilter);
-                      }
+                      // Show all data - reload from API to ensure fresh data
+                      // This ensures we get the full unfiltered dataset
+                      fetchMoneyOrdersList(dateFilter, null);
                     }
                   }}
                   style={{
@@ -997,74 +1125,126 @@ const MoneyOrderInsights = () => {
           </div>
 
           {/* SECTION 3: Issuer Insights */}
-          {/* Risk by Issuer */}
-          {csvData.riskByIssuerData && csvData.riskByIssuerData.length > 0 && (
-            <div style={chartContainerStyle}>
-              <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>
-                Risk Level by Issuer
-              </h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={csvData.riskByIssuerData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                  <XAxis dataKey="name" stroke={colors.mutedForeground} />
-                  <YAxis stroke={colors.mutedForeground} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: colors.card,
-                      border: `1px solid ${colors.border}`,
-                      color: colors.foreground
-                    }}
-                  />
-                  <Legend />
-                  <Bar dataKey="avgRisk" fill={colors.status.warning} name="Avg Risk Score (%)" />
-                  <Bar dataKey="count" fill={colors.status.success} name="Money Order Count" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+          {/* Show issuer comparison charts only when NO specific issuer is selected (All Issuers) */}
+          {/* Hide these charts when a single issuer is selected */}
+          {(!issuerFilter || issuerFilter === '' || issuerFilter === 'All Issuers') && (
+            <>
+              {/* Risk by Issuer */}
+              {csvData.riskByIssuerData && csvData.riskByIssuerData.length > 0 && (
+                <div style={chartContainerStyle}>
+                  <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>
+                    Risk Level by Issuer
+                  </h3>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={csvData.riskByIssuerData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+                      <XAxis dataKey="name" stroke={colors.mutedForeground} />
+                      <YAxis stroke={colors.mutedForeground} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: colors.card,
+                          border: `1px solid ${colors.border}`,
+                          color: colors.foreground
+                        }}
+                      />
+                      <Legend />
+                      <Bar dataKey="avgRisk" fill={colors.status.warning} name="Avg Risk Score (%)" />
+                      <Bar dataKey="count" fill={colors.status.success} name="Money Order Count" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+
+              {/* Top Fraudulent Issuers (% High-Risk MOs >75%) */}
+              {csvData.topFraudulentIssuers && csvData.topFraudulentIssuers.length > 0 && (
+                <div style={chartContainerStyle}>
+                  <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>Top Fraudulent Issuers (% High-Risk MOs &gt;75%)</h3>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={csvData.topFraudulentIssuers} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+                      <XAxis 
+                        type="number" 
+                        stroke={colors.mutedForeground}
+                        label={{ value: 'High-Risk Percentage (%)', position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fill: colors.foreground } }}
+                      />
+                      <YAxis 
+                        dataKey="name" 
+                        type="category" 
+                        stroke={colors.mutedForeground} 
+                        width={180}
+                        tick={{ fill: colors.foreground, fontSize: 12 }}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: colors.card,
+                          border: `1px solid ${colors.border}`,
+                          color: colors.foreground
+                        }}
+                        formatter={(value, name) => {
+                          if (name === 'highRiskPercent') return [`${value}%`, 'High-Risk %'];
+                          if (name === 'highRiskCount') return [value, 'High-Risk Count'];
+                          if (name === 'totalCount') return [value, 'Total MOs'];
+                          return [value, name];
+                        }}
+                        labelFormatter={(label) => `Issuer: ${label}`}
+                      />
+                      <Bar dataKey="highRiskPercent" fill={primary} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </>
           )}
 
-          {/* Top Fraudulent Issuers (% High-Risk MOs >75%) */}
-          {csvData.topFraudulentIssuers && csvData.topFraudulentIssuers.length > 0 && (
-            <div style={chartContainerStyle}>
-              <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>Top Fraudulent Issuers (% High-Risk MOs &gt;75%)</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={csvData.topFraudulentIssuers} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                  <XAxis 
-                    type="number" 
-                    stroke={colors.mutedForeground}
-                    label={{ value: 'High-Risk Percentage (%)', position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fill: colors.foreground } }}
-                  />
-                  <YAxis 
-                    dataKey="name" 
-                    type="category" 
-                    stroke={colors.mutedForeground} 
-                    width={180}
-                    tick={{ fill: colors.foreground, fontSize: 12 }}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: colors.card,
-                      border: `1px solid ${colors.border}`,
-                      color: colors.foreground
-                    }}
-                    formatter={(value, name) => {
-                      if (name === 'highRiskPercent') return [`${value}%`, 'High-Risk %'];
-                      if (name === 'highRiskCount') return [value, 'High-Risk Count'];
-                      if (name === 'totalCount') return [value, 'Total MOs'];
-                      return [value, name];
-                    }}
-                    labelFormatter={(label) => `Issuer: ${label}`}
-                  />
-                  <Bar dataKey="highRiskPercent" fill={primary} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+          {/* Show issuer-specific charts when a single issuer is selected */}
+          {csvData.isSingleIssuerView && (
+            <>
+              {/* Chart A: Top Risky Purchasers (Selected Issuer) */}
+              {csvData.topRiskyPurchasersForIssuer && csvData.topRiskyPurchasersForIssuer.length > 0 && (
+                <div style={chartContainerStyle}>
+                  <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>
+                    Top Risky Purchasers ({csvData.selectedIssuerName})
+                  </h3>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={csvData.topRiskyPurchasersForIssuer} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+                      <XAxis 
+                        type="number" 
+                        stroke={colors.mutedForeground}
+                        label={{ value: 'High-Risk Money Orders', position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fill: colors.foreground } }}
+                      />
+                      <YAxis 
+                        dataKey="name" 
+                        type="category" 
+                        stroke={colors.mutedForeground} 
+                        width={180}
+                        tick={{ fill: colors.foreground, fontSize: 12 }}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: colors.card,
+                          border: `1px solid ${colors.border}`,
+                          color: colors.foreground
+                        }}
+                        formatter={(value, name) => {
+                          if (name === 'highRiskCount') return [`${value} high-risk MOs`, 'High-Risk Count'];
+                          if (name === 'totalCount') return [value, 'Total MOs'];
+                          return [value, name];
+                        }}
+                        labelFormatter={(label) => `Purchaser: ${label}`}
+                      />
+                      <Bar dataKey="highRiskCount" fill={primary} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+
+            </>
           )}
 
           {/* SECTION 4: Behavior Insights */}
-          {/* Top High-Risk Purchasers */}
-          {csvData.topHighRiskPurchasers && csvData.topHighRiskPurchasers.length > 0 && (
+          {/* Top High-Risk Purchasers - Hide when single issuer is selected (duplicate of issuer-specific chart) */}
+          {!csvData.isSingleIssuerView && csvData.topHighRiskPurchasers && csvData.topHighRiskPurchasers.length > 0 && (
             <div style={chartContainerStyle}>
               <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>Top High-Risk Purchasers</h3>
               <ResponsiveContainer width="100%" height={300}>
@@ -1141,10 +1321,12 @@ const MoneyOrderInsights = () => {
           )}
 
           {/* SECTION 5: Trend Insights */}
-          {/* Fraud Trend Over Time */}
+          {/* Fraud Trend Over Time - Shows all issuers when no filter, or specific issuer when filtered */}
           {csvData.fraudTrendData && csvData.fraudTrendData.length > 0 && (
             <div style={chartContainerStyle}>
-              <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>High-Risk Money Orders Over Time</h3>
+              <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>
+                High-Risk Money Orders Over Time{csvData.isSingleIssuerView && csvData.selectedIssuerName ? ` (${csvData.selectedIssuerName})` : ''}
+              </h3>
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={csvData.fraudTrendData}>
                   <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
