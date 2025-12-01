@@ -22,11 +22,9 @@ const AllDocumentsInsights = () => {
   const [dateFilter, setDateFilter] = useState(null);
   const [documentTypeFilter, setDocumentTypeFilter] = useState(null);
   const [riskLevelFilter, setRiskLevelFilter] = useState(null);
-  const [statusFilter, setStatusFilter] = useState(null);
   const [totalRecords, setTotalRecords] = useState(0);
   const [availableDocumentTypes, setAvailableDocumentTypes] = useState([]);
   const [availableRiskLevels, setAvailableRiskLevels] = useState([]);
-  const [availableStatuses, setAvailableStatuses] = useState([]);
 
   // Normalize document type filter for comparison
   const normalizedDocumentType = documentTypeFilter 
@@ -298,7 +296,7 @@ const AllDocumentsInsights = () => {
     multiple: false
   });
 
-  const fetchDocumentsList = async (dateFilter = null, documentType = null, riskLevel = null, status = null) => {
+  const fetchDocumentsList = async (dateFilter = null, documentType = null, riskLevel = null) => {
     setLoadingDocumentsList(true);
     setError(null);
     setCsvData(null);
@@ -308,7 +306,6 @@ const AllDocumentsInsights = () => {
       if (dateFilter) params.push(`date_filter=${dateFilter}`);
       if (documentType) params.push(`document_type=${encodeURIComponent(documentType)}`);
       if (riskLevel) params.push(`risk_level=${encodeURIComponent(riskLevel)}`);
-      if (status) params.push(`status=${encodeURIComponent(status)}`);
       if (params.length > 0) {
         url += '?' + params.join('&');
       }
@@ -322,18 +319,15 @@ const AllDocumentsInsights = () => {
         // Extract unique values for filters
         const uniqueTypes = [...new Set(fetchedData.map(d => d.document_type).filter(Boolean))].sort();
         const uniqueRiskLevels = [...new Set(fetchedData.map(d => d.risk_level).filter(Boolean))].sort();
-        const uniqueStatuses = [...new Set(fetchedData.map(d => d.status).filter(Boolean))].sort();
 
         setAvailableDocumentTypes(uniqueTypes);
         setAvailableRiskLevels(uniqueRiskLevels);
-        setAvailableStatuses(uniqueStatuses);
 
         setDocumentsList(fetchedData);
         setTotalRecords(data.total_records || data.count);
         setDateFilter(dateFilter);
         setDocumentTypeFilter(documentType);
         setRiskLevelFilter(riskLevel);
-        setStatusFilter(status);
 
         if (fetchedData.length > 0) {
           loadDocumentsData(fetchedData);
@@ -357,7 +351,6 @@ const AllDocumentsInsights = () => {
     if (!query) {
       setDocumentTypeFilter(null);
       setRiskLevelFilter(null);
-      setStatusFilter(null);
       fetchDocumentsList(dateFilter);
       return;
     }
@@ -660,7 +653,6 @@ const AllDocumentsInsights = () => {
               setError(null);
               setDocumentTypeFilter(null);
               setRiskLevelFilter(null);
-              setStatusFilter(null);
               setAllDocumentsData([]);
               setDateFilter(null);
               // Don't auto-fetch, let user click date filter or search
@@ -762,7 +754,7 @@ const AllDocumentsInsights = () => {
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.5rem' }}>
                 <button
-                  onClick={() => fetchDocumentsList(null, documentTypeFilter, riskLevelFilter, statusFilter)}
+                  onClick={() => fetchDocumentsList(null, documentTypeFilter, riskLevelFilter)}
                   style={{
                     padding: '0.75rem',
                     borderRadius: '0.5rem',
@@ -777,7 +769,7 @@ const AllDocumentsInsights = () => {
                   All Records
                 </button>
                 <button
-                  onClick={() => fetchDocumentsList('last_30', documentTypeFilter, riskLevelFilter, statusFilter)}
+                  onClick={() => fetchDocumentsList('last_30', documentTypeFilter, riskLevelFilter)}
                   style={{
                     padding: '0.75rem',
                     borderRadius: '0.5rem',
@@ -792,7 +784,7 @@ const AllDocumentsInsights = () => {
                   Last 30
                 </button>
                 <button
-                  onClick={() => fetchDocumentsList('last_60', documentTypeFilter, riskLevelFilter, statusFilter)}
+                  onClick={() => fetchDocumentsList('last_60', documentTypeFilter, riskLevelFilter)}
                   style={{
                     padding: '0.75rem',
                     borderRadius: '0.5rem',
@@ -807,7 +799,7 @@ const AllDocumentsInsights = () => {
                   Last 60
                 </button>
                 <button
-                  onClick={() => fetchDocumentsList('last_90', documentTypeFilter, riskLevelFilter, statusFilter)}
+                  onClick={() => fetchDocumentsList('last_90', documentTypeFilter, riskLevelFilter)}
                   style={{
                     padding: '0.75rem',
                     borderRadius: '0.5rem',
@@ -822,7 +814,7 @@ const AllDocumentsInsights = () => {
                   Last 90
                 </button>
                 <button
-                  onClick={() => fetchDocumentsList('older', documentTypeFilter, riskLevelFilter, statusFilter)}
+                  onClick={() => fetchDocumentsList('older', documentTypeFilter, riskLevelFilter)}
                   style={{
                     padding: '0.75rem',
                     borderRadius: '0.5rem',
@@ -849,7 +841,7 @@ const AllDocumentsInsights = () => {
                   value={documentTypeFilter || ''}
                   onChange={(e) => {
                     const selectedType = e.target.value || null;
-                    fetchDocumentsList(dateFilter, selectedType, riskLevelFilter, statusFilter);
+                    fetchDocumentsList(dateFilter, selectedType, riskLevelFilter);
                   }}
                   style={{
                     width: '100%',
@@ -887,7 +879,7 @@ const AllDocumentsInsights = () => {
                   value={riskLevelFilter || ''}
                   onChange={(e) => {
                     const selectedRisk = e.target.value || null;
-                    fetchDocumentsList(dateFilter, documentTypeFilter, selectedRisk, statusFilter);
+                    fetchDocumentsList(dateFilter, documentTypeFilter, selectedRisk);
                   }}
                   style={{
                     width: '100%',
@@ -915,43 +907,6 @@ const AllDocumentsInsights = () => {
               </div>
             )}
 
-            {/* Status Filter */}
-            {availableStatuses.length > 0 && (
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', color: colors.foreground, marginBottom: '0.5rem', fontWeight: '500' }}>
-                  Filter by Status:
-                </label>
-                <select
-                  value={statusFilter || ''}
-                  onChange={(e) => {
-                    const selectedStatus = e.target.value || null;
-                    fetchDocumentsList(dateFilter, documentTypeFilter, riskLevelFilter, selectedStatus);
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    borderRadius: '0.5rem',
-                    backgroundColor: colors.secondary,
-                    color: colors.foreground,
-                    border: `1px solid ${colors.border}`,
-                    fontSize: '1rem',
-                    cursor: 'pointer',
-                    appearance: 'none',
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='${encodeURIComponent(colors.foreground)}' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
-                    backgroundRepeat: 'no-repeat',
-                    backgroundPosition: 'right 0.75rem center',
-                    paddingRight: '2.5rem',
-                  }}
-                >
-                  <option value="">All Statuses</option>
-                  {availableStatuses.map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
 
             {loadingDocumentsList ? (
               <div style={{ textAlign: 'center', padding: '2rem' }}>
