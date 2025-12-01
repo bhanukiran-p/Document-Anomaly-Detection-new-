@@ -12,6 +12,13 @@ import {
 } from 'react-icons/fa';
 import { analyzeRealTimeTransactions, regeneratePlotsWithFilters } from '../services/api';
 
+const GENERAL_FRAUD_KEY = 'General anomaly flagged by multiple ML indicators';
+const GENERAL_FRAUD_EXPLANATION = [
+  'Card-not-present or e-commerce attempts that have no previous spend history but suddenly spike in value.',
+  'Synthetic identity or mule behavior where multiple red flags (amount spikes, velocity, geography) occur simultaneously.',
+  'Layered anomalies such as late-night timing, unusual device/login context, and aggressive balance drawdowns in one transaction.'
+];
+
 const getInsightPoints = (insightsText) => {
   if (!insightsText) return [];
 
@@ -110,6 +117,9 @@ const RealTimeAnalysis = () => {
   const fraudTypeBreakdown = analysisResult?.fraud_detection?.fraud_type_breakdown || [];
   const agentInsights = analysisResult?.agent_analysis?.detailed_insights || '';
   const insightPoints = getInsightPoints(agentInsights);
+  const generalFraudPattern = fraudTypeBreakdown.find(
+    (pattern) => pattern.type === GENERAL_FRAUD_KEY
+  );
 
   const handleDownloadCSV = () => {
     if (!analysisResult?.transactions?.length) return;
@@ -1477,6 +1487,33 @@ const RealTimeAnalysis = () => {
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {generalFraudPattern && (
+            <div style={{ ...styles.fraudTypeSection, marginTop: '1rem' }}>
+              <h4 style={styles.fraudTypeTitle}>
+                What "{formatFraudType(GENERAL_FRAUD_KEY)}" Means
+              </h4>
+              <ul style={{
+                margin: 0,
+                padding: '1rem 1.25rem',
+                backgroundColor: colors.muted,
+                borderRadius: '0.75rem',
+                border: `1px solid ${colors.border}`,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.5rem',
+                color: colors.foreground,
+                fontSize: '0.9rem',
+                lineHeight: '1.6'
+              }}>
+                {GENERAL_FRAUD_EXPLANATION.map((item, idx) => (
+                  <li key={idx}>
+                    {item}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
