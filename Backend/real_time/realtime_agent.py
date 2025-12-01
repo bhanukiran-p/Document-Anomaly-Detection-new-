@@ -11,7 +11,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Load environment variables
-load_dotenv()
+load_dotenv(override=True)
 
 try:
     from langchain_openai import ChatOpenAI
@@ -54,7 +54,7 @@ class RealTimeAnalysisAgent:
             analysis_tools: Transaction analysis tools
         """
         self.api_key = api_key or os.getenv('OPENAI_API_KEY')
-        self.model_name = model or os.getenv('AI_MODEL', 'gpt-4')
+        self.model_name = model or os.getenv('AI_MODEL', 'gpt-3.5-turbo')
         self.analysis_tools = analysis_tools
         self.llm = None
         self.agent_executor = None
@@ -105,16 +105,16 @@ class RealTimeAnalysisAgent:
                 return {
                     'success': False,
                     'error': str(e),
-                    'message': 'GPT-4 API unavailable. Please check your OpenAI API key or usage limits.',
+                    'message': f'OpenAI API unavailable ({self.model_name}). Please check your OpenAI API key or usage limits.',
                     'insights': f'AI Analysis unavailable: {str(e)}',
                     'analysis_type': 'failed',
-                    'model_used': 'gpt-4'
+                    'model_used': self.model_name
                 }
         else:
             return {
                 'success': False,
                 'error': 'OpenAI API key not configured',
-                'message': 'GPT-4 API key is required for AI analysis.',
+                'message': 'OpenAI API key is required for AI analysis.',
                 'insights': 'AI Analysis unavailable: OpenAI API key not configured',
                 'analysis_type': 'failed',
                 'model_used': 'none'

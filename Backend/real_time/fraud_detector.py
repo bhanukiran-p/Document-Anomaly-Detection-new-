@@ -19,6 +19,12 @@ os.makedirs(MODEL_DIR, exist_ok=True)
 TRANSACTION_MODEL_PATH = os.path.join(MODEL_DIR, 'transaction_fraud_model.pkl')
 SCALER_PATH = os.path.join(MODEL_DIR, 'transaction_scaler.pkl')
 
+HIGH_VALUE_THRESHOLD = 3000
+BLACKLISTED_MERCHANT_KEYWORDS = {
+    'western union', 'moneygram', 'binance', 'crypto', 'gambling', 'casino',
+    'betting', 'poker', 'fast payout', 'wire transfer', 'hawala'
+}
+
 
 def detect_fraud_in_transactions(transactions: List[Dict[str, Any]], auto_train: bool = True) -> Dict[str, Any]:
     """
@@ -59,6 +65,15 @@ def detect_fraud_in_transactions(transactions: List[Dict[str, Any]], auto_train:
         df['fraud_probability'] = probabilities
         df['fraud_reason'] = reasons
 
+        # Classify fraud types for flagged transactions
+        fraud_types = []
+        for idx in range(len(df)):
+            if df.at[idx, 'is_fraud'] == 1:
+                fraud_types.append(_classify_fraud_type(df.iloc[idx], features_df.iloc[idx]))
+            else:
+                fraud_types.append('legitimate')
+        df['fraud_type'] = fraud_types
+
         # Calculate statistics
         fraud_count = int(predictions.sum())
         fraud_percentage = float((fraud_count / len(df)) * 100) if len(df) > 0 else 0
@@ -68,6 +83,9 @@ def detect_fraud_in_transactions(transactions: List[Dict[str, Any]], auto_train:
 
         total_fraud_amount = float(fraud_transactions['amount'].sum()) if len(fraud_transactions) > 0 else 0
         total_legitimate_amount = float(legitimate_transactions['amount'].sum()) if len(legitimate_transactions) > 0 else 0
+
+        # Summarize fraud type distribution
+        fraud_type_breakdown = _summarize_fraud_types(df)
 
         # Convert back to list of dictionaries
         transactions_with_predictions = df.to_dict('records')
@@ -85,6 +103,8 @@ def detect_fraud_in_transactions(transactions: List[Dict[str, Any]], auto_train:
             'average_fraud_probability': round(float(probabilities.mean()), 3),
             'max_fraud_probability': round(float(probabilities.max()), 3),
             'model_type': 'ml_ensemble',
+            'fraud_type_breakdown': fraud_type_breakdown,
+            'dominant_fraud_type': fraud_type_breakdown[0]['type'] if fraud_type_breakdown else None,
             'analyzed_at': datetime.now().isoformat()
         }
 
@@ -341,3 +361,75 @@ def _generate_ml_reasons(predictions: np.ndarray, probabilities: np.ndarray,
             reasons.append(f"Legitimate transaction (ML confidence: {(1-prob)*100:.1f}%)")
 
     return reasons
+
+
+def _classify_fraud_type(transaction_row: pd.Series, feature_row: pd.Series) -> str:
+    """
+    Infer the most likely fraud archetype for a flagged transaction using
+    engineered features plus original fields. This helps downstream displays
+    explain not just that a transaction is risky, but why.
+    """
+    amount = float(transaction_row.get('amount', 0) or 0)
+    merchant = str(transaction_row.get('merchant', '') or '').lower()
+    category = str(transaction_row.get('category', '') or '').lower()
+    country_mismatch = feature_row.get('country_mismatch', 0) == 1
+    login_mismatch = feature_row.get('login_transaction_mismatch', 0) == 1
+    is_first_time = feature_row.get('customer_txn_count', 1) <= 1
+    high_value = amount >= HIGH_VALUE_THRESHOLD
+
+    # Blacklisted merchant patterns
+    if any(keyword in merchant for keyword in BLACKLISTED_MERCHANT_KEYWORDS):
+        return 'Transaction from blacklisted merchant'
+
+    # Explicit categories that imply blacklisted activity
+    if category in {'blacklisted', 'blocked_merchant'}:
+        return 'Transaction from blacklisted merchant'
+
+    # New country plus high-value spending
+    if country_mismatch and high_value:
+        if is_first_time:
+            return 'New country & high-value first-time spend'
+        return 'New country & high-value transaction'
+
+    # Suspicious login location
+    if login_mismatch:
+        return 'Suspicious login location'
+
+    # High value in foreign currency often correlates with new country spend
+    if feature_row.get('is_foreign_currency', 0) == 1 and high_value:
+        return 'New country & high-value transaction'
+
+    # Nighttime spikes
+    if feature_row.get('is_night', 0) == 1 and feature_row.get('amount_deviation', 0) > 2:
+        return 'After-hours high-risk transaction'
+
+    # Transfer draining account
+    if feature_row.get('is_transfer', 0) == 1 and feature_row.get('amount_to_balance_ratio', 0) > 0.8:
+        return 'Account takeover style transfer'
+
+    if feature_row.get('amount_deviation', 0) > 4 or feature_row.get('amount_zscore', 0) > 3:
+        return 'Unusual spend spike'
+
+    return 'General fraud pattern'
+
+
+def _summarize_fraud_types(df: pd.DataFrame) -> List[Dict[str, Any]]:
+    """Summarize fraud type distribution for downstream consumers."""
+    fraud_df = df[df['is_fraud'] == 1]
+    if fraud_df.empty or 'fraud_type' not in fraud_df.columns:
+        return []
+
+    counts = fraud_df['fraud_type'].value_counts()
+    total = counts.sum()
+    summary = []
+
+    for fraud_type, count in counts.items():
+        type_df = fraud_df[fraud_df['fraud_type'] == fraud_type]
+        summary.append({
+            'type': fraud_type,
+            'count': int(count),
+            'percentage': round((count / total) * 100, 2) if total else 0.0,
+            'total_amount': round(float(type_df['amount'].sum()), 2)
+        })
+
+    return summary

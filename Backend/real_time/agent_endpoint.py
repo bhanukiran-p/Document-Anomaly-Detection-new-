@@ -74,7 +74,7 @@ class AgentAnalysisService:
                     'fraud_patterns': fraud_patterns.get('explanation', ''),
                     'recommendations': recommendations,
                     'analysis_type': detailed_insights.get('analysis_type', 'llm'),
-                    'model_used': detailed_insights.get('model_used', 'gpt-4')
+                    'model_used': detailed_insights.get('model_used', 'gpt-3.5-turbo')
                 }
             }
 

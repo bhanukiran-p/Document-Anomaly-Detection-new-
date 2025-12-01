@@ -239,7 +239,7 @@ def _run_ai_analysis(ml_analysis: Dict[str, Any], extracted: Dict[str, Any]) -> 
 
         ai_agent = FraudAnalysisAgent(
             api_key=openai_key,
-            model=os.getenv("AI_MODEL", "gpt-4"),
+            model=os.getenv("AI_MODEL", "gpt-3.5-turbo"),
             data_tools=data_tools,
         )
         analysis = ai_agent.analyze_fraud(ml_analysis, extracted, customer_id=None)

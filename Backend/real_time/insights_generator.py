@@ -48,12 +48,22 @@ if PLOTTING_AVAILABLE:
     })
 
 
-def generate_insights(analysis_result: Dict[str, Any]) -> Dict[str, Any]:
+def generate_insights(analysis_result: Dict[str, Any], filters: Dict[str, Any] = None) -> Dict[str, Any]:
     """
     Generate comprehensive insights from fraud detection results.
 
     Args:
         analysis_result: Result from detect_fraud_in_transactions
+        filters: Optional dictionary with filter parameters:
+            - amount_min: Minimum transaction amount
+            - amount_max: Maximum transaction amount
+            - fraud_probability_min: Minimum fraud probability
+            - fraud_probability_max: Maximum fraud probability
+            - category: Category filter (substring match)
+            - hour_of_day_start: Start hour (0-23)
+            - hour_of_day_end: End hour (0-23)
+            - fraud_only: Boolean, show only fraud transactions
+            - legitimate_only: Boolean, show only legitimate transactions
 
     Returns:
         Dictionary containing insights and plots
@@ -69,20 +79,57 @@ def generate_insights(analysis_result: Dict[str, Any]) -> Dict[str, Any]:
 
         transactions = analysis_result['transactions']
         df = pd.DataFrame(transactions)
+        original_count = len(df)
+        
+        # Apply filters if provided
+        if filters:
+            logger.info(f"Applying filters: {filters}")
+            df = _apply_filters(df, filters)
+            logger.info(f"Applied filters: {original_count} -> {len(df)} transactions remaining")
+            
+            if len(df) == 0:
+                logger.warning("Filters resulted in zero transactions - returning empty results")
+                return {
+                    'success': True,
+                    'statistics': {},
+                    'plots': [],
+                    'fraud_patterns': {'message': 'No transactions match the applied filters'},
+                    'recommendations': ['No data available for the selected filters. Try adjusting your filter criteria.'],
+                    'generated_at': datetime.now().isoformat()
+                }
+        else:
+            logger.info(f"No filters provided, using all {len(df)} transactions")
+
+        # Update analysis_result with filtered data for accurate statistics
+        filtered_analysis_result = analysis_result.copy()
+        if filters and len(df) > 0:
+            # Recalculate statistics based on filtered data
+            fraud_count = int((df['is_fraud'] == 1).sum())
+            legit_count = int((df['is_fraud'] == 0).sum())
+            filtered_analysis_result['fraud_count'] = fraud_count
+            filtered_analysis_result['legitimate_count'] = legit_count
+            filtered_analysis_result['fraud_percentage'] = (fraud_count / len(df) * 100) if len(df) > 0 else 0
+            filtered_analysis_result['legitimate_percentage'] = (legit_count / len(df) * 100) if len(df) > 0 else 0
+            filtered_analysis_result['total_fraud_amount'] = float(df[df['is_fraud'] == 1]['amount'].sum()) if fraud_count > 0 else 0
+            filtered_analysis_result['total_legitimate_amount'] = float(df[df['is_fraud'] == 0]['amount'].sum()) if legit_count > 0 else 0
+            filtered_analysis_result['total_amount'] = float(df['amount'].sum())
+            filtered_analysis_result['average_fraud_probability'] = float(df['fraud_probability'].mean()) if len(df) > 0 else 0
+        else:
+            filtered_analysis_result = analysis_result
 
         # Generate statistics
-        statistics = _generate_statistics(df, analysis_result)
+        statistics = _generate_statistics(df, filtered_analysis_result)
 
-        # Generate plots if available
+        # Generate plots if available (use filtered dataframe and updated analysis result)
         plots = []
         if PLOTTING_AVAILABLE:
-            plots = _generate_plots(df, analysis_result)
+            plots = _generate_plots(df, filtered_analysis_result)
 
         # Generate fraud patterns
         fraud_patterns = _analyze_fraud_patterns(df)
 
         # Generate recommendations
-        recommendations = _generate_recommendations(df, analysis_result)
+        recommendations = _generate_recommendations(df, filtered_analysis_result)
 
         # Top fraud cases
         top_fraud_cases = _get_top_fraud_cases(df)
@@ -137,6 +184,19 @@ def _generate_statistics(df: pd.DataFrame, analysis_result: Dict) -> Dict[str, A
             'median_legitimate_amount': float(legit_df['amount'].median()) if len(legit_df) > 0 else 0
         }
     }
+
+    # Fraud type distribution if available
+    if 'fraud_type' in df.columns:
+        type_counts = fraud_df['fraud_type'].value_counts()
+        total = type_counts.sum()
+        stats['fraud_types'] = [
+            {
+                'type': fraud_type,
+                'count': int(count),
+                'percentage': round((count / total) * 100, 2) if total else 0.0
+            }
+            for fraud_type, count in type_counts.items()
+        ]
 
     # Time-based stats if timestamp available
     if 'timestamp' in df.columns:
@@ -506,6 +566,52 @@ def _generate_plots(df: pd.DataFrame, analysis_result: Dict) -> List[Dict[str, s
         ))
         plt.close(fig)
 
+        # Plot 7: Fraud type distribution
+        if 'fraud_type' in df.columns and df['fraud_type'].nunique() > 0:
+            fraud_type_counts = df[df['is_fraud'] == 1]['fraud_type'].value_counts()
+            if len(fraud_type_counts) > 0:
+                fig, ax = plt.subplots(figsize=(10, 6))
+                bars = ax.bar(
+                    [ft.replace('_', ' ').title() for ft in fraud_type_counts.index],
+                    fraud_type_counts.values,
+                    color=COLOR_FRAUD
+                )
+                ax.set_ylabel('Fraud Cases', fontsize=12)
+                ax.set_title('Detected Fraud Types', fontsize=14, fontweight='bold')
+                ax.set_xticks(range(len(fraud_type_counts.index)))
+                ax.set_xticklabels(
+                    [ft.replace('_', ' ').title() for ft in fraud_type_counts.index],
+                    rotation=30,
+                    ha='right'
+                )
+                ax.grid(True, alpha=0.2, axis='y')
+                _style_chart(fig, ax)
+
+                for bar, count in zip(bars, fraud_type_counts.values):
+                    ax.text(
+                        bar.get_x() + bar.get_width() / 2,
+                        bar.get_height() + 0.1,
+                        str(int(count)),
+                        ha='center',
+                        va='bottom',
+                        color=COLOR_TEXT,
+                        fontsize=10
+                    )
+
+                type_details = [
+                    _detail('Top Fraud Type', fraud_type_counts.index[0].replace('_', ' ').title()),
+                    _detail('Unique Patterns', str(len(fraud_type_counts.index))),
+                    _detail('Total Fraud Cases', f"{int(fraud_type_counts.sum()):,}")
+                ]
+                plots.append(_build_plot_payload(
+                    'Fraud Type Distribution',
+                    fig,
+                    'bar',
+                    type_details,
+                    description="Breakdown of the most common fraud archetypes detected in this batch"
+                ))
+                plt.close(fig)
+
     except Exception as e:
         logger.error(f"Error generating plots: {e}", exc_info=True)
 
@@ -585,6 +691,18 @@ def _analyze_fraud_patterns(df: pd.DataFrame) -> Dict[str, Any]:
                 'description': f"Most fraud in '{top_category}' category ({fraud_categories.iloc[0]} cases)"
             })
 
+    # Fraud type breakdown patterns
+    if 'fraud_type' in fraud_df.columns:
+        fraud_types = fraud_df['fraud_type'].value_counts()
+        if len(fraud_types) > 0:
+            leading_type = fraud_types.index[0]
+            patterns.append({
+                'type': 'fraud_type_distribution',
+                'fraud_type': leading_type,
+                'count': int(fraud_types.iloc[0]),
+                'description': f"'{leading_type.replace('_', ' ').title()}' is the top detected fraud pattern ({fraud_types.iloc[0]} cases)"
+            })
+
     return {
         'total_patterns_detected': len(patterns),
         'patterns': patterns
@@ -643,6 +761,83 @@ def _generate_recommendations(df: pd.DataFrame, analysis_result: Dict) -> List[s
         recommendations.append("🤖 ML model shows high confidence in fraud detection. Continue collecting feedback to improve accuracy.")
 
     return recommendations
+
+
+def _apply_filters(df: pd.DataFrame, filters: Dict[str, Any]) -> pd.DataFrame:
+    """Apply filters to the dataframe."""
+    filtered_df = df.copy()
+    
+    # Amount filters
+    if filters.get('amount_min') is not None:
+        try:
+            amount_min = float(filters['amount_min'])
+            filtered_df = filtered_df[filtered_df['amount'] >= amount_min]
+        except (ValueError, TypeError):
+            pass
+    
+    if filters.get('amount_max') is not None:
+        try:
+            amount_max = float(filters['amount_max'])
+            filtered_df = filtered_df[filtered_df['amount'] <= amount_max]
+        except (ValueError, TypeError):
+            pass
+    
+    # Fraud probability filters
+    if filters.get('fraud_probability_min') is not None:
+        try:
+            prob_min = float(filters['fraud_probability_min'])
+            filtered_df = filtered_df[filtered_df['fraud_probability'] >= prob_min]
+        except (ValueError, TypeError):
+            pass
+    
+    if filters.get('fraud_probability_max') is not None:
+        try:
+            prob_max = float(filters['fraud_probability_max'])
+            filtered_df = filtered_df[filtered_df['fraud_probability'] <= prob_max]
+        except (ValueError, TypeError):
+            pass
+    
+    # Category filter
+    if filters.get('category') and filters['category'].strip():
+        category_filter = filters['category'].strip().lower()
+        if 'category' in filtered_df.columns:
+            filtered_df = filtered_df[
+                filtered_df['category'].astype(str).str.lower().str.contains(category_filter, na=False)
+            ]
+    
+    # Hour of day filter (handles wrapping around midnight)
+    if 'timestamp' in filtered_df.columns:
+        filtered_df['timestamp'] = pd.to_datetime(filtered_df['timestamp'], errors='coerce')
+        
+        hour_start = filters.get('hour_of_day_start')
+        hour_end = filters.get('hour_of_day_end')
+        
+        if hour_start is not None or hour_end is not None:
+            filtered_df['hour'] = filtered_df['timestamp'].dt.hour
+            start = int(hour_start) if hour_start is not None else 0
+            end = int(hour_end) if hour_end is not None else 23
+            
+            # Handle wrapping around midnight (e.g., 22 to 06)
+            if start > end:
+                # Range wraps around midnight (e.g., 22 to 06 means 22, 23, 0, 1, 2, 3, 4, 5, 6)
+                filtered_df = filtered_df[
+                    (filtered_df['hour'] >= start) | (filtered_df['hour'] <= end)
+                ]
+            else:
+                # Normal range (e.g., 9 to 17)
+                filtered_df = filtered_df[
+                    (filtered_df['hour'] >= start) & (filtered_df['hour'] <= end)
+                ]
+            filtered_df = filtered_df.drop(columns=['hour'])
+    
+    # Fraud/Legitimate only filters
+    if filters.get('fraud_only'):
+        filtered_df = filtered_df[filtered_df['is_fraud'] == 1]
+    
+    if filters.get('legitimate_only'):
+        filtered_df = filtered_df[filtered_df['is_fraud'] == 0]
+    
+    return filtered_df
 
 
 def _get_top_fraud_cases(df: pd.DataFrame, top_n: int = 10) -> List[Dict[str, Any]]:

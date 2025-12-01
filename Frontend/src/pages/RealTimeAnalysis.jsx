@@ -6,9 +6,11 @@ import {
   FaUpload,
   FaArrowLeft,
   FaChartBar,
-  FaRobot
+  FaRobot,
+  FaFilter,
+  FaTimes
 } from 'react-icons/fa';
-import { analyzeRealTimeTransactions } from '../services/api';
+import { analyzeRealTimeTransactions, regeneratePlotsWithFilters } from '../services/api';
 
 const RealTimeAnalysis = () => {
   const navigate = useNavigate();
@@ -22,8 +24,82 @@ const RealTimeAnalysis = () => {
   const [csvPreview, setCsvPreview] = useState(null);
   const [hoveredPlotIndex, setHoveredPlotIndex] = useState(null);
   const [zoomedPlot, setZoomedPlot] = useState(null);
+  const [filters, setFilters] = useState({
+    amountMin: '',
+    amountMax: '',
+    fraudProbabilityMin: '',
+    fraudProbabilityMax: '',
+    category: '',
+    hourOfDayStart: '',
+    hourOfDayEnd: '',
+    fraudOnly: false,
+    legitimateOnly: false,
+  });
+  const [showFilters, setShowFilters] = useState(false);
+  const [filteredPlots, setFilteredPlots] = useState(null);
+  const [regeneratingPlots, setRegeneratingPlots] = useState(false);
 
   const primary = colors.primaryColor || colors.accent?.red || '#E53935';
+
+  const formatFraudType = (fraudType) => {
+    if (!fraudType) return 'N/A';
+    if (fraudType === 'legitimate') return 'Legitimate';
+    if (fraudType.includes(' ')) return fraudType;
+    return fraudType
+      .split('_')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  };
+
+  const topFraudCases = analysisResult?.transactions
+    ? [...analysisResult.transactions]
+        .filter((t) => t.is_fraud === 1)
+        .sort((a, b) => (b.fraud_probability || 0) - (a.fraud_probability || 0))
+        .slice(0, 4)
+    : [];
+
+  const fraudTypeBreakdown = analysisResult?.fraud_detection?.fraud_type_breakdown || [];
+
+  const handleDownloadCSV = () => {
+    if (!analysisResult?.transactions?.length) return;
+
+    const rows = analysisResult.transactions;
+    const headers = Object.keys(rows[0] || {});
+
+    const escapeValue = (value) => {
+      if (value === null || value === undefined) return '';
+      if (typeof value === 'object') {
+        try {
+          return JSON.stringify(value);
+        } catch {
+          return String(value);
+        }
+      }
+      return String(value);
+    };
+
+    const headerRow = headers.join(',');
+    const dataRows = rows.map((row) =>
+      headers
+        .map((key) => {
+          const rawValue = escapeValue(row[key]);
+          const safeValue = rawValue.replace(/"/g, '""');
+          return `"${safeValue}"`;
+        })
+        .join(',')
+    );
+
+    const csvContent = [headerRow, ...dataRows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `real_time_transactions_${Date.now()}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   const handleUrlSubmit = async (e) => {
     e.preventDefault();
@@ -171,6 +247,194 @@ const RealTimeAnalysis = () => {
     setAnalysisResult(null);
     setShowInsights(false);
     setError(null);
+  };
+
+  const handleFilterChange = (filterName, value) => {
+    let processedValue = value;
+    
+    // Validate fraud probability fields (must be between 0 and 1)
+    if (filterName === 'fraudProbabilityMin' || filterName === 'fraudProbabilityMax') {
+      const numValue = parseFloat(value);
+      if (!isNaN(numValue)) {
+        // Clamp between 0 and 1
+        processedValue = Math.max(0, Math.min(1, numValue)).toString();
+      } else if (value === '' || value === '.') {
+        processedValue = value; // Allow empty or partial input
+      } else {
+        return; // Invalid input, don't update
+      }
+    }
+    
+    // Validate hour fields (must be between 0 and 23)
+    if (filterName === 'hourOfDayStart' || filterName === 'hourOfDayEnd') {
+      const numValue = parseInt(value);
+      if (!isNaN(numValue)) {
+        // Clamp between 0 and 23
+        processedValue = Math.max(0, Math.min(23, numValue)).toString();
+      } else if (value === '') {
+        processedValue = value; // Allow empty
+      } else {
+        return; // Invalid input, don't update
+      }
+    }
+    
+    setFilters(prev => ({
+      ...prev,
+      [filterName]: processedValue
+    }));
+  };
+
+  const resetFilters = () => {
+    setFilters({
+      amountMin: '',
+      amountMax: '',
+      fraudProbabilityMin: '',
+      fraudProbabilityMax: '',
+      category: '',
+      hourOfDayStart: '',
+      hourOfDayEnd: '',
+      fraudOnly: false,
+      legitimateOnly: false,
+    });
+  };
+
+  const getFilteredTransactions = () => {
+    if (!analysisResult?.transactions) return [];
+
+    let filtered = [...analysisResult.transactions];
+
+    // Amount filters
+    if (filters.amountMin !== '') {
+      filtered = filtered.filter(t => t.amount >= parseFloat(filters.amountMin));
+    }
+    if (filters.amountMax !== '') {
+      filtered = filtered.filter(t => t.amount <= parseFloat(filters.amountMax));
+    }
+
+    // Fraud probability filters
+    if (filters.fraudProbabilityMin !== '') {
+      filtered = filtered.filter(t => t.fraud_probability >= parseFloat(filters.fraudProbabilityMin));
+    }
+    if (filters.fraudProbabilityMax !== '') {
+      filtered = filtered.filter(t => t.fraud_probability <= parseFloat(filters.fraudProbabilityMax));
+    }
+
+    // Category filter
+    if (filters.category !== '') {
+      filtered = filtered.filter(t =>
+        t.category?.toLowerCase().includes(filters.category.toLowerCase())
+      );
+    }
+
+    // Hour of day filter
+    if (filters.hourOfDayStart !== '' || filters.hourOfDayEnd !== '') {
+      filtered = filtered.filter(t => {
+        if (!t.timestamp) return true;
+        const date = new Date(t.timestamp);
+        const hour = date.getHours();
+        const start = filters.hourOfDayStart !== '' ? parseInt(filters.hourOfDayStart) : 0;
+        const end = filters.hourOfDayEnd !== '' ? parseInt(filters.hourOfDayEnd) : 23;
+        return hour >= start && hour <= end;
+      });
+    }
+
+    // Fraud/Legitimate only filters
+    if (filters.fraudOnly) {
+      filtered = filtered.filter(t => t.is_fraud === 1);
+    }
+    if (filters.legitimateOnly) {
+      filtered = filtered.filter(t => t.is_fraud === 0);
+    }
+
+    return filtered;
+  };
+
+  const getFilteredStatistics = () => {
+    const filtered = getFilteredTransactions();
+    const fraudTransactions = filtered.filter(t => t.is_fraud === 1);
+    const legitTransactions = filtered.filter(t => t.is_fraud === 0);
+
+    const totalAmount = filtered.reduce((sum, t) => sum + t.amount, 0);
+    const fraudAmount = fraudTransactions.reduce((sum, t) => sum + t.amount, 0);
+    const legitAmount = legitTransactions.reduce((sum, t) => sum + t.amount, 0);
+
+    return {
+      total_count: filtered.length,
+      fraud_count: fraudTransactions.length,
+      legitimate_count: legitTransactions.length,
+      fraud_percentage: filtered.length > 0 ? (fraudTransactions.length / filtered.length * 100).toFixed(2) : 0,
+      legitimate_percentage: filtered.length > 0 ? (legitTransactions.length / filtered.length * 100).toFixed(2) : 0,
+      total_amount: totalAmount,
+      total_fraud_amount: fraudAmount,
+      total_legitimate_amount: legitAmount,
+    };
+  };
+
+  const getAvailableCategories = () => {
+    if (!analysisResult?.transactions) return [];
+    const categories = new Set(
+      analysisResult.transactions
+        .map(t => t.category)
+        .filter(c => c && c !== 'N/A')
+    );
+    return Array.from(categories).sort();
+  };
+
+  const activeFilterCount = Object.entries(filters).filter(([key, value]) => {
+    if (typeof value === 'boolean') return value;
+    return value !== '';
+  }).length;
+
+  const handleRegeneratePlots = async () => {
+    if (!analysisResult?.transactions) return;
+    
+    setRegeneratingPlots(true);
+    try {
+      // Convert filters to backend format
+      const backendFilters = {
+        amount_min: filters.amountMin ? parseFloat(filters.amountMin) : null,
+        amount_max: filters.amountMax ? parseFloat(filters.amountMax) : null,
+        fraud_probability_min: filters.fraudProbabilityMin ? parseFloat(filters.fraudProbabilityMin) : null,
+        fraud_probability_max: filters.fraudProbabilityMax ? parseFloat(filters.fraudProbabilityMax) : null,
+        category: filters.category || null,
+        hour_of_day_start: filters.hourOfDayStart ? parseInt(filters.hourOfDayStart) : null,
+        hour_of_day_end: filters.hourOfDayEnd ? parseInt(filters.hourOfDayEnd) : null,
+        fraud_only: filters.fraudOnly || false,
+        legitimate_only: filters.legitimateOnly || false,
+      };
+      
+      // Remove null values
+      Object.keys(backendFilters).forEach(key => {
+        if (backendFilters[key] === null || backendFilters[key] === '') {
+          delete backendFilters[key];
+        }
+      });
+      
+      console.log('Regenerating plots with filters:', backendFilters);
+      console.log('Sending transactions:', analysisResult.transactions.length);
+      
+      const result = await regeneratePlotsWithFilters(analysisResult.transactions, backendFilters);
+      
+      if (result.success) {
+        console.log('Received filtered plots:', result.plots?.length || 0);
+        if (result.plots && result.plots.length > 0) {
+          setFilteredPlots(result.plots);
+          setError(null); // Clear any previous errors
+        } else {
+          setFilteredPlots([]);
+          setError('No plots generated. The filters may have excluded all transactions. Try adjusting your filter criteria.');
+        }
+      } else {
+        console.error('Failed to regenerate plots:', result.error);
+        setError(result.error || 'Failed to regenerate plots');
+        setFilteredPlots(null);
+      }
+    } catch (err) {
+      console.error('Error regenerating plots:', err);
+      setError(err.error || err.message || 'Failed to regenerate plots');
+    } finally {
+      setRegeneratingPlots(false);
+    }
   };
 
   const handleAnalyze = async () => {
@@ -437,6 +701,23 @@ const RealTimeAnalysis = () => {
       justifyContent: 'center',
       gap: '0.5rem',
     },
+    downloadButton: {
+      backgroundColor: '#22c55e',
+      color: '#052e16',
+      padding: '0.875rem 2rem',
+      borderRadius: '9999px',
+      border: 'none',
+      cursor: 'pointer',
+      fontSize: '1rem',
+      fontWeight: '600',
+      transition: 'all 0.3s',
+      boxShadow: '0 0 20px rgba(34, 197, 94, 0.4)',
+      flex: 1,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: '0.5rem',
+    },
     transactionList: {
       maxHeight: '400px',
       overflowY: 'auto',
@@ -448,6 +729,74 @@ const RealTimeAnalysis = () => {
       borderRadius: '0.5rem',
       marginBottom: '0.75rem',
       border: `1px solid ${colors.border}`,
+    },
+    fraudTypeSection: {
+      marginTop: '1.5rem',
+    },
+    fraudTypeTitle: {
+      color: colors.foreground,
+      fontSize: '1rem',
+      fontWeight: '600',
+      marginBottom: '0.75rem',
+    },
+    fraudTypeGrid: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+      gap: '0.75rem',
+    },
+    fraudTypeCard: {
+      backgroundColor: colors.muted,
+      borderRadius: '0.75rem',
+      padding: '1rem',
+      border: `1px solid ${colors.border}`,
+    },
+    fraudTypeLabel: {
+      fontSize: '0.85rem',
+      color: colors.mutedForeground,
+      marginBottom: '0.35rem',
+      textTransform: 'uppercase',
+      letterSpacing: '0.04em',
+    },
+    fraudTypeCount: {
+      fontSize: '1.4rem',
+      fontWeight: '700',
+      color: colors.foreground,
+    },
+    fraudTypeMeta: {
+      fontSize: '0.8rem',
+      color: colors.mutedForeground,
+      marginTop: '0.35rem',
+    },
+    topFraudList: {
+      marginTop: '1.5rem',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '0.75rem',
+    },
+    topFraudItem: {
+      backgroundColor: colors.muted,
+      borderRadius: '0.75rem',
+      padding: '0.9rem 1.1rem',
+      border: `1px solid ${colors.border}`,
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: '1rem',
+    },
+    topFraudLabel: {
+      fontWeight: '600',
+      color: colors.foreground,
+      fontSize: '0.95rem',
+    },
+    topFraudMeta: {
+      fontSize: '0.8rem',
+      color: colors.mutedForeground,
+      marginTop: '0.15rem',
+    },
+    topFraudAmount: {
+      fontWeight: '700',
+      color: '#ef4444',
+      fontSize: '1rem',
     },
     fraudTransaction: {
       borderLeft: `4px solid #ef4444`,
@@ -1028,10 +1377,69 @@ const RealTimeAnalysis = () => {
                 {analysisResult.fraud_detection.model_type}
               </div>
             </div>
+            <div style={styles.statCard}>
+              <div style={styles.statLabel}>Top Fraud Pattern</div>
+              <div style={{ ...styles.statValue, fontSize: '1.1rem' }}>
+                {analysisResult.fraud_detection.dominant_fraud_type
+                  ? formatFraudType(analysisResult.fraud_detection.dominant_fraud_type)
+                  : 'N/A'}
+              </div>
+            </div>
           </div>
+
+          {fraudTypeBreakdown.length > 0 && (
+            <div style={styles.fraudTypeSection}>
+              <h3 style={styles.fraudTypeTitle}>Fraud Pattern Breakdown</h3>
+              <div style={styles.fraudTypeGrid}>
+                {fraudTypeBreakdown.slice(0, 4).map((pattern, idx) => (
+                  <div key={`${pattern.type}-${idx}`} style={styles.fraudTypeCard}>
+                    <div style={styles.fraudTypeLabel}>{formatFraudType(pattern.type)}</div>
+                    <div style={styles.fraudTypeCount}>{pattern.count} cases</div>
+                    <div style={styles.fraudTypeMeta}>
+                      {pattern.percentage}% of fraud • $
+                      {(pattern.total_amount || 0).toLocaleString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {topFraudCases.length > 0 && (
+            <div style={styles.topFraudList}>
+              <h3 style={styles.fraudTypeTitle}>Top ML-Flagged Transactions</h3>
+              {topFraudCases.map((txn, idx) => {
+                const txnAmount = typeof txn.amount === 'number' ? txn.amount : parseFloat(txn.amount || 0);
+                return (
+                  <div key={txn.transaction_id || `${txn.merchant}-${idx}`} style={styles.topFraudItem}>
+                    <div>
+                      <div style={styles.topFraudLabel}>{txn.merchant || txn.category || 'Unknown Merchant'}</div>
+                      <div style={styles.topFraudMeta}>
+                        {formatFraudType(txn.fraud_type)} • {((txn.fraud_probability || 0) * 100).toFixed(0)}% risk
+                      </div>
+                    </div>
+                    <div style={styles.topFraudAmount}>
+                      ${txnAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* Action Buttons */}
           <div style={styles.buttonGroup}>
+            <button
+              style={{
+                ...styles.downloadButton,
+                opacity: analysisResult?.transactions?.length ? 1 : 0.5,
+                cursor: analysisResult?.transactions?.length ? 'pointer' : 'not-allowed',
+              }}
+              onClick={handleDownloadCSV}
+              disabled={!analysisResult?.transactions?.length}
+            >
+              Download CSV
+            </button>
             <button
               style={styles.insightsButton}
               onClick={() => setShowInsights(!showInsights)}
@@ -1139,14 +1547,318 @@ const RealTimeAnalysis = () => {
             </div>
           )}
 
-          {/* Plots */}
-          {analysisResult.insights.plots?.length > 0 && (
-            <div>
-              <h3 style={{ color: colors.foreground, fontSize: '1.1rem', marginBottom: '1rem' }}>
-                Visual Analytics
+          {/* Filter Panel */}
+          <div style={{ marginBottom: '2rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ color: colors.foreground, fontSize: '1.1rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <FaFilter style={{ color: primary }} />
+                Plot Filters
+                {activeFilterCount > 0 && (
+                  <span style={{
+                    backgroundColor: primary,
+                    color: 'white',
+                    borderRadius: '9999px',
+                    padding: '0.25rem 0.75rem',
+                    fontSize: '0.75rem',
+                    fontWeight: '600',
+                    marginLeft: '0.5rem'
+                  }}>
+                    {activeFilterCount} active
+                  </span>
+                )}
               </h3>
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                style={{
+                  backgroundColor: 'transparent',
+                  color: colors.foreground,
+                  border: `2px solid ${colors.border}`,
+                  padding: '0.5rem 1rem',
+                  borderRadius: '0.5rem',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem',
+                  fontWeight: '600',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem'
+                }}
+              >
+                {showFilters ? <FaTimes /> : <FaFilter />}
+                {showFilters ? 'Hide Filters' : 'Show Filters'}
+              </button>
+            </div>
+            
+            {showFilters && (
+              <div style={{
+                backgroundColor: colors.muted,
+                padding: '1.5rem',
+                borderRadius: '0.75rem',
+                border: `1px solid ${colors.border}`,
+                marginBottom: '1rem'
+              }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                  <div>
+                    <label style={styles.label}>Min Amount ($)</label>
+                    <input
+                      type="number"
+                      value={filters.amountMin}
+                      onChange={(e) => handleFilterChange('amountMin', e.target.value)}
+                      placeholder="0"
+                      style={styles.input}
+                    />
+                  </div>
+                  <div>
+                    <label style={styles.label}>Max Amount ($)</label>
+                    <input
+                      type="number"
+                      value={filters.amountMax}
+                      onChange={(e) => handleFilterChange('amountMax', e.target.value)}
+                      placeholder="∞"
+                      style={styles.input}
+                    />
+                  </div>
+                  <div>
+                    <label style={styles.label}>
+                      Min Fraud Probability
+                      <span style={{ fontSize: '0.75rem', color: colors.mutedForeground, marginLeft: '0.5rem' }}>
+                        (0.00 = 0%, 1.00 = 100%)
+                      </span>
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="1"
+                      value={filters.fraudProbabilityMin}
+                      onChange={(e) => handleFilterChange('fraudProbabilityMin', e.target.value)}
+                      onBlur={(e) => {
+                        const val = parseFloat(e.target.value);
+                        if (!isNaN(val)) {
+                          const clamped = Math.max(0, Math.min(1, val));
+                          if (clamped !== val) {
+                            handleFilterChange('fraudProbabilityMin', clamped.toString());
+                          }
+                        }
+                      }}
+                      placeholder="0.00"
+                      style={{
+                        ...styles.input,
+                        borderColor: filters.fraudProbabilityMin && (parseFloat(filters.fraudProbabilityMin) < 0 || parseFloat(filters.fraudProbabilityMin) > 1) 
+                          ? '#ef4444' 
+                          : styles.input.borderColor
+                      }}
+                    />
+                    {filters.fraudProbabilityMin && (parseFloat(filters.fraudProbabilityMin) < 0 || parseFloat(filters.fraudProbabilityMin) > 1) && (
+                      <div style={{ fontSize: '0.75rem', color: '#ef4444', marginTop: '0.25rem' }}>
+                        Must be between 0.00 and 1.00
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label style={styles.label}>
+                      Max Fraud Probability
+                      <span style={{ fontSize: '0.75rem', color: colors.mutedForeground, marginLeft: '0.5rem' }}>
+                        (0.00 = 0%, 1.00 = 100%)
+                      </span>
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="1"
+                      value={filters.fraudProbabilityMax}
+                      onChange={(e) => handleFilterChange('fraudProbabilityMax', e.target.value)}
+                      onBlur={(e) => {
+                        const val = parseFloat(e.target.value);
+                        if (!isNaN(val)) {
+                          const clamped = Math.max(0, Math.min(1, val));
+                          if (clamped !== val) {
+                            handleFilterChange('fraudProbabilityMax', clamped.toString());
+                          }
+                        }
+                      }}
+                      placeholder="1.00"
+                      style={{
+                        ...styles.input,
+                        borderColor: filters.fraudProbabilityMax && (parseFloat(filters.fraudProbabilityMax) < 0 || parseFloat(filters.fraudProbabilityMax) > 1) 
+                          ? '#ef4444' 
+                          : styles.input.borderColor
+                      }}
+                    />
+                    {filters.fraudProbabilityMax && (parseFloat(filters.fraudProbabilityMax) < 0 || parseFloat(filters.fraudProbabilityMax) > 1) && (
+                      <div style={{ fontSize: '0.75rem', color: '#ef4444', marginTop: '0.25rem' }}>
+                        Must be between 0.00 and 1.00
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label style={styles.label}>Category</label>
+                    <input
+                      type="text"
+                      value={filters.category}
+                      onChange={(e) => handleFilterChange('category', e.target.value)}
+                      placeholder="Filter by category"
+                      style={styles.input}
+                    />
+                  </div>
+                  <div>
+                    <label style={styles.label}>
+                      Start Hour (0-23)
+                      <span style={{ fontSize: '0.75rem', color: colors.mutedForeground, marginLeft: '0.5rem' }}>
+                        (supports midnight wrap, e.g., 22 to 06)
+                      </span>
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="23"
+                      value={filters.hourOfDayStart}
+                      onChange={(e) => handleFilterChange('hourOfDayStart', e.target.value)}
+                      placeholder="0"
+                      style={styles.input}
+                    />
+                  </div>
+                  <div>
+                    <label style={styles.label}>
+                      End Hour (0-23)
+                      <span style={{ fontSize: '0.75rem', color: colors.mutedForeground, marginLeft: '0.5rem' }}>
+                        (supports midnight wrap, e.g., 22 to 06)
+                      </span>
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="23"
+                      value={filters.hourOfDayEnd}
+                      onChange={(e) => handleFilterChange('hourOfDayEnd', e.target.value)}
+                      placeholder="23"
+                      style={styles.input}
+                    />
+                  </div>
+                </div>
+                
+                <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: colors.foreground, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={filters.fraudOnly}
+                      onChange={(e) => {
+                        handleFilterChange('fraudOnly', e.target.checked);
+                        if (e.target.checked) handleFilterChange('legitimateOnly', false);
+                      }}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    Fraud Only
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: colors.foreground, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={filters.legitimateOnly}
+                      onChange={(e) => {
+                        handleFilterChange('legitimateOnly', e.target.checked);
+                        if (e.target.checked) handleFilterChange('fraudOnly', false);
+                      }}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    Legitimate Only
+                  </label>
+                </div>
+                
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                  <button
+                    onClick={handleRegeneratePlots}
+                    disabled={regeneratingPlots}
+                    style={{
+                      backgroundColor: primary,
+                      color: 'white',
+                      padding: '0.75rem 2rem',
+                      borderRadius: '0.5rem',
+                      border: 'none',
+                      cursor: regeneratingPlots ? 'not-allowed' : 'pointer',
+                      fontSize: '0.95rem',
+                      fontWeight: '600',
+                      opacity: regeneratingPlots ? 0.6 : 1
+                    }}
+                  >
+                    {regeneratingPlots ? '⏳ Regenerating...' : '🔄 Apply Filters to Plots'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      resetFilters();
+                      setFilteredPlots(null);
+                    }}
+                    style={{
+                      backgroundColor: 'transparent',
+                      color: colors.foreground,
+                      border: `2px solid ${colors.border}`,
+                      padding: '0.75rem 2rem',
+                      borderRadius: '0.5rem',
+                      cursor: 'pointer',
+                      fontSize: '0.95rem',
+                      fontWeight: '600',
+                      transition: 'all 0.3s'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.backgroundColor = colors.muted;
+                      e.target.style.borderColor = primary;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.backgroundColor = 'transparent';
+                      e.target.style.borderColor = colors.border;
+                    }}
+                  >
+                    Reset Filters
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Plots */}
+          {(filteredPlots || analysisResult.insights.plots)?.length > 0 && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h3 style={{ color: colors.foreground, fontSize: '1.1rem', margin: 0 }}>
+                  Visual Analytics
+                  {filteredPlots && (
+                    <span style={{ 
+                      fontSize: '0.85rem', 
+                      color: primary,
+                      marginLeft: '0.5rem',
+                      fontWeight: '600',
+                      backgroundColor: `${primary}20`,
+                      padding: '0.25rem 0.75rem',
+                      borderRadius: '0.5rem'
+                    }}>
+                      🔍 Filtered ({filteredPlots.length} plots)
+                    </span>
+                  )}
+                  {!filteredPlots && (
+                    <span style={{ fontSize: '0.85rem', color: colors.mutedForeground, marginLeft: '0.5rem' }}>
+                      (All Data)
+                    </span>
+                  )}
+                </h3>
+                {filteredPlots && (
+                  <button
+                    onClick={() => setFilteredPlots(null)}
+                    style={{
+                      backgroundColor: 'transparent',
+                      color: colors.foreground,
+                      border: `1px solid ${colors.border}`,
+                      padding: '0.5rem 1rem',
+                      borderRadius: '0.5rem',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem',
+                      fontWeight: '600'
+                    }}
+                  >
+                    Show All Plots
+                  </button>
+                )}
+              </div>
               <div style={styles.plotsGrid}>
-                {analysisResult.insights.plots.map((plot, idx) => {
+                {(filteredPlots || analysisResult.insights.plots).map((plot, idx) => {
                   const isHovered = hoveredPlotIndex === idx;
                   return (
                     <div
