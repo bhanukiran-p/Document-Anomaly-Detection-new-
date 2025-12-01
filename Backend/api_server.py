@@ -714,6 +714,290 @@ def analyze_bank_statement():
         }), 500
 
 
+# Database query endpoints for importing from Supabase tables
+@app.route('/api/checks/list', methods=['GET'])
+def get_checks_list():
+    """Fetch list of checks from database view with optional date filtering"""
+    try:
+        from datetime import datetime, timedelta
+        supabase = get_supabase()
+
+        # Fetch all records using pagination to bypass Supabase default limit of 1000
+        all_data = []
+        page_size = 1000
+        offset = 0
+        total_count = None
+        
+        while True:
+            # Get count only on first request
+            count_param = 'exact' if offset == 0 else None
+            response = supabase.table('v_checks_analysis').select('*', count=count_param).order('created_at', desc=True).range(offset, offset + page_size - 1).execute()
+            page_data = response.data or []
+            if not page_data:
+                break
+            
+            # Get total count from first response
+            if total_count is None:
+                total_count = response.count if hasattr(response, 'count') else None
+            
+            all_data.extend(page_data)
+            
+            # Check if we got all records
+            if total_count and len(all_data) >= total_count:
+                break
+            if len(page_data) < page_size:
+                break
+            offset += page_size
+        
+        data = all_data
+        total_available = total_count if total_count is not None else len(data)
+
+        # Optional date filtering
+        date_filter = request.args.get('date_filter', default=None)  # 'last_30', 'last_60', 'last_90', 'older'
+
+        if date_filter:
+            now = datetime.utcnow()
+            filtered_data = []
+
+            for record in data:
+                created_at_str = record.get('created_at')
+                if not created_at_str:
+                    continue
+
+                # Parse created_at timestamp
+                try:
+                    # Handle ISO format timestamps with or without microseconds
+                    if 'T' in created_at_str:
+                        created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00').split('+')[0])
+                    else:
+                        created_at = datetime.fromisoformat(created_at_str)
+                except:
+                    continue
+
+                days_old = (now - created_at).days
+
+                if date_filter == 'last_30' and days_old <= 30:
+                    filtered_data.append(record)
+                elif date_filter == 'last_60' and days_old <= 60:
+                    filtered_data.append(record)
+                elif date_filter == 'last_90' and days_old <= 90:
+                    filtered_data.append(record)
+                elif date_filter == 'older' and days_old > 90:
+                    filtered_data.append(record)
+
+            data = filtered_data
+
+        return jsonify({
+            'success': True,
+            'data': data,
+            'count': len(data),
+            'total_records': total_available if not date_filter else None,
+            'date_filter': date_filter
+        })
+    except Exception as e:
+        logger.error(f"Failed to fetch checks list: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to fetch checks list'
+        }), 500
+
+
+@app.route('/api/checks/<check_id>', methods=['GET'])
+def get_check_details(check_id):
+    """Fetch detailed check data from view"""
+    try:
+        supabase = get_supabase()
+        response = supabase.table('v_checks_analysis').select('*').eq('check_id', check_id).execute()
+        if not response.data:
+            return jsonify({
+                'success': False,
+                'error': 'Check not found',
+                'message': f'No check found with ID: {check_id}'
+            }), 404
+        return jsonify({
+            'success': True,
+            'data': response.data[0]
+        })
+    except Exception as e:
+        logger.error(f"Failed to fetch check details: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to fetch check details'
+        }), 500
+
+
+@app.route('/api/checks/search', methods=['GET'])
+def search_checks():
+    """Search checks by payer name from view"""
+    try:
+        supabase = get_supabase()
+        query = request.args.get('q', default='', type=str)
+        limit = request.args.get('limit', default=20, type=int)
+        if not query:
+            return jsonify({
+                'success': False,
+                'error': 'Query parameter required',
+                'message': 'Please provide a search query'
+            }), 400
+        response = supabase.table('v_checks_analysis').select('*').ilike('payer_name', f'%{query}%').limit(limit).execute()
+        return jsonify({
+            'success': True,
+            'data': response.data,
+            'count': len(response.data)
+        })
+    except Exception as e:
+        logger.error(f"Failed to search checks: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to search checks'
+        }), 500
+
+
+# Database query endpoints for money orders
+@app.route('/api/money-orders/list', methods=['GET'])
+def get_money_orders_list():
+    """Fetch list of money orders from database view with optional date filtering"""
+    try:
+        from datetime import datetime, timedelta
+        supabase = get_supabase()
+
+        # Fetch all records using pagination to bypass Supabase default limit of 1000
+        all_data = []
+        page_size = 1000
+        offset = 0
+        total_count = None
+        
+        while True:
+            # Get count only on first request
+            count_param = 'exact' if offset == 0 else None
+            response = supabase.table('v_money_orders_analysis').select('*', count=count_param).order('created_at', desc=True).range(offset, offset + page_size - 1).execute()
+            page_data = response.data or []
+            if not page_data:
+                break
+            
+            # Get total count from first response
+            if total_count is None:
+                total_count = response.count if hasattr(response, 'count') else None
+            
+            all_data.extend(page_data)
+            
+            # Check if we got all records
+            if total_count and len(all_data) >= total_count:
+                break
+            if len(page_data) < page_size:
+                break
+            offset += page_size
+        
+        data = all_data
+        total_available = total_count if total_count is not None else len(data)
+
+        # Optional date filtering
+        date_filter = request.args.get('date_filter', default=None)  # 'last_30', 'last_60', 'last_90', 'older'
+
+        if date_filter:
+            now = datetime.utcnow()
+            filtered_data = []
+
+            for record in data:
+                created_at_str = record.get('created_at')
+                if not created_at_str:
+                    continue
+
+                # Parse created_at timestamp
+                try:
+                    # Handle ISO format timestamps with or without microseconds
+                    if 'T' in created_at_str:
+                        created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00').split('+')[0])
+                    else:
+                        created_at = datetime.fromisoformat(created_at_str)
+                except:
+                    continue
+
+                days_old = (now - created_at).days
+
+                if date_filter == 'last_30' and days_old <= 30:
+                    filtered_data.append(record)
+                elif date_filter == 'last_60' and days_old <= 60:
+                    filtered_data.append(record)
+                elif date_filter == 'last_90' and days_old <= 90:
+                    filtered_data.append(record)
+                elif date_filter == 'older' and days_old > 90:
+                    filtered_data.append(record)
+
+            data = filtered_data
+
+        return jsonify({
+            'success': True,
+            'data': data,
+            'count': len(data),
+            'total_records': total_available if not date_filter else None,
+            'date_filter': date_filter
+        })
+    except Exception as e:
+        logger.error(f"Failed to fetch money orders list: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to fetch money orders list'
+        }), 500
+
+
+@app.route('/api/money-orders/<money_order_id>', methods=['GET'])
+def get_money_order_details(money_order_id):
+    """Fetch detailed money order data from view"""
+    try:
+        supabase = get_supabase()
+        response = supabase.table('v_money_orders_analysis').select('*').eq('money_order_id', money_order_id).execute()
+        if not response.data:
+            return jsonify({
+                'success': False,
+                'error': 'Money order not found',
+                'message': f'No money order found with ID: {money_order_id}'
+            }), 404
+        return jsonify({
+            'success': True,
+            'data': response.data[0]
+        })
+    except Exception as e:
+        logger.error(f"Failed to fetch money order details: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to fetch money order details'
+        }), 500
+
+
+@app.route('/api/money-orders/search', methods=['GET'])
+def search_money_orders():
+    """Search money orders by purchaser name from view"""
+    try:
+        supabase = get_supabase()
+        query = request.args.get('q', default='', type=str)
+        limit = request.args.get('limit', default=20, type=int)
+        if not query:
+            return jsonify({
+                'success': False,
+                'error': 'Query parameter required',
+                'message': 'Please provide a search query'
+            }), 400
+        response = supabase.table('v_money_orders_analysis').select('*').ilike('purchaser_name', f'%{query}%').limit(limit).execute()
+        return jsonify({
+            'success': True,
+            'data': response.data,
+            'count': len(response.data)
+        })
+    except Exception as e:
+        logger.error(f"Failed to search money orders: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to search money orders'
+        }), 500
+
+
 @app.route('/api/real-time/analyze', methods=['POST'])
 def analyze_real_time_transactions():
     """Analyze real-time transaction CSV file endpoint"""
@@ -841,6 +1125,12 @@ if __name__ == '__main__':
     print(f"  - POST /api/money-order/analyze")
     print(f"  - POST /api/bank-statement/analyze")
     print(f"  - POST /api/real-time/analyze")
+    print(f"  - GET  /api/checks/list")
+    print(f"  - GET  /api/checks/search")
+    print(f"  - GET  /api/checks/<check_id>")
+    print(f"  - GET  /api/money-orders/list")
+    print(f"  - GET  /api/money-orders/search")
+    print(f"  - GET  /api/money-orders/<money_order_id>")
     print("=" * 60)
 
     app.run(debug=True, host='0.0.0.0', port=5001)

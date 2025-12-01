@@ -14,7 +14,9 @@ SELECT
   c.bank_name,
   c.fraud_risk_score,
   c.model_confidence,
-  c.ai_recommendation
+  c.ai_recommendation,
+  c.created_at,
+  c.timestamp
 FROM
   checks c
 ORDER BY

@@ -11,6 +11,16 @@ const MoneyOrderInsights = () => {
   const [csvData, setCsvData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [inputMode, setInputMode] = useState('upload'); // 'upload' or 'api'
+  const [moneyOrdersList, setMoneyOrdersList] = useState([]);
+  const [allMoneyOrdersData, setAllMoneyOrdersData] = useState([]); // Store full dataset for filtering
+  const [loadingMoneyOrdersList, setLoadingMoneyOrdersList] = useState(false);
+  const [selectedMoneyOrderId, setSelectedMoneyOrderId] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [dateFilter, setDateFilter] = useState(null); // null, 'last_30', 'last_60', 'last_90', 'older'
+  const [issuerFilter, setIssuerFilter] = useState(null); // null or issuer name
+  const [availableIssuers, setAvailableIssuers] = useState([]);
+  const [totalRecords, setTotalRecords] = useState(0);
 
   const parseCSV = (text) => {
     const lines = text.trim().split('\n');
@@ -23,7 +33,7 @@ const MoneyOrderInsights = () => {
       const line = lines[i].trim();
       if (!line) continue;
 
-      // Simple CSV parsing (handles basic cases)
+      // Handle quoted CSV values
       const values = [];
       let current = '';
       let inQuotes = false;
@@ -59,7 +69,7 @@ const MoneyOrderInsights = () => {
   const processData = (rows) => {
     if (!rows.length) return null;
 
-    // Fraud Risk Distribution
+    // 1. Fraud Risk Distribution (0-25%, 25-50%, 50-75%, 75-100%)
     const riskScores = rows.map(r => parseFloat_(r['RiskScore'] || r['fraud_risk_score'] || 0));
     const riskScoresPercent = riskScores.map(s => s * 100);
     const riskDistribution = [
@@ -69,7 +79,7 @@ const MoneyOrderInsights = () => {
       { range: '75-100%', count: riskScoresPercent.filter(s => s >= 75).length },
     ];
 
-    // AI Recommendation Distribution
+    // 2. AI Recommendation Distribution (APPROVE/REJECT/ESCALATE)
     const recommendations = rows.map(r => (r['Decision'] || r['ai_recommendation'] || 'UNKNOWN').toUpperCase());
     const recommendationData = [
       { name: 'APPROVE', value: recommendations.filter(d => d === 'APPROVE').length },
@@ -77,7 +87,7 @@ const MoneyOrderInsights = () => {
       { name: 'ESCALATE', value: recommendations.filter(d => d === 'ESCALATE').length },
     ].filter(item => item.value > 0);
 
-    // Risk Level Category Distribution
+    // 3. Risk Level Category Distribution
     const riskLevelCounts = {
       'HIGH': 0,
       'MEDIUM': 0,
@@ -100,7 +110,26 @@ const MoneyOrderInsights = () => {
       { name: 'LOW (<35%)', value: riskLevelCounts['LOW'], color: colors.status.success }
     ].filter(item => item.value > 0);
 
-    // Summary metrics
+    // 4. Risk by Issuer (Average risk score per issuer)
+    const issuerRisks = {};
+    rows.forEach(r => {
+      const issuer = r['IssuerName'] || r['money_order_institute'] || r['issuer_name'] || 'Unknown';
+      if (!issuerRisks[issuer]) {
+        issuerRisks[issuer] = { count: 0, totalRisk: 0 };
+      }
+      issuerRisks[issuer].count++;
+      issuerRisks[issuer].totalRisk += parseFloat_(r['RiskScore'] || r['fraud_risk_score'] || 0);
+    });
+    const riskByIssuerData = Object.entries(issuerRisks)
+      .map(([name, data]) => ({
+        name,
+        avgRisk: ((data.totalRisk / data.count) * 100).toFixed(1),
+        count: data.count
+      }))
+      .sort((a, b) => parseFloat(b.avgRisk) - parseFloat(a.avgRisk))
+      .slice(0, 10); // Top 10 issuers
+
+    // 5. Summary Metrics
     const totalMoneyOrders = rows.length;
     const avgRiskScore = (riskScores.reduce((a, b) => a + b, 0) / riskScores.length * 100).toFixed(1);
     const approveCount = recommendations.filter(d => d === 'APPROVE').length;
@@ -113,6 +142,7 @@ const MoneyOrderInsights = () => {
         { name: 'No Data', value: rows.length }
       ],
       riskLevelData,
+      riskByIssuerData,
       metrics: {
         totalMoneyOrders,
         avgRiskScore,
@@ -167,6 +197,116 @@ const MoneyOrderInsights = () => {
     },
     multiple: false
   });
+
+  const fetchMoneyOrdersList = async (filter = null, issuer = null) => {
+    setLoadingMoneyOrdersList(true);
+    setError(null);
+    setCsvData(null);
+    try {
+      // Use relative URL to leverage proxy in package.json
+      const url = filter
+        ? `/api/money-orders/list?date_filter=${filter}`
+        : `/api/money-orders/list`;
+      const response = await fetch(url);
+      const data = await response.json();
+      if (data.success) {
+        // Extract unique issuers from the data
+        const issuers = [...new Set(data.data.map(mo => mo.money_order_institute).filter(Boolean))].sort();
+        setAvailableIssuers(issuers);
+        
+        // Store full dataset
+        setAllMoneyOrdersData(data.data);
+        
+        // Apply issuer filter if selected
+        let filteredData = data.data;
+        const activeIssuerFilter = issuer !== null ? issuer : issuerFilter;
+        if (activeIssuerFilter) {
+          filteredData = data.data.filter(mo => mo.money_order_institute === activeIssuerFilter);
+        }
+        
+        setMoneyOrdersList(filteredData);
+        setTotalRecords(data.total_records || data.count);
+        setDateFilter(filter);
+        // Auto-load all money orders as insights if data exists
+        if (filteredData && filteredData.length > 0) {
+          loadMoneyOrderData(filteredData);
+        } else {
+          setError('No money orders found for the selected filters');
+        }
+      } else {
+        setError(data.message || 'Failed to fetch money orders');
+        setCsvData(null);
+      }
+    } catch (err) {
+      setError('Failed to fetch money orders from database');
+      console.error('Error fetching money orders:', err);
+      setCsvData(null);
+    } finally {
+      setLoadingMoneyOrdersList(false);
+    }
+  };
+
+  const handleSearchMoneyOrders = async (query) => {
+    if (!query) {
+      setIssuerFilter(null);
+      fetchMoneyOrdersList(dateFilter);
+      return;
+    }
+    setLoadingMoneyOrdersList(true);
+    setError(null);
+    setCsvData(null);
+    try {
+      // Use relative URL to leverage proxy in package.json
+      const response = await fetch(`/api/money-orders/search?q=${encodeURIComponent(query)}&limit=20`);
+      const data = await response.json();
+      if (data.success) {
+        setMoneyOrdersList(data.data);
+        // Auto-load search results as insights if data exists
+        if (data.data && data.data.length > 0) {
+          loadMoneyOrderData(data.data);
+        } else {
+          setError('No money orders found matching your search');
+        }
+      } else {
+        setError(data.message || 'Search failed');
+        setCsvData(null);
+      }
+    } catch (err) {
+      setError('Failed to search money orders');
+      console.error('Error searching money orders:', err);
+      setCsvData(null);
+    } finally {
+      setLoadingMoneyOrdersList(false);
+    }
+  };
+
+  const loadMoneyOrderData = async (moneyOrders) => {
+    if (!moneyOrders || moneyOrders.length === 0) {
+      setError('No money orders selected');
+      return;
+    }
+
+    try {
+      // Transform database records to format expected by processData
+      const rows = moneyOrders.map(mo => ({
+        'fraud_risk_score': mo.fraud_risk_score || 0,
+        'ai_recommendation': mo.ai_recommendation || 'UNKNOWN',
+        'money_order_institute': mo.money_order_institute || 'Unknown',
+        'money_order_number': mo.money_order_number || 'N/A',
+        'amount': mo.amount || 0,
+      }));
+
+      const processed = processData(rows);
+      setCsvData(processed);
+      setError(null);
+      // Auto-scroll to metrics section
+      setTimeout(() => {
+        document.querySelector('[data-metrics-section]')?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    } catch (err) {
+      setError(`Error processing money orders: ${err.message}`);
+    }
+  };
 
   const primary = colors.primaryColor || colors.accent?.red || '#E53935';
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
@@ -224,56 +364,382 @@ const MoneyOrderInsights = () => {
     <div style={containerStyle}>
       <div style={cardStyle}>
         <h2 style={{ color: colors.foreground, marginBottom: '1.5rem' }}>
-          Money Order Insights from CSV
+          {inputMode === 'upload' ? 'Money Order Insights from CSV' : 'Money Order Insights from Database'}
         </h2>
 
-        <div {...getRootProps()} style={dropzoneStyle}>
-          <input {...getInputProps()} />
-          <FaUpload style={{ fontSize: '2rem', marginBottom: '1rem', color: colors.foreground }} />
-          {isDragActive ? (
-            <p style={{ color: primary, fontWeight: '500' }}>
-              Drop the CSV file here...
-            </p>
-          ) : (
-            <div>
-              <p style={{ color: colors.foreground, marginBottom: '0.5rem' }}>
-                Drag and drop your CSV file here, or click to browse
-              </p>
-              <p style={{ color: colors.mutedForeground, fontSize: '0.875rem' }}>
-                CSV file with money order analysis data
-              </p>
-            </div>
-          )}
+        {/* Input Mode Toggle */}
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
+          <button
+            onClick={() => {
+              setInputMode('upload');
+              setCsvData(null);
+              setError(null);
+            }}
+            style={{
+              flex: 1,
+              padding: '0.75rem',
+              borderRadius: '0.5rem',
+              backgroundColor: inputMode === 'upload' ? primary : colors.secondary,
+              color: inputMode === 'upload' ? colors.primaryForeground : colors.foreground,
+              border: `1px solid ${colors.border}`,
+              cursor: 'pointer',
+              fontWeight: inputMode === 'upload' ? '600' : '500',
+              transition: 'all 0.3s',
+            }}
+          >
+            Upload CSV
+          </button>
+          <button
+            onClick={() => {
+              setInputMode('api');
+              setCsvData(null);
+              setError(null);
+              setIssuerFilter(null);
+              setAllMoneyOrdersData([]);
+              fetchMoneyOrdersList();
+            }}
+            style={{
+              flex: 1,
+              padding: '0.75rem',
+              borderRadius: '0.5rem',
+              backgroundColor: inputMode === 'api' ? primary : colors.secondary,
+              color: inputMode === 'api' ? colors.primaryForeground : colors.foreground,
+              border: `1px solid ${colors.border}`,
+              cursor: 'pointer',
+              fontWeight: inputMode === 'api' ? '600' : '500',
+              transition: 'all 0.3s',
+            }}
+          >
+            Connect API
+          </button>
         </div>
 
-        {error && (
-          <div style={{
-            backgroundColor: colors.accent.redLight,
-            color: colors.accent.red,
-            padding: '1rem',
-            borderRadius: '8px',
-            marginTop: '1rem',
-            fontWeight: '500',
-          }}>
-            {error}
-          </div>
+        {inputMode === 'upload' && (
+          <>
+            <div {...getRootProps()} style={dropzoneStyle}>
+              <input {...getInputProps()} />
+              <FaUpload style={{ fontSize: '2rem', marginBottom: '1rem', color: colors.foreground }} />
+              {isDragActive ? (
+                <p style={{ color: primary, fontWeight: '500' }}>
+                  Drop the CSV file here...
+                </p>
+              ) : (
+                <div>
+                  <p style={{ color: colors.foreground, marginBottom: '0.5rem' }}>
+                    Drag and drop your CSV file here, or click to browse
+                  </p>
+                  <p style={{ color: colors.mutedForeground, fontSize: '0.875rem' }}>
+                    CSV file with money order analysis data
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {error && inputMode === 'upload' && (
+              <div style={{
+                backgroundColor: colors.accent.redLight,
+                color: colors.accent.red,
+                padding: '1rem',
+                borderRadius: '8px',
+                marginTop: '1rem',
+                fontWeight: '500',
+              }}>
+                {error}
+              </div>
+            )}
+
+            {loading && inputMode === 'upload' && (
+              <div style={{ textAlign: 'center', padding: '2rem' }}>
+                <FaCog className="spin" style={{
+                  fontSize: '2rem',
+                  color: primary,
+                }} />
+                <p style={{ marginTop: '0.5rem', color: colors.neutral.gray600 }}>
+                  Processing CSV...
+                </p>
+              </div>
+            )}
+          </>
         )}
 
-        {loading && (
-          <div style={{ textAlign: 'center', padding: '2rem' }}>
-            <FaCog className="spin" style={{
-              fontSize: '2rem',
-              color: primary,
-            }} />
-            <p style={{ marginTop: '0.5rem', color: colors.neutral.gray600 }}>
-              Processing CSV...
-            </p>
-          </div>
+        {inputMode === 'api' && (
+          <>
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', color: colors.foreground, marginBottom: '0.5rem', fontWeight: '500' }}>
+                Search by Purchaser Name:
+              </label>
+              <input
+                type="text"
+                placeholder="Search money orders by purchaser name..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  handleSearchMoneyOrders(e.target.value);
+                }}
+                style={{
+                  width: '100%',
+                  padding: '0.75rem',
+                  borderRadius: '0.5rem',
+                  backgroundColor: colors.secondary,
+                  color: colors.foreground,
+                  border: `1px solid ${colors.border}`,
+                  fontSize: '1rem',
+                }}
+              />
+            </div>
+
+            {/* Issuer Filter Section */}
+            {availableIssuers.length > 0 && (
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', color: colors.foreground, marginBottom: '0.5rem', fontWeight: '500' }}>
+                  Filter by Issuer:
+                </label>
+                <select
+                  value={issuerFilter || ''}
+                  onChange={(e) => {
+                    const selectedIssuer = e.target.value || null;
+                    setIssuerFilter(selectedIssuer);
+                    // Filter from full dataset by issuer
+                    if (selectedIssuer) {
+                      const filtered = allMoneyOrdersData.filter(mo => mo.money_order_institute === selectedIssuer);
+                      setMoneyOrdersList(filtered);
+                      if (filtered.length > 0) {
+                        loadMoneyOrderData(filtered);
+                      } else {
+                        setError('No money orders found for this issuer');
+                      }
+                    } else {
+                      // Show all data from current fetch
+                      setMoneyOrdersList(allMoneyOrdersData);
+                      if (allMoneyOrdersData.length > 0) {
+                        loadMoneyOrderData(allMoneyOrdersData);
+                      } else {
+                        fetchMoneyOrdersList(dateFilter);
+                      }
+                    }
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    borderRadius: '0.5rem',
+                    backgroundColor: colors.secondary,
+                    color: colors.foreground,
+                    border: `1px solid ${colors.border}`,
+                    fontSize: '1rem',
+                    cursor: 'pointer',
+                    appearance: 'none',
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='${encodeURIComponent(colors.foreground)}' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
+                    backgroundRepeat: 'no-repeat',
+                    backgroundPosition: 'right 0.75rem center',
+                    paddingRight: '2.5rem',
+                  }}
+                >
+                  <option value="">All Issuers</option>
+                  {availableIssuers.map((issuer) => (
+                    <option key={issuer} value={issuer}>
+                      {issuer}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Date Filter Section */}
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', color: colors.foreground, marginBottom: '0.75rem', fontWeight: '500' }}>
+                Filter by Created Date {totalRecords > 0 && <span style={{ color: colors.mutedForeground, fontWeight: '400', fontSize: '0.9rem' }}>({totalRecords} total records)</span>}
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.5rem' }}>
+                <button
+                  onClick={() => {
+                    setDateFilter(null);
+                    fetchMoneyOrdersList(null, issuerFilter);
+                  }}
+                  style={{
+                    padding: '0.75rem',
+                    borderRadius: '0.5rem',
+                    backgroundColor: dateFilter === null ? primary : colors.secondary,
+                    color: dateFilter === null ? colors.primaryForeground : colors.foreground,
+                    border: `1px solid ${colors.border}`,
+                    cursor: 'pointer',
+                    fontWeight: dateFilter === null ? '600' : '500',
+                    transition: 'all 0.3s',
+                  }}
+                  onMouseEnter={(e) => !loadingMoneyOrdersList && dateFilter !== null && (e.target.style.backgroundColor = colors.muted)}
+                  onMouseLeave={(e) => !loadingMoneyOrdersList && dateFilter !== null && (e.target.style.backgroundColor = colors.secondary)}
+                >
+                  All Records
+                </button>
+                <button
+                  onClick={() => {
+                    setDateFilter('last_30');
+                    fetchMoneyOrdersList('last_30', issuerFilter);
+                  }}
+                  style={{
+                    padding: '0.75rem',
+                    borderRadius: '0.5rem',
+                    backgroundColor: dateFilter === 'last_30' ? primary : colors.secondary,
+                    color: dateFilter === 'last_30' ? colors.primaryForeground : colors.foreground,
+                    border: `1px solid ${colors.border}`,
+                    cursor: 'pointer',
+                    fontWeight: dateFilter === 'last_30' ? '600' : '500',
+                    transition: 'all 0.3s',
+                  }}
+                  onMouseEnter={(e) => !loadingMoneyOrdersList && dateFilter !== 'last_30' && (e.target.style.backgroundColor = colors.muted)}
+                  onMouseLeave={(e) => !loadingMoneyOrdersList && dateFilter !== 'last_30' && (e.target.style.backgroundColor = colors.secondary)}
+                >
+                  Last 30
+                </button>
+                <button
+                  onClick={() => {
+                    setDateFilter('last_60');
+                    fetchMoneyOrdersList('last_60', issuerFilter);
+                  }}
+                  style={{
+                    padding: '0.75rem',
+                    borderRadius: '0.5rem',
+                    backgroundColor: dateFilter === 'last_60' ? primary : colors.secondary,
+                    color: dateFilter === 'last_60' ? colors.primaryForeground : colors.foreground,
+                    border: `1px solid ${colors.border}`,
+                    cursor: 'pointer',
+                    fontWeight: dateFilter === 'last_60' ? '600' : '500',
+                    transition: 'all 0.3s',
+                  }}
+                  onMouseEnter={(e) => !loadingMoneyOrdersList && dateFilter !== 'last_60' && (e.target.style.backgroundColor = colors.muted)}
+                  onMouseLeave={(e) => !loadingMoneyOrdersList && dateFilter !== 'last_60' && (e.target.style.backgroundColor = colors.secondary)}
+                >
+                  Last 60
+                </button>
+                <button
+                  onClick={() => {
+                    setDateFilter('last_90');
+                    fetchMoneyOrdersList('last_90', issuerFilter);
+                  }}
+                  style={{
+                    padding: '0.75rem',
+                    borderRadius: '0.5rem',
+                    backgroundColor: dateFilter === 'last_90' ? primary : colors.secondary,
+                    color: dateFilter === 'last_90' ? colors.primaryForeground : colors.foreground,
+                    border: `1px solid ${colors.border}`,
+                    cursor: 'pointer',
+                    fontWeight: dateFilter === 'last_90' ? '600' : '500',
+                    transition: 'all 0.3s',
+                  }}
+                  onMouseEnter={(e) => !loadingMoneyOrdersList && dateFilter !== 'last_90' && (e.target.style.backgroundColor = colors.muted)}
+                  onMouseLeave={(e) => !loadingMoneyOrdersList && dateFilter !== 'last_90' && (e.target.style.backgroundColor = colors.secondary)}
+                >
+                  Last 90
+                </button>
+                <button
+                  onClick={() => {
+                    setDateFilter('older');
+                    fetchMoneyOrdersList('older', issuerFilter);
+                  }}
+                  style={{
+                    padding: '0.75rem',
+                    borderRadius: '0.5rem',
+                    backgroundColor: dateFilter === 'older' ? primary : colors.secondary,
+                    color: dateFilter === 'older' ? colors.primaryForeground : colors.foreground,
+                    border: `1px solid ${colors.border}`,
+                    cursor: 'pointer',
+                    fontWeight: dateFilter === 'older' ? '600' : '500',
+                    transition: 'all 0.3s',
+                  }}
+                  onMouseEnter={(e) => !loadingMoneyOrdersList && dateFilter !== 'older' && (e.target.style.backgroundColor = colors.muted)}
+                  onMouseLeave={(e) => !loadingMoneyOrdersList && dateFilter !== 'older' && (e.target.style.backgroundColor = colors.secondary)}
+                >
+                  Older
+                </button>
+              </div>
+            </div>
+
+            {loadingMoneyOrdersList ? (
+              <div style={{ textAlign: 'center', padding: '2rem' }}>
+                <FaCog className="spin" style={{ fontSize: '2rem', color: primary }} />
+                <p style={{ marginTop: '1rem', color: colors.mutedForeground }}>Loading money orders...</p>
+              </div>
+            ) : moneyOrdersList.length > 0 ? (
+              <div style={{
+                backgroundColor: colors.secondary,
+                borderRadius: '0.5rem',
+                border: `1px solid ${colors.border}`,
+                maxHeight: '400px',
+                overflowY: 'auto',
+                marginBottom: '1rem',
+              }}>
+                {moneyOrdersList.map((mo) => (
+                  <div
+                    key={mo.money_order_id}
+                    onClick={() => {
+                      setSelectedMoneyOrderId(mo.money_order_id);
+                      loadMoneyOrderData(moneyOrdersList.filter(m => m.money_order_id === mo.money_order_id));
+                    }}
+                    style={{
+                      padding: '1rem',
+                      borderBottom: `1px solid ${colors.border}`,
+                      cursor: 'pointer',
+                      transition: 'background-color 0.3s',
+                      backgroundColor: selectedMoneyOrderId === mo.money_order_id ? colors.muted : 'transparent',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = colors.muted)}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = selectedMoneyOrderId === mo.money_order_id ? colors.muted : 'transparent')}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <p style={{ color: colors.foreground, fontWeight: '600', margin: '0 0 0.25rem 0' }}>
+                          {mo.purchaser_name || 'Unknown Purchaser'}
+                        </p>
+                        <p style={{ color: colors.mutedForeground, fontSize: '0.875rem', margin: '0' }}>
+                          MO #{mo.money_order_number || 'N/A'} • ${mo.amount || 'N/A'} • {mo.money_order_institute || 'Unknown Issuer'}
+                        </p>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <span style={{
+                          backgroundColor: mo.fraud_risk_score > 0.5 ? `${primary}20` : `${colors.status.success}20`,
+                          color: mo.fraud_risk_score > 0.5 ? primary : colors.status.success,
+                          padding: '0.25rem 0.75rem',
+                          borderRadius: '0.25rem',
+                          fontSize: '0.875rem',
+                          fontWeight: '600',
+                        }}>
+                          {((mo.fraud_risk_score || 0) * 100).toFixed(0)}% Risk
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{
+                backgroundColor: colors.muted,
+                padding: '2rem',
+                borderRadius: '0.5rem',
+                textAlign: 'center',
+                color: colors.mutedForeground,
+                marginBottom: '1rem',
+              }}>
+                <p>No money orders found in database</p>
+              </div>
+            )}
+
+            {error && inputMode === 'api' && (
+              <div style={{
+                backgroundColor: colors.accent.redLight,
+                color: colors.accent.red,
+                padding: '1rem',
+                borderRadius: '8px',
+                marginTop: '1rem',
+                fontWeight: '500',
+              }}>
+                {error}
+              </div>
+            )}
+          </>
         )}
       </div>
 
       {csvData && (
-        <div>
+        <div data-metrics-section>
           {/* Summary Metrics */}
           <div style={metricsGridStyle}>
             <div style={metricCardStyle}>
@@ -403,6 +869,32 @@ const MoneyOrderInsights = () => {
               </AreaChart>
             </ResponsiveContainer>
           </div>
+
+          {/* Risk by Issuer */}
+          {csvData.riskByIssuerData && csvData.riskByIssuerData.length > 0 && (
+            <div style={chartContainerStyle}>
+              <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>
+                Risk Level by Issuer
+              </h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={csvData.riskByIssuerData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+                  <XAxis dataKey="name" stroke={colors.mutedForeground} />
+                  <YAxis stroke={colors.mutedForeground} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: colors.card,
+                      border: `1px solid ${colors.border}`,
+                      color: colors.foreground
+                    }}
+                  />
+                  <Legend />
+                  <Bar dataKey="avgRisk" fill={colors.status.warning} name="Avg Risk Score (%)" />
+                  <Bar dataKey="count" fill={colors.status.success} name="Money Order Count" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </div>
       )}
     </div>
