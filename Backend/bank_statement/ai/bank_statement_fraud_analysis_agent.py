@@ -100,13 +100,21 @@ class BankStatementFraudAnalysisAgent:
         Returns:
             AI analysis dict with recommendation, confidence, reasoning, etc.
         """
+        # Try multiple sources for account holder name
         if not account_holder_name:
-            account_holder_name = extracted_data.get('account_holder_name')
+            account_holder_name = (
+                extracted_data.get('account_holder_name') or
+                extracted_data.get('account_holder') or
+                (extracted_data.get('account_holder_names', [])[0] if isinstance(extracted_data.get('account_holder_names'), list) and len(extracted_data.get('account_holder_names', [])) > 0 else None)
+            )
 
         customer_info: Dict = {}
         if account_holder_name:
             customer_info = self.data_tools.get_customer_history(account_holder_name)
             logger.info(f"Retrieved customer history for: {account_holder_name}")
+            logger.info(f"Customer history: escalate_count={customer_info.get('escalate_count', 0)}, fraud_count={customer_info.get('fraud_count', 0)}")
+        else:
+            logger.warning("Account holder name not found in extracted_data")
 
         policy_decision = self._apply_policy_rules(account_holder_name, customer_info)
         if policy_decision:
@@ -131,6 +139,8 @@ class BankStatementFraudAnalysisAgent:
         customer_info = customer_info or {}
         escalate_count = customer_info.get('escalate_count', 0) or 0
 
+        # Check for repeat offenders: if escalate_count > 0, auto-reject (like money orders)
+        # This means second and subsequent uploads by same customer always get REJECT
         if escalate_count > 0:
             logger.warning(
                 f"REPEAT OFFENDER DETECTED: {account_holder_name} has escalate_count={escalate_count}. Auto-rejecting."
@@ -210,6 +220,20 @@ class BankStatementFraudAnalysisAgent:
             # Validate and format result
             final_result = self._validate_and_format_result(result, ml_analysis, customer_info)
 
+            # CRITICAL: Post-LLM validation - Force ESCALATE for new customers if LLM returns REJECT
+            # This matches money order logic: new customers should NEVER get REJECT on first upload
+            is_new_customer = not customer_info.get('customer_id')
+            if is_new_customer and final_result.get('recommendation') == 'REJECT':
+                logger.warning(
+                    f"LLM returned REJECT for new customer {account_holder_name}. "
+                    f"Overriding to ESCALATE per policy (new customers must be escalated, not rejected)."
+                )
+                final_result = self._create_first_time_escalation(account_holder_name, is_new_customer=True)
+                final_result['reasoning'].append(
+                    f"Original LLM recommendation was REJECT, but overridden to ESCALATE because this is a new customer. "
+                    f"New customers require manual review before rejection."
+                )
+
             logger.info(f"AI recommendation: {final_result.get('recommendation')}")
             return final_result
 
@@ -259,6 +283,29 @@ class BankStatementFraudAnalysisAgent:
             'key_indicators': [
                 'Repeat offender detected',
                 f'Escalation count: {escalate_count}'
+            ],
+            'actionable_recommendations': [
+                'Block this transaction immediately',
+                'Flag customer account for fraud investigation',
+                'Contact account holder to verify legitimacy of future transactions'
+            ]
+        }
+
+    def _create_fraud_history_rejection(self, account_holder_name: str, fraud_count: int) -> Dict:
+        """Create rejection response for customers with fraud history (fraud_count > 0)"""
+        return {
+            'recommendation': 'REJECT',
+            'confidence_score': 1.0,
+            'summary': f'Automatic rejection: {account_holder_name} has fraud history',
+            'reasoning': [
+                f'Account holder {account_holder_name} has fraud_count = {fraud_count}',
+                'Per account-holder-based fraud tracking policy: customers with fraud history are automatically rejected',
+                'This account holder was previously rejected and is now subject to automatic rejection',
+                'LLM analysis skipped - mandatory reject rule applies'
+            ],
+            'key_indicators': [
+                'Fraud history detected',
+                f'Fraud count: {fraud_count}'
             ],
             'actionable_recommendations': [
                 'Block this transaction immediately',
