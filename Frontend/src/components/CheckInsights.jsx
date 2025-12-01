@@ -11,6 +11,16 @@ const CheckInsights = () => {
   const [csvData, setCsvData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [inputMode, setInputMode] = useState('upload'); // 'upload' or 'api'
+  const [checksList, setChecksList] = useState([]);
+  const [loadingChecksList, setLoadingChecksList] = useState(false);
+  const [selectedCheckId, setSelectedCheckId] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [dateFilter, setDateFilter] = useState(null); // null, 'last_30', 'last_60', 'last_90', 'older'
+  const [totalRecords, setTotalRecords] = useState(0);
+  const [bankFilter, setBankFilter] = useState(null);
+  const [availableBanks, setAvailableBanks] = useState([]);
+  const [allChecksData, setAllChecksData] = useState([]);
 
   const parseCSV = (text) => {
     const lines = text.trim().split('\n');
@@ -23,7 +33,7 @@ const CheckInsights = () => {
       const line = lines[i].trim();
       if (!line) continue;
 
-      // Simple CSV parsing (handles basic cases)
+      // Handle quoted CSV values
       const values = [];
       let current = '';
       let inQuotes = false;
@@ -59,7 +69,7 @@ const CheckInsights = () => {
   const processData = (rows) => {
     if (!rows.length) return null;
 
-    // Fraud Risk Distribution
+    // 1. Fraud Risk Distribution (0-25%, 25-50%, 50-75%, 75-100%)
     const riskScores = rows.map(r => parseFloat_(r['RiskScore'] || r['fraud_risk_score'] || 0));
     const riskScoresPercent = riskScores.map(s => s * 100);
     const riskDistribution = [
@@ -69,7 +79,7 @@ const CheckInsights = () => {
       { range: '75-100%', count: riskScoresPercent.filter(s => s >= 75).length },
     ];
 
-    // AI Recommendation Distribution
+    // 2. AI Recommendation Distribution (APPROVE/REJECT/ESCALATE)
     const recommendations = rows.map(r => (r['Decision'] || r['ai_recommendation'] || 'UNKNOWN').toUpperCase());
     const recommendationData = [
       { name: 'APPROVE', value: recommendations.filter(d => d === 'APPROVE').length },
@@ -77,7 +87,7 @@ const CheckInsights = () => {
       { name: 'ESCALATE', value: recommendations.filter(d => d === 'ESCALATE').length },
     ].filter(item => item.value > 0);
 
-    // Risk by Bank
+    // 3. Risk by Bank (Average risk score per bank)
     const bankRisks = {};
     rows.forEach(r => {
       const bank = r['BankName'] || r['bank_name'] || 'Unknown';
@@ -94,9 +104,9 @@ const CheckInsights = () => {
         count: data.count
       }))
       .sort((a, b) => parseFloat(b.avgRisk) - parseFloat(a.avgRisk))
-      .slice(0, 10);
+      .slice(0, 10); // Top 10 banks
 
-    // Summary metrics
+    // 4. Summary Metrics
     const totalChecks = rows.length;
     const avgRiskScore = (riskScores.reduce((a, b) => a + b, 0) / riskScores.length * 100).toFixed(1);
     const approveCount = recommendations.filter(d => d === 'APPROVE').length;
@@ -164,6 +174,119 @@ const CheckInsights = () => {
     multiple: false
   });
 
+  const fetchChecksList = async (filter = null, bank = null) => {
+    setLoadingChecksList(true);
+    setError(null);
+    setCsvData(null);
+    try {
+      // Use relative URL to leverage proxy in package.json
+      const url = filter
+        ? `/api/checks/list?date_filter=${filter}`
+        : `/api/checks/list`;
+      const response = await fetch(url);
+      const data = await response.json();
+      if (data.success) {
+        const fetchedData = data.data || [];
+        // Store all fetched data
+        setAllChecksData(fetchedData);
+        
+        // Extract unique banks from the data
+        const uniqueBanks = [...new Set(fetchedData.map(check => check.bank_name).filter(Boolean))].sort();
+        setAvailableBanks(uniqueBanks);
+        
+        // Apply bank filter if specified
+        let filteredData = fetchedData;
+        if (bank) {
+          filteredData = fetchedData.filter(check => check.bank_name === bank);
+          setBankFilter(bank);
+        } else {
+          setBankFilter(null);
+        }
+        
+        setChecksList(filteredData);
+        setTotalRecords(data.total_records || data.count);
+        setDateFilter(filter);
+        // Auto-load all checks as insights if data exists
+        if (filteredData.length > 0) {
+          loadCheckData(filteredData);
+        } else {
+          setError('No checks found for the selected filters');
+        }
+      } else {
+        setError(data.message || 'Failed to fetch checks');
+        setCsvData(null);
+      }
+    } catch (err) {
+      setError('Failed to fetch checks from database');
+      console.error('Error fetching checks:', err);
+      setCsvData(null);
+    } finally {
+      setLoadingChecksList(false);
+    }
+  };
+
+  const handleSearchChecks = async (query) => {
+    if (!query) {
+      setBankFilter(null);
+      fetchChecksList(dateFilter);
+      return;
+    }
+    setLoadingChecksList(true);
+    setError(null);
+    setCsvData(null);
+    try {
+      // Use relative URL to leverage proxy in package.json
+      const response = await fetch(`/api/checks/search?q=${encodeURIComponent(query)}&limit=20`);
+      const data = await response.json();
+      if (data.success) {
+        setChecksList(data.data);
+        // Auto-load search results as insights if data exists
+        if (data.data && data.data.length > 0) {
+          loadCheckData(data.data);
+        } else {
+          setError('No checks found matching your search');
+        }
+      } else {
+        setError(data.message || 'Search failed');
+        setCsvData(null);
+      }
+    } catch (err) {
+      setError('Failed to search checks');
+      console.error('Error searching checks:', err);
+      setCsvData(null);
+    } finally {
+      setLoadingChecksList(false);
+    }
+  };
+
+  const loadCheckData = async (checks) => {
+    if (!checks || checks.length === 0) {
+      setError('No checks selected');
+      return;
+    }
+
+    try {
+      // Transform database records to format expected by processData
+      const rows = checks.map(check => ({
+        'fraud_risk_score': check.fraud_risk_score || 0,
+        'ai_recommendation': check.ai_recommendation || 'UNKNOWN',
+        'bank_name': check.bank_name || 'Unknown',
+        'check_number': check.check_number || 'N/A',
+        'amount': check.amount || 0,
+      }));
+
+      const processed = processData(rows);
+      setCsvData(processed);
+      setError(null);
+      // Auto-scroll to metrics section
+      setTimeout(() => {
+        document.querySelector('[data-metrics-section]')?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    } catch (err) {
+      setError(`Error processing checks: ${err.message}`);
+    }
+  };
+
   const primary = colors.primaryColor || colors.accent?.red || '#E53935';
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
 
@@ -220,56 +343,367 @@ const CheckInsights = () => {
     <div style={containerStyle}>
       <div style={cardStyle}>
         <h2 style={{ color: colors.foreground, marginBottom: '1.5rem' }}>
-          Check Insights from CSV
+          {inputMode === 'upload' ? 'Check Insights from CSV' : 'Check Insights from Database'}
         </h2>
 
-        <div {...getRootProps()} style={dropzoneStyle}>
-          <input {...getInputProps()} />
-          <FaUpload style={{ fontSize: '2rem', marginBottom: '1rem', color: colors.foreground }} />
-          {isDragActive ? (
-            <p style={{ color: primary, fontWeight: '500' }}>
-              Drop the CSV file here...
-            </p>
-          ) : (
-            <div>
-              <p style={{ color: colors.foreground, marginBottom: '0.5rem' }}>
-                Drag and drop your CSV file here, or click to browse
-              </p>
-              <p style={{ color: colors.mutedForeground, fontSize: '0.875rem' }}>
-                CSV file with check analysis data
-              </p>
-            </div>
-          )}
+        {/* Input Mode Toggle */}
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
+          <button
+            onClick={() => {
+              setInputMode('upload');
+              setCsvData(null);
+              setError(null);
+            }}
+            style={{
+              flex: 1,
+              padding: '0.75rem',
+              borderRadius: '0.5rem',
+              backgroundColor: inputMode === 'upload' ? primary : colors.secondary,
+              color: inputMode === 'upload' ? colors.primaryForeground : colors.foreground,
+              border: `1px solid ${colors.border}`,
+              cursor: 'pointer',
+              fontWeight: inputMode === 'upload' ? '600' : '500',
+              transition: 'all 0.3s',
+            }}
+          >
+            Upload CSV
+          </button>
+          <button
+            onClick={() => {
+              setInputMode('api');
+              setCsvData(null);
+              setError(null);
+              setBankFilter(null);
+              setAllChecksData([]);
+              fetchChecksList();
+            }}
+            style={{
+              flex: 1,
+              padding: '0.75rem',
+              borderRadius: '0.5rem',
+              backgroundColor: inputMode === 'api' ? primary : colors.secondary,
+              color: inputMode === 'api' ? colors.primaryForeground : colors.foreground,
+              border: `1px solid ${colors.border}`,
+              cursor: 'pointer',
+              fontWeight: inputMode === 'api' ? '600' : '500',
+              transition: 'all 0.3s',
+            }}
+          >
+            Connect API
+          </button>
         </div>
 
-        {error && (
-          <div style={{
-            backgroundColor: colors.accent.redLight,
-            color: colors.accent.red,
-            padding: '1rem',
-            borderRadius: '8px',
-            marginTop: '1rem',
-            fontWeight: '500',
-          }}>
-            {error}
-          </div>
+        {inputMode === 'upload' && (
+          <>
+            <div {...getRootProps()} style={dropzoneStyle}>
+              <input {...getInputProps()} />
+              <FaUpload style={{ fontSize: '2rem', marginBottom: '1rem', color: colors.foreground }} />
+              {isDragActive ? (
+                <p style={{ color: primary, fontWeight: '500' }}>
+                  Drop the CSV file here...
+                </p>
+              ) : (
+                <div>
+                  <p style={{ color: colors.foreground, marginBottom: '0.5rem' }}>
+                    Drag and drop your CSV file here, or click to browse
+                  </p>
+                  <p style={{ color: colors.mutedForeground, fontSize: '0.875rem' }}>
+                    CSV file with check analysis data
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {error && inputMode === 'upload' && (
+              <div style={{
+                backgroundColor: colors.accent.redLight,
+                color: colors.accent.red,
+                padding: '1rem',
+                borderRadius: '8px',
+                marginTop: '1rem',
+                fontWeight: '500',
+              }}>
+                {error}
+              </div>
+            )}
+
+            {loading && inputMode === 'upload' && (
+              <div style={{ textAlign: 'center', padding: '2rem' }}>
+                <FaCog className="spin" style={{
+                  fontSize: '2rem',
+                  color: primary,
+                }} />
+                <p style={{ marginTop: '0.5rem', color: colors.neutral.gray600 }}>
+                  Processing CSV...
+                </p>
+              </div>
+            )}
+          </>
         )}
 
-        {loading && (
-          <div style={{ textAlign: 'center', padding: '2rem' }}>
-            <FaCog className="spin" style={{
-              fontSize: '2rem',
-              color: primary,
-            }} />
-            <p style={{ marginTop: '0.5rem', color: colors.neutral.gray600 }}>
-              Processing CSV...
-            </p>
-          </div>
+        {inputMode === 'api' && (
+          <>
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', color: colors.foreground, marginBottom: '0.5rem', fontWeight: '500' }}>
+                Search by Payer Name:
+              </label>
+              <input
+                type="text"
+                placeholder="Search checks by payer name..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  handleSearchChecks(e.target.value);
+                }}
+                style={{
+                  width: '100%',
+                  padding: '0.75rem',
+                  borderRadius: '0.5rem',
+                  backgroundColor: colors.secondary,
+                  color: colors.foreground,
+                  border: `1px solid ${colors.border}`,
+                  fontSize: '1rem',
+                }}
+              />
+            </div>
+
+            {/* Date Filter Section */}
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', color: colors.foreground, marginBottom: '0.75rem', fontWeight: '500' }}>
+                Filter by Created Date {totalRecords > 0 && <span style={{ color: colors.mutedForeground, fontWeight: '400', fontSize: '0.9rem' }}>({totalRecords} total records)</span>}
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.5rem' }}>
+                <button
+                  onClick={() => fetchChecksList(null, bankFilter)}
+                  style={{
+                    padding: '0.75rem',
+                    borderRadius: '0.5rem',
+                    backgroundColor: dateFilter === null ? primary : colors.secondary,
+                    color: dateFilter === null ? colors.primaryForeground : colors.foreground,
+                    border: `1px solid ${colors.border}`,
+                    cursor: 'pointer',
+                    fontWeight: dateFilter === null ? '600' : '500',
+                    transition: 'all 0.3s',
+                  }}
+                  onMouseEnter={(e) => !loadingChecksList && dateFilter !== null && (e.target.style.backgroundColor = colors.muted)}
+                  onMouseLeave={(e) => !loadingChecksList && dateFilter !== null && (e.target.style.backgroundColor = colors.secondary)}
+                >
+                  All Records
+                </button>
+                <button
+                  onClick={() => fetchChecksList('last_30', bankFilter)}
+                  style={{
+                    padding: '0.75rem',
+                    borderRadius: '0.5rem',
+                    backgroundColor: dateFilter === 'last_30' ? primary : colors.secondary,
+                    color: dateFilter === 'last_30' ? colors.primaryForeground : colors.foreground,
+                    border: `1px solid ${colors.border}`,
+                    cursor: 'pointer',
+                    fontWeight: dateFilter === 'last_30' ? '600' : '500',
+                    transition: 'all 0.3s',
+                  }}
+                  onMouseEnter={(e) => !loadingChecksList && dateFilter !== 'last_30' && (e.target.style.backgroundColor = colors.muted)}
+                  onMouseLeave={(e) => !loadingChecksList && dateFilter !== 'last_30' && (e.target.style.backgroundColor = colors.secondary)}
+                >
+                  Last 30
+                </button>
+                <button
+                  onClick={() => fetchChecksList('last_60', bankFilter)}
+                  style={{
+                    padding: '0.75rem',
+                    borderRadius: '0.5rem',
+                    backgroundColor: dateFilter === 'last_60' ? primary : colors.secondary,
+                    color: dateFilter === 'last_60' ? colors.primaryForeground : colors.foreground,
+                    border: `1px solid ${colors.border}`,
+                    cursor: 'pointer',
+                    fontWeight: dateFilter === 'last_60' ? '600' : '500',
+                    transition: 'all 0.3s',
+                  }}
+                  onMouseEnter={(e) => !loadingChecksList && dateFilter !== 'last_60' && (e.target.style.backgroundColor = colors.muted)}
+                  onMouseLeave={(e) => !loadingChecksList && dateFilter !== 'last_60' && (e.target.style.backgroundColor = colors.secondary)}
+                >
+                  Last 60
+                </button>
+                <button
+                  onClick={() => fetchChecksList('last_90', bankFilter)}
+                  style={{
+                    padding: '0.75rem',
+                    borderRadius: '0.5rem',
+                    backgroundColor: dateFilter === 'last_90' ? primary : colors.secondary,
+                    color: dateFilter === 'last_90' ? colors.primaryForeground : colors.foreground,
+                    border: `1px solid ${colors.border}`,
+                    cursor: 'pointer',
+                    fontWeight: dateFilter === 'last_90' ? '600' : '500',
+                    transition: 'all 0.3s',
+                  }}
+                  onMouseEnter={(e) => !loadingChecksList && dateFilter !== 'last_90' && (e.target.style.backgroundColor = colors.muted)}
+                  onMouseLeave={(e) => !loadingChecksList && dateFilter !== 'last_90' && (e.target.style.backgroundColor = colors.secondary)}
+                >
+                  Last 90
+                </button>
+                <button
+                  onClick={() => fetchChecksList('older', bankFilter)}
+                  style={{
+                    padding: '0.75rem',
+                    borderRadius: '0.5rem',
+                    backgroundColor: dateFilter === 'older' ? primary : colors.secondary,
+                    color: dateFilter === 'older' ? colors.primaryForeground : colors.foreground,
+                    border: `1px solid ${colors.border}`,
+                    cursor: 'pointer',
+                    fontWeight: dateFilter === 'older' ? '600' : '500',
+                    transition: 'all 0.3s',
+                  }}
+                  onMouseEnter={(e) => !loadingChecksList && dateFilter !== 'older' && (e.target.style.backgroundColor = colors.muted)}
+                  onMouseLeave={(e) => !loadingChecksList && dateFilter !== 'older' && (e.target.style.backgroundColor = colors.secondary)}
+                >
+                  Older
+                </button>
+              </div>
+            </div>
+
+            {/* Bank Filter Section */}
+            {availableBanks.length > 0 && (
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', color: colors.foreground, marginBottom: '0.5rem', fontWeight: '500' }}>
+                  Filter by Bank:
+                </label>
+                <select
+                  value={bankFilter || ''}
+                  onChange={(e) => {
+                    const selectedBank = e.target.value || null;
+                    setBankFilter(selectedBank);
+                    // Filter from full dataset by bank
+                    if (selectedBank) {
+                      const filtered = allChecksData.filter(check => check.bank_name === selectedBank);
+                      setChecksList(filtered);
+                      if (filtered.length > 0) {
+                        loadCheckData(filtered);
+                      } else {
+                        setError('No checks found for this bank');
+                      }
+                    } else {
+                      // Show all data from current fetch
+                      setChecksList(allChecksData);
+                      if (allChecksData.length > 0) {
+                        loadCheckData(allChecksData);
+                      } else {
+                        fetchChecksList(dateFilter);
+                      }
+                    }
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    borderRadius: '0.5rem',
+                    backgroundColor: colors.secondary,
+                    color: colors.foreground,
+                    border: `1px solid ${colors.border}`,
+                    fontSize: '1rem',
+                    cursor: 'pointer',
+                    appearance: 'none',
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='${encodeURIComponent(colors.foreground)}' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
+                    backgroundRepeat: 'no-repeat',
+                    backgroundPosition: 'right 0.75rem center',
+                    paddingRight: '2.5rem',
+                  }}
+                >
+                  <option value="">All Banks</option>
+                  {availableBanks.map((bank) => (
+                    <option key={bank} value={bank}>
+                      {bank}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {loadingChecksList ? (
+              <div style={{ textAlign: 'center', padding: '2rem' }}>
+                <FaCog className="spin" style={{ fontSize: '2rem', color: primary }} />
+                <p style={{ marginTop: '1rem', color: colors.mutedForeground }}>Loading checks...</p>
+              </div>
+            ) : checksList.length > 0 ? (
+              <div style={{
+                backgroundColor: colors.secondary,
+                borderRadius: '0.5rem',
+                border: `1px solid ${colors.border}`,
+                maxHeight: '400px',
+                overflowY: 'auto',
+                marginBottom: '1rem',
+              }}>
+                {checksList.map((check) => (
+                  <div
+                    key={check.check_id}
+                    onClick={() => {
+                      setSelectedCheckId(check.check_id);
+                      loadCheckData(checksList.filter(c => c.check_id === check.check_id));
+                    }}
+                    style={{
+                      padding: '1rem',
+                      borderBottom: `1px solid ${colors.border}`,
+                      cursor: 'pointer',
+                      transition: 'background-color 0.3s',
+                      backgroundColor: selectedCheckId === check.check_id ? colors.muted : 'transparent',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = colors.muted)}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = selectedCheckId === check.check_id ? colors.muted : 'transparent')}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <p style={{ color: colors.foreground, fontWeight: '600', margin: '0 0 0.25rem 0' }}>
+                          {check.payer_name || 'Unknown Payer'}
+                        </p>
+                        <p style={{ color: colors.mutedForeground, fontSize: '0.875rem', margin: '0' }}>
+                          Check #{check.check_number || 'N/A'} • ${check.amount || 'N/A'}
+                        </p>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <span style={{
+                          backgroundColor: check.fraud_risk_score > 0.5 ? `${primary}20` : `${colors.status.success}20`,
+                          color: check.fraud_risk_score > 0.5 ? primary : colors.status.success,
+                          padding: '0.25rem 0.75rem',
+                          borderRadius: '0.25rem',
+                          fontSize: '0.875rem',
+                          fontWeight: '600',
+                        }}>
+                          {((check.fraud_risk_score || 0) * 100).toFixed(0)}% Risk
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{
+                backgroundColor: colors.muted,
+                padding: '2rem',
+                borderRadius: '0.5rem',
+                textAlign: 'center',
+                color: colors.mutedForeground,
+                marginBottom: '1rem',
+              }}>
+                <p>No checks found in database</p>
+              </div>
+            )}
+
+            {error && inputMode === 'api' && (
+              <div style={{
+                backgroundColor: colors.accent.redLight,
+                color: colors.accent.red,
+                padding: '1rem',
+                borderRadius: '8px',
+                marginTop: '1rem',
+                fontWeight: '500',
+              }}>
+                {error}
+              </div>
+            )}
+          </>
         )}
       </div>
 
       {csvData && (
-        <div>
+        <div data-metrics-section>
           {/* Summary Metrics */}
           <div style={metricsGridStyle}>
             <div style={metricCardStyle}>
