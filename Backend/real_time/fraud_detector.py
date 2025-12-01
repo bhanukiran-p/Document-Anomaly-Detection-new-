@@ -410,7 +410,7 @@ def _classify_fraud_type(transaction_row: pd.Series, feature_row: pd.Series) -> 
     if feature_row.get('amount_deviation', 0) > 4 or feature_row.get('amount_zscore', 0) > 3:
         return 'Unusual spend spike'
 
-    return 'General fraud pattern'
+    return 'General anomaly flagged by multiple ML indicators'
 
 
 def _summarize_fraud_types(df: pd.DataFrame) -> List[Dict[str, Any]]:

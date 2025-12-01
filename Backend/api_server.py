@@ -479,7 +479,7 @@ def analyze_bank_statement():
         file = request.files.get('file')
         filepath = save_uploaded_file(file)
 
-            # Handle PDF conversion if needed
+        # Handle PDF conversion if needed
         filepath = handle_pdf_conversion(filepath)
 
         # Extract text using Mindee or Vision API
@@ -497,11 +497,11 @@ def analyze_bank_statement():
                 mindee_data = {}
 
         if not raw_text and vision_client:
-                with open(filepath, 'rb') as image_file:
-                    content = image_file.read()
-                image = vision.Image(content=content)
-                response = vision_client.text_detection(image=image)
-                raw_text = response.text_annotations[0].description if response.text_annotations else ""
+            with open(filepath, 'rb') as image_file:
+                content = image_file.read()
+            image = vision.Image(content=content)
+            response = vision_client.text_detection(image=image)
+            raw_text = response.text_annotations[0].description if response.text_annotations else ""
         elif not raw_text:
             raw_text = ""
 
