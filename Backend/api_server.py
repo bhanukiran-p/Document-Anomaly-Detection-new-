@@ -998,6 +998,149 @@ def search_money_orders():
         }), 500
 
 
+@app.route('/api/documents/list', methods=['GET'])
+def get_documents_list():
+    """Fetch list of all documents from v_documents_with_risk view with optional filtering"""
+    try:
+        from datetime import datetime
+        supabase = get_supabase()
+
+        # Fetch all records using pagination to bypass Supabase default limit of 1000
+        all_data = []
+        page_size = 1000
+        offset = 0
+        total_count = None
+        
+        while True:
+            # Get count only on first request
+            count_param = 'exact' if offset == 0 else None
+            response = supabase.table('v_documents_with_risk').select('*', count=count_param).order('upload_date', desc=True).range(offset, offset + page_size - 1).execute()
+            page_data = response.data or []
+            if not page_data:
+                break
+            
+            # Get total count from first response
+            if total_count is None:
+                total_count = response.count if hasattr(response, 'count') else None
+            
+            all_data.extend(page_data)
+            
+            # Check if we got all records
+            if total_count and len(all_data) >= total_count:
+                break
+            if len(page_data) < page_size:
+                break
+            offset += page_size
+        
+        data = all_data
+        total_available = total_count if total_count is not None else len(data)
+
+        # Apply filters
+        date_filter = request.args.get('date_filter', default=None)
+        document_type_filter = request.args.get('document_type', default=None)
+        risk_level_filter = request.args.get('risk_level', default=None)
+        status_filter = request.args.get('status', default=None)
+
+        if date_filter:
+            now = datetime.utcnow()
+            filtered_data = []
+
+            for record in data:
+                upload_date_str = record.get('upload_date')
+                if not upload_date_str:
+                    continue
+
+                # Parse upload_date timestamp
+                try:
+                    if 'T' in upload_date_str:
+                        upload_date = datetime.fromisoformat(upload_date_str.replace('Z', '+00:00').split('+')[0])
+                    else:
+                        upload_date = datetime.fromisoformat(upload_date_str)
+                except:
+                    continue
+
+                days_old = (now - upload_date).days
+
+                if date_filter == 'last_30' and days_old <= 30:
+                    filtered_data.append(record)
+                elif date_filter == 'last_60' and days_old <= 60:
+                    filtered_data.append(record)
+                elif date_filter == 'last_90' and days_old <= 90:
+                    filtered_data.append(record)
+                elif date_filter == 'older' and days_old > 90:
+                    filtered_data.append(record)
+
+            data = filtered_data
+
+        # Apply document_type filter
+        if document_type_filter:
+            data = [r for r in data if r.get('document_type', '').lower() == document_type_filter.lower()]
+
+        # Apply risk_level filter
+        if risk_level_filter:
+            data = [r for r in data if r.get('risk_level', '').upper() == risk_level_filter.upper()]
+
+        # Apply status filter
+        if status_filter:
+            data = [r for r in data if r.get('status', '').lower() == status_filter.lower()]
+
+        return jsonify({
+            'success': True,
+            'data': data,
+            'count': len(data),
+            'total_records': total_available if not (date_filter or document_type_filter or risk_level_filter or status_filter) else None,
+            'date_filter': date_filter,
+            'document_type_filter': document_type_filter,
+            'risk_level_filter': risk_level_filter,
+            'status_filter': status_filter
+        })
+    except Exception as e:
+        logger.error(f"Failed to fetch documents list: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': f'Failed to fetch documents list: {str(e)}'
+        }), 500
+
+
+@app.route('/api/documents/search', methods=['GET'])
+def search_documents():
+    """Search documents by file_name or document_id"""
+    try:
+        supabase = get_supabase()
+        query = request.args.get('q', '').strip()
+        limit = int(request.args.get('limit', 20))
+
+        if not query:
+            return jsonify({
+                'success': False,
+                'error': 'Search query is required',
+                'message': 'Please provide a search query'
+            }), 400
+
+        # Search in file_name and document_id - try both and combine results
+        try:
+            # Try searching both fields using or_ filter
+            response = supabase.table('v_documents_with_risk').select('*').or_(f'file_name.ilike.%{query}%,document_id.ilike.%{query}%').order('upload_date', desc=True).limit(limit).execute()
+        except:
+            # Fallback: search file_name only if or_ doesn't work
+            response = supabase.table('v_documents_with_risk').select('*').ilike('file_name', f'%{query}%').order('upload_date', desc=True).limit(limit).execute()
+
+        return jsonify({
+            'success': True,
+            'data': response.data or [],
+            'count': len(response.data or []),
+            'query': query
+        })
+    except Exception as e:
+        logger.error(f"Failed to search documents: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to search documents'
+        }), 500
+
+
 @app.route('/api/real-time/analyze', methods=['POST'])
 def analyze_real_time_transactions():
     """Analyze real-time transaction CSV file endpoint"""
@@ -1131,6 +1274,8 @@ if __name__ == '__main__':
     print(f"  - GET  /api/money-orders/list")
     print(f"  - GET  /api/money-orders/search")
     print(f"  - GET  /api/money-orders/<money_order_id>")
+    print(f"  - GET  /api/documents/list")
+    print(f"  - GET  /api/documents/search")
     print("=" * 60)
 
     app.run(debug=True, host='0.0.0.0', port=5001)
