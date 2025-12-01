@@ -497,7 +497,7 @@ const CheckInsights = () => {
               transition: 'all 0.3s',
             }}
           >
-            Connect API
+            Live Data
           </button>
         </div>
 
@@ -921,29 +921,31 @@ const CheckInsights = () => {
             </ResponsiveContainer>
           </div>
 
-          {/* Risk by Bank */}
-          <div style={chartContainerStyle}>
-            <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>
-              Risk Level by Bank
-            </h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={csvData.riskByBankData}>
-                <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                <XAxis dataKey="name" stroke={colors.mutedForeground} />
-                <YAxis stroke={colors.mutedForeground} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: colors.card,
-                    border: `1px solid ${colors.border}`,
-                    color: colors.foreground
-                  }}
-                />
-                <Legend />
-                <Bar dataKey="avgRisk" fill={colors.status.warning} name="Avg Risk Score (%)" />
-                <Bar dataKey="count" fill={colors.status.success} name="Check Count" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          {/* Risk by Bank - Hide when single bank is selected */}
+          {!bankFilter && csvData.riskByBankData && csvData.riskByBankData.length > 0 && (
+            <div style={chartContainerStyle}>
+              <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>
+                Risk Level by Bank
+              </h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={csvData.riskByBankData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+                  <XAxis dataKey="name" stroke={colors.mutedForeground} />
+                  <YAxis stroke={colors.mutedForeground} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: colors.card,
+                      border: `1px solid ${colors.border}`,
+                      color: colors.foreground
+                    }}
+                  />
+                  <Legend />
+                  <Bar dataKey="avgRisk" fill={colors.status.warning} name="Avg Risk Score (%)" />
+                  <Bar dataKey="count" fill={colors.status.success} name="Check Count" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
 
           {/* Top High-Risk Payers */}
           {csvData.topHighRiskPayers && csvData.topHighRiskPayers.length > 0 && (
