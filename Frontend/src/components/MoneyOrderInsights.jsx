@@ -243,26 +243,6 @@ const MoneyOrderInsights = () => {
       .slice(-30);
 
 
-    // 10. Model Confidence Distribution
-    const confidences = rows.map(r => parseFloat_(r['Confidence'] || r['model_confidence'] || r['confidence'] || 0));
-    const confidenceRanges = {
-      '0-20%': 0,
-      '20-40%': 0,
-      '40-60%': 0,
-      '60-80%': 0,
-      '80-100%': 0
-    };
-    confidences.forEach(conf => {
-      const confPercent = conf * 100;
-      if (confPercent < 20) confidenceRanges['0-20%']++;
-      else if (confPercent < 40) confidenceRanges['20-40%']++;
-      else if (confPercent < 60) confidenceRanges['40-60%']++;
-      else if (confPercent < 80) confidenceRanges['60-80%']++;
-      else confidenceRanges['80-100%']++;
-    });
-    const confidenceDistribution = Object.entries(confidenceRanges)
-      .map(([name, value]) => ({ name, value }))
-      .filter(item => item.value > 0);
 
 
     // 12. High-Risk Count (>75%)
@@ -287,7 +267,6 @@ const MoneyOrderInsights = () => {
       topHighRiskPurchasers,
       topHighRiskPayees,
       fraudTrendData,
-      confidenceDistribution,
       metrics: {
         totalMoneyOrders,
         avgRiskScore,
@@ -1016,28 +995,6 @@ const MoneyOrderInsights = () => {
               </AreaChart>
             </ResponsiveContainer>
           </div>
-
-          {/* SECTION 2: Model Confidence Distribution */}
-          {csvData.confidenceDistribution && csvData.confidenceDistribution.length > 0 && (
-            <div style={chartContainerStyle}>
-              <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>Model Confidence Distribution</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={csvData.confidenceDistribution}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                  <XAxis dataKey="name" stroke={colors.mutedForeground} />
-                  <YAxis stroke={colors.mutedForeground} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: colors.card,
-                      border: `1px solid ${colors.border}`,
-                      color: colors.foreground
-                    }}
-                  />
-                  <Bar dataKey="value" fill={primary} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
 
           {/* SECTION 3: Issuer Insights */}
           {/* Risk by Issuer */}

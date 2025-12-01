@@ -73,7 +73,7 @@ const AllDocumentsInsightsPage = () => {
 
       <div style={headerStyle}>
         <h1 style={titleStyle}>
-          All Documents <span style={{ background: `linear-gradient(135deg, ${primary}, ${colors.redGlow})`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Insights</span>
+          Unified Document <span style={{ background: `linear-gradient(135deg, ${primary}, ${colors.redGlow})`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Insights Dashboard</span>
         </h1>
         <p style={subtitleStyle}>
           Comprehensive analysis across all document types
