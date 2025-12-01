@@ -65,12 +65,16 @@ class RealTimeAnalysisAgent:
                 llm_kwargs = {
                     'model': self.model_name,
                     'openai_api_key': self.api_key,
-                    'max_tokens': 2000
                 }
 
                 # o4-mini doesn't support custom temperature, only uses default (1)
                 if not self.model_name.startswith('o4'):
                     llm_kwargs['temperature'] = 0.3
+                
+                # Only set max_tokens for older models that support it
+                # Newer models (o4, o1) don't support max_tokens or max_completion_tokens in LangChain
+                if not (self.model_name.startswith('o4') or self.model_name.startswith('o1')):
+                    llm_kwargs['max_tokens'] = 2000
 
                 self.llm = ChatOpenAI(**llm_kwargs)
                 logger.info(f"Initialized LangChain agent with {self.model_name} - GPT-4 mode active!")

@@ -470,8 +470,8 @@ class DocumentStorage:
             statement_data = {
                 'statement_id': str(uuid.uuid4()),
                 'document_id': document_id,
-                'account_holder_name': self._safe_string(extracted.get('account_holder')),
-                'account_holder_address': self._safe_string(extracted.get('account_holder_address')),
+                'account_holder_name': self._safe_string(extracted.get('account_holder_name') or extracted.get('account_holder')),
+                'account_holder_address': self._safe_string(extracted.get('account_holder_address') or extracted.get('account_holder_address')),
                 'account_holder_city': None,
                 'account_holder_state': None,
                 'account_holder_zip': None,
@@ -485,11 +485,14 @@ class DocumentStorage:
                 'account_number': self._safe_string(extracted.get('account_number')),
                 'account_type': self._safe_string(extracted.get('account_type')),
                 'currency': self._safe_string(extracted.get('currency', 'USD')),
-                'statement_period': self._safe_string(extracted.get('statement_period_start')),
+                'statement_period': self._safe_string(extracted.get('statement_period_start') or extracted.get('statement_period_start_date') or extracted.get('statement_period')),
+                'statement_period_start_date': self._parse_date(extracted.get('statement_period_start_date') or extracted.get('statement_period_start')),
+                'statement_period_end_date': self._parse_date(extracted.get('statement_period_end_date') or extracted.get('statement_period_end')),
                 'opening_balance': self._parse_amount(extracted.get('opening_balance')),
                 'ending_balance': self._parse_amount(extracted.get('closing_balance')),
                 'available_balance': self._parse_amount(extracted.get('available_balance')),
                 'total_transactions': len(transactions),
+                'transaction_count': len(transactions),  # Keep for backward compatibility
                 'total_credits': self._parse_amount(extracted.get('total_credits')),
                 'total_debits': self._parse_amount(extracted.get('total_debits')),
                 'net_activity': self._parse_amount(extracted.get('net_activity')),
@@ -501,7 +504,8 @@ class DocumentStorage:
                 'ai_confidence': self._parse_amount(ai_analysis.get('confidence_score')) if ai_analysis else None,
                 'anomaly_count': len(analysis_data.get('anomalies', [])),
                 'top_anomalies': json.dumps(analysis_data.get('anomalies', [])[:5]),
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.utcnow().isoformat(),
+                'created_at': datetime.utcnow().isoformat()  # Keep for backward compatibility
             }
 
             # Insert bank statement record

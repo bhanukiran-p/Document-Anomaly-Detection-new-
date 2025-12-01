@@ -3,7 +3,7 @@
 # Core dependencies
 Flask==3.0.0
 flask-cors==4.0.0
-mindee==4.9.0
+mindee>=4.31.0
 
 # Image processing
 Pillow==10.3.0

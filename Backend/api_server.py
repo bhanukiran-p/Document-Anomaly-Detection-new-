@@ -83,7 +83,8 @@ except Exception as e:
     ProductionCheckExtractor = None
     PRODUCTION_EXTRACTOR_AVAILABLE = False
 
-from check_analysis.orchestrator import CheckAnalysisOrchestrator
+# Legacy import removed - using check.CheckExtractor instead
+# from check_analysis.orchestrator import CheckAnalysisOrchestrator
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for React frontend
@@ -267,7 +268,7 @@ def analyze_check():
 
         try:
             # Use new CheckExtractor (Mindee-only, with normalization, ML, AI)
-            from check.check_extractor import CheckExtractor
+            from check import CheckExtractor
 
             logger.info(f"Analyzing check using new CheckExtractor: {filename}")
             extractor = CheckExtractor()
@@ -291,7 +292,7 @@ def analyze_check():
 
                 if payer_name and recommendation:
                     try:
-                        from database.check_customer_storage import CheckCustomerStorage
+                        from check.database.check_customer_storage import CheckCustomerStorage
                         customer_storage = CheckCustomerStorage()
 
                         # Get or create customer
@@ -351,7 +352,7 @@ def analyze_paystub():
         
         try:
             # Import paystub extractor from pages
-            from pages.paystub_extractor import PaystubExtractor
+            from paystub.extractor import PaystubExtractor
             
             # Read file
             with open(filepath, 'rb') as f:
@@ -639,19 +640,29 @@ def analyze_bank_statement():
                     'message': 'Document type mismatch'
                 }), 400
 
-            # Try to import and use bank statement extractor
+            # Use new bank statement extractor module
             try:
-                from bank_statement_extractor import BankStatementExtractor
-                extractor = BankStatementExtractor(CREDENTIALS_PATH)
-                result = extractor.extract_statement_details(filepath)
-                logger.info("Bank statement extracted successfully")
-            except ImportError:
-                logger.warning("BankStatementExtractor module not found. Returning basic analysis.")
+                from bank_statement.bank_statement_extractor import BankStatementExtractor
+                extractor = BankStatementExtractor()
+                result = extractor.extract_and_analyze(filepath)
+                logger.info("Bank statement extracted and analyzed successfully")
+            except ImportError as e:
+                logger.warning(f"Bank statement extractor module not found: {e}. Returning basic analysis.")
                 result = {
                     'raw_text': raw_text[:500],
                     'status': 'partial',
                     'message': 'Bank statement extractor not available. Using vision API text extraction only.'
                 }
+            except Exception as e:
+                logger.error(f"Bank statement extraction failed: {e}", exc_info=True)
+                # Clean up temp file
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+                return jsonify({
+                    'success': False,
+                    'error': str(e),
+                    'message': 'Failed to analyze bank statement'
+                }), 500
 
             # Clean up temp file
             if os.path.exists(filepath):
@@ -661,6 +672,26 @@ def analyze_bank_statement():
             user_id = request.form.get('user_id', 'public')
             document_id = store_bank_statement_analysis(user_id, filename, result)
             logger.info(f"Bank statement stored to database: {document_id}")
+
+            # Update customer fraud status after analysis
+            ai_analysis = result.get('ai_analysis')
+            if ai_analysis:
+                recommendation = ai_analysis.get('recommendation')
+                extracted_data = result.get('extracted_data', {})
+                account_holder_name = extracted_data.get('account_holder_name') or extracted_data.get('account_holder')
+
+                if account_holder_name and recommendation:
+                    try:
+                        from bank_statement.database.bank_statement_customer_storage import BankStatementCustomerStorage
+                        customer_storage = BankStatementCustomerStorage()
+                        customer_storage.update_customer_fraud_status(
+                            account_holder_name=account_holder_name,
+                            recommendation=recommendation,
+                            statement_id=result.get('statement_id')
+                        )
+                        logger.info(f"Updated customer {account_holder_name} fraud status: {recommendation}")
+                    except Exception as e:
+                        logger.error(f"Failed to update customer fraud status: {e}")
 
             return jsonify({
                 'success': True,
@@ -682,6 +713,122 @@ def analyze_bank_statement():
             'message': 'Failed to analyze bank statement'
         }), 500
 
+
+@app.route('/api/real-time/analyze', methods=['POST'])
+def analyze_real_time_transactions():
+    """Analyze real-time transaction CSV file endpoint"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+
+        file = request.files['file']
+
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+
+        # Check if file is CSV
+        if not file.filename.lower().endswith('.csv'):
+            return jsonify({'error': 'Invalid file type. Only CSV files are allowed.'}), 400
+
+        # Save file temporarily
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(filepath)
+
+        try:
+            # Import real-time analysis modules
+            from real_time import (
+                process_transaction_csv,
+                detect_fraud_in_transactions,
+                generate_insights,
+                get_agent_service
+            )
+
+            logger.info(f"Processing real-time transaction CSV: {filename}")
+
+            # Step 1: Process CSV file
+            csv_result = process_transaction_csv(filepath)
+            if not csv_result.get('success'):
+                return jsonify({
+                    'success': False,
+                    'error': csv_result.get('error', 'Failed to process CSV file'),
+                    'message': csv_result.get('message', 'CSV processing failed')
+                }), 400
+
+            # Step 2: Detect fraud in transactions
+            fraud_result = detect_fraud_in_transactions(
+                csv_result['transactions'],
+                auto_train=True
+            )
+
+            # Step 3: Generate insights
+            insights_result = generate_insights(fraud_result)
+
+            # Step 4: Combine results for AI analysis
+            analysis_result = {
+                'csv_info': csv_result,
+                'fraud_detection': fraud_result,
+                'transactions': fraud_result.get('transactions', []),
+                'insights': insights_result
+            }
+
+            # Step 5: Generate AI-powered comprehensive analysis
+            agent_analysis = None
+            try:
+                agent_service = get_agent_service()
+                agent_analysis = agent_service.generate_comprehensive_analysis(analysis_result)
+                logger.info("AI analysis generated successfully")
+            except Exception as e:
+                logger.warning(f"AI analysis failed, continuing without it: {e}")
+                agent_analysis = {
+                    'success': False,
+                    'error': str(e),
+                    'message': 'AI analysis unavailable'
+                }
+
+            # Clean up temp file
+            if os.path.exists(filepath):
+                os.remove(filepath)
+
+            # Build complete response
+            response_data = {
+                'success': True,
+                'csv_info': csv_result,
+                'fraud_detection': fraud_result,
+                'insights': insights_result,
+                'agent_analysis': agent_analysis.get('agent_analysis') if agent_analysis and agent_analysis.get('success') else None,
+                'message': 'Real-time transaction analysis completed successfully'
+            }
+
+            return jsonify(response_data)
+
+        except ImportError as e:
+            logger.error(f"Real-time analysis module import failed: {e}")
+            # Clean up temp file
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            return jsonify({
+                'success': False,
+                'error': 'Real-time analysis module not available',
+                'message': str(e)
+            }), 500
+
+        except Exception as e:
+            # Clean up temp file
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            logger.error(f"Real-time analysis failed: {e}", exc_info=True)
+            raise e
+
+    except Exception as e:
+        logger.error(f"Real-time analysis endpoint error: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to analyze real-time transactions'
+        }), 500
+
+
 if __name__ == '__main__':
     print("=" * 60)
     print("XFORIA DAD API Server")
@@ -693,6 +840,7 @@ if __name__ == '__main__':
     print(f"  - POST /api/paystub/analyze")
     print(f"  - POST /api/money-order/analyze")
     print(f"  - POST /api/bank-statement/analyze")
+    print(f"  - POST /api/real-time/analyze")
     print("=" * 60)
 
     app.run(debug=True, host='0.0.0.0', port=5001)

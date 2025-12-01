@@ -49,11 +49,25 @@ class FraudAnalysisAgent:
 
         if LANGCHAIN_AVAILABLE and self.api_key:
             try:
-                self.llm = ChatOpenAI(
-                    model=self.model_name,
-                    openai_api_key=self.api_key,
-                    max_tokens=1500
-                )
+                # For newer models (o4, o1), explicitly set temperature=1 (required, not optional)
+                # For older models (gpt-4), use max_tokens and optional temperature
+                is_newer_model = self.model_name.startswith('o4') or self.model_name.startswith('o1')
+                
+                llm_kwargs = {
+                    'model': self.model_name,
+                    'openai_api_key': self.api_key,
+                }
+                
+                # Newer models (o4, o1) ONLY support temperature=1 (must be explicitly set)
+                # If we don't set it, LangChain defaults to 0.7 which causes an error
+                if is_newer_model:
+                    llm_kwargs['temperature'] = 1  # Required for newer models
+                else:
+                    # For older models, set temperature and max_tokens
+                    llm_kwargs['temperature'] = 1
+                    llm_kwargs['max_tokens'] = 1500
+                
+                self.llm = ChatOpenAI(**llm_kwargs)
             except Exception as e:
                 print(f"Warning: Could not initialize LangChain: {e}")
                 self.llm = None

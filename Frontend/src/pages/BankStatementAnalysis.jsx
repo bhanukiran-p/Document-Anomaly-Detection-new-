@@ -159,7 +159,21 @@ const BankStatementAnalysis = () => {
         setResults(null);
       } else if (response.success === true && response.data) {
         console.log('✅ Analysis successful - displaying results');
-        setResults(response.data);
+        // Process results to ensure ml_analysis and ai_analysis are properly extracted
+        const processedResults = {
+          ...response.data,
+          // Extract ML analysis fields
+          fraud_risk_score: response.data.ml_analysis?.fraud_risk_score || response.data.fraud_risk_score || 0,
+          risk_level: response.data.ml_analysis?.risk_level || response.data.risk_level || 'UNKNOWN',
+          model_confidence: response.data.ml_analysis?.model_confidence || response.data.model_confidence || 0,
+          // Extract AI analysis fields with proper naming
+          ai_recommendation: response.data.ai_analysis?.recommendation || response.data.ai_recommendation || 'UNKNOWN',
+          ai_confidence: response.data.ai_analysis?.confidence_score || response.data.ai_confidence || 0,
+          // Ensure ml_analysis and ai_analysis objects exist
+          ml_analysis: response.data.ml_analysis || {},
+          ai_analysis: response.data.ai_analysis || {},
+        };
+        setResults(processedResults);
         setError(null);
       } else {
         console.log('⚠️ Unexpected response format:', response);
@@ -635,96 +649,140 @@ const BankStatementAnalysis = () => {
                 </div>
               )}
 
-              {/* AI Analysis Details */}
-              {(aiAnalysis.summary || aiAnalysis.reasoning || (Array.isArray(aiAnalysis.key_indicators) && aiAnalysis.key_indicators.length) || aiAnalysis.verification_notes) && (
-                <div style={infoCardStyle}>
-                  <h4 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"/>
-                      <path d="M12 6v6l4 2"/>
-                    </svg>
-                    AI Analysis Details
-                  </h4>
-                  {aiAnalysis.summary && (
-                    <div style={{ marginBottom: '1rem' }}>
-                      <strong>Summary:</strong>
-                      <p style={{ color: colors.mutedForeground, marginTop: '0.5rem' }}>{aiAnalysis.summary}</p>
-                    </div>
-                  )}
-                  {aiAnalysis.reasoning && (
-                    <div style={{ marginBottom: '1rem' }}>
-                      <strong>Reasoning:</strong>
-                      <p style={{ color: colors.mutedForeground, marginTop: '0.5rem', whiteSpace: 'pre-wrap' }}>{aiAnalysis.reasoning}</p>
-                    </div>
-                  )}
-                  {Array.isArray(aiAnalysis.key_indicators) && aiAnalysis.key_indicators.length > 0 && (
-                    <div style={{ marginBottom: '1rem' }}>
-                      <strong>Key Indicators:</strong>
-                      <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
-                        {aiAnalysis.key_indicators.map((indicator, idx) => (
-                          <li key={idx} style={{ marginBottom: '0.3rem' }}>{indicator}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {aiAnalysis.verification_notes && (
-                    <div>
-                      <strong>Verification Notes:</strong>
-                      <p style={{ color: colors.mutedForeground, marginTop: '0.5rem' }}>{aiAnalysis.verification_notes}</p>
-                    </div>
-                  )}
-                </div>
-              )}
+              {/* Analysis Details Section - Always Display */}
+              <div style={{
+                ...infoCardStyle,
+                backgroundColor: colors.card,
+                border: `1px solid ${colors.border}`,
+              }}>
+                <h4 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"/>
+                    <path d="M12 6v6l4 2"/>
+                  </svg>
+                  Analysis Details
+                </h4>
+                
+                {aiAnalysis.summary ? (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <strong style={{ color: colors.foreground }}>Summary:</strong>
+                    <p style={{ color: colors.mutedForeground, marginTop: '0.5rem' }}>{aiAnalysis.summary}</p>
+                  </div>
+                ) : (
+                  <p style={{ color: colors.mutedForeground, fontStyle: 'italic' }}>No summary available</p>
+                )}
 
-              {/* ML Analysis */}
-              {(mlAnalysis.risk_level || (Array.isArray(mlAnalysis.feature_importance) && mlAnalysis.feature_importance.length) || mlAnalysis.model_scores) && (
-                <div style={infoCardStyle}>
-                  <h4 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M3 3v18h18"/>
-                      <path d="M18 17V9"/>
-                      <path d="M13 17V5"/>
-                      <path d="M8 17v-3"/>
-                    </svg>
-                    ML Risk Analysis
-                  </h4>
-                  {mlAnalysis.risk_level && (
-                    <p style={{ marginBottom: '0.75rem' }}>
-                      <strong>Risk Level:</strong>{' '}
-                      <span style={{
-                        color: ['HIGH', 'CRITICAL'].includes(mlAnalysis.risk_level) ? primary : colors.status.success,
-                        fontWeight: 'bold'
-                      }}>
-                        {mlAnalysis.risk_level}
-                      </span>
-                    </p>
-                  )}
-                  {Array.isArray(mlAnalysis.feature_importance) && mlAnalysis.feature_importance.length > 0 && (
-                    <div style={{ marginBottom: '1rem' }}>
-                      <strong>Top Indicators:</strong>
-                      <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
-                        {mlAnalysis.feature_importance.slice(0, 5).map((item, idx) => (
-                          <li key={idx} style={{ marginBottom: '0.3rem' }}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {mlAnalysis.model_scores && (
-                    <div style={{ fontSize: '0.85rem', color: colors.mutedForeground }}>
-                      <strong>Analysis Scores:</strong>
-                      {mlAnalysis.model_scores.random_forest !== undefined && (
-                        <div>Random Forest: {(mlAnalysis.model_scores.random_forest * 100).toFixed(1)}%</div>
-                      )}
-                      {mlAnalysis.model_scores.xgboost !== undefined && (
-                        <div>XGBoost: {(mlAnalysis.model_scores.xgboost * 100).toFixed(1)}%</div>
-                      )}
-                      {mlAnalysis.model_scores.ensemble !== undefined && (
-                        <div>Ensemble: {(mlAnalysis.model_scores.ensemble * 100).toFixed(1)}%</div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
+                {Array.isArray(aiAnalysis.reasoning) && aiAnalysis.reasoning.length > 0 ? (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <strong style={{ color: colors.foreground }}>Reasoning:</strong>
+                    <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
+                      {aiAnalysis.reasoning.map((reason, idx) => (
+                        <li key={idx} style={{ marginBottom: '0.3rem' }}>{reason}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : aiAnalysis.reasoning ? (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <strong style={{ color: colors.foreground }}>Reasoning:</strong>
+                    <p style={{ color: colors.mutedForeground, marginTop: '0.5rem', whiteSpace: 'pre-wrap' }}>{aiAnalysis.reasoning}</p>
+                  </div>
+                ) : null}
+
+                {Array.isArray(aiAnalysis.key_indicators) && aiAnalysis.key_indicators.length > 0 ? (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <strong style={{ color: colors.foreground }}>Key Fraud Indicators:</strong>
+                    <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
+                      {aiAnalysis.key_indicators.map((indicator, idx) => (
+                        <li key={idx} style={{ marginBottom: '0.3rem' }}>{indicator}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <p style={{ color: colors.mutedForeground, fontStyle: 'italic' }}>No key indicators identified</p>
+                )}
+
+                {Array.isArray(aiAnalysis.actionable_recommendations) && aiAnalysis.actionable_recommendations.length > 0 && (
+                  <div>
+                    <strong style={{ color: colors.foreground }}>Actionable Recommendations:</strong>
+                    <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
+                      {aiAnalysis.actionable_recommendations.map((rec, idx) => (
+                        <li key={idx} style={{ marginBottom: '0.3rem' }}>{rec}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              {/* Risk Analysis Section - Always Display */}
+              <div style={{
+                ...infoCardStyle,
+                backgroundColor: colors.card,
+                border: `1px solid ${colors.border}`,
+              }}>
+                <h4 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M3 3v18h18"/>
+                    <path d="M18 17V9"/>
+                    <path d="M13 17V5"/>
+                    <path d="M8 17v-3"/>
+                  </svg>
+                  Risk Analysis
+                </h4>
+
+                {mlAnalysis.risk_level ? (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <strong style={{ color: colors.foreground }}>Risk Level:</strong>
+                    <span style={{
+                      marginLeft: '0.5rem',
+                      color: ['HIGH', 'CRITICAL'].includes(mlAnalysis.risk_level) ? primary : colors.status.success,
+                      fontWeight: 'bold'
+                    }}>
+                      {mlAnalysis.risk_level}
+                    </span>
+                  </div>
+                ) : (
+                  <p style={{ color: colors.mutedForeground, fontStyle: 'italic', marginBottom: '1rem' }}>Risk level not available</p>
+                )}
+
+                {Array.isArray(mlAnalysis.feature_importance) && mlAnalysis.feature_importance.length > 0 ? (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <strong style={{ color: colors.foreground }}>Top Risk Indicators:</strong>
+                    <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
+                      {mlAnalysis.feature_importance.slice(0, 5).map((item, idx) => {
+                        if (typeof item === 'string') {
+                          return <li key={idx} style={{ marginBottom: '0.3rem' }}>{item}</li>;
+                        } else if (item.feature && item.importance) {
+                          return (
+                            <li key={idx} style={{ marginBottom: '0.3rem' }}>
+                              {item.feature}: {(item.importance * 100).toFixed(1)}%
+                            </li>
+                          );
+                        }
+                        return null;
+                      })}
+                    </ul>
+                  </div>
+                ) : (
+                  <p style={{ color: colors.mutedForeground, fontStyle: 'italic', marginBottom: '1rem' }}>No risk indicators identified</p>
+                )}
+
+                {mlAnalysis.model_scores ? (
+                  <div style={{ fontSize: '0.85rem', color: colors.mutedForeground, marginTop: '1rem' }}>
+                    <strong style={{ color: colors.foreground }}>Analysis Scores:</strong>
+                    {mlAnalysis.model_scores.random_forest !== undefined && (
+                      <div style={{ marginTop: '0.5rem' }}>Random Forest: {(mlAnalysis.model_scores.random_forest * 100).toFixed(1)}%</div>
+                    )}
+                    {mlAnalysis.model_scores.xgboost !== undefined && (
+                      <div>XGBoost: {(mlAnalysis.model_scores.xgboost * 100).toFixed(1)}%</div>
+                    )}
+                    {mlAnalysis.model_scores.ensemble !== undefined && (
+                      <div>Ensemble: {(mlAnalysis.model_scores.ensemble * 100).toFixed(1)}%</div>
+                    )}
+                  </div>
+                ) : (
+                  <p style={{ color: colors.mutedForeground, fontStyle: 'italic', fontSize: '0.85rem' }}>Model scores not available</p>
+                )}
+              </div>
 
               <div style={{
                 ...infoCardStyle,

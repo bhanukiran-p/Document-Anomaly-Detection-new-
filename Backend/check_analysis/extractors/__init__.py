@@ -1,1 +1,0 @@
-from .vision_extractor import CheckVisionExtractor

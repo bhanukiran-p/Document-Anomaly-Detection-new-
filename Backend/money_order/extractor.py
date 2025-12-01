@@ -22,13 +22,18 @@ except ImportError as e:
     print(f"Warning: ML models or AI agent not available: {e}")
     ML_AVAILABLE = False
 
-# Import normalization module
+# Import normalization module (local to money_order)
 try:
-    from normalization import NormalizerFactory
+    from .normalization import MoneyOrderNormalizerFactory
     NORMALIZATION_AVAILABLE = True
 except ImportError as e:
-    print(f"Warning: Normalization module not available: {e}")
-    NORMALIZATION_AVAILABLE = False
+    # Fallback to global normalization if local not available
+    try:
+        from normalization import NormalizerFactory as MoneyOrderNormalizerFactory
+        NORMALIZATION_AVAILABLE = True
+    except ImportError:
+        print(f"Warning: Normalization module not available: {e}")
+        NORMALIZATION_AVAILABLE = False
 
 
 class MoneyOrderExtractor:
@@ -146,7 +151,7 @@ class MoneyOrderExtractor:
         # Normalize data to standardized schema
         normalized_data = None
         if NORMALIZATION_AVAILABLE and extracted_data.get('issuer'):
-            normalizer = NormalizerFactory.get_normalizer(extracted_data['issuer'])
+            normalizer = MoneyOrderNormalizerFactory.get_normalizer(extracted_data['issuer'])
             if normalizer:
                 normalized_data = normalizer.normalize(extracted_data)
                 print(f"Data normalized using {normalizer}")

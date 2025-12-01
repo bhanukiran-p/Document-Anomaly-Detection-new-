@@ -55,11 +55,19 @@ class CheckFraudAnalysisAgent:
 
         if LANGCHAIN_AVAILABLE and self.api_key:
             try:
-                self.llm = ChatOpenAI(
-                    model=self.model_name,
-                    openai_api_key=self.api_key,
-                    max_tokens=1500
-                )
+                # For newer models (o4, o1), don't set max tokens (they have their own defaults)
+                # For older models (gpt-4), use max_tokens
+                llm_kwargs = {
+                    'model': self.model_name,
+                    'openai_api_key': self.api_key,
+                }
+                
+                # Only set max_tokens for older models that support it
+                # Newer models (o4, o1) don't support max_tokens or max_completion_tokens in LangChain
+                if not (self.model_name.startswith('o4') or self.model_name.startswith('o1')):
+                    llm_kwargs['max_tokens'] = 1500
+                
+                self.llm = ChatOpenAI(**llm_kwargs)
                 logger.info(f"Initialized CheckFraudAnalysisAgent with LangChain model: {model}")
             except Exception as e:
                 logger.warning(f"Could not initialize LangChain: {e}")

@@ -14,7 +14,7 @@ import CheckAnalysis from './pages/CheckAnalysis';
 import PaystubAnalysis from './pages/PaystubAnalysis';
 import MoneyOrderAnalysis from './pages/MoneyOrderAnalysis';
 import BankStatementAnalysis from './pages/BankStatementAnalysis';
-import RealTimeAnalysis from './pages/RealTimeAnalysis';
+import RealTimeAnalysis from './pages/RealTimeAnalysis.jsx';
 import './styles/GlobalStyles.css';
 
 function AppContent() {
