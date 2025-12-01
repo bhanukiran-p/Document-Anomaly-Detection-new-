@@ -9,7 +9,7 @@ from typing import Dict, Optional
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv()
+load_dotenv(override=True)
 
 try:
     from langchain_openai import ChatOpenAI
@@ -45,7 +45,7 @@ class FraudAnalysisAgent:
             data_tools: Data access tools for CSV reading
         """
         self.api_key = api_key or os.getenv('OPENAI_API_KEY')
-        self.model_name = model or os.getenv('AI_MODEL', 'gpt-4')
+        self.model_name = model or os.getenv('AI_MODEL', 'gpt-3.5-turbo')
         self.data_tools = data_tools
         self.llm = None
 
@@ -100,18 +100,18 @@ class FraudAnalysisAgent:
                     'recommendation': 'ERROR',
                     'confidence': 0.0,
                     'summary': f'⚠️ AI Analysis unavailable: {str(e)}',
-                    'reasoning': 'GPT-4 API error. Please check your OpenAI API key or usage limits.',
+                    'reasoning': f'OpenAI API error ({self.model_name}). Please check your OpenAI API key or usage limits.',
                     'key_indicators': ml_analysis.get('key_indicators', []),
                     'verification_notes': 'Manual review required - AI analysis failed',
                     'analysis_type': 'failed',
-                    'model_used': 'gpt-4'
+                    'model_used': self.model_name
                 }
         else:
             return {
                 'recommendation': 'ERROR',
                 'confidence': 0.0,
                 'summary': '⚠️ AI Analysis unavailable: OpenAI API key not configured',
-                'reasoning': 'GPT-4 API key is required for AI-powered fraud analysis.',
+                'reasoning': 'OpenAI API key is required for AI-powered fraud analysis.',
                 'key_indicators': ml_analysis.get('key_indicators', []),
                 'verification_notes': 'Manual review required - AI not configured',
                 'analysis_type': 'failed',

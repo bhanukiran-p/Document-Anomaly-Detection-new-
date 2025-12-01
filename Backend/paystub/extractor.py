@@ -746,7 +746,7 @@ def extract_paystub(file_path: str) -> Dict[str, Any]:
             if openai_key:
                 ai_agent = FraudAnalysisAgent(
                     api_key=openai_key,
-                    model=os.getenv('AI_MODEL', 'gpt-4'),
+                    model=os.getenv('AI_MODEL', 'gpt-3.5-turbo'),
                     data_tools=data_tools
                 )
 

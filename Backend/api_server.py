@@ -10,6 +10,10 @@ import sys
 import logging
 import importlib.util
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv(override=True)
 
 # Import utilities
 from utils.file_handler import save_uploaded_file, handle_pdf_conversion, cleanup_file
@@ -53,7 +57,7 @@ logger = logging.getLogger(__name__)
 # Load the production extractor (optional - for backward compatibility)
 try:
     spec = importlib.util.spec_from_file_location(
-        "production_extractor",
+        "production_extractor", 
         "production_google_vision-extractor.py"
     )
     if spec and spec.loader:
@@ -371,7 +375,7 @@ def analyze_money_order():
             from money_order.extractor import extract_money_order
             logger.info(f"Starting money order extraction for file: {filepath}")
             result = extract_money_order(filepath)
-            logger.info(f"Money order extraction completed")
+            logger.info("Money order extraction completed")
 
             # Validate result structure
             if not result or not isinstance(result, dict):
@@ -700,7 +704,9 @@ def analyze_real_time_transactions():
                     'total_legitimate_amount': fraud_result['total_legitimate_amount'],
                     'total_amount': fraud_result['total_amount'],
                     'average_fraud_probability': fraud_result['average_fraud_probability'],
-                    'model_type': fraud_result['model_type']
+                    'model_type': fraud_result['model_type'],
+                    'fraud_type_breakdown': fraud_result.get('fraud_type_breakdown', []),
+                    'dominant_fraud_type': fraud_result.get('dominant_fraud_type')
                 },
                 'transactions': fraud_result['transactions'],
                 'insights': insights_result,
@@ -721,6 +727,74 @@ def analyze_real_time_transactions():
             'success': False,
             'error': str(e),
             'message': 'Failed to analyze transactions'
+        }), 500
+
+
+@app.route('/api/real-time/regenerate-plots', methods=['POST'])
+def regenerate_plots_with_filters():
+    """
+    Regenerate plots with filter parameters applied.
+    Expects JSON body with 'transactions' array and 'filters' object.
+    """
+    try:
+        data = request.get_json()
+        
+        if not data or 'transactions' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'Transactions data required'
+            }), 400
+        
+        transactions = data['transactions']
+        filters = data.get('filters', {})
+        
+        # Create a mock analysis result structure
+        fraud_result = {
+            'success': True,
+            'transactions': transactions,
+            'fraud_count': sum(1 for t in transactions if t.get('is_fraud') == 1),
+            'legitimate_count': sum(1 for t in transactions if t.get('is_fraud') == 0),
+            'fraud_percentage': 0,
+            'legitimate_percentage': 0,
+            'total_fraud_amount': sum(t.get('amount', 0) for t in transactions if t.get('is_fraud') == 1),
+            'total_legitimate_amount': sum(t.get('amount', 0) for t in transactions if t.get('is_fraud') == 0),
+            'total_amount': sum(t.get('amount', 0) for t in transactions),
+            'average_fraud_probability': sum(t.get('fraud_probability', 0) for t in transactions) / len(transactions) if transactions else 0,
+            'model_type': 'filtered'
+        }
+        
+        if len(transactions) > 0:
+            fraud_result['fraud_percentage'] = (fraud_result['fraud_count'] / len(transactions)) * 100
+            fraud_result['legitimate_percentage'] = (fraud_result['legitimate_count'] / len(transactions)) * 100
+        
+        # Generate insights with filters
+        from real_time.insights_generator import generate_insights
+        logger.info(f"Regenerating plots with {len(transactions)} transactions and filters: {filters}")
+        insights_result = generate_insights(fraud_result, filters=filters)
+        
+        if not insights_result.get('success'):
+            logger.error(f"Failed to generate insights: {insights_result.get('error')}")
+            return jsonify({
+                'success': False,
+                'error': insights_result.get('error', 'Failed to generate plots')
+            }), 500
+        
+        logger.info(f"Successfully generated {len(insights_result.get('plots', []))} plots with filters applied")
+        
+        return jsonify({
+            'success': True,
+            'plots': insights_result.get('plots', []),
+            'statistics': insights_result.get('statistics', {}),
+            'fraud_patterns': insights_result.get('fraud_patterns', {}),
+            'recommendations': insights_result.get('recommendations', [])
+        })
+        
+    except Exception as e:
+        logger.error(f"Error regenerating plots: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to regenerate plots'
         }), 500
 
 

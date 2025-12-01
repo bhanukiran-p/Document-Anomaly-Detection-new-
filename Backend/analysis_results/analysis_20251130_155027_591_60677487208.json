@@ -1,0 +1,123 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "bank_name": "UNITED STATES POSTAL SERVICE",
+    "country": null,
+    "check_type": null,
+    "payee_name": "JAMES WILLIAMS",
+    "amount_numeric": 306.81,
+    "amount": "$306.81",
+    "amount_words": "THREE HUNDRED SIX AND 81/100 DOLLARS",
+    "date": "2025-07-27",
+    "check_number": "60677487208",
+    "routing_number": null,
+    "account_number": null,
+    "memo": null,
+    "signature_detected": true,
+    "currency": null,
+    "payer_name": "LISA LEE",
+    "payer_address": "9679 MAPLE DR, LAKEWOOD, NC 24279",
+    "raw_ocr_text": "USPS UNITED STATES POSTAL SERVICE NO. 60677487208\nMONEY ORDER\n\nPAY TO THE ORDER OF:\nJAMES WILLIAMS\n$ 306.81\nDATE: JULY 27, 2025\n\nTHREE HUNDRED SIX AND 81/100 DOLLARS\n\nPURCHASER (Your name and address)\nLISA LEE\n9679 MAPLE DR, LAKEWOOD, NC 24279\nSon Dul\nPURCHASER'S SIGNATURE\n\n60677487208\n\n"
+  },
+  "raw_fields": {
+    "payer_name": "LISA LEE",
+    "payer_address": "9679 MAPLE DR, LAKEWOOD, NC 24279",
+    "pay_to": "JAMES WILLIAMS",
+    "check_date": "2025-07-27",
+    "number_amount": 306.81,
+    "word_amount": "THREE HUNDRED SIX AND 81/100 DOLLARS",
+    "bank_name": "UNITED STATES POSTAL SERVICE",
+    "routing_number": null,
+    "account_number": null,
+    "check_number": "60677487208",
+    "signature": true,
+    "memo": null
+  },
+  "raw_text": "USPS UNITED STATES POSTAL SERVICE NO. 60677487208\nMONEY ORDER\n\nPAY TO THE ORDER OF:\nJAMES WILLIAMS\n$ 306.81\nDATE: JULY 27, 2025\n\nTHREE HUNDRED SIX AND 81/100 DOLLARS\n\nPURCHASER (Your name and address)\nLISA LEE\n9679 MAPLE DR, LAKEWOOD, NC 24279\nSon Dul\nPURCHASER'S SIGNATURE\n\n60677487208\n\n",
+  "timestamp": "2025-11-30T15:50:27.590783",
+  "anomalies": [
+    "Missing security features: No microprinting, padlock icon, or security background - real checks have built-in protection",
+    "High fraud risk detected: CRITICAL (score: 100.00%)",
+    "AI recommendation: ERROR"
+  ],
+  "confidence_score": 0.9952000000000001,
+  "normalized_data": {
+    "bank_name": "UNITED STATES POSTAL SERVICE",
+    "routing_number": null,
+    "account_number": null,
+    "check_number": "60677487208",
+    "check_date": "2025-07-27",
+    "check_type": null,
+    "amount_numeric": 306.81,
+    "amount_words": "THREE HUNDRED SIX AND 81/100 DOLLARS",
+    "currency": "USD",
+    "payee_name": "JAMES WILLIAMS",
+    "payer_name": "LISA LEE",
+    "payer_address": "9679 MAPLE DR, LAKEWOOD, NC 24279",
+    "memo": null,
+    "signature_detected": true,
+    "amount_match": true,
+    "date_valid": true,
+    "fields_complete": true
+  },
+  "missing_fields": [
+    "routing_number",
+    "account_number",
+    "check_type",
+    "memo"
+  ],
+  "ml_analysis": {
+    "fraud_risk_score": 1.0,
+    "risk_level": "CRITICAL",
+    "model_confidence": 0.976,
+    "model_scores": {
+      "random_forest": 0.983,
+      "xgboost": 0.9950000047683716,
+      "ensemble": 0.99,
+      "adjusted": 1.0
+    },
+    "feature_importance": [
+      "Amount parsing confidence low",
+      "Missing critical fields (score: 0.95)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "Invalid serial format: 'N/A'",
+      "Invalid issuer: 'UNITED STATES POSTAL SERVICE'"
+    ],
+    "prediction_type": "model"
+  },
+  "ml_fraud_analysis": {
+    "fraud_risk_score": 1.0,
+    "risk_level": "CRITICAL",
+    "model_confidence": 0.976,
+    "model_scores": {
+      "random_forest": 0.983,
+      "xgboost": 0.9950000047683716,
+      "ensemble": 0.99,
+      "adjusted": 1.0
+    },
+    "feature_importance": [
+      "Amount parsing confidence low",
+      "Missing critical fields (score: 0.95)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "Invalid serial format: 'N/A'",
+      "Invalid issuer: 'UNITED STATES POSTAL SERVICE'"
+    ],
+    "prediction_type": "model"
+  },
+  "ai_analysis": {
+    "recommendation": "ERROR",
+    "confidence": 0.0,
+    "summary": "\u26a0\ufe0f AI Analysis unavailable: Error code: 403 - {'error': {'message': 'Project `proj_WpmFo0qrMuAMWYpss0dLv9IJ` does not have access to model `gpt-3.5-turbo`', 'type': 'invalid_request_error', 'param': None, 'code': 'model_not_found'}}",
+    "reasoning": "OpenAI API error (gpt-3.5-turbo). Please check your OpenAI API key or usage limits.",
+    "key_indicators": [],
+    "verification_notes": "Manual review required - AI analysis failed",
+    "analysis_type": "failed",
+    "model_used": "gpt-3.5-turbo"
+  },
+  "analysis_id": "analysis_20251130_155027_591_60677487208",
+  "saved_timestamp": "2025-11-30T15:50:27.591809"
+}

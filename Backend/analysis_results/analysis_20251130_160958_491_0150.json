@@ -1,0 +1,124 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "bank_name": "Bank of America",
+    "country": null,
+    "check_type": null,
+    "payee_name": "John Smith Construction",
+    "amount_numeric": 950.25,
+    "amount": "$950.25",
+    "amount_words": "Nine hundred fifty and 25/100",
+    "date": "2023-10-26",
+    "check_number": "0150",
+    "routing_number": "111000025",
+    "account_number": "000123456789",
+    "memo": "Testing 123",
+    "signature_detected": true,
+    "currency": null,
+    "payer_name": "Michael A. Johnson",
+    "payer_address": "456 Maple Avenue\nAnytown, USA 67890",
+    "raw_ocr_text": "Michael A. Johnson ACCOUNT Bank of America COUNT ESCCOUNT 0150\n456 Maple Avenue\nAnytown, USA 67890\nESTABLISEE\nBIDEIN ACOBIN AICOQUATT\nPAY TO THE\nORDER OF OUNT\nACCOUNT\nESTAL\nACCOUNT ESTA COUNT ESV/CO October 26, 2023\nJohn Smith Construction SIED ACCOUNT ESTABILISED\nNine hundred fifty and 25/100 SUNT-\nESTADESACOUNT\nACCOUN\nMEMO\nESTABLISED ACOUN\nTesting 123\nVE\nSUNT ESTABLISED\nACCOUNT ESABISED\n$\nCO\n950.25\nCASOUNT\nDATE\nDOLLARS\nPLISIED ACCOUNT\nACCOUNT ABACOUNT ESTABELLISEDED ACCOUN\n\u2446111000025\u2446\nSTALISEID AC\n000123456789\u2448\nMichael A. Johnson\nESAAB SISED\n0001 TAI LED ISCCONNT\nCUN\n\n"
+  },
+  "raw_fields": {
+    "payer_name": "Michael A. Johnson",
+    "payer_address": "456 Maple Avenue\nAnytown, USA 67890",
+    "pay_to": "John Smith Construction",
+    "check_date": "2023-10-26",
+    "number_amount": 950.25,
+    "word_amount": "Nine hundred fifty and 25/100",
+    "bank_name": "Bank of America",
+    "routing_number": "111000025",
+    "account_number": "000123456789",
+    "check_number": "0150",
+    "signature": true,
+    "memo": "Testing 123"
+  },
+  "raw_text": "Michael A. Johnson ACCOUNT Bank of America COUNT ESCCOUNT 0150\n456 Maple Avenue\nAnytown, USA 67890\nESTABLISEE\nBIDEIN ACOBIN AICOQUATT\nPAY TO THE\nORDER OF OUNT\nACCOUNT\nESTAL\nACCOUNT ESTA COUNT ESV/CO October 26, 2023\nJohn Smith Construction SIED ACCOUNT ESTABILISED\nNine hundred fifty and 25/100 SUNT-\nESTADESACOUNT\nACCOUN\nMEMO\nESTABLISED ACOUN\nTesting 123\nVE\nSUNT ESTABLISED\nACCOUNT ESABISED\n$\nCO\n950.25\nCASOUNT\nDATE\nDOLLARS\nPLISIED ACCOUNT\nACCOUNT ABACOUNT ESTABELLISEDED ACCOUN\n\u2446111000025\u2446\nSTALISEID AC\n000123456789\u2448\nMichael A. Johnson\nESAAB SISED\n0001 TAI LED ISCCONNT\nCUN\n\n",
+  "timestamp": "2025-11-30T16:09:58.490147",
+  "anomalies": [
+    "Bank logo may be incorrect - Bank of America logo should have specific flag icon and official typeface",
+    "Missing security features: No microprinting, padlock icon, or security background - real checks have built-in protection",
+    "Check is 766 days old (stale check)",
+    "High fraud risk detected: CRITICAL (score: 100.00%)",
+    "AI recommendation: ERROR"
+  ],
+  "confidence_score": 0.9982000000000001,
+  "normalized_data": {
+    "bank_name": "Bank of America",
+    "routing_number": "111000025",
+    "account_number": "000123456789",
+    "check_number": "0150",
+    "check_date": "2023-10-26",
+    "check_type": null,
+    "amount_numeric": 950.25,
+    "amount_words": "Nine hundred fifty and 25/100",
+    "currency": "USD",
+    "payee_name": "John Smith Construction",
+    "payer_name": "Michael A. Johnson",
+    "payer_address": "456 Maple Avenue\nAnytown, USA 67890",
+    "memo": "Testing 123",
+    "signature_detected": true,
+    "amount_match": true,
+    "date_valid": true,
+    "fields_complete": true
+  },
+  "missing_fields": [
+    "check_type"
+  ],
+  "ml_analysis": {
+    "fraud_risk_score": 1.0,
+    "risk_level": "CRITICAL",
+    "model_confidence": 0.991,
+    "model_scores": {
+      "random_forest": 1.0,
+      "xgboost": 0.9950000047683716,
+      "ensemble": 0.997,
+      "adjusted": 1.0
+    },
+    "feature_importance": [
+      "Amount parsing confidence low",
+      "Suspicious amount pattern detected",
+      "Missing critical fields (score: 0.95)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "Invalid serial format: 'N/A'",
+      "Invalid issuer: 'Bank of America'"
+    ],
+    "prediction_type": "model"
+  },
+  "ml_fraud_analysis": {
+    "fraud_risk_score": 1.0,
+    "risk_level": "CRITICAL",
+    "model_confidence": 0.991,
+    "model_scores": {
+      "random_forest": 1.0,
+      "xgboost": 0.9950000047683716,
+      "ensemble": 0.997,
+      "adjusted": 1.0
+    },
+    "feature_importance": [
+      "Amount parsing confidence low",
+      "Suspicious amount pattern detected",
+      "Missing critical fields (score: 0.95)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "Invalid serial format: 'N/A'",
+      "Invalid issuer: 'Bank of America'"
+    ],
+    "prediction_type": "model"
+  },
+  "ai_analysis": {
+    "recommendation": "ERROR",
+    "confidence": 0.0,
+    "summary": "\u26a0\ufe0f AI Analysis unavailable: Error code: 403 - {'error': {'message': 'Project `proj_WpmFo0qrMuAMWYpss0dLv9IJ` does not have access to model `gpt-3.5-turbo`', 'type': 'invalid_request_error', 'param': None, 'code': 'model_not_found'}}",
+    "reasoning": "OpenAI API error (gpt-3.5-turbo). Please check your OpenAI API key or usage limits.",
+    "key_indicators": [],
+    "verification_notes": "Manual review required - AI analysis failed",
+    "analysis_type": "failed",
+    "model_used": "gpt-3.5-turbo"
+  },
+  "analysis_id": "analysis_20251130_160958_491_0150",
+  "saved_timestamp": "2025-11-30T16:09:58.491256"
+}
