@@ -93,6 +93,7 @@ RECOMMENDATION_GUIDELINES = """
 | New Customer | < 30% | APPROVE |
 | New Customer | 30–95% | ESCALATE |
 | New Customer | ≥ 95% | ESCALATE |
+| New Customer | 100% | ESCALATE (High risk but need human verification) |
 | Clean History | < 30% | APPROVE |
 | Clean History | 30–85% | ESCALATE |
 | Clean History | > 85% | REJECT |
@@ -117,21 +118,33 @@ RECOMMENDATION_GUIDELINES = """
 - LLM is skipped entirely for these cases
 
 ### AUTOMATIC REJECTION CONDITIONS (Regardless of ML Score)
-1. Unsupported Bank (not Bank of America, Chase, etc.) → REJECT
-2. Missing Critical Fields:
-   - Missing account number → REJECT
-   - Missing account holder name → REJECT
-   - Missing statement period dates → REJECT
-   - Missing balances → REJECT
-3. Invalid Banking Information:
-   - Invalid account number format → REJECT
-4. Future-Dated Statement → REJECT
-5. Duplicate Statement Detected → REJECT
-6. Balance Inconsistency (ending ≠ beginning + credits - debits) → REJECT
+1. Repeat Offender (escalate_count > 0) → REJECT (auto, before LLM)
+2. Duplicate Statement Detected → REJECT
+
+### ESCALATION CONDITIONS (For New Customers)
+**IMPORTANT: New customers with high risk should be ESCALATED, not REJECTED**
+- Unsupported Bank (not Bank of America, Chase, etc.) → ESCALATE (for new customers)
+- Missing Critical Fields → ESCALATE (for new customers, needs manual review)
+- Future-Dated Statement → ESCALATE (for new customers)
+- Balance Inconsistency → ESCALATE (for new customers, needs verification)
+
+### AUTOMATIC REJECTION CONDITIONS (For Repeat Customers Only)
+1. Unsupported Bank → REJECT (if repeat customer)
+2. Missing Critical Fields → REJECT (if repeat customer)
+3. Future-Dated Statement → REJECT (if repeat customer)
+4. Balance Inconsistency → REJECT (if repeat customer)
+
+### CRITICAL RULES (IN PRIORITY ORDER):
+1. **If escalate_count > 0 → MUST REJECT** (auto, before LLM - repeat offender policy)
+2. If fraud_risk_score is 100.0% or >= 95% AND customer is NEW → MUST ESCALATE (not REJECT)
+3. If fraud_risk_score is 100.0% or >= 95% AND customer is REPEAT with fraud history → MUST REJECT
+4. **New customers with high risk should be escalated for human review, not auto-rejected**
+5. Repeat fraudsters should face stricter thresholds (REJECT at >= 30% risk)
 
 ### IMPORTANT NOTES
 - ML score determines the risk_score bucket only
 - LLM must follow the decision table exactly - no special cases
+- **NEW customers should NEVER get REJECT on first upload - always ESCALATE for high risk**
 - No interpretation or override of the decision matrix is permitted
 """
 
