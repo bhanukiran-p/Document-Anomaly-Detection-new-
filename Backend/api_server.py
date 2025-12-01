@@ -129,7 +129,7 @@ def get_agent_service():
                 # Minimal, safe response the caller expects
                 return {
                     'success': False,
-                    'error': f'Agent service not configured: {str(e)}'
+                    'error': 'Agent service not configured'
                 }
         return FallbackAgentService()
 
@@ -228,7 +228,7 @@ def analyze_check():
             from check.extractor import extract_check
             logger.info(f"Starting check extraction for file: {filepath}")
             result = extract_check(filepath)
-            logger.info(f"Check extraction completed")
+            logger.info("Check extraction completed")
 
             # Validate result structure
             if not result or not isinstance(result, dict):
@@ -252,6 +252,12 @@ def analyze_check():
                 'error': str(e),
                 'message': f'Failed to extract check data: {str(e)}'
             }), 500
+
+        # Validate result structure
+        if not result or not isinstance(result, dict):
+            raise ValueError("Extractor returned invalid result")
+        if 'extracted_data' not in result and 'raw_text' not in result:
+            raise ValueError("Extractor returned invalid result: missing required fields")
 
         # Validate document type
         extracted_data = result.get('extracted_data', {}) or {}
@@ -473,7 +479,7 @@ def analyze_bank_statement():
         file = request.files.get('file')
         filepath = save_uploaded_file(file)
 
-        # Handle PDF conversion if needed
+            # Handle PDF conversion if needed
         filepath = handle_pdf_conversion(filepath)
 
         # Extract text using Mindee or Vision API
@@ -491,11 +497,11 @@ def analyze_bank_statement():
                 mindee_data = {}
 
         if not raw_text and vision_client:
-            with open(filepath, 'rb') as image_file:
-                content = image_file.read()
-            image = vision.Image(content=content)
-            response = vision_client.text_detection(image=image)
-            raw_text = response.text_annotations[0].description if response.text_annotations else ""
+                with open(filepath, 'rb') as image_file:
+                    content = image_file.read()
+                image = vision.Image(content=content)
+                response = vision_client.text_detection(image=image)
+                raw_text = response.text_annotations[0].description if response.text_annotations else ""
         elif not raw_text:
             raw_text = ""
 
@@ -638,7 +644,7 @@ def analyze_real_time_transactions():
             if not insights_result.get('success'):
                 logger.warning(f"Insight generation failed: {insights_result.get('error')}")
                 insights_result = {
-                    'success': True,
+                'success': True,
                     'statistics': {},
                     'plots': [],
                     'fraud_patterns': {},
@@ -708,11 +714,11 @@ def analyze_real_time_transactions():
                     'fraud_type_breakdown': fraud_result.get('fraud_type_breakdown', []),
                     'dominant_fraud_type': fraud_result.get('dominant_fraud_type')
                 },
-                'transactions': fraud_result['transactions'],
-                'insights': insights_result,
-                'agent_analysis': agent_analysis,  # Include LLM agent analysis
-                'analyzed_at': datetime.now().isoformat()
-            }
+            'transactions': fraud_result['transactions'],
+            'insights': insights_result,
+            'agent_analysis': agent_analysis,  # Include LLM agent analysis
+            'analyzed_at': datetime.now().isoformat()
+        }
 
             logger.info("Real-time transaction analysis complete")
             return jsonify(response)
@@ -813,5 +819,5 @@ if __name__ == '__main__':
     print(f"  - POST /api/bank-statement/analyze")
     print("=" * 60)
 
-    # Run without debug mode to avoid constant reloads from ML library imports
-    app.run(debug=False, host='0.0.0.0', port=5001)
+    # Run without debug mode and ensure threaded mode is off to avoid issues with ML library imports
+    app.run(debug=False, host='0.0.0.0', port=5001, threaded=False)
