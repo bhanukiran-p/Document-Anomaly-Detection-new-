@@ -386,13 +386,13 @@ def analyze_paystub():
             ml_analysis = details.get('ml_analysis', {})
             ai_analysis = details.get('ai_analysis', {})
             employee_info = details.get('employee_info', {})
-            
+
             # Prefer AI fraud types/explanations, fallback to ML
             # Always include ML fraud types even if AI doesn't have them (e.g., repeat offenders)
             ai_fraud_types = ai_analysis.get('fraud_types', []) if ai_analysis else []
             ml_fraud_types = ml_analysis.get('fraud_types', [])
             fraud_types = ai_fraud_types if ai_fraud_types else ml_fraud_types
-            
+
             # For fraud explanations, prefer AI but include ML reasons if AI doesn't have structured explanations
             fraud_explanations = ai_analysis.get('fraud_explanations', []) if ai_analysis else []
             # If no AI explanations but we have ML fraud types and reasons, build explanations from ML
@@ -402,7 +402,7 @@ def analyze_paystub():
                     'type': fraud_type,
                     'reasons': ml_fraud_reasons if ml_fraud_reasons else [f"Detected as {fraud_type.replace('_', ' ').title()} by ML analysis."]
                 } for fraud_type in ml_fraud_types[:1]]  # Use first fraud type for primary card
-            
+
             # Build structured response
             response_data = {
                 'success': True,
@@ -420,6 +420,37 @@ def analyze_paystub():
                 'data': details,  # Keep full details for backward compatibility
                 'message': 'Paystub analyzed and stored successfully'
             }
+            
+            return jsonify(response_data)
+        except RuntimeError as e:
+            # Clean up file on error
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            
+            error_msg = str(e)
+            logger.error(f"Paystub analysis failed: {error_msg}")
+            
+            # Check if it's ML or AI error
+            if "ML model" in error_msg or "model" in error_msg.lower():
+                return jsonify({
+                    'success': False,
+                    'error': 'ML_MODEL_ERROR',
+                    'message': f'ML model error: {error_msg}',
+                    'details': 'The ML fraud detection model is not available. Please train the model using: python training/train_risk_model.py'
+                }), 500
+            elif "AI" in error_msg or "OpenAI" in error_msg:
+                return jsonify({
+                    'success': False,
+                    'error': 'AI_ANALYSIS_ERROR',
+                    'message': f'AI analysis error: {error_msg}',
+                    'details': 'The AI fraud analysis service is not available. Please check OpenAI API key and network connectivity.'
+                }), 500
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': 'ANALYSIS_ERROR',
+                    'message': error_msg
+                }), 500
             
             return jsonify(response_data)
             

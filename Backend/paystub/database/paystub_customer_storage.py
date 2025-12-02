@@ -169,7 +169,14 @@ class PaystubCustomerStorage:
         paystub_id: Optional[str] = None
     ) -> bool:
         """
-        Update employee fraud status based on recommendation
+        Insert new employee record based on recommendation (always INSERT, never UPDATE)
+        Matches money_order_customers logic: each upload creates a new row with same customer_id
+        
+        Logic:
+        - If employee exists: reuse their customer_id, create new row with preserved counts
+        - If employee is new: create new customer_id
+        - Always INSERT (never UPDATE existing rows)
+        - Counts are calculated and inserted, then updated after analysis if needed
 
         Args:
             employee_name: Employee name
@@ -177,59 +184,91 @@ class PaystubCustomerStorage:
             paystub_id: Paystub ID if available
 
         Returns:
-            True if update successful, False otherwise
+            True if insert successful, False otherwise
         """
         if not self.supabase or not employee_name:
             return False
 
         try:
-            # Get existing employee or create new
-            employee_history = self.get_employee_history(employee_name)
-            employee_id = employee_history.get('employee_id')
-
             from datetime import datetime
+            from uuid import uuid4
             now = datetime.utcnow().isoformat()
 
-            update_data = {
+            # Step 1: Check if employee already exists to reuse customer_id
+            try:
+                existing_response = self.supabase.table('paystub_customers').select('customer_id, escalate_count, fraud_count, has_fraud_history, total_paystubs').eq('name', employee_name).order('created_at', desc=True).limit(1).execute()
+                
+                if existing_response.data and len(existing_response.data) > 0:
+                    # Employee exists - reuse their customer_id
+                    existing_record = existing_response.data[0]
+                    customer_id = existing_record.get('customer_id')
+                    previous_escalate_count = existing_record.get('escalate_count', 0) or 0
+                    previous_fraud_count = existing_record.get('fraud_count', 0) or 0
+                    previous_has_fraud_history = existing_record.get('has_fraud_history', False) or False
+                    previous_total_paystubs = existing_record.get('total_paystubs', 0) or 0
+                    
+                    logger.info(f"[EMPLOYEE_INSERT] Found existing employee: {employee_name} with customer_id={customer_id}, escalate_count={previous_escalate_count}, fraud_count={previous_fraud_count}")
+                    
+                    # Calculate new counts based on recommendation
+                    new_fraud_count = previous_fraud_count
+                    new_escalate_count = previous_escalate_count
+                    has_fraud_history = previous_has_fraud_history
+                    
+                    if recommendation == 'REJECT':
+                        new_fraud_count = previous_fraud_count + 1
+                        has_fraud_history = True
+                        logger.info(f"[EMPLOYEE_INSERT] REJECT: fraud_count = {previous_fraud_count} + 1 = {new_fraud_count}")
+                    elif recommendation == 'ESCALATE':
+                        new_escalate_count = previous_escalate_count + 1
+                        logger.info(f"[EMPLOYEE_INSERT] ESCALATE: escalate_count = {previous_escalate_count} + 1 = {new_escalate_count}")
+                    
+                    # Create new row with same customer_id and updated counts
+                    new_employee = {
+                        'customer_id': customer_id,  # Reuse same customer_id
+                        'name': employee_name,
+                        'has_fraud_history': has_fraud_history,
+                        'fraud_count': new_fraud_count,
+                        'escalate_count': new_escalate_count,
+                        'last_recommendation': recommendation,
+                        'last_analysis_date': now,
+                        'total_paystubs': previous_total_paystubs + 1,
+                        'created_at': now,
+                        'updated_at': now
+                    }
+                    
+                    self.supabase.table('paystub_customers').insert([new_employee]).execute()
+                    logger.info(f"[EMPLOYEE_INSERT] Created new row for existing employee: {employee_name} (customer_id={customer_id}, id will be auto-generated)")
+                    return True
+            except Exception as e:
+                logger.warning(f"Error querying existing employee: {e}")
+
+            # Step 2: Employee doesn't exist - create new customer_id
+            customer_id = str(uuid4())
+            logger.info(f"[EMPLOYEE_INSERT] Creating new employee: {employee_name} with customer_id={customer_id}")
+            
+            # Initialize counts based on recommendation
+            fraud_count = 1 if recommendation == 'REJECT' else 0
+            escalate_count = 1 if recommendation == 'ESCALATE' else 0
+            has_fraud_history = recommendation == 'REJECT'
+            
+            new_employee = {
+                'customer_id': customer_id,
+                'name': employee_name,
+                'has_fraud_history': has_fraud_history,
+                'fraud_count': fraud_count,
+                'escalate_count': escalate_count,
                 'last_recommendation': recommendation,
                 'last_analysis_date': now,
+                'total_paystubs': 1,
+                'created_at': now,
                 'updated_at': now
             }
-
-            # Update counts based on recommendation
-            if recommendation == 'REJECT':
-                update_data['fraud_count'] = employee_history.get('fraud_count', 0) + 1
-                update_data['has_fraud_history'] = True
-            elif recommendation == 'ESCALATE':
-                update_data['escalate_count'] = employee_history.get('escalate_count', 0) + 1
             
-            # Increment total paystubs
-            update_data['total_paystubs'] = employee_history.get('total_paystubs', 0) + 1
-
-            if employee_id:
-                # Update existing employee
-                self.supabase.table('paystub_customers').update(update_data).eq('customer_id', employee_id).execute()
-                logger.info(f"Updated employee {employee_name} fraud status")
-            else:
-                # Create new employee
-                from uuid import uuid4
-                new_employee = {
-                    'customer_id': str(uuid4()),
-                    'name': employee_name,
-                    'has_fraud_history': recommendation == 'REJECT',
-                    'fraud_count': 1 if recommendation == 'REJECT' else 0,
-                    'escalate_count': 1 if recommendation == 'ESCALATE' else 0,
-                    'last_recommendation': recommendation,
-                    'last_analysis_date': now,
-                    'total_paystubs': 1,
-                    'created_at': now,
-                    'updated_at': now
-                }
-                self.supabase.table('paystub_customers').insert([new_employee]).execute()
-                logger.info(f"Created new employee {employee_name}")
+            self.supabase.table('paystub_customers').insert([new_employee]).execute()
+            logger.info(f"[EMPLOYEE_INSERT] Created new employee record: {employee_name} (customer_id={customer_id}, id will be auto-generated)")
 
             return True
         except Exception as e:
-            logger.error(f"Error updating employee fraud status: {e}")
+            logger.error(f"Error inserting employee fraud status: {e}", exc_info=True)
             return False
 

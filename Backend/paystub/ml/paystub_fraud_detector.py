@@ -63,7 +63,7 @@ class PaystubFraudDetector:
         if os.path.exists(self.model_path):
             logger.info(f"Using model at: {self.model_path}")
         else:
-            logger.warning(f"Model not found at: {self.model_path} (will use heuristic fallback)")
+            logger.error(f"Model not found at: {self.model_path} - ML model is required")
 
         # Load models
         self._load_models()
@@ -86,7 +86,7 @@ class PaystubFraudDetector:
                 self.model = joblib.load(self.model_path)
                 logger.info("Loaded Random Forest model for paystubs")
             else:
-                logger.warning(f"Random Forest model not found at {self.model_path}, using heuristic scoring")
+                logger.error(f"Random Forest model not found at {self.model_path} - ML model is required")
                 self.model = None
 
             # Load scaler
@@ -100,7 +100,7 @@ class PaystubFraudDetector:
             self.models_loaded = (self.model is not None)
 
         except ImportError:
-            logger.warning("joblib not available, using heuristic scoring")
+            logger.error("joblib not available - ML model cannot be loaded without joblib")
             self.model = None
             self.scaler = None
             self.models_loaded = False
@@ -133,12 +133,14 @@ class PaystubFraudDetector:
 
         logger.info(f"Extracted {len(features)} features for paystub fraud detection")
 
-        # If models are loaded, use them
-        if self.models_loaded:
-            return self._predict_with_model(features, feature_names, paystub_data)
-        else:
-            # Use heuristic scoring as fallback
-            return self._predict_heuristic(features, feature_names, paystub_data)
+        # Models must be loaded - no fallback
+        if not self.models_loaded:
+            raise RuntimeError(
+                f"ML model not loaded. Model file not found at: {self.model_path}. "
+                f"Please train the model using: python training/train_risk_model.py"
+            )
+        
+        return self._predict_with_model(features, feature_names, paystub_data)
 
     def _predict_with_model(self, features: List[float], feature_names: List[str], paystub_data: Dict) -> Dict:
         """Predict using trained model"""
@@ -200,75 +202,11 @@ class PaystubFraudDetector:
 
         except Exception as e:
             logger.error(f"Error in model prediction: {e}", exc_info=True)
-            # Fallback to heuristic
-            return self._predict_heuristic(features, feature_names, paystub_data)
+            raise RuntimeError(
+                f"ML model prediction failed: {str(e)}. "
+                f"Please ensure the model file is valid and all dependencies are installed."
+            ) from e
 
-    def _predict_heuristic(self, features: List[float], feature_names: List[str], paystub_data: Dict) -> Dict:
-        """Fallback heuristic prediction when model not available"""
-        risk_score = 0.0
-        indicators = []
-        
-        # Unpack features
-        has_company = features[0]
-        has_employee = features[1]
-        has_gross = features[2]
-        has_net = features[3]
-        has_date = features[4]
-        gross_pay = features[5]
-        net_pay = features[6]
-        tax_error = features[7]
-        text_quality = features[8]
-        missing_fields = features[9]
-
-        # Rule 1: Tax error (net >= gross) - CRITICAL
-        if tax_error == 1.0:
-            risk_score += 0.5
-            indicators.append("CRITICAL: Net Pay is greater than or equal to Gross Pay")
-
-        # Rule 2: Missing critical fields
-        if missing_fields > 0:
-            risk_score += (missing_fields * 0.1)
-            indicators.append(f"Missing {int(missing_fields)} critical fields")
-            
-        # Rule 3: Low text quality
-        if text_quality < 0.7:
-            risk_score += 0.2
-            indicators.append("Low text quality - incomplete extraction")
-
-        # Rule 4: Missing company or employee
-        if has_company == 0.0:
-            risk_score += 0.15
-            indicators.append("Company name missing")
-        if has_employee == 0.0:
-            risk_score += 0.15
-            indicators.append("Employee name missing")
-            
-        # Cap score
-        risk_score = min(1.0, risk_score)
-        
-        # Determine level
-        if risk_score < 0.3:
-            risk_level = 'LOW'
-        elif risk_score < 0.7:
-            risk_level = 'MEDIUM'
-        else:
-            risk_level = 'HIGH'
-            
-        # Classify fraud types and generate machine reasons
-        fraud_classification = self._classify_fraud_types(features, feature_names, paystub_data, indicators)
-
-        return {
-            'fraud_risk_score': round(risk_score, 2),
-            'risk_level': risk_level,
-            'model_confidence': 0.75,  # Lower confidence for heuristic
-            'model_scores': {
-                'heuristic': round(risk_score, 2)
-            },
-            'feature_importance': indicators,
-            'anomalies': indicators,
-            'fraud_types': fraud_classification['fraud_types'],
-            'fraud_reasons': fraud_classification['fraud_reasons']
-        }
 
     def _generate_indicators(self, features: List[float], feature_names: List[str], paystub_data: Dict) -> List[str]:
         """Generate fraud indicators based on features"""
