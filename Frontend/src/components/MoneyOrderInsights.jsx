@@ -1331,8 +1331,17 @@ const MoneyOrderInsights = () => {
                 <LineChart data={csvData.fraudTrendData}>
                   <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
                   <XAxis dataKey="date" stroke={colors.mutedForeground} />
-                  <YAxis yAxisId="left" stroke={colors.mutedForeground} />
-                  <YAxis yAxisId="right" orientation="right" stroke={colors.mutedForeground} />
+                  <YAxis
+                    yAxisId="left"
+                    stroke={colors.mutedForeground}
+                    label={{ value: 'Avg Risk Score (%)', angle: -90, position: 'insideLeft', style: { fill: colors.foreground } }}
+                  />
+                  <YAxis
+                    yAxisId="right"
+                    orientation="right"
+                    stroke={colors.mutedForeground}
+                    label={{ value: 'High-Risk Count', angle: 90, position: 'insideRight', style: { fill: colors.foreground } }}
+                  />
                   <Tooltip
                     contentStyle={{
                       backgroundColor: colors.card,
