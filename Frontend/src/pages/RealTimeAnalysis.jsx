@@ -1,6 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { colors } from '../styles/colors';
+import EChartsDonut from '../components/EChartsDonut';
+import EChartsLine from '../components/EChartsLine';
+import EChartsBar from '../components/EChartsBar';
+import EChartsSankey from '../components/EChartsSankey';
+import EChartsGeo from '../components/EChartsGeo';
+import EChartsHeatmap from '../components/EChartsHeatmap';
 import {
   FaLink,
   FaUpload,
@@ -27,13 +33,6 @@ import {
 } from 'recharts';
 import { analyzeRealTimeTransactions, regeneratePlotsWithFilters } from '../services/api';
 
-const GENERAL_FRAUD_KEY = 'Other Fraud Pattern';
-const GENERAL_FRAUD_EXPLANATION = [
-  'Card-not-present or e-commerce attempts that have no previous spend history but suddenly spike in value.',
-  'Synthetic identity or mule behavior where multiple red flags (amount spikes, velocity, geography) occur simultaneously.',
-  'Layered anomalies such as late-night timing, unusual device/login context, and aggressive balance drawdowns in one transaction.'
-];
-
 const STANDARD_FRAUD_REASONS = [
   'Suspicious login',
   'Account takeover',
@@ -49,8 +48,7 @@ const STANDARD_FRAUD_REASONS = [
   'Money mule pattern',
   'Structuring / smurfing',
   'Round-dollar pattern',
-  'Night-time activity',
-  GENERAL_FRAUD_KEY
+  'Night-time activity'
 ];
 
 const plotColorPalette = ['#10b981', '#ef4444', '#60a5fa', '#f97316', '#a78bfa', '#fbbf24'];
@@ -164,9 +162,6 @@ const RealTimeAnalysis = () => {
     [];
   const agentInsights = analysisResult?.agent_analysis?.detailed_insights || '';
   const insightPoints = getInsightPoints(agentInsights);
-  const generalFraudPattern = fraudReasonBreakdown.find(
-    (pattern) => (pattern.type || pattern.label) === GENERAL_FRAUD_KEY
-  );
   const reasonCountMap = useMemo(() => {
     const map = {};
     fraudReasonBreakdown.forEach((pattern) => {
@@ -195,143 +190,38 @@ const RealTimeAnalysis = () => {
     switch (plot.type) {
       case 'donut': {
         const data = plot.data || [];
-        return (
-          <ResponsiveContainer width="100%" height={height}>
-            <PieChart>
-              <Pie
-                data={data}
-                dataKey="value"
-                cx="50%"
-                cy="50%"
-                innerRadius="55%"
-                outerRadius="80%"
-                paddingAngle={3}
-                stroke="none"
-                label={({ percent }) => `${(percent * 100).toFixed(1)}%`}
-              >
-                {data.map((entry, index) => (
-                  <Cell
-                    key={`slice-${entry.label}-${index}`}
-                    fill={entry.label === 'Fraud' ? '#ef4444' : '#22c55e'}
-                  />
-                ))}
-              </Pie>
-              <RechartsTooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        );
+        // Use ECharts for better visuals and performance
+        return <EChartsDonut data={data} title={plot.title} height={height} />;
       }
       case 'line_trend': {
         const data = plot.data || [];
-        return (
-          <ResponsiveContainer width="100%" height={height}>
-            <LineChart data={data}>
-              <CartesianGrid stroke="rgba(148,163,184,0.2)" />
-              <XAxis dataKey="month" stroke={colors.mutedForeground} />
-              <YAxis stroke={colors.mutedForeground} />
-              <RechartsTooltip />
-              <Line type="monotone" dataKey="fraud" stroke="#ef4444" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="legitimate" stroke="#22c55e" strokeWidth={2} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
-        );
+        return <EChartsLine data={data} title={plot.title} height={height} />;
       }
       case 'heatmap': {
         const xLabels = plot.xLabels || [];
         const yLabels = plot.yLabels || [];
-        const data = plot.data || [];
-        return (
-          <div style={{ ...styles.heatmapWrapper, height }}>
-            <div style={styles.heatmapHeaderRow}>
-              <div style={styles.heatmapCorner} />
-              {xLabels.map((label) => (
-                <div key={label} style={styles.heatmapHeaderCell}>
-                  {label}
-                </div>
-              ))}
-            </div>
-            {yLabels.map((yLabel) => (
-              <div key={yLabel} style={styles.heatmapRow}>
-                <div style={styles.heatmapHeaderCell}>{yLabel}</div>
-                {xLabels.map((xLabel) => {
-                  const cell = data.find((item) => item.x === xLabel && item.y === yLabel);
-                  const value = cell ? cell.value : 0;
-                  return (
-                    <div
-                      key={`${xLabel}-${yLabel}`}
-                      style={{
-                        ...styles.heatmapCell,
-                        backgroundColor: renderHeatmapCellColor(value),
-                        color: Math.abs(value) > 0.5 ? '#0f172a' : colors.foreground
-                      }}
-                    >
-                      {value.toFixed(2)}
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
+        const dataPoints = plot.data || [];
+
+        // Convert to matrix format for ECharts
+        const matrix = yLabels.map(yLabel =>
+          xLabels.map(xLabel => {
+            const cell = dataPoints.find(item => item.x === xLabel && item.y === yLabel);
+            return cell ? cell.value : 0;
+          })
         );
+
+        return <EChartsHeatmap data={{ matrix, labels: xLabels }} title={plot.title} height={height} />;
       }
       case 'geo_scatter': {
-        const points = plot.data || [];
-        return (
-          <div style={{ ...styles.geoMap, height }}>
-            {points.map((point, idx) => {
-              const top = 100 - ((point.lat + 90) / 180) * 100;
-              const left = ((point.lng + 180) / 360) * 100;
-              const size = Math.min(24, 6 + point.count);
-              return (
-                <div
-                  key={`${point.city}-${idx}`}
-                  style={{
-                    ...styles.geoDot,
-                    top: `${top}%`,
-                    left: `${left}%`,
-                    width: size,
-                    height: size
-                  }}
-                  title={`${point.city}, ${point.country} (${point.count})`}
-                />
-              );
-            })}
-          </div>
-        );
+        const data = plot.data || [];
+        return <EChartsGeo data={data} title={plot.title} height={height} />;
       }
       case 'bar_reasons': {
         const data = plot.data || [];
-        return (
-          <ResponsiveContainer width="100%" height={height}>
-            <BarChart
-              data={data}
-              layout="vertical"
-              margin={{ top: 5, right: 20, left: 40, bottom: 5 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.2)" />
-              <XAxis type="number" stroke={colors.mutedForeground} />
-              <YAxis dataKey="label" type="category" stroke={colors.mutedForeground} width={150} />
-              <RechartsTooltip />
-              <Bar dataKey="value" fill="#f97316" />
-            </BarChart>
-          </ResponsiveContainer>
-        );
+        return <EChartsBar data={data} title={plot.title} height={height} />;
       }
       case 'sankey': {
-        const nodes = plot.data?.nodes || [];
-        const links = plot.data?.links || [];
-        return (
-          <ResponsiveContainer width="100%" height={height}>
-            <Sankey
-              data={{ nodes, links }}
-              nodePadding={20}
-              node={{ stroke: colors.border, strokeWidth: 1 }}
-              link={{ strokeOpacity: 0.4 }}
-            >
-              <RechartsTooltip />
-            </Sankey>
-          </ResponsiveContainer>
-        );
+        return <EChartsSankey data={plot.data} title={plot.title} height={height} />;
       }
       default:
         return (
@@ -1212,17 +1102,29 @@ const RealTimeAnalysis = () => {
       position: 'relative',
       width: '100%',
       borderRadius: '0.75rem',
-      background: 'linear-gradient(135deg, #0f172a 0%, #111827 100%)',
+      background: `
+        radial-gradient(circle at 20% 50%, rgba(59, 130, 246, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 80% 50%, rgba(16, 185, 129, 0.1) 0%, transparent 50%),
+        linear-gradient(135deg, #1e293b 0%, #0f172a 100%)
+      `,
       border: `1px solid ${colors.border}`,
-      overflow: 'hidden'
+      overflow: 'hidden',
+      backgroundImage: `
+        linear-gradient(rgba(148, 163, 184, 0.1) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148, 163, 184, 0.1) 1px, transparent 1px)
+      `,
+      backgroundSize: '50px 50px',
+      backgroundPosition: 'center center'
     },
     geoDot: {
       position: 'absolute',
       borderRadius: '50%',
-      backgroundColor: 'rgba(239, 68, 68, 0.75)',
-      border: '1px solid rgba(239, 68, 68, 0.95)',
+      backgroundColor: '#ef4444',
+      border: '2px solid #fca5a5',
       transform: 'translate(-50%, -50%)',
-      boxShadow: '0 0 10px rgba(239, 68, 68, 0.7)'
+      boxShadow: '0 0 20px rgba(239, 68, 68, 0.9), 0 0 40px rgba(239, 68, 68, 0.5)',
+      cursor: 'pointer',
+      transition: 'all 0.2s ease'
     },
     missingPlot: {
       width: '100%',
@@ -1810,33 +1712,6 @@ const RealTimeAnalysis = () => {
                   </div>
                 );
               })}
-            </div>
-          )}
-
-          {generalFraudPattern && (
-            <div style={{ ...styles.fraudTypeSection, marginTop: '1rem' }}>
-              <h4 style={styles.fraudTypeTitle}>
-                What "{formatFraudReason(GENERAL_FRAUD_KEY)}" Means
-              </h4>
-              <ul style={{
-                margin: 0,
-                padding: '1rem 1.25rem',
-                backgroundColor: colors.muted,
-                borderRadius: '0.75rem',
-                border: `1px solid ${colors.border}`,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.5rem',
-                color: colors.foreground,
-                fontSize: '0.9rem',
-                lineHeight: '1.6'
-              }}>
-                {GENERAL_FRAUD_EXPLANATION.map((item, idx) => (
-                  <li key={idx}>
-                    {item}
-                  </li>
-                ))}
-              </ul>
             </div>
           )}
 
