@@ -116,7 +116,7 @@ class PaystubFraudAnalysisAgent:
         else:
             logger.warning("Employee name not found in extracted_data")
 
-        policy_decision = self._apply_policy_rules(employee_name, employee_info)
+        policy_decision = self._apply_policy_rules(employee_name, employee_info, ml_analysis)
         if policy_decision:
             return policy_decision
 
@@ -130,7 +130,7 @@ class PaystubFraudAnalysisAgent:
             employee_info
         )
 
-    def _apply_policy_rules(self, employee_name: Optional[str], employee_info: Optional[Dict]) -> Optional[Dict]:
+    def _apply_policy_rules(self, employee_name: Optional[str], employee_info: Optional[Dict], ml_analysis: Optional[Dict] = None) -> Optional[Dict]:
         """Enforce mandatory employee-history policy before any LLM call."""
         if not employee_name:
             logger.warning("Employee name missing; defaulting to ESCALATE per policy.")
@@ -138,14 +138,42 @@ class PaystubFraudAnalysisAgent:
 
         employee_info = employee_info or {}
         escalate_count = employee_info.get('escalate_count', 0) or 0
+        fraud_count = employee_info.get('fraud_count', 0) or 0
 
-        # Check for repeat offenders: if escalate_count > 0, auto-reject (like money orders)
-        # This means second and subsequent uploads by same employee always get REJECT
+        # UPDATED POLICY: Check for repeat offenders, but only auto-reject if fraud risk >= 20%
+        # If fraud risk < 20%, allow approval even with escalate_count > 0
         if escalate_count > 0:
-            logger.warning(
-                f"REPEAT OFFENDER DETECTED: {employee_name} has escalate_count={escalate_count}. Auto-rejecting."
-            )
-            return self._create_repeat_offender_rejection(employee_name, escalate_count)
+            fraud_risk_score = ml_analysis.get('fraud_risk_score', 0.0) if ml_analysis else 0.0
+            fraud_risk_percent = fraud_risk_score * 100
+            
+            if fraud_risk_percent >= 20:
+                logger.warning(
+                    f"REPEAT OFFENDER DETECTED: {employee_name} has escalate_count={escalate_count} "
+                    f"and fraud_risk_score={fraud_risk_percent:.1f}% (>= 20%). Auto-rejecting."
+                )
+                rejection = self._create_repeat_offender_rejection(employee_name, escalate_count, fraud_count)
+                # Include ML fraud types if available
+                if ml_analysis:
+                    ml_fraud_types = ml_analysis.get('fraud_types', [])
+                    ml_fraud_reasons = ml_analysis.get('fraud_reasons', [])
+                    if ml_fraud_types:
+                        rejection['fraud_types'] = ml_fraud_types
+                    if ml_fraud_reasons and not rejection.get('fraud_explanations'):
+                        rejection['fraud_explanations'] = [{
+                            'type': ml_fraud_types[0] if ml_fraud_types else 'MISSING_CRITICAL_FIELDS',
+                            'reasons': [
+                                f"Escalation count: {escalate_count}",
+                                f"Fraud count: {fraud_count} {'incident' if fraud_count == 1 else 'incidents'}",
+                                f"Employee status: Repeat Employee"
+                            ]
+                        }]
+                return rejection
+            else:
+                logger.info(
+                    f"REPEAT OFFENDER DETECTED: {employee_name} has escalate_count={escalate_count} "
+                    f"but fraud_risk_score={fraud_risk_percent:.1f}% (< 20%). Allowing analysis to proceed."
+                )
+                # Don't auto-reject, let the analysis proceed normally
 
         # If we reach here, employee has no escalations logged → proceed to LLM for decision
         logger.info(f"Employee {employee_name} has no escalations; proceeding to LLM analysis.")
@@ -270,21 +298,23 @@ class PaystubFraudAnalysisAgent:
             'fraud_explanations': []
         }
 
-    def _create_repeat_offender_rejection(self, employee_name: str, escalate_count: int) -> Dict:
-        """Create rejection response for repeat offenders (escalate_count > 0)"""
+    def _create_repeat_offender_rejection(self, employee_name: str, escalate_count: int, fraud_count: int = 0) -> Dict:
+        """Create rejection response for repeat offenders (escalate_count > 0 and fraud risk >= 20%)"""
         return {
             'recommendation': 'REJECT',
             'confidence_score': 1.0,
-            'summary': f'Automatic rejection: {employee_name} is a flagged repeat offender',
+            'summary': f'Automatic rejection: {employee_name} is a flagged repeat offender with fraud risk >= 20%',
             'reasoning': [
                 f'Employee {employee_name} has escalate_count = {escalate_count}',
-                'Per employee-based fraud tracking policy: repeat offenders are automatically rejected',
-                'This employee was previously escalated and is now subject to automatic rejection',
+                f'Employee has fraud_count = {fraud_count}',
+                'Per updated policy: repeat offenders with fraud risk >= 20% are automatically rejected',
+                'This employee was previously escalated and current paystub shows elevated fraud risk',
                 'LLM analysis skipped - mandatory reject rule applies'
             ],
             'key_indicators': [
                 'Repeat offender detected',
-                f'Escalation count: {escalate_count}'
+                f'Escalation count: {escalate_count}',
+                f'Fraud count: {fraud_count}'
             ],
             'actionable_recommendations': [
                 'Block this transaction immediately',
@@ -294,7 +324,11 @@ class PaystubFraudAnalysisAgent:
             'fraud_types': ['MISSING_CRITICAL_FIELDS'],  # Default for repeat offenders
             'fraud_explanations': [{
                 'type': 'MISSING_CRITICAL_FIELDS',
-                'reasons': [f'Employee {employee_name} is a repeat offender with {escalate_count} prior escalations.']
+                'reasons': [
+                    f'Escalation count: {escalate_count}',
+                    f'Fraud count: {fraud_count} {"incident" if fraud_count == 1 else "incidents"}',
+                    'Employee status: Repeat Employee'
+                ]
             }]
         }
 

@@ -225,9 +225,9 @@ const LandingPage = () => {
   // Card Styles
   const cardsGridStyle = {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-    gap: '2rem',
-    maxWidth: '1200px',
+    gridTemplateColumns: 'repeat(4, 1fr)',
+    gap: '1.5rem',
+    maxWidth: '1400px',
     margin: '0 auto',
   };
   
@@ -272,29 +272,17 @@ const LandingPage = () => {
       description: 'Verify insurance documents, prescriptions, and medical records for tampering. Protect patient data and prevent claims fraud with automated screening.',
     },
     {
+      icon: <FaShieldAlt />,
+      title: 'Government',
+      description: 'Authenticate ID documents, official forms, licenses, and certificates. Scale verification without adding headcount or slowing processing times. Ensure document integrity for public services.',
+    },
+    {
       icon: <FaGraduationCap />,
-      title: 'Government & Education',
-      description: 'Authenticate certificates, transcripts, ID documents, and official forms. Scale verification without adding headcount or slowing processing times.',
+      title: 'Education',
+      description: 'Verify transcripts, diplomas, certificates, and academic credentials for tampering. Prevent credential fraud and ensure authenticity of educational documents.',
     },
   ];
 
-  const painPoints = [
-    {
-      icon: <FaClock />,
-      title: "Your Team Can't Keep Up",
-      description: "Processing hundreds of documents manually means fraud slips through. Your experts spend hours on routine checks instead of investigating real threats. Backlogs grow, and so does your exposure.",
-    },
-    {
-      icon: <FaFileAlt />,
-      title: "Traditional OCR Only Reads—It Doesn't Think",
-      description: "Basic text extraction can't spot altered amounts, forged signatures, or manipulated images. By the time you notice patterns, thousands of dollars are already gone.",
-    },
-    {
-      icon: <FaChartLine />,
-      title: 'Fraud Evolves Faster Than Your Rules',
-      description: "Static rule-based systems fail against sophisticated forgeries. Fraudsters adapt to your defenses while you're stuck waiting on vendor updates or building new rules from scratch.",
-    },
-  ];
 
   const advantages = [
     {
@@ -670,19 +658,6 @@ const LandingPage = () => {
         cardDescStyle={cardDescStyle}
       />
 
-      {/* Pain Points Section */}
-      <PainPointsSection
-        colors={colors}
-        primary={primary}
-        painPoints={painPoints}
-        sectionStyle={sectionStyle}
-        sectionTitleStyle={sectionTitleStyle}
-        cardsGridStyle={cardsGridStyle}
-        cardStyle={cardStyle}
-        cardIconStyle={cardIconStyle}
-        cardTitleStyle={cardTitleStyle}
-        cardDescStyle={cardDescStyle}
-      />
 
       {/* Why Us Section */}
       <WhyUsSection
@@ -852,7 +827,7 @@ const UseCasesSection = ({ id, colors, primary, useCases, sectionStyle, sectionT
   
   return (
     <section id={id} style={sectionStyle} ref={ref}>
-      <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+      <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 1.5rem' }}>
         <div style={{
           textAlign: 'center',
           marginBottom: '4rem',
@@ -867,7 +842,13 @@ const UseCasesSection = ({ id, colors, primary, useCases, sectionStyle, sectionT
             </span>
           </h2>
         </div>
-        <div style={cardsGridStyle}>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, 1fr)',
+          gap: '1.5rem',
+          maxWidth: '1400px',
+          margin: '0 auto',
+        }}>
           {useCases.map((useCase, index) => (
             <div
               key={index}
@@ -899,55 +880,6 @@ const UseCasesSection = ({ id, colors, primary, useCases, sectionStyle, sectionT
   );
 };
 
-const PainPointsSection = ({ colors, primary, painPoints, sectionStyle, sectionTitleStyle, cardsGridStyle, cardStyle, cardIconStyle, cardTitleStyle, cardDescStyle }) => {
-  const { ref, isVisible } = useScrollAnimation();
-  
-  return (
-    <section style={{ ...sectionStyle, backgroundColor: `${colors.secondary}50` }} ref={ref}>
-      <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-        <div style={{
-          textAlign: 'center',
-          marginBottom: '4rem',
-          opacity: isVisible ? 1 : 0,
-          transform: isVisible ? 'translateY(0)' : 'translateY(20px)',
-          transition: 'all 0.7s ease-out',
-        }}>
-          <h2 style={sectionTitleStyle}>
-            The Hidden Cost of{' '}
-            <span style={{ background: `linear-gradient(135deg, ${primary}, ${colors.redGlow})`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-              Manual Document Review
-            </span>
-          </h2>
-        </div>
-        <div style={cardsGridStyle}>
-          {painPoints.map((point, index) => (
-            <div
-              key={index}
-              style={{
-                ...cardStyle,
-                opacity: isVisible ? 1 : 0,
-                transform: isVisible ? 'translateY(0)' : 'translateY(20px)',
-                transition: `all 0.5s ease-out ${index * 0.15}s`,
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-8px)';
-                e.currentTarget.style.borderColor = `${colors.destructive}4D`;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.borderColor = colors.border;
-              }}
-            >
-              <div style={{ ...cardIconStyle, color: colors.destructive }}>{point.icon}</div>
-              <h3 style={cardTitleStyle}>{point.title}</h3>
-              <p style={cardDescStyle}>{point.description}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-};
 
 const WhyUsSection = ({ colors, primary, advantages, sectionStyle, sectionTitleStyle, cardStyle, cardTitleStyle, cardDescStyle }) => {
   const { ref, isVisible } = useScrollAnimation();
