@@ -207,7 +207,7 @@ class PaystubFraudDetector:
         """Fallback heuristic prediction when model not available"""
         risk_score = 0.0
         indicators = []
-
+        
         # Unpack features
         has_company = features[0]
         has_employee = features[1]
@@ -229,7 +229,7 @@ class PaystubFraudDetector:
         if missing_fields > 0:
             risk_score += (missing_fields * 0.1)
             indicators.append(f"Missing {int(missing_fields)} critical fields")
-
+            
         # Rule 3: Low text quality
         if text_quality < 0.7:
             risk_score += 0.2
@@ -242,10 +242,10 @@ class PaystubFraudDetector:
         if has_employee == 0.0:
             risk_score += 0.15
             indicators.append("Employee name missing")
-
+            
         # Cap score
         risk_score = min(1.0, risk_score)
-
+        
         # Determine level
         if risk_score < 0.3:
             risk_level = 'LOW'
@@ -253,7 +253,7 @@ class PaystubFraudDetector:
             risk_level = 'MEDIUM'
         else:
             risk_level = 'HIGH'
-
+            
         # Classify fraud types and generate machine reasons
         fraud_classification = self._classify_fraud_types(features, feature_names, paystub_data, indicators)
 

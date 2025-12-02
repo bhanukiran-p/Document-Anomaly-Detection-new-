@@ -385,10 +385,23 @@ def analyze_paystub():
             # Extract fraud types and explanations for API response
             ml_analysis = details.get('ml_analysis', {})
             ai_analysis = details.get('ai_analysis', {})
+            employee_info = details.get('employee_info', {})
             
             # Prefer AI fraud types/explanations, fallback to ML
-            fraud_types = ai_analysis.get('fraud_types') or ml_analysis.get('fraud_types', [])
-            fraud_explanations = ai_analysis.get('fraud_explanations', [])
+            # Always include ML fraud types even if AI doesn't have them (e.g., repeat offenders)
+            ai_fraud_types = ai_analysis.get('fraud_types', []) if ai_analysis else []
+            ml_fraud_types = ml_analysis.get('fraud_types', [])
+            fraud_types = ai_fraud_types if ai_fraud_types else ml_fraud_types
+            
+            # For fraud explanations, prefer AI but include ML reasons if AI doesn't have structured explanations
+            fraud_explanations = ai_analysis.get('fraud_explanations', []) if ai_analysis else []
+            # If no AI explanations but we have ML fraud types and reasons, build explanations from ML
+            if not fraud_explanations and ml_fraud_types:
+                ml_fraud_reasons = ml_analysis.get('fraud_reasons', [])
+                fraud_explanations = [{
+                    'type': fraud_type,
+                    'reasons': ml_fraud_reasons if ml_fraud_reasons else [f"Detected as {fraud_type.replace('_', ' ').title()} by ML analysis."]
+                } for fraud_type in ml_fraud_types[:1]]  # Use first fraud type for primary card
             
             # Build structured response
             response_data = {
@@ -402,6 +415,7 @@ def analyze_paystub():
                 'ai_confidence': ai_analysis.get('confidence_score', 0.0),
                 'summary': ai_analysis.get('summary', ''),
                 'key_indicators': ai_analysis.get('key_indicators', []),
+                'employee_info': employee_info,  # Include employee history
                 'document_id': document_id,
                 'data': details,  # Keep full details for backward compatibility
                 'message': 'Paystub analyzed and stored successfully'
