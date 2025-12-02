@@ -726,7 +726,7 @@ def analyze_bank_statement():
             if os.path.exists(filepath):
                 os.remove(filepath)
 
-            # Store to database
+            # Store to database (customer_id now created during storage)
             user_id = request.form.get('user_id', 'public')
             document_id = store_bank_statement_analysis(user_id, filename, result)
             logger.info(f"Bank statement stored to database: {document_id}")
@@ -739,8 +739,8 @@ def analyze_bank_statement():
                 extracted_data = result.get('extracted_data', {})
                 normalized_data = result.get('normalized_data', {})
                 account_holder_name = (
-                    normalized_data.get('account_holder_name') or 
-                    extracted_data.get('account_holder_name') or 
+                    normalized_data.get('account_holder_name') or
+                    extracted_data.get('account_holder_name') or
                     extracted_data.get('account_holder') or
                     (extracted_data.get('account_holder_names', [])[0] if isinstance(extracted_data.get('account_holder_names'), list) and len(extracted_data.get('account_holder_names', [])) > 0 else None)
                 )
@@ -752,7 +752,7 @@ def analyze_bank_statement():
                         customer_storage.update_customer_fraud_status(
                             account_holder_name=account_holder_name,
                             recommendation=recommendation,
-                            statement_id=result.get('statement_id')
+                            statement_id=document_id
                         )
                         logger.info(f"Updated customer {account_holder_name} fraud status: {recommendation}")
                     except Exception as e:
@@ -781,6 +781,554 @@ def analyze_bank_statement():
             'success': False,
             'error': str(e),
             'message': 'Failed to analyze bank statement'
+        }), 500
+
+
+# Database query endpoints for importing from Supabase tables
+@app.route('/api/checks/list', methods=['GET'])
+def get_checks_list():
+    """Fetch list of checks from database view with optional date filtering"""
+    try:
+        from datetime import datetime, timedelta
+        supabase = get_supabase()
+
+        # Fetch all records using pagination to bypass Supabase default limit of 1000
+        all_data = []
+        page_size = 1000
+        offset = 0
+        total_count = None
+        
+        while True:
+            # Get count only on first request
+            count_param = 'exact' if offset == 0 else None
+            response = supabase.table('v_checks_analysis').select('*', count=count_param).order('created_at', desc=True).range(offset, offset + page_size - 1).execute()
+            page_data = response.data or []
+            if not page_data:
+                break
+            
+            # Get total count from first response
+            if total_count is None:
+                total_count = response.count if hasattr(response, 'count') else None
+            
+            all_data.extend(page_data)
+            
+            # Check if we got all records
+            if total_count and len(all_data) >= total_count:
+                break
+            if len(page_data) < page_size:
+                break
+            offset += page_size
+        
+        data = all_data
+        total_available = total_count if total_count is not None else len(data)
+
+        # Optional date filtering
+        date_filter = request.args.get('date_filter', default=None)  # 'last_30', 'last_60', 'last_90', 'older'
+
+        if date_filter:
+            now = datetime.utcnow()
+            filtered_data = []
+
+            for record in data:
+                created_at_str = record.get('created_at')
+                if not created_at_str:
+                    continue
+
+                # Parse created_at timestamp
+                try:
+                    # Handle ISO format timestamps with or without microseconds
+                    if 'T' in created_at_str:
+                        created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00').split('+')[0])
+                    else:
+                        created_at = datetime.fromisoformat(created_at_str)
+                except:
+                    continue
+
+                days_old = (now - created_at).days
+
+                if date_filter == 'last_30' and days_old <= 30:
+                    filtered_data.append(record)
+                elif date_filter == 'last_60' and days_old <= 60:
+                    filtered_data.append(record)
+                elif date_filter == 'last_90' and days_old <= 90:
+                    filtered_data.append(record)
+                elif date_filter == 'older' and days_old > 90:
+                    filtered_data.append(record)
+
+            data = filtered_data
+
+        return jsonify({
+            'success': True,
+            'data': data,
+            'count': len(data),
+            'total_records': total_available if not date_filter else None,
+            'date_filter': date_filter
+        })
+    except Exception as e:
+        logger.error(f"Failed to fetch checks list: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to fetch checks list'
+        }), 500
+
+
+@app.route('/api/checks/<check_id>', methods=['GET'])
+def get_check_details(check_id):
+    """Fetch detailed check data from view"""
+    try:
+        supabase = get_supabase()
+        response = supabase.table('v_checks_analysis').select('*').eq('check_id', check_id).execute()
+        if not response.data:
+            return jsonify({
+                'success': False,
+                'error': 'Check not found',
+                'message': f'No check found with ID: {check_id}'
+            }), 404
+        return jsonify({
+            'success': True,
+            'data': response.data[0]
+        })
+    except Exception as e:
+        logger.error(f"Failed to fetch check details: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to fetch check details'
+        }), 500
+
+
+@app.route('/api/checks/search', methods=['GET'])
+def search_checks():
+    """Search checks by payer name from view"""
+    try:
+        supabase = get_supabase()
+        query = request.args.get('q', default='', type=str)
+        limit = request.args.get('limit', default=20, type=int)
+        if not query:
+            return jsonify({
+                'success': False,
+                'error': 'Query parameter required',
+                'message': 'Please provide a search query'
+            }), 400
+        response = supabase.table('v_checks_analysis').select('*').ilike('payer_name', f'%{query}%').limit(limit).execute()
+        return jsonify({
+            'success': True,
+            'data': response.data,
+            'count': len(response.data)
+        })
+    except Exception as e:
+        logger.error(f"Failed to search checks: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to search checks'
+        }), 500
+
+
+# Database query endpoints for money orders
+@app.route('/api/money-orders/list', methods=['GET'])
+def get_money_orders_list():
+    """Fetch list of money orders from database view with optional date filtering"""
+    try:
+        from datetime import datetime, timedelta
+        supabase = get_supabase()
+
+        # Fetch all records using pagination to bypass Supabase default limit of 1000
+        all_data = []
+        page_size = 1000
+        offset = 0
+        total_count = None
+        
+        while True:
+            # Get count only on first request
+            count_param = 'exact' if offset == 0 else None
+            response = supabase.table('v_money_orders_analysis').select('*', count=count_param).order('created_at', desc=True).range(offset, offset + page_size - 1).execute()
+            page_data = response.data or []
+            if not page_data:
+                break
+            
+            # Get total count from first response
+            if total_count is None:
+                total_count = response.count if hasattr(response, 'count') else None
+            
+            all_data.extend(page_data)
+            
+            # Check if we got all records
+            if total_count and len(all_data) >= total_count:
+                break
+            if len(page_data) < page_size:
+                break
+            offset += page_size
+        
+        data = all_data
+        total_available = total_count if total_count is not None else len(data)
+
+        # Optional date filtering
+        date_filter = request.args.get('date_filter', default=None)  # 'last_30', 'last_60', 'last_90', 'older'
+
+        if date_filter:
+            now = datetime.utcnow()
+            filtered_data = []
+
+            for record in data:
+                created_at_str = record.get('created_at')
+                if not created_at_str:
+                    continue
+
+                # Parse created_at timestamp
+                try:
+                    # Handle ISO format timestamps with or without microseconds
+                    if 'T' in created_at_str:
+                        created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00').split('+')[0])
+                    else:
+                        created_at = datetime.fromisoformat(created_at_str)
+                except:
+                    continue
+
+                days_old = (now - created_at).days
+
+                if date_filter == 'last_30' and days_old <= 30:
+                    filtered_data.append(record)
+                elif date_filter == 'last_60' and days_old <= 60:
+                    filtered_data.append(record)
+                elif date_filter == 'last_90' and days_old <= 90:
+                    filtered_data.append(record)
+                elif date_filter == 'older' and days_old > 90:
+                    filtered_data.append(record)
+
+            data = filtered_data
+
+        return jsonify({
+            'success': True,
+            'data': data,
+            'count': len(data),
+            'total_records': total_available if not date_filter else None,
+            'date_filter': date_filter
+        })
+    except Exception as e:
+        logger.error(f"Failed to fetch money orders list: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to fetch money orders list'
+        }), 500
+
+
+@app.route('/api/money-orders/<money_order_id>', methods=['GET'])
+def get_money_order_details(money_order_id):
+    """Fetch detailed money order data from view"""
+    try:
+        supabase = get_supabase()
+        response = supabase.table('v_money_orders_analysis').select('*').eq('money_order_id', money_order_id).execute()
+        if not response.data:
+            return jsonify({
+                'success': False,
+                'error': 'Money order not found',
+                'message': f'No money order found with ID: {money_order_id}'
+            }), 404
+        return jsonify({
+            'success': True,
+            'data': response.data[0]
+        })
+    except Exception as e:
+        logger.error(f"Failed to fetch money order details: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to fetch money order details'
+        }), 500
+
+
+@app.route('/api/money-orders/search', methods=['GET'])
+def search_money_orders():
+    """Search money orders by purchaser name from view"""
+    try:
+        supabase = get_supabase()
+        query = request.args.get('q', default='', type=str)
+        limit = request.args.get('limit', default=20, type=int)
+        if not query:
+            return jsonify({
+                'success': False,
+                'error': 'Query parameter required',
+                'message': 'Please provide a search query'
+            }), 400
+        response = supabase.table('v_money_orders_analysis').select('*').ilike('purchaser_name', f'%{query}%').limit(limit).execute()
+        return jsonify({
+            'success': True,
+            'data': response.data,
+            'count': len(response.data)
+        })
+    except Exception as e:
+        logger.error(f"Failed to search money orders: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to search money orders'
+        }), 500
+
+
+@app.route('/api/documents/list', methods=['GET'])
+def get_documents_list():
+    """Fetch list of all documents from v_documents_with_risk view with optional filtering"""
+    try:
+        from datetime import datetime
+        supabase = get_supabase()
+
+        # Fetch all records using pagination to bypass Supabase default limit of 1000
+        all_data = []
+        page_size = 1000
+        offset = 0
+        total_count = None
+        
+        while True:
+            # Get count only on first request
+            count_param = 'exact' if offset == 0 else None
+            response = supabase.table('v_documents_with_risk').select('*', count=count_param).order('upload_date', desc=True).range(offset, offset + page_size - 1).execute()
+            page_data = response.data or []
+            if not page_data:
+                break
+            
+            # Get total count from first response
+            if total_count is None:
+                total_count = response.count if hasattr(response, 'count') else None
+            
+            all_data.extend(page_data)
+            
+            # Check if we got all records
+            if total_count and len(all_data) >= total_count:
+                break
+            if len(page_data) < page_size:
+                break
+            offset += page_size
+        
+        data = all_data
+        total_available = total_count if total_count is not None else len(data)
+
+        # Apply filters
+        date_filter = request.args.get('date_filter', default=None)
+        document_type_filter = request.args.get('document_type', default=None)
+        risk_level_filter = request.args.get('risk_level', default=None)
+        status_filter = request.args.get('status', default=None)
+
+        if date_filter:
+            now = datetime.utcnow()
+            filtered_data = []
+
+            for record in data:
+                upload_date_str = record.get('upload_date')
+                if not upload_date_str:
+                    continue
+
+                # Parse upload_date timestamp
+                try:
+                    if 'T' in upload_date_str:
+                        upload_date = datetime.fromisoformat(upload_date_str.replace('Z', '+00:00').split('+')[0])
+                    else:
+                        upload_date = datetime.fromisoformat(upload_date_str)
+                except:
+                    continue
+
+                days_old = (now - upload_date).days
+
+                if date_filter == 'last_30' and days_old <= 30:
+                    filtered_data.append(record)
+                elif date_filter == 'last_60' and days_old <= 60:
+                    filtered_data.append(record)
+                elif date_filter == 'last_90' and days_old <= 90:
+                    filtered_data.append(record)
+                elif date_filter == 'older' and days_old > 90:
+                    filtered_data.append(record)
+
+            data = filtered_data
+
+        # Apply document_type filter
+        if document_type_filter:
+            data = [r for r in data if r.get('document_type', '').lower() == document_type_filter.lower()]
+
+        # Apply risk_level filter
+        if risk_level_filter:
+            data = [r for r in data if r.get('risk_level', '').upper() == risk_level_filter.upper()]
+
+        # Apply status filter
+        if status_filter:
+            data = [r for r in data if r.get('status', '').lower() == status_filter.lower()]
+
+        return jsonify({
+            'success': True,
+            'data': data,
+            'count': len(data),
+            'total_records': total_available if not (date_filter or document_type_filter or risk_level_filter or status_filter) else None,
+            'date_filter': date_filter,
+            'document_type_filter': document_type_filter,
+            'risk_level_filter': risk_level_filter,
+            'status_filter': status_filter
+        })
+    except Exception as e:
+        logger.error(f"Failed to fetch documents list: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': f'Failed to fetch documents list: {str(e)}'
+        }), 500
+
+
+@app.route('/api/documents/enriched', methods=['GET'])
+def get_enriched_documents():
+    """Fetch documents with enriched data from individual tables (payer, payee, amount, etc.)"""
+    try:
+        from datetime import datetime
+        supabase = get_supabase()
+        
+        # Get base documents from view
+        date_filter = request.args.get('date_filter', default=None)
+        document_type_filter = request.args.get('document_type', default=None)
+        risk_level_filter = request.args.get('risk_level', default=None)
+        status_filter = request.args.get('status', default=None)
+        
+        # Build query for base documents
+        query = supabase.table('v_documents_with_risk').select('*')
+        
+        if date_filter:
+            # Apply date filter logic (similar to list endpoint)
+            # For now, fetch all and filter in Python
+            pass
+        
+        response = query.order('upload_date', desc=True).limit(5000).execute()
+        base_docs = response.data or []
+        
+        # Apply filters
+        if date_filter:
+            now = datetime.utcnow()
+            filtered = []
+            for doc in base_docs:
+                upload_date_str = doc.get('upload_date')
+                if not upload_date_str:
+                    continue
+                try:
+                    if 'T' in upload_date_str:
+                        upload_date = datetime.fromisoformat(upload_date_str.replace('Z', '+00:00').split('+')[0])
+                    else:
+                        upload_date = datetime.fromisoformat(upload_date_str)
+                    days_old = (now - upload_date).days
+                    if date_filter == 'last_30' and days_old <= 30:
+                        filtered.append(doc)
+                    elif date_filter == 'last_60' and days_old <= 60:
+                        filtered.append(doc)
+                    elif date_filter == 'last_90' and days_old <= 90:
+                        filtered.append(doc)
+                    elif date_filter == 'older' and days_old > 90:
+                        filtered.append(doc)
+                except:
+                    continue
+            base_docs = filtered
+        
+        if document_type_filter:
+            base_docs = [d for d in base_docs if d.get('document_type', '').lower() == document_type_filter.lower()]
+        if risk_level_filter:
+            base_docs = [d for d in base_docs if (d.get('risk_level') or '').upper().replace(' ', '') == risk_level_filter.upper()]
+        if status_filter:
+            base_docs = [d for d in base_docs if (d.get('status') or '').lower() == status_filter.lower()]
+        
+        # Enrich with data from individual tables
+        enriched_docs = []
+        for doc in base_docs:
+            doc_type = doc.get('document_type', '').lower()
+            doc_id = doc.get('document_id')
+            
+            enriched = {**doc}
+            
+            # Fetch additional fields based on document type
+            try:
+                if doc_type == 'check':
+                    check_resp = supabase.table('checks').select('payer_name,payee_name,amount,check_number,ai_recommendation,model_confidence').eq('document_id', doc_id).limit(1).execute()
+                    if check_resp.data:
+                        check_data = check_resp.data[0]
+                        enriched['payer_name'] = check_data.get('payer_name')
+                        enriched['payee_name'] = check_data.get('payee_name')
+                        enriched['amount'] = check_data.get('amount')
+                        enriched['check_number'] = check_data.get('check_number')
+                        enriched['ai_recommendation'] = enriched.get('ai_recommendation') or check_data.get('ai_recommendation')
+                        enriched['model_confidence'] = enriched.get('confidence') or enriched.get('model_confidence') or check_data.get('model_confidence')
+                elif doc_type == 'money_order' or doc_type == 'money order':
+                    mo_resp = supabase.table('money_orders').select('purchaser_name,payee_name,amount,money_order_number,ai_recommendation,model_confidence').eq('document_id', doc_id).limit(1).execute()
+                    if mo_resp.data:
+                        mo_data = mo_resp.data[0]
+                        enriched['purchaser_name'] = mo_data.get('purchaser_name')
+                        enriched['payee_name'] = mo_data.get('payee_name')
+                        enriched['amount'] = mo_data.get('amount')
+                        enriched['money_order_number'] = mo_data.get('money_order_number')
+                        enriched['ai_recommendation'] = enriched.get('ai_recommendation') or mo_data.get('ai_recommendation')
+                        enriched['model_confidence'] = enriched.get('confidence') or enriched.get('model_confidence') or mo_data.get('model_confidence')
+                elif doc_type == 'paystub':
+                    ps_resp = supabase.table('paystubs').select('employee_name,employer_name,gross_pay,ai_recommendation,model_confidence').eq('document_id', doc_id).limit(1).execute()
+                    if ps_resp.data:
+                        ps_data = ps_resp.data[0]
+                        enriched['employee_name'] = ps_data.get('employee_name')
+                        enriched['amount'] = ps_data.get('gross_pay')
+                        enriched['ai_recommendation'] = enriched.get('ai_recommendation') or ps_data.get('ai_recommendation')
+                        enriched['model_confidence'] = enriched.get('confidence') or enriched.get('model_confidence') or ps_data.get('model_confidence')
+                elif doc_type == 'bank_statement' or doc_type == 'bank statement':
+                    bs_resp = supabase.table('bank_statements').select('account_holder,ai_recommendation,model_confidence').eq('document_id', doc_id).limit(1).execute()
+                    if bs_resp.data:
+                        bs_data = bs_resp.data[0]
+                        enriched['account_holder'] = bs_data.get('account_holder')
+                        enriched['ai_recommendation'] = enriched.get('ai_recommendation') or bs_data.get('ai_recommendation')
+                        enriched['model_confidence'] = enriched.get('confidence') or enriched.get('model_confidence') or bs_data.get('model_confidence')
+            except Exception as e:
+                logger.warning(f"Could not enrich document {doc_id}: {e}")
+            
+            enriched_docs.append(enriched)
+        
+        return jsonify({
+            'success': True,
+            'data': enriched_docs,
+            'count': len(enriched_docs)
+        })
+    except Exception as e:
+        logger.error(f"Failed to fetch enriched documents: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to fetch enriched documents'
+        }), 500
+
+
+@app.route('/api/documents/search', methods=['GET'])
+def search_documents():
+    """Search documents by file_name or document_id"""
+    try:
+        supabase = get_supabase()
+        query = request.args.get('q', '').strip()
+        limit = int(request.args.get('limit', 20))
+
+        if not query:
+            return jsonify({
+                'success': False,
+                'error': 'Search query is required',
+                'message': 'Please provide a search query'
+            }), 400
+
+        # Search in file_name and document_id - try both and combine results
+        try:
+            # Try searching both fields using or_ filter
+            response = supabase.table('v_documents_with_risk').select('*').or_(f'file_name.ilike.%{query}%,document_id.ilike.%{query}%').order('upload_date', desc=True).limit(limit).execute()
+        except:
+            # Fallback: search file_name only if or_ doesn't work
+            response = supabase.table('v_documents_with_risk').select('*').ilike('file_name', f'%{query}%').order('upload_date', desc=True).limit(limit).execute()
+
+        return jsonify({
+            'success': True,
+            'data': response.data or [],
+            'count': len(response.data or []),
+            'query': query
+        })
+    except Exception as e:
+        logger.error(f"Failed to search documents: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to search documents'
         }), 500
 
 
@@ -911,6 +1459,14 @@ if __name__ == '__main__':
     print(f"  - POST /api/money-order/analyze")
     print(f"  - POST /api/bank-statement/analyze")
     print(f"  - POST /api/real-time/analyze")
+    print(f"  - GET  /api/checks/list")
+    print(f"  - GET  /api/checks/search")
+    print(f"  - GET  /api/checks/<check_id>")
+    print(f"  - GET  /api/money-orders/list")
+    print(f"  - GET  /api/money-orders/search")
+    print(f"  - GET  /api/money-orders/<money_order_id>")
+    print(f"  - GET  /api/documents/list")
+    print(f"  - GET  /api/documents/search")
     print("=" * 60)
 
     app.run(debug=True, host='0.0.0.0', port=5001)
