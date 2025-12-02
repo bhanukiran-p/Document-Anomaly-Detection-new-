@@ -454,6 +454,29 @@ class DocumentStorage:
             # Store document record
             document_id = self._store_document(user_id, 'bank_statement', file_name)
 
+            # Get or create customer first (required for customer_id)
+            # Try multiple sources for account holder name
+            account_holder_name = (
+                self._safe_string(extracted.get('account_holder_name')) or
+                self._safe_string(extracted.get('account_holder')) or
+                (extracted.get('account_holder_names', [])[0] if isinstance(extracted.get('account_holder_names'), list) and len(extracted.get('account_holder_names', [])) > 0 else None)
+            )
+            customer_id = None
+            if account_holder_name:
+                try:
+                    from bank_statement.database.bank_statement_customer_storage import BankStatementCustomerStorage
+                    customer_storage = BankStatementCustomerStorage()
+                    customer_history = customer_storage.get_customer_history(account_holder_name)
+                    customer_id = customer_history.get('customer_id')
+                    
+                    # If customer doesn't exist yet, we'll create it when updating fraud status
+                    # For now, we can proceed without customer_id (it will be set later)
+                    if not customer_id:
+                        logger.info(f"Customer {account_holder_name} not found - will be created when updating fraud status")
+                except Exception as e:
+                    logger.warning(f"Could not get customer: {e}")
+                    # Continue without customer_id if lookup fails
+
             # Extract institution
             institution_data = {
                 'name': extracted.get('bank_name'),
@@ -470,7 +493,10 @@ class DocumentStorage:
             statement_data = {
                 'statement_id': str(uuid.uuid4()),
                 'document_id': document_id,
-                'account_holder_name': self._safe_string(extracted.get('account_holder_name') or extracted.get('account_holder')),
+                'user_id': user_id,  # Add user_id (required field)
+                'file_name': file_name,  # Add file_name (required field)
+                'customer_id': customer_id,  # Add customer_id (can be None if account holder name missing)
+                'account_holder_name': self._safe_string(account_holder_name or extracted.get('account_holder_name') or extracted.get('account_holder')),
                 'account_holder_address': self._safe_string(extracted.get('account_holder_address') or extracted.get('account_holder_address')),
                 'account_holder_city': None,
                 'account_holder_state': None,
@@ -509,8 +535,31 @@ class DocumentStorage:
             }
 
             # Insert bank statement record
-            self.supabase.table('bank_statements').insert([statement_data]).execute()
-            logger.info(f"Stored bank statement: {statement_data['statement_id']}")
+            # Note: If customer_id is None, we'll try to insert without it (table may allow NULL)
+            try:
+                if customer_id is None:
+                    # Remove customer_id from data if it's None
+                    statement_data_to_insert = {k: v for k, v in statement_data.items() if k != 'customer_id'}
+                    self.supabase.table('bank_statements').insert([statement_data_to_insert]).execute()
+                    logger.info(f"Stored bank statement without customer_id: {statement_data['statement_id']}")
+                else:
+                    self.supabase.table('bank_statements').insert([statement_data]).execute()
+                    logger.info(f"Stored bank statement with customer_id {customer_id}: {statement_data['statement_id']}")
+            except Exception as insert_error:
+                error_str = str(insert_error).lower()
+                # If insert fails due to customer_id constraint, try without it
+                if 'customer_id' in error_str and ('not null' in error_str or 'null value' in error_str):
+                    logger.warning(f"Insert failed due to customer_id NOT NULL constraint, retrying without it: {insert_error}")
+                    statement_data_to_insert = {k: v for k, v in statement_data.items() if k != 'customer_id'}
+                    try:
+                        self.supabase.table('bank_statements').insert([statement_data_to_insert]).execute()
+                        logger.info(f"Stored bank statement without customer_id (retry): {statement_data['statement_id']}")
+                    except Exception as retry_error:
+                        logger.error(f"Retry insert also failed: {retry_error}")
+                        raise retry_error
+                else:
+                    logger.error(f"Insert failed with error: {insert_error}")
+                    raise insert_error
 
             # Update document status
             self._update_document_status(document_id, 'success')
@@ -518,7 +567,7 @@ class DocumentStorage:
             return document_id
 
         except Exception as e:
-            logger.error(f"Error storing bank statement: {e}")
+            logger.error(f"Error storing bank statement: {e}", exc_info=True)
             if document_id:
                 self._update_document_status(document_id, 'failed')
             return None

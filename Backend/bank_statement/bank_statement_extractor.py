@@ -296,6 +296,14 @@ class BankStatementExtractor:
             # Mark as unsupported bank
             extracted_data['is_supported_bank'] = False
             extracted_data['bank_name'] = bank_name
+            
+            # Convert account_holder_names array to account_holder_name string (even for unsupported banks)
+            if not extracted_data.get('account_holder_name') and extracted_data.get('account_holder_names'):
+                account_holder_names = extracted_data.get('account_holder_names', [])
+                if isinstance(account_holder_names, list) and len(account_holder_names) > 0:
+                    extracted_data['account_holder_name'] = account_holder_names[0]
+                    logger.info(f"Converted account_holder_names to account_holder_name: {extracted_data['account_holder_name']}")
+            
             return extracted_data
 
     def _collect_validation_issues(self, data: Dict) -> List[str]:
@@ -368,14 +376,22 @@ class BankStatementExtractor:
 
     def _get_customer_info(self, data: Dict) -> Dict:
         """Get customer history from database"""
-        account_holder_name = data.get('account_holder_name')
+        # Try multiple sources for account holder name
+        account_holder_name = (
+            data.get('account_holder_name') or
+            data.get('account_holder') or
+            (data.get('account_holder_names', [])[0] if isinstance(data.get('account_holder_names'), list) and len(data.get('account_holder_names', [])) > 0 else None)
+        )
+        
         if not account_holder_name:
+            logger.warning("Account holder name not found - cannot lookup customer history")
             return {}
 
         try:
             from .ai.bank_statement_tools import BankStatementDataAccessTools
             data_tools = BankStatementDataAccessTools()
             customer_info = data_tools.get_customer_history(account_holder_name)
+            logger.info(f"Customer lookup for '{account_holder_name}': escalate_count={customer_info.get('escalate_count', 0)}, fraud_count={customer_info.get('fraud_count', 0)}")
             return customer_info
         except Exception as e:
             logger.error(f"Failed to get customer info: {e}")
@@ -385,15 +401,24 @@ class BankStatementExtractor:
         """Check for duplicate bank statement submission"""
         account_number = data.get('account_number')
         statement_period_start = data.get('statement_period_start_date')
-        account_holder_name = data.get('account_holder_name')
+        
+        # Try multiple sources for account holder name
+        account_holder_name = (
+            data.get('account_holder_name') or
+            data.get('account_holder') or
+            (data.get('account_holder_names', [])[0] if isinstance(data.get('account_holder_names'), list) and len(data.get('account_holder_names', [])) > 0 else None)
+        )
 
         if not account_number or not statement_period_start or not account_holder_name:
+            logger.warning(f"Duplicate check skipped - missing data: account_number={bool(account_number)}, statement_period_start={bool(statement_period_start)}, account_holder_name={bool(account_holder_name)}")
             return False
 
         try:
             from .ai.bank_statement_tools import BankStatementDataAccessTools
             data_tools = BankStatementDataAccessTools()
             is_duplicate = data_tools.check_duplicate(account_number, statement_period_start, account_holder_name)
+            if is_duplicate:
+                logger.warning(f"Duplicate detected: {account_number} from {account_holder_name} for period {statement_period_start}")
             return is_duplicate
         except Exception as e:
             logger.error(f"Duplicate check failed: {e}")
@@ -406,7 +431,14 @@ class BankStatementExtractor:
             return None
 
         try:
-            account_holder_name = data.get('account_holder_name')
+            # Try multiple sources for account holder name
+            account_holder_name = (
+                data.get('account_holder_name') or
+                data.get('account_holder') or
+                (data.get('account_holder_names', [])[0] if isinstance(data.get('account_holder_names'), list) and len(data.get('account_holder_names', [])) > 0 else None)
+            )
+            logger.info(f"Using account_holder_name for AI analysis: {account_holder_name}")
+            
             ai_analysis = self.ai_agent.analyze_fraud(
                 extracted_data=data,
                 ml_analysis=ml_analysis,
@@ -520,6 +552,18 @@ class BankStatementExtractor:
         raw_text: str
     ) -> Dict:
         """Build complete analysis response"""
+        # Ensure account_holder_name is in both extracted_data and normalized_data for consistency
+        account_holder_name = (
+            normalized_data.get('account_holder_name') or
+            extracted_data.get('account_holder_name') or
+            extracted_data.get('account_holder') or
+            (extracted_data.get('account_holder_names', [])[0] if isinstance(extracted_data.get('account_holder_names'), list) and len(extracted_data.get('account_holder_names', [])) > 0 else None)
+        )
+        
+        if account_holder_name:
+            extracted_data['account_holder_name'] = account_holder_name
+            normalized_data['account_holder_name'] = account_holder_name
+        
         return {
             'status': 'success',
             'document_type': 'bank_statement',
