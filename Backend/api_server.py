@@ -9,6 +9,7 @@ import os
 import sys
 import logging
 import importlib.util
+import uuid
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -39,9 +40,11 @@ from auth import login_user, register_user
 
 try:
     from database.supabase_client import get_supabase, check_connection as check_supabase_connection
+    from database.analyzed_transactions_db import save_analyzed_transactions
 except ImportError:
     get_supabase = None
     check_supabase_connection = None
+    save_analyzed_transactions = None
 
 try:
     from auth.supabase_auth import login_user_supabase, register_user_supabase, verify_token
@@ -693,9 +696,31 @@ def analyze_real_time_transactions():
             # Cleanup file
             cleanup_file(filepath)
 
+            # Generate unique identifiers for this analysis
+            batch_id = str(uuid.uuid4())
+            analysis_id = str(uuid.uuid4())
+
+            # Step 5: Save analyzed transactions to database
+            logger.info("Step 5: Saving analyzed transactions to database")
+            if save_analyzed_transactions:
+                success, error_msg = save_analyzed_transactions(
+                    transactions=fraud_result['transactions'],
+                    batch_id=batch_id,
+                    analysis_id=analysis_id,
+                    model_type=fraud_result.get('model_type')
+                )
+                if success:
+                    logger.info(f"Successfully saved {len(fraud_result['transactions'])} transactions to analyzed_real_time_trn table")
+                else:
+                    logger.warning(f"Failed to save transactions to database: {error_msg}")
+            else:
+                logger.warning("Database module not available, skipping transaction storage")
+
             # Combine results
             response = {
                 'success': True,
+                'batch_id': batch_id,
+                'analysis_id': analysis_id,
                 'csv_info': {
                     'total_count': csv_result['total_count'],
                     'date_range': csv_result['date_range'],
@@ -717,7 +742,8 @@ def analyze_real_time_transactions():
             'transactions': fraud_result['transactions'],
             'insights': insights_result,
             'agent_analysis': agent_analysis,  # Include LLM agent analysis
-            'analyzed_at': datetime.now().isoformat()
+            'analyzed_at': datetime.now().isoformat(),
+            'database_status': 'saved' if save_analyzed_transactions else 'unavailable'
         }
 
             logger.info("Real-time transaction analysis complete")
