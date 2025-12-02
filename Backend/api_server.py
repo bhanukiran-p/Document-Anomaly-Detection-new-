@@ -351,34 +351,14 @@ def analyze_paystub():
         file.save(filepath)
         
         try:
-            # Import paystub extractor from pages
-            from paystub.extractor import PaystubExtractor
+            # Import paystub extractor (Mindee-based)
+            from paystub.paystub_extractor import PaystubExtractor
             
-            # Read file
-            with open(filepath, 'rb') as f:
-                file_bytes = f.read()
+            # Initialize extractor (no credentials needed for Mindee)
+            extractor = PaystubExtractor()
             
-            # Determine file type
-            file_type = 'application/pdf' if filename.lower().endswith('.pdf') else 'image'
-            
-            # Extract text for validation
-            extractor = PaystubExtractor(CREDENTIALS_PATH)
-            text = extractor.extract_text(file_bytes, file_type)
-            
-            # Validate document type
-            detected_type = detect_document_type(text)
-            if detected_type != 'paystub' and detected_type != 'unknown':
-                # Clean up
-                if os.path.exists(filepath):
-                    os.remove(filepath)
-                return jsonify({
-                    'success': False,
-                    'error': f'Wrong document type detected. This appears to be a {detected_type}, not a paystub. Please upload a paystub document.',
-                    'message': 'Document type mismatch'
-                }), 400
-            
-            # Extract and analyze
-            details = extractor.extract_paystub(text)
+            # Extract and analyze (complete pipeline)
+            details = extractor.extract_and_analyze(filepath)
 
             # Clean up
             if os.path.exists(filepath):
@@ -389,12 +369,45 @@ def analyze_paystub():
             document_id = store_paystub_analysis(user_id, filename, details)
             logger.info(f"Paystub stored to database: {document_id}")
 
-            return jsonify({
+            # Update employee fraud status after analysis
+            try:
+                from paystub.database.paystub_customer_storage import PaystubCustomerStorage
+                employee_name = details.get('normalized_data', {}).get('employee_name') or details.get('extracted_data', {}).get('employee_name')
+                ai_recommendation = details.get('ai_analysis', {}).get('recommendation') or details.get('ai_recommendation', 'UNKNOWN')
+                
+                if employee_name and ai_recommendation in ['APPROVE', 'REJECT', 'ESCALATE']:
+                    storage = PaystubCustomerStorage()
+                    storage.update_employee_fraud_status(employee_name, ai_recommendation, document_id)
+                    logger.info(f"Updated employee {employee_name} fraud status: {ai_recommendation}")
+            except Exception as e:
+                logger.warning(f"Failed to update employee fraud status: {e}")
+
+            # Extract fraud types and explanations for API response
+            ml_analysis = details.get('ml_analysis', {})
+            ai_analysis = details.get('ai_analysis', {})
+            
+            # Prefer AI fraud types/explanations, fallback to ML
+            fraud_types = ai_analysis.get('fraud_types') or ml_analysis.get('fraud_types', [])
+            fraud_explanations = ai_analysis.get('fraud_explanations', [])
+            
+            # Build structured response
+            response_data = {
                 'success': True,
-                'data': details,
+                'fraud_risk_score': ml_analysis.get('fraud_risk_score', 0.0),
+                'risk_level': ml_analysis.get('risk_level', 'UNKNOWN'),
+                'model_confidence': ml_analysis.get('model_confidence', 0.0),
+                'fraud_types': fraud_types if isinstance(fraud_types, list) else [],
+                'fraud_explanations': fraud_explanations if isinstance(fraud_explanations, list) else [],
+                'ai_recommendation': ai_analysis.get('recommendation', 'UNKNOWN'),
+                'ai_confidence': ai_analysis.get('confidence_score', 0.0),
+                'summary': ai_analysis.get('summary', ''),
+                'key_indicators': ai_analysis.get('key_indicators', []),
                 'document_id': document_id,
+                'data': details,  # Keep full details for backward compatibility
                 'message': 'Paystub analyzed and stored successfully'
-            })
+            }
+            
+            return jsonify(response_data)
             
         except Exception as e:
             if os.path.exists(filepath):

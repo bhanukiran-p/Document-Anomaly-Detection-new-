@@ -602,6 +602,18 @@ class DocumentStorage:
             if not isinstance(deductions, list):
                 deductions = []
 
+            # Extract fraud types and explanations (prefer AI, fallback to ML)
+            fraud_types = ai_analysis.get('fraud_types') if ai_analysis else ml_analysis.get('fraud_types', [])
+            fraud_explanations = ai_analysis.get('fraud_explanations', []) if ai_analysis else []
+            
+            # Ensure fraud_types is a list
+            if not isinstance(fraud_types, list):
+                fraud_types = [fraud_types] if fraud_types else []
+            
+            # Ensure fraud_explanations is a list of dicts
+            if not isinstance(fraud_explanations, list):
+                fraud_explanations = []
+            
             # Prepare paystub data
             paystub_data = {
                 'paystub_id': str(uuid.uuid4()),
@@ -636,7 +648,10 @@ class DocumentStorage:
                 'ai_recommendation': self._safe_string(ai_analysis.get('recommendation')) if ai_analysis else None,
                 # Anomaly data
                 'anomaly_count': len(analysis_data.get('anomalies', [])),
-                'top_anomalies': json.dumps(analysis_data.get('anomalies', [])[:5])
+                'top_anomalies': json.dumps(analysis_data.get('anomalies', [])[:5]),
+                # Fraud types and explanations
+                'fraud_types': json.dumps(fraud_types),
+                'fraud_explanations': json.dumps(fraud_explanations)
             }
 
             # Insert paystub record

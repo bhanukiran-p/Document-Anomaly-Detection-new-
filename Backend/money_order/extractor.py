@@ -13,7 +13,7 @@ from google.oauth2 import service_account
 
 # Import ML models and AI agent
 try:
-    from ml_models.fraud_detector import MoneyOrderFraudDetector
+    from .ml.money_order_fraud_detector import MoneyOrderFraudDetector
     from .ai.fraud_analysis_agent import FraudAnalysisAgent
     from .ai.tools import DataAccessTools
     from .ai.result_storage import save_analysis_result
@@ -61,16 +61,13 @@ class MoneyOrderExtractor:
 
         # Initialize ML fraud detector and AI agent
         if ML_AVAILABLE:
-            # Initialize ML fraud detector with trained models
-            model_dir = os.getenv('ML_MODEL_DIR', 'ml_models')
-            self.fraud_detector = MoneyOrderFraudDetector(
-                model_dir=model_dir
-            )
+            # Initialize ML fraud detector (self-contained, no model_dir needed)
+            self.fraud_detector = MoneyOrderFraudDetector()
 
             # Initialize data access tools for LangChain agent
-            ml_scores_path = os.getenv('ML_SCORES_CSV', 'ml_models/mock_data/ml_scores.csv')
-            customer_history_path = os.getenv('CUSTOMER_HISTORY_CSV', 'ml_models/mock_data/customer_history.csv')
-            fraud_cases_path = os.getenv('FRAUD_CASES_CSV', 'ml_models/mock_data/fraud_cases.csv')
+            ml_scores_path = os.getenv('ML_SCORES_CSV', 'money_order/mock_data/ml_scores.csv')
+            customer_history_path = os.getenv('CUSTOMER_HISTORY_CSV', 'money_order/mock_data/customer_history.csv')
+            fraud_cases_path = os.getenv('FRAUD_CASES_CSV', 'money_order/mock_data/fraud_cases.csv')
 
             self.data_tools = DataAccessTools(
                 ml_scores_path=ml_scores_path,

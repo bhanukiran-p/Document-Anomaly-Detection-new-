@@ -85,16 +85,35 @@ class MLRiskScorer:
         }
     
     def _load_trained_models(self):
-        """Load trained ML models from disk if available"""
-        if not os.path.exists(self.models_dir):
-            return
+        """Load trained ML models from disk if available
+        Checks document-specific folders first, then falls back to global models directory
+        """
+        document_types = {
+            'check': 'check/ml/models',
+            'paystub': 'paystub/ml/models',
+            'money_order': 'money_order/ml/models',
+            'bank_statement': 'bank_statement/ml/models'
+        }
         
-        document_types = ['check', 'paystub', 'money_order', 'bank_statement']
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__))) if '__file__' in globals() else os.getcwd()
         
-        for doc_type in document_types:
-            model_path = os.path.join(self.models_dir, f"{doc_type}_risk_model_latest.pkl")
-            scaler_path = os.path.join(self.models_dir, f"{doc_type}_scaler_latest.pkl")
-            metadata_path = os.path.join(self.models_dir, f"{doc_type}_model_metadata_latest.json")
+        for doc_type, doc_models_dir in document_types.items():
+            # First, try document-specific folder
+            doc_specific_path = os.path.join(base_dir, doc_models_dir)
+            model_path = os.path.join(doc_specific_path, f"{doc_type}_risk_model_latest.pkl")
+            scaler_path = os.path.join(doc_specific_path, f"{doc_type}_scaler_latest.pkl")
+            metadata_path = os.path.join(doc_specific_path, f"{doc_type}_model_metadata_latest.json")
+            
+            # If not found in document-specific folder, try global models directory
+            if not os.path.exists(model_path):
+                global_model_path = os.path.join(self.models_dir, f"{doc_type}_risk_model_latest.pkl")
+                global_scaler_path = os.path.join(self.models_dir, f"{doc_type}_scaler_latest.pkl")
+                global_metadata_path = os.path.join(self.models_dir, f"{doc_type}_model_metadata_latest.json")
+                
+                if os.path.exists(global_model_path):
+                    model_path = global_model_path
+                    scaler_path = global_scaler_path
+                    metadata_path = global_metadata_path
             
             if os.path.exists(model_path) and os.path.exists(scaler_path):
                 try:
@@ -113,7 +132,7 @@ class MLRiskScorer:
                         'scaler': scaler,
                         'metadata': metadata
                     }
-                    print(f"Loaded trained {doc_type} risk model")
+                    print(f"Loaded trained {doc_type} risk model from {os.path.dirname(model_path)}")
                 except Exception as e:
                     print(f"Warning: Failed to load {doc_type} model: {e}")
     

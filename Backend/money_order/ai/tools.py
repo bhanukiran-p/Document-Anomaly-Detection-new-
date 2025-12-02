@@ -19,7 +19,7 @@ class DataAccessTools:
                  ml_scores_path: str,
                  customer_history_path: str,
                  fraud_cases_path: str,
-                 training_data_path: str = 'ml_models/training_data.csv',
+                 training_data_path: str = 'money_order/training_data.csv',
                  results_storage_dir: str = None):
         """
         Initialize data access tools

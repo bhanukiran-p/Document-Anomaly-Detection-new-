@@ -19,7 +19,7 @@ class BankStatementFraudDetector:
     Uses ensemble of Random Forest and XGBoost models
     """
 
-    def __init__(self, model_dir: str = 'ml_models'):
+    def __init__(self, model_dir: str = 'models'):
         """
         Initialize bank statement fraud detector
 
@@ -30,19 +30,12 @@ class BankStatementFraudDetector:
         self.feature_extractor = BankStatementFeatureExtractor()
         self.models_loaded = False
 
-        # Model paths - use bank_statement/ml/ directory for bank statement-specific models
+        # Model paths - use bank_statement/ml/models directory (self-contained, NO FALLBACK)
         ml_dir = os.path.join(os.path.dirname(__file__), 'models')
         os.makedirs(ml_dir, exist_ok=True)
         self.rf_model_path = os.path.join(ml_dir, 'bank_statement_random_forest.pkl')
         self.xgb_model_path = os.path.join(ml_dir, 'bank_statement_xgboost.pkl')
         self.scaler_path = os.path.join(ml_dir, 'bank_statement_feature_scaler.pkl')
-        
-        # Fallback to global ml_models directory if bank statement-specific models don't exist
-        if not os.path.exists(self.rf_model_path):
-            fallback_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'ml_models')
-            self.rf_model_path = os.path.join(fallback_dir, 'bank_statement_random_forest.pkl')
-            self.xgb_model_path = os.path.join(fallback_dir, 'bank_statement_xgboost.pkl')
-            self.scaler_path = os.path.join(fallback_dir, 'bank_statement_feature_scaler.pkl')
 
         # Load models
         self._load_models()
