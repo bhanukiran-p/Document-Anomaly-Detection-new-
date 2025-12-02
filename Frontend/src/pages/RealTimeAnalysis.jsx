@@ -1862,6 +1862,31 @@ const RealTimeAnalysis = () => {
             </button>
           </div>
 
+          {/* Database Storage Notification */}
+          {analysisResult?.database_status === 'saved' && (
+            <div style={{
+              marginTop: '1rem',
+              padding: '1rem',
+              backgroundColor: '#d1fae5',
+              border: '1px solid #6ee7b7',
+              borderRadius: '0.5rem',
+              color: '#065f46',
+              fontSize: '0.95rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem'
+            }}>
+              <span style={{ fontSize: '1.2rem' }}>✓</span>
+              <div>
+                <strong>Data saved to database</strong>
+                <div style={{ fontSize: '0.85rem', marginTop: '0.25rem', opacity: 0.8 }}>
+                  {analysisResult?.transactions?.length || 0} transactions stored in analyzed_real_time_trn table
+                  {analysisResult?.batch_id && <div style={{ marginTop: '0.25rem' }}>Batch ID: {analysisResult.batch_id.substring(0, 8)}...</div>}
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
       )}
 
