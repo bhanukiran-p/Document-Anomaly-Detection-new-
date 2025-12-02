@@ -235,7 +235,7 @@ const MoneyOrderAnalysis = () => {
           onMouseEnter={(e) => !activeTab && (e.target.style.backgroundColor = colors.muted)}
           onMouseLeave={(e) => !activeTab && (e.target.style.backgroundColor = colors.secondary)}
         >
-          CSV Insights
+          Insights
         </button>
       </div>
 
@@ -691,7 +691,7 @@ const MoneyOrderAnalysis = () => {
       </div>
       )}
 
-      {/* CSV Insights Tab */}
+      {/* Insights Tab */}
       {activeTab === 'insights' && (
         <MoneyOrderInsights />
       )}

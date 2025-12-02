@@ -1,13 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { colors } from '../styles/colors';
 import { useScrollAnimation } from '../hooks/useScrollAnimation';
-import APIConnection from '../components/APIConnection';
-import CSVUpload from '../components/CSVUpload';
 
 const HomePage = () => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState(null);
   
   // Use primaryColor for new design system red
   const primary = colors.primaryColor || colors.accent?.red || '#E53935';
@@ -350,47 +347,28 @@ const HomePage = () => {
       <div style={insightsSection}>
         <h2 style={insightsTitleStyle}>Financial Insights</h2>
         <p style={{ color: colors.mutedForeground, textAlign: 'center', marginBottom: '2rem' }}>
-          Connect to APIs or upload CSV files to visualize and analyze financial data
+          View comprehensive insights across all document types
         </p>
 
-        <div style={tabsContainerStyle}>
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
           <button
-            style={tabButtonStyle(activeTab === 'api')}
+            style={{
+              ...buttonStyle,
+              maxWidth: '400px',
+            }}
             onMouseEnter={(e) => {
-              if (activeTab !== 'api') {
-                e.target.style.backgroundColor = colors.muted;
-              }
+              e.target.style.transform = 'translateY(-2px)';
+              e.target.style.boxShadow = `0 6px 30px ${primary}60`;
             }}
             onMouseLeave={(e) => {
-              if (activeTab !== 'api') {
-                e.target.style.backgroundColor = 'transparent';
-              }
+              e.target.style.transform = 'translateY(0)';
+              e.target.style.boxShadow = `0 0 20px ${primary}40`;
             }}
-            onClick={() => setActiveTab(activeTab === 'api' ? null : 'api')}
+            onClick={() => navigate('/all-documents-insights')}
           >
-            Connect API
-          </button>
-          <span style={{ color: colors.mutedForeground }}>or</span>
-          <button
-            style={tabButtonStyle(activeTab === 'csv')}
-            onMouseEnter={(e) => {
-              if (activeTab !== 'csv') {
-                e.target.style.backgroundColor = colors.muted;
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (activeTab !== 'csv') {
-                e.target.style.backgroundColor = 'transparent';
-              }
-            }}
-            onClick={() => setActiveTab(activeTab === 'csv' ? null : 'csv')}
-          >
-            Upload CSV
+            Unified Document Insights Dashboard
           </button>
         </div>
-
-        {activeTab === 'api' && <APIConnection />}
-        {activeTab === 'csv' && <CSVUpload />}
       </div>
 
     </div>

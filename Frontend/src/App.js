@@ -15,11 +15,12 @@ import PaystubAnalysis from './pages/PaystubAnalysis';
 import MoneyOrderAnalysis from './pages/MoneyOrderAnalysis';
 import BankStatementAnalysis from './pages/BankStatementAnalysis';
 import RealTimeAnalysis from './pages/RealTimeAnalysis.jsx';
+import AllDocumentsInsightsPage from './pages/AllDocumentsInsightsPage';
 import './styles/GlobalStyles.css';
 
 function AppContent() {
   const location = useLocation();
-  const isCustomLayout = location.pathname === '/' || location.pathname === '/splash' || location.pathname === '/transaction-type' || location.pathname === '/login' || location.pathname === '/register';
+  const isCustomLayout = location.pathname === '/' || location.pathname === '/splash' || location.pathname === '/transaction-type' || location.pathname === '/login' || location.pathname === '/register' || location.pathname === '/all-documents-insights';
 
   const appStyle = {
     display: 'flex',
@@ -48,6 +49,7 @@ function AppContent() {
           <Route path="/money-order-analysis" element={<MoneyOrderAnalysis />} />
           <Route path="/bank-statement-analysis" element={<BankStatementAnalysis />} />
           <Route path="/real-time-analysis" element={<RealTimeAnalysis />} />
+          <Route path="/all-documents-insights" element={<ProtectedRoute><AllDocumentsInsightsPage /></ProtectedRoute>} />
         </Routes>
       </main>
       {!isCustomLayout && <Footer />}

@@ -14,7 +14,9 @@ SELECT
   m.payee_name,
   m.fraud_risk_score,
   m.model_confidence,
-  m.ai_recommendation
+  m.ai_recommendation,
+  m.created_at,
+  m.timestamp
 FROM
   money_orders m
 ORDER BY

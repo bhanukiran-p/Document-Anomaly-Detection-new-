@@ -225,6 +225,13 @@ const Header = () => {
           >
             Money Order Analysis
           </Link>
+          <Link
+            to="/bank-statement-analysis"
+            style={linkStyle(location.pathname === '/bank-statement-analysis')}
+            onClick={() => setIsMenuOpen(false)}
+          >
+            Bank Statement Analysis
+          </Link>
         </nav>
 
         <div style={logoutButtonWrapperStyle}>
