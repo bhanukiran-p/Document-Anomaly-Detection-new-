@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { colors } from '../styles/colors';
 import {
@@ -10,14 +10,58 @@ import {
   FaFilter,
   FaTimes
 } from 'react-icons/fa';
+import {
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  BarChart,
+  Bar,
+  Sankey
+} from 'recharts';
 import { analyzeRealTimeTransactions, regeneratePlotsWithFilters } from '../services/api';
 
-const GENERAL_FRAUD_KEY = 'General anomaly flagged by multiple ML indicators';
+const GENERAL_FRAUD_KEY = 'Other Fraud Pattern';
 const GENERAL_FRAUD_EXPLANATION = [
   'Card-not-present or e-commerce attempts that have no previous spend history but suddenly spike in value.',
   'Synthetic identity or mule behavior where multiple red flags (amount spikes, velocity, geography) occur simultaneously.',
   'Layered anomalies such as late-night timing, unusual device/login context, and aggressive balance drawdowns in one transaction.'
 ];
+
+const STANDARD_FRAUD_REASONS = [
+  'Suspicious login',
+  'Account takeover',
+  'Unusual location',
+  'Unusual device',
+  'Velocity abuse',
+  'Transaction burst',
+  'High-risk merchant',
+  'Unusual amount',
+  'New payee spike',
+  'Cross-border anomaly',
+  'Card-not-present risk',
+  'Money mule pattern',
+  'Structuring / smurfing',
+  'Round-dollar pattern',
+  'Night-time activity',
+  GENERAL_FRAUD_KEY
+];
+
+const plotColorPalette = ['#10b981', '#ef4444', '#60a5fa', '#f97316', '#a78bfa', '#fbbf24'];
+
+const renderHeatmapCellColor = (value) => {
+  if (value === null || value === undefined) return 'rgba(148, 163, 184, 0.2)';
+  const normalized = Math.max(-1, Math.min(1, value));
+  const hue = normalized > 0 ? 10 : 220;
+  const intensity = Math.round(Math.abs(normalized) * 70) + 30;
+  return `hsl(${hue}, 70%, ${100 - intensity}%)`;
+};
 
 const getInsightPoints = (insightsText) => {
   if (!insightsText) return [];
@@ -97,7 +141,7 @@ const RealTimeAnalysis = () => {
 
   const primary = colors.primaryColor || colors.accent?.red || '#E53935';
 
-  const formatFraudType = (fraudType) => {
+  const formatFraudReason = (fraudType) => {
     if (!fraudType) return 'N/A';
     if (fraudType === 'legitimate') return 'Legitimate';
     if (fraudType.includes(' ')) return fraudType;
@@ -114,12 +158,192 @@ const RealTimeAnalysis = () => {
         .slice(0, 4)
     : [];
 
-  const fraudTypeBreakdown = analysisResult?.fraud_detection?.fraud_type_breakdown || [];
+  const fraudReasonBreakdown =
+    analysisResult?.fraud_detection?.fraud_reason_breakdown ||
+    analysisResult?.fraud_detection?.fraud_type_breakdown ||
+    [];
   const agentInsights = analysisResult?.agent_analysis?.detailed_insights || '';
   const insightPoints = getInsightPoints(agentInsights);
-  const generalFraudPattern = fraudTypeBreakdown.find(
-    (pattern) => pattern.type === GENERAL_FRAUD_KEY
+  const generalFraudPattern = fraudReasonBreakdown.find(
+    (pattern) => (pattern.type || pattern.label) === GENERAL_FRAUD_KEY
   );
+  const reasonCountMap = useMemo(() => {
+    const map = {};
+    fraudReasonBreakdown.forEach((pattern) => {
+      const key = pattern.label || pattern.type;
+      if (!key) return;
+      map[key] = pattern.count;
+    });
+    return map;
+  }, [fraudReasonBreakdown]);
+
+  const renderPlotVisualization = (plot, options = {}) => {
+    const height = options.height || 220;
+
+    // Debug: Log plot structure
+    console.log('Rendering plot:', {
+      title: plot.title,
+      type: plot.type,
+      hasData: !!plot.data,
+      dataLength: Array.isArray(plot.data) ? plot.data.length : 'not array'
+    });
+
+    if (!plot.type) {
+      console.error('Plot missing type property:', plot);
+    }
+
+    switch (plot.type) {
+      case 'donut': {
+        const data = plot.data || [];
+        return (
+          <ResponsiveContainer width="100%" height={height}>
+            <PieChart>
+              <Pie
+                data={data}
+                dataKey="value"
+                cx="50%"
+                cy="50%"
+                innerRadius="55%"
+                outerRadius="80%"
+                paddingAngle={3}
+                stroke="none"
+                label={({ percent }) => `${(percent * 100).toFixed(1)}%`}
+              >
+                {data.map((entry, index) => (
+                  <Cell
+                    key={`slice-${entry.label}-${index}`}
+                    fill={entry.label === 'Fraud' ? '#ef4444' : '#22c55e'}
+                  />
+                ))}
+              </Pie>
+              <RechartsTooltip />
+            </PieChart>
+          </ResponsiveContainer>
+        );
+      }
+      case 'line_trend': {
+        const data = plot.data || [];
+        return (
+          <ResponsiveContainer width="100%" height={height}>
+            <LineChart data={data}>
+              <CartesianGrid stroke="rgba(148,163,184,0.2)" />
+              <XAxis dataKey="month" stroke={colors.mutedForeground} />
+              <YAxis stroke={colors.mutedForeground} />
+              <RechartsTooltip />
+              <Line type="monotone" dataKey="fraud" stroke="#ef4444" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="legitimate" stroke="#22c55e" strokeWidth={2} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        );
+      }
+      case 'heatmap': {
+        const xLabels = plot.xLabels || [];
+        const yLabels = plot.yLabels || [];
+        const data = plot.data || [];
+        return (
+          <div style={{ ...styles.heatmapWrapper, height }}>
+            <div style={styles.heatmapHeaderRow}>
+              <div style={styles.heatmapCorner} />
+              {xLabels.map((label) => (
+                <div key={label} style={styles.heatmapHeaderCell}>
+                  {label}
+                </div>
+              ))}
+            </div>
+            {yLabels.map((yLabel) => (
+              <div key={yLabel} style={styles.heatmapRow}>
+                <div style={styles.heatmapHeaderCell}>{yLabel}</div>
+                {xLabels.map((xLabel) => {
+                  const cell = data.find((item) => item.x === xLabel && item.y === yLabel);
+                  const value = cell ? cell.value : 0;
+                  return (
+                    <div
+                      key={`${xLabel}-${yLabel}`}
+                      style={{
+                        ...styles.heatmapCell,
+                        backgroundColor: renderHeatmapCellColor(value),
+                        color: Math.abs(value) > 0.5 ? '#0f172a' : colors.foreground
+                      }}
+                    >
+                      {value.toFixed(2)}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        );
+      }
+      case 'geo_scatter': {
+        const points = plot.data || [];
+        return (
+          <div style={{ ...styles.geoMap, height }}>
+            {points.map((point, idx) => {
+              const top = 100 - ((point.lat + 90) / 180) * 100;
+              const left = ((point.lng + 180) / 360) * 100;
+              const size = Math.min(24, 6 + point.count);
+              return (
+                <div
+                  key={`${point.city}-${idx}`}
+                  style={{
+                    ...styles.geoDot,
+                    top: `${top}%`,
+                    left: `${left}%`,
+                    width: size,
+                    height: size
+                  }}
+                  title={`${point.city}, ${point.country} (${point.count})`}
+                />
+              );
+            })}
+          </div>
+        );
+      }
+      case 'bar_reasons': {
+        const data = plot.data || [];
+        return (
+          <ResponsiveContainer width="100%" height={height}>
+            <BarChart
+              data={data}
+              layout="vertical"
+              margin={{ top: 5, right: 20, left: 40, bottom: 5 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.2)" />
+              <XAxis type="number" stroke={colors.mutedForeground} />
+              <YAxis dataKey="label" type="category" stroke={colors.mutedForeground} width={150} />
+              <RechartsTooltip />
+              <Bar dataKey="value" fill="#f97316" />
+            </BarChart>
+          </ResponsiveContainer>
+        );
+      }
+      case 'sankey': {
+        const nodes = plot.data?.nodes || [];
+        const links = plot.data?.links || [];
+        return (
+          <ResponsiveContainer width="100%" height={height}>
+            <Sankey
+              data={{ nodes, links }}
+              nodePadding={20}
+              node={{ stroke: colors.border, strokeWidth: 1 }}
+              link={{ strokeOpacity: 0.4 }}
+            >
+              <RechartsTooltip />
+            </Sankey>
+          </ResponsiveContainer>
+        );
+      }
+      default:
+        return (
+          <div style={styles.missingPlot}>
+            No visualization available for plot type: {plot.type || 'unknown'}
+            {plot.image && <div style={{ fontSize: '0.8rem', marginTop: '0.5rem', color: colors.mutedForeground }}>
+              (Legacy static plot detected but not supported in this view)
+            </div>}
+          </div>
+        );
+    }
+  };
 
   const handleDownloadCSV = () => {
     if (!analysisResult?.transactions?.length) return;
@@ -513,6 +737,11 @@ const RealTimeAnalysis = () => {
       const result = await analyzeRealTimeTransactions(file);
 
       if (result.success) {
+        console.log('Analysis result received:', {
+          hasInsights: !!result.insights,
+          plotsCount: result.insights?.plots?.length || 0,
+          firstPlot: result.insights?.plots?.[0]
+        });
         setAnalysisResult(result);
         setShowInsights(false);
       } else {
@@ -830,6 +1059,37 @@ const RealTimeAnalysis = () => {
       color: colors.mutedForeground,
       marginTop: '0.35rem',
     },
+    reasonLegend: {
+      marginTop: '1.25rem',
+      padding: '1rem',
+      borderRadius: '0.75rem',
+      border: `1px dashed ${colors.border}`,
+      backgroundColor: colors.muted
+    },
+    reasonLegendTitle: {
+      fontSize: '0.9rem',
+      fontWeight: '600',
+      color: colors.mutedForeground,
+      marginBottom: '0.5rem',
+      textTransform: 'uppercase',
+      letterSpacing: '0.05em'
+    },
+    reasonLegendGrid: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+      gap: '0.5rem'
+    },
+    reasonLegendChip: {
+      borderRadius: '0.65rem',
+      border: `1px solid ${colors.border}`,
+      padding: '0.6rem 0.75rem',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      fontSize: '0.85rem',
+      backgroundColor: colors.background,
+      transition: 'all 0.2s ease'
+    },
     topFraudList: {
       marginTop: '1.5rem',
       display: 'flex',
@@ -894,41 +1154,9 @@ const RealTimeAnalysis = () => {
       color: colors.mutedForeground,
       marginTop: '0.75rem',
     },
-    plotImageWrapper: {
-      position: 'relative',
-      borderRadius: '0.75rem',
-      overflow: 'hidden',
-    },
-    plotImage: {
+    plotCanvas: {
       width: '100%',
-      display: 'block',
-    },
-    plotHoverOverlay: {
-      position: 'absolute',
-      inset: 0,
-      background: 'linear-gradient(180deg, rgba(15,23,42,0.05) 0%, rgba(15,23,42,0.9) 100%)',
-      color: '#f8fafc',
-      display: 'flex',
-      flexDirection: 'column',
-      justifyContent: 'center',
-      padding: '1.5rem',
-      gap: '0.75rem',
-      opacity: 0,
-      transition: 'opacity 0.25s ease',
-    },
-    plotOverlayTitle: {
-      fontSize: '0.95rem',
-      fontWeight: 600,
-      letterSpacing: '0.04em',
-      textTransform: 'uppercase',
-      color: '#cbd5f5',
-    },
-    plotDetailItem: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      fontSize: '0.95rem',
-      borderBottom: '1px solid rgba(148, 163, 184, 0.25)',
-      paddingBottom: '0.35rem',
+      height: '230px',
     },
     plotDetailsRow: {
       marginTop: '1rem',
@@ -946,6 +1174,66 @@ const RealTimeAnalysis = () => {
       flexDirection: 'column',
       lineHeight: 1.2,
       border: '1px solid rgba(148, 163, 184, 0.3)',
+    },
+    heatmapWrapper: {
+      width: '100%',
+      overflowX: 'auto',
+      paddingBottom: '0.5rem'
+    },
+    heatmapHeaderRow: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(70px, 1fr))',
+      gap: '4px',
+      fontSize: '0.75rem',
+      color: colors.mutedForeground,
+      marginBottom: '0.25rem'
+    },
+    heatmapCorner: {
+      width: '70px'
+    },
+    heatmapHeaderCell: {
+      textAlign: 'center',
+      fontSize: '0.75rem',
+      fontWeight: 600
+    },
+    heatmapRow: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(70px, 1fr))',
+      gap: '4px',
+      alignItems: 'center'
+    },
+    heatmapCell: {
+      borderRadius: '6px',
+      padding: '0.35rem 0.25rem',
+      fontSize: '0.75rem',
+      textAlign: 'center'
+    },
+    geoMap: {
+      position: 'relative',
+      width: '100%',
+      borderRadius: '0.75rem',
+      background: 'linear-gradient(135deg, #0f172a 0%, #111827 100%)',
+      border: `1px solid ${colors.border}`,
+      overflow: 'hidden'
+    },
+    geoDot: {
+      position: 'absolute',
+      borderRadius: '50%',
+      backgroundColor: 'rgba(239, 68, 68, 0.75)',
+      border: '1px solid rgba(239, 68, 68, 0.95)',
+      transform: 'translate(-50%, -50%)',
+      boxShadow: '0 0 10px rgba(239, 68, 68, 0.7)'
+    },
+    missingPlot: {
+      width: '100%',
+      height: '220px',
+      borderRadius: '0.75rem',
+      border: `1px dashed ${colors.border}`,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      color: colors.mutedForeground,
+      fontSize: '0.9rem'
     },
     zoomModalOverlay: {
       position: 'fixed',
@@ -1443,20 +1731,24 @@ const RealTimeAnalysis = () => {
             <div style={styles.statCard}>
               <div style={styles.statLabel}>Top Fraud Pattern</div>
               <div style={{ ...styles.statValue, fontSize: '1.1rem' }}>
-                {analysisResult.fraud_detection.dominant_fraud_type
-                  ? formatFraudType(analysisResult.fraud_detection.dominant_fraud_type)
+                {analysisResult.fraud_detection.dominant_fraud_reason
+                  ? formatFraudReason(analysisResult.fraud_detection.dominant_fraud_reason)
+                  : analysisResult.fraud_detection.dominant_fraud_type
+                  ? formatFraudReason(analysisResult.fraud_detection.dominant_fraud_type)
                   : 'N/A'}
               </div>
             </div>
           </div>
 
-          {fraudTypeBreakdown.length > 0 && (
+          {fraudReasonBreakdown.length > 0 && (
             <div style={styles.fraudTypeSection}>
-              <h3 style={styles.fraudTypeTitle}>Fraud Pattern Breakdown</h3>
+              <h3 style={styles.fraudTypeTitle}>Fraud Reason Breakdown</h3>
               <div style={styles.fraudTypeGrid}>
-                {fraudTypeBreakdown.slice(0, 4).map((pattern, idx) => (
-                  <div key={`${pattern.type}-${idx}`} style={styles.fraudTypeCard}>
-                    <div style={styles.fraudTypeLabel}>{formatFraudType(pattern.type)}</div>
+                {fraudReasonBreakdown.slice(0, 4).map((pattern, idx) => (
+                  <div key={`${pattern.type || pattern.label}-${idx}`} style={styles.fraudTypeCard}>
+                    <div style={styles.fraudTypeLabel}>
+                      {formatFraudReason(pattern.label || pattern.type)}
+                    </div>
                     <div style={styles.fraudTypeCount}>{pattern.count} cases</div>
                     <div style={styles.fraudTypeMeta}>
                       {pattern.percentage}% of fraud • $
@@ -1468,6 +1760,32 @@ const RealTimeAnalysis = () => {
             </div>
           )}
 
+          <div style={styles.reasonLegend}>
+            <div style={styles.reasonLegendTitle}>Standard Fraud Patterns</div>
+            <div style={styles.reasonLegendGrid}>
+              {STANDARD_FRAUD_REASONS.map((reason) => {
+                const count = reasonCountMap[reason] || 0;
+                const isActive = count > 0;
+                return (
+                  <div
+                    key={reason}
+                    style={{
+                      ...styles.reasonLegendChip,
+                      opacity: isActive ? 1 : 0.45,
+                      borderColor: isActive ? primary : colors.border,
+                      color: colors.foreground
+                    }}
+                  >
+                    <span>{reason}</span>
+                    <span style={{ fontWeight: 600 }}>
+                      {isActive ? `${count} case${count === 1 ? '' : 's'}` : '—'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           {topFraudCases.length > 0 && (
             <div style={styles.topFraudList}>
               <h3 style={styles.fraudTypeTitle}>Top ML-Flagged Transactions</h3>
@@ -1478,8 +1796,13 @@ const RealTimeAnalysis = () => {
                     <div>
                       <div style={styles.topFraudLabel}>{txn.merchant || txn.category || 'Unknown Merchant'}</div>
                       <div style={styles.topFraudMeta}>
-                        {formatFraudType(txn.fraud_type)} • {((txn.fraud_probability || 0) * 100).toFixed(0)}% risk
+                        {formatFraudReason(txn.fraud_reason)} • {((txn.fraud_probability || 0) * 100).toFixed(0)}% risk
                       </div>
+                      {txn.fraud_reason_detail && (
+                        <div style={{ fontSize: '0.75rem', color: colors.mutedForeground, marginTop: '0.25rem' }}>
+                          {txn.fraud_reason_detail}
+                        </div>
+                      )}
                     </div>
                     <div style={styles.topFraudAmount}>
                       ${txnAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1493,7 +1816,7 @@ const RealTimeAnalysis = () => {
           {generalFraudPattern && (
             <div style={{ ...styles.fraudTypeSection, marginTop: '1rem' }}>
               <h4 style={styles.fraudTypeTitle}>
-                What "{formatFraudType(GENERAL_FRAUD_KEY)}" Means
+                What "{formatFraudReason(GENERAL_FRAUD_KEY)}" Means
               </h4>
               <ul style={{
                 margin: 0,
@@ -1931,7 +2254,11 @@ const RealTimeAnalysis = () => {
           </div>
 
           {/* Plots */}
-          {(filteredPlots || analysisResult.insights.plots)?.length > 0 && (
+          {(() => {
+            const plotsToDisplay = filteredPlots || analysisResult.insights.plots;
+            console.log('Plots to display:', plotsToDisplay);
+            return plotsToDisplay?.length > 0;
+          })() && (
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                 <h3 style={{ color: colors.foreground, fontSize: '1.1rem', margin: 0 }}>
@@ -1992,8 +2319,8 @@ const RealTimeAnalysis = () => {
                       onClick={() => setZoomedPlot(plot)}
                     >
                       <div style={styles.plotTitle}>{plot.title}</div>
-                      <div style={styles.plotImageWrapper}>
-                        <img src={plot.image} alt={plot.title} style={styles.plotImage} />
+                      <div style={styles.plotCanvas}>
+                        {renderPlotVisualization(plot)}
                       </div>
                       {plot.description && (
                         <div style={styles.plotDescription}>{plot.description}</div>
@@ -2026,11 +2353,9 @@ const RealTimeAnalysis = () => {
                 &times;
               </button>
             </div>
-            <img
-              src={zoomedPlot.image}
-              alt={zoomedPlot.title}
-              style={styles.zoomModalImg}
-            />
+            <div style={styles.plotCanvas}>
+              {renderPlotVisualization(zoomedPlot, { height: 320 })}
+            </div>
             {zoomedPlot.description && (
               <p style={{ color: '#cbd5f5', marginTop: '1rem' }}>{zoomedPlot.description}</p>
             )}
