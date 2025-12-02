@@ -267,8 +267,10 @@ class PaystubFraudAnalysisAgent:
 
         except Exception as e:
             logger.error(f"Error in AI fraud analysis: {e}", exc_info=True)
-            # Return safe fallback decision
-            return self._create_fallback_decision(ml_analysis)
+            raise RuntimeError(
+                f"AI analysis failed: {str(e)}. "
+                f"Please check OpenAI API key and network connectivity."
+            ) from e
 
     def _create_first_time_escalation(self, employee_name: str, is_new_employee: bool = False) -> Dict:
         """Create escalation response for first-time or clean-history employees."""
@@ -453,48 +455,5 @@ class PaystubFraudAnalysisAgent:
 
         return validated
 
-    def _create_fallback_decision(self, ml_analysis: Dict) -> Dict:
-        """Create fallback decision when AI analysis fails"""
-        fraud_risk_score = ml_analysis.get('fraud_risk_score', 0.0)
-        
-        if fraud_risk_score >= 0.85:
-            recommendation = 'REJECT'
-        elif fraud_risk_score >= 0.5:
-            recommendation = 'ESCALATE'
-        else:
-            recommendation = 'APPROVE'
-
-        # Get fraud types and reasons from ML analysis
-        fraud_types = ml_analysis.get('fraud_types', [])
-        fraud_reasons = ml_analysis.get('fraud_reasons', [])
-        
-        # Build fraud_explanations from ML data
-        fraud_explanations = []
-        if fraud_types:
-            for fraud_type in fraud_types:
-                fraud_explanations.append({
-                    'type': fraud_type,
-                    'reasons': fraud_reasons if fraud_reasons else [f"Flagged as {fraud_type.replace('_', ' ').title()} by the ML model."]
-                })
-
-        return {
-            'recommendation': recommendation,
-            'confidence_score': 0.5,
-            'summary': 'AI analysis failed - using ML score fallback',
-            'reasoning': [
-                f'ML fraud risk score: {fraud_risk_score:.2%}',
-                'AI analysis unavailable - decision based on ML score only'
-            ],
-            'key_indicators': [
-                'AI analysis error',
-                f'ML risk score: {fraud_risk_score:.2%}'
-            ],
-            'actionable_recommendations': [
-                'Review this paystub manually',
-                'Check AI agent configuration'
-            ],
-            'fraud_types': fraud_types,
-            'fraud_explanations': fraud_explanations
-        }
 
 

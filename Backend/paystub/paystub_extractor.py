@@ -367,25 +367,12 @@ class PaystubExtractor:
     def _run_ml_fraud_detection(self, normalized_data: Dict, raw_text: str) -> Dict:
         """Run ML fraud detection"""
         if not self.ml_detector:
-            return {
-                'fraud_risk_score': 0.5,
-                'risk_level': 'MEDIUM',
-                'model_confidence': 0.5,
-                'model_scores': {},
-                'feature_importance': []
-            }
+            raise RuntimeError(
+                "ML detector not initialized. Please ensure the ML model is properly configured."
+            )
         
-        try:
-            return self.ml_detector.predict_fraud(normalized_data, raw_text)
-        except Exception as e:
-            logger.error(f"ML fraud detection failed: {e}")
-            return {
-                'fraud_risk_score': 0.5,
-                'risk_level': 'MEDIUM',
-                'model_confidence': 0.5,
-                'model_scores': {},
-                'feature_importance': []
-            }
+        # Propagate exceptions - no fallback
+        return self.ml_detector.predict_fraud(normalized_data, raw_text)
 
     def _get_employee_info(self, normalized_data: Dict) -> Dict:
         """Get employee history information"""
@@ -423,55 +410,54 @@ class PaystubExtractor:
     def _run_ai_analysis(self, normalized_data: Dict, ml_analysis: Dict, employee_info: Dict) -> Optional[Dict]:
         """Run AI fraud analysis"""
         if not self.ai_agent:
-            return None
-        
-        try:
-            employee_name = normalized_data.get('employee_name')
-            ai_analysis = self.ai_agent.analyze_fraud(
-                extracted_data=normalized_data,
-                ml_analysis=ml_analysis,
-                employee_name=employee_name
+            raise RuntimeError(
+                "AI agent not initialized. Please ensure OpenAI API key is configured."
             )
+        
+        # Propagate exceptions - no fallback
+        employee_name = normalized_data.get('employee_name')
+        ai_analysis = self.ai_agent.analyze_fraud(
+            extracted_data=normalized_data,
+            ml_analysis=ml_analysis,
+            employee_name=employee_name
+        )
+        
+        # UPDATED POLICY: Post-AI validation - Force REJECT only if escalate_count > 0 AND fraud risk >= 20%
+        # If fraud risk < 20%, allow approval even for repeat offenders
+        if employee_info and employee_info.get('escalate_count', 0) > 0:
+            escalate_count = employee_info.get('escalate_count', 0)
+            fraud_risk_score = ml_analysis.get('fraud_risk_score', 0.0)
+            fraud_risk_percent = fraud_risk_score * 100
             
-            # UPDATED POLICY: Post-AI validation - Force REJECT only if escalate_count > 0 AND fraud risk >= 20%
-            # If fraud risk < 20%, allow approval even for repeat offenders
-            if employee_info and employee_info.get('escalate_count', 0) > 0:
-                escalate_count = employee_info.get('escalate_count', 0)
-                fraud_risk_score = ml_analysis.get('fraud_risk_score', 0.0)
-                fraud_risk_percent = fraud_risk_score * 100
-                
-                if fraud_risk_percent >= 20:
-                    if ai_analysis and ai_analysis.get('recommendation') != 'REJECT':
-                        logger.warning(
-                            f"[POST_AI_VALIDATION] Employee {employee_name} has escalate_count={escalate_count} "
-                            f"and fraud_risk_score={fraud_risk_percent:.1f}% (>= 20%) "
-                            f"but AI returned {ai_analysis.get('recommendation')}. "
-                            f"Overriding to REJECT per updated repeat offender policy."
-                        )
-                        # Force REJECT for repeat offenders with high fraud risk
-                        ai_analysis['recommendation'] = 'REJECT'
-                        ai_analysis['confidence_score'] = 1.0
-                        if 'reasoning' not in ai_analysis:
-                            ai_analysis['reasoning'] = []
-                        ai_analysis['reasoning'].insert(0, 
-                            f"CRITICAL: Overridden to REJECT because employee has escalate_count={escalate_count} "
-                            f"and fraud risk score ({fraud_risk_percent:.1f}%) >= 20%. "
-                            f"Repeat offenders with elevated fraud risk are automatically rejected per policy."
-                        )
-                        if 'key_indicators' not in ai_analysis:
-                            ai_analysis['key_indicators'] = []
-                        ai_analysis['key_indicators'].insert(0, f"Repeat offender detected (escalate_count: {escalate_count}, fraud risk: {fraud_risk_percent:.1f}%)")
-                else:
-                    logger.info(
+            if fraud_risk_percent >= 20:
+                if ai_analysis and ai_analysis.get('recommendation') != 'REJECT':
+                    logger.warning(
                         f"[POST_AI_VALIDATION] Employee {employee_name} has escalate_count={escalate_count} "
-                        f"but fraud_risk_score={fraud_risk_percent:.1f}% (< 20%). "
-                        f"Allowing AI recommendation to proceed per updated policy."
+                        f"and fraud_risk_score={fraud_risk_percent:.1f}% (>= 20%) "
+                        f"but AI returned {ai_analysis.get('recommendation')}. "
+                        f"Overriding to REJECT per updated repeat offender policy."
                     )
-            
-            return ai_analysis
-        except Exception as e:
-            logger.error(f"AI analysis failed: {e}")
-            return None
+                    # Force REJECT for repeat offenders with high fraud risk
+                    ai_analysis['recommendation'] = 'REJECT'
+                    ai_analysis['confidence_score'] = 1.0
+                    if 'reasoning' not in ai_analysis:
+                        ai_analysis['reasoning'] = []
+                    ai_analysis['reasoning'].insert(0, 
+                        f"CRITICAL: Overridden to REJECT because employee has escalate_count={escalate_count} "
+                        f"and fraud risk score ({fraud_risk_percent:.1f}%) >= 20%. "
+                        f"Repeat offenders with elevated fraud risk are automatically rejected per policy."
+                    )
+                    if 'key_indicators' not in ai_analysis:
+                        ai_analysis['key_indicators'] = []
+                    ai_analysis['key_indicators'].insert(0, f"Repeat offender detected (escalate_count: {escalate_count}, fraud risk: {fraud_risk_percent:.1f}%)")
+            else:
+                logger.info(
+                    f"[POST_AI_VALIDATION] Employee {employee_name} has escalate_count={escalate_count} "
+                    f"but fraud_risk_score={fraud_risk_percent:.1f}% (< 20%). "
+                    f"Allowing AI recommendation to proceed per updated policy."
+                )
+        
+        return ai_analysis
 
     def _generate_anomalies(self, normalized_data: Dict, ml_analysis: Dict, ai_analysis: Optional[Dict]) -> list:
         """Generate list of anomalies"""
@@ -501,7 +487,8 @@ class PaystubExtractor:
         if ai_analysis and ai_analysis.get('recommendation'):
             return ai_analysis['recommendation']
         
-        # Fallback to ML score
+        # Edge case: If AI analysis exists but has no recommendation (should not happen)
+        # Use ML score as last resort (this indicates a bug in AI analysis)
         fraud_risk_score = ml_analysis.get('fraud_risk_score', 0.0)
         if fraud_risk_score >= 0.85:
             return 'REJECT'
