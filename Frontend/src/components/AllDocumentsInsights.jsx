@@ -442,6 +442,7 @@ const AllDocumentsInsights = () => {
   const primary = colors.primaryColor || colors.accent?.red || '#E53935';
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
 
+
   const containerStyle = {
     maxWidth: '1400px',
     margin: '0 auto',
@@ -999,15 +1000,18 @@ const AllDocumentsInsights = () => {
           {csvData.documentTypeData && csvData.documentTypeData.length > 0 && (
             <div style={chartContainerStyle}>
               <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>Document Type Distribution</h3>
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={500}>
                 <PieChart>
                   <Pie
                     data={csvData.documentTypeData}
                     cx="50%"
                     cy="50%"
-                    labelLine={false}
+                    labelLine={{
+                      stroke: colors.border,
+                      strokeWidth: 1
+                    }}
                     label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                    outerRadius={80}
+                    outerRadius={100}
                     fill="#8884d8"
                     dataKey="value"
                   >
