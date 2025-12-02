@@ -466,16 +466,16 @@ class DocumentStorage:
                 try:
                     from bank_statement.database.bank_statement_customer_storage import BankStatementCustomerStorage
                     customer_storage = BankStatementCustomerStorage()
-                    customer_history = customer_storage.get_customer_history(account_holder_name)
-                    customer_id = customer_history.get('customer_id')
-                    
-                    # If customer doesn't exist yet, we'll create it when updating fraud status
-                    # For now, we can proceed without customer_id (it will be set later)
-                    if not customer_id:
-                        logger.info(f"Customer {account_holder_name} not found - will be created when updating fraud status")
+                    # Get or create customer - will generate UUID if not exists
+                    customer_id = customer_storage.get_or_create_customer(account_holder_name)
+
+                    if customer_id:
+                        logger.info(f"Got or created bank statement customer: {customer_id}")
+                    else:
+                        logger.warning(f"Could not create customer for {account_holder_name}")
                 except Exception as e:
-                    logger.warning(f"Could not get customer: {e}")
-                    # Continue without customer_id if lookup fails
+                    logger.warning(f"Could not get or create customer: {e}")
+                    # Continue without customer_id if lookup/creation fails
 
             # Extract institution
             institution_data = {

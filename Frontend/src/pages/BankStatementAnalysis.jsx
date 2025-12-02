@@ -1,8 +1,9 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { analyzeBankStatement } from '../services/api';
 import { colors } from '../styles/colors';
 import { FaExclamationTriangle, FaUniversity, FaCog } from 'react-icons/fa';
+import * as pdfjsLib from 'pdfjs-dist';
 
 const buildBankStatementSections = (data) => ({
   'Account Information': [
@@ -102,6 +103,32 @@ const BankStatementAnalysis = () => {
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
 
+  useEffect(() => {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `${process.env.PUBLIC_URL}/pdf.worker.min.js`;
+  }, []);
+
+  const renderPdfPreview = async (fileObject) => {
+    try {
+      const fileReader = new FileReader();
+      fileReader.onload = async (e) => {
+        const typedArray = new Uint8Array(e.target.result);
+        const pdf = await pdfjsLib.getDocument(typedArray).promise;
+        const page = await pdf.getPage(1);
+        const viewport = page.getViewport({ scale: 2 });
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        await page.render({ canvasContext: context, viewport }).promise;
+        setPreview(canvas.toDataURL('image/png'));
+      };
+      fileReader.readAsArrayBuffer(fileObject);
+    } catch (err) {
+      console.error('Error rendering PDF preview:', err);
+      setPreview(null);
+    }
+  };
+
   const toPercent = (value) => {
     if (value === null || value === undefined) return 0;
     const num = Number(value);
@@ -122,6 +149,9 @@ const BankStatementAnalysis = () => {
         const reader = new FileReader();
         reader.onload = () => setPreview(reader.result);
         reader.readAsDataURL(selectedFile);
+      } else if (selectedFile.type === 'application/pdf') {
+        // Render PDF preview
+        renderPdfPreview(selectedFile);
       } else {
         setPreview(null);
       }
@@ -477,7 +507,8 @@ const BankStatementAnalysis = () => {
                     style={{
                       width: '100%',
                       borderRadius: '8px',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                      border: `1px solid ${colors.border}`
                     }}
                   />
                 </div>
