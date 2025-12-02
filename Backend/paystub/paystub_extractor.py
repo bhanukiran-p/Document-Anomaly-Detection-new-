@@ -1,580 +1,534 @@
 """
-Paystub Extractor Module for API
-Standalone paystub extraction with Google Vision API
+Paystub Extractor - Complete Fraud Detection Pipeline
+Orchestrates: Mindee OCR → Normalization → ML Detection → AI Analysis → Customer Tracking
+Completely self-contained - no dependencies on other document analysis modules
 """
 
-import re
-from typing import Dict
-from datetime import datetime
-from google.cloud import vision
-from google.oauth2 import service_account
-import fitz  # PyMuPDF
 import os
+import logging
+import json
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple
 
-# Import AI agent
+# Load environment variables first (if not already loaded)
 try:
-    from langchain_agent.fraud_analysis_agent import FraudAnalysisAgent
-    from langchain_agent.tools import DataAccessTools
-    from normalization.normalizer_factory import NormalizerFactory
-    from ml_models.paystub_fraud_detector import PaystubFraudDetector
-    ML_AVAILABLE = True
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # dotenv already loaded by api_server.py or not available
+    pass
+
+# Import Mindee - use ClientV2 API (requires mindee>=4.31.0)
+try:
+    from mindee import ClientV2, InferenceParameters, PathInput
+    MINDEE_AVAILABLE = True
 except ImportError as e:
-    print(f"Warning: Components not available: {e}")
-    ML_AVAILABLE = False
+    logging.getLogger(__name__).error(f"Mindee library not properly installed: {e}")
+    logging.getLogger(__name__).error("Requires mindee>=4.31.0. Install with: pip install --upgrade 'mindee>=4.31.0'")
+    MINDEE_AVAILABLE = False
+    ClientV2 = None
+    InferenceParameters = None
+    PathInput = None
+
+# Import paystub-specific components from local modules
+from .normalization.paystub_normalizer_factory import PaystubNormalizerFactory
+
+logger = logging.getLogger(__name__)
+
+# Mindee configuration - read after load_dotenv()
+MINDEE_API_KEY = os.getenv("MINDEE_API_KEY", "").strip()
+MINDEE_MODEL_ID_PAYSTUB = os.getenv("MINDEE_MODEL_ID_PAYSTUB", "15fab31e-ac0e-4ccc-83ed-39b9f65bb791").strip()
+
+logger.info(f"Mindee API Key loaded: {MINDEE_API_KEY[:20]}..." if MINDEE_API_KEY else "Mindee API Key NOT SET")
+logger.info(f"Mindee Model ID: {MINDEE_MODEL_ID_PAYSTUB}")
+
+if not MINDEE_API_KEY:
+    logger.warning("MINDEE_API_KEY is not set - paystub extraction may fail")
+    mindee_client = None
+elif not MINDEE_AVAILABLE:
+    logger.error("Mindee library not available")
+    mindee_client = None
+else:
+    mindee_client = ClientV2(api_key=MINDEE_API_KEY)
+    logger.info("Mindee ClientV2 initialized successfully")
+
 
 class PaystubExtractor:
-    """Extract paystub details using Google Vision API"""
-    
-    def __init__(self, credentials_path='google-credentials.json'):
-        """Initialize with credentials"""
-        import os
-        if os.path.exists(credentials_path):
-            credentials = service_account.Credentials.from_service_account_file(credentials_path)
-            self.client = vision.ImageAnnotatorClient(credentials=credentials)
-        else:
-            self.client = vision.ImageAnnotatorClient()
+    """
+    Complete paystub extraction and fraud analysis pipeline
+    Mindee-only OCR → Paystub-specific normalization → ML fraud detection → AI decision
+    """
 
-        # Initialize AI Agent
-        if ML_AVAILABLE:
-            try:
-                # Initialize data access tools
-                self.data_tools = DataAccessTools(
-                    ml_scores_path=os.getenv('ML_SCORES_CSV', 'ml_models/mock_data/ml_scores.csv'),
-                    customer_history_path=os.getenv('CUSTOMER_HISTORY_CSV', 'ml_models/mock_data/customer_history.csv'),
-                    fraud_cases_path=os.getenv('FRAUD_CASES_CSV', 'ml_models/mock_data/fraud_cases.csv')
-                )
-                
-                # Initialize agent
-                self.ai_agent = FraudAnalysisAgent(
-                    api_key=os.getenv('OPENAI_API_KEY'),
-                    model=os.getenv('AI_MODEL', 'gpt-4'),
-                    data_tools=self.data_tools
-                )
-                
-                # Initialize ML Detector
-                self.fraud_detector = PaystubFraudDetector()
-                
-                print("Paystub AI Agent & ML Detector initialized")
-            except Exception as e:
-                print(f"Failed to initialize Paystub AI Agent: {e}")
-                self.ai_agent = None
-                self.fraud_detector = None
-        else:
+    def __init__(self):
+        """Initialize all components"""
+        # ML Fraud Detector
+        try:
+            from .ml.paystub_fraud_detector import PaystubFraudDetector
+            model_dir = os.getenv("ML_MODEL_DIR", "models")
+            self.ml_detector = PaystubFraudDetector(model_dir=model_dir)
+            logger.info("Initialized PaystubFraudDetector")
+        except ImportError:
+            logger.warning("ML fraud detector not available - ML analysis will be skipped")
+            self.ml_detector = None
+
+        # AI Agent
+        try:
+            from .ai.paystub_fraud_analysis_agent import PaystubFraudAnalysisAgent
+            from .ai.paystub_tools import PaystubDataAccessTools
+            openai_key = os.getenv('OPENAI_API_KEY')
             self.ai_agent = None
-            self.fraud_detector = None
-    
-    def extract_text(self, file_bytes, file_type='image'):
-        """Extract text from image or PDF using Vision API"""
-        
-        # If it's a PDF, convert first page to image
-        if file_type == 'application/pdf':
-            try:
-                pdf_document = fitz.open(stream=file_bytes, filetype="pdf")
-                page = pdf_document[0]
-                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-                img_bytes = pix.tobytes("png")
-                pdf_document.close()
-                
-                image = vision.Image(content=img_bytes)
-                response = self.client.text_detection(image=image)
-            except Exception as e:
-                raise Exception(f'PDF Processing Error: {str(e)}')
-        else:
-            image = vision.Image(content=file_bytes)
-            response = self.client.text_detection(image=image)
-        
-        if response.error.message:
-            raise Exception(f'Vision API Error: {response.error.message}')
-        
-        texts = response.text_annotations
-        return texts[0].description if texts else ""
-    
-    def extract_paystub(self, text: str) -> Dict:
-        """Extract paystub details from text"""
-        details = {
-            'document_type': 'PAYSTUB',
-            'company_name': None,
-            'employee_name': None,
-            'employee_id': None,
-            'pay_period_start': None,
-            'pay_period_end': None,
-            'pay_date': None,
-            'gross_pay': None,
-            'net_pay': None,
-            'ytd_gross': None,
-            'ytd_net': None,
-            'federal_tax': None,
-            'state_tax': None,
-            'social_security': None,
-            'medicare': None,
-            'deductions': {},
-            'earnings': {},
-            'raw_text_preview': text[:500]
-        }
-        
-        lines = text.split('\n')
-        
-        # Extract company name - improved logic
-        company_patterns = [
-            r'^([A-Z][a-zA-Z\s&,\.]+(?:INC|CORP|LLC|SYSTEMS|COMPANY|GROUP|CORPORATION|LIMITED|LTD|CO\.?))',
-            r'^([A-Z][a-zA-Z\s&,\.]+(?:INC|CORP|LLC|SYSTEMS|COMPANY|GROUP|CORPORATION|LIMITED|LTD|CO\.?))',
-        ]
-        
-        for pattern in company_patterns:
-            match = re.search(pattern, text, re.MULTILINE | re.IGNORECASE)
-            if match:
-                company = match.group(1).strip()
-                if len(company) > 3:
-                    details['company_name'] = company
-                    break
-        
-        # Fallback: check first few lines
-        if not details['company_name']:
-            for line in lines[:20]:
-                line = line.strip()
-                if not line or len(line) < 3:
-                    continue
-                
-                skip_words = ['EMPLOYEE', 'PAY', 'SSN', 'DESCRIPTION', 'EARNINGS', 'DEDUCTIONS', 
-                             'DATE', 'HOURS', 'RATE', 'CURRENT', 'YTD', 'FEDERAL', 'STATE', 'PERIOD',
-                             'PAYSTUB', 'PAYCHECK', 'STATEMENT']
-                if any(word in line.upper() for word in skip_words):
-                    continue
-                
-                if any(keyword in line.upper() for keyword in ['INC', 'CORP', 'LLC', 'SYSTEMS', 
-                                                                'COMPANY', 'GROUP', 'CORPORATION', 
-                                                                'LIMITED', 'LTD', 'CO.', 'ENTERPRISES']):
-                    details['company_name'] = line
-                    break
-                
-                # If line looks like a company name (has proper case, length > 5)
-                if (len(line) > 5 and not line.isupper() and 
-                    any(c.isupper() for c in line) and 
-                    not any(char.isdigit() for char in line[:5])):
-                    details['company_name'] = line
-                    break
-        
-        # Extract employee name - more flexible patterns, stop at SOCIAL SEC or ID
-        employee_patterns = [
-            r'(?:EMPLOYEE\s+NAME|NAME)[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+?)(?:\s+(?:SOCIAL|SEC|ID|EMPLOYEE|SSN))',
-            r'(?:EMPLOYEE\s+NAME|NAME)[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
-            r'EMPLOYEE\s+NAME[:\s]+([A-Z][a-z]+\s+[A-Z][a-z]+)',
-            r'(?:^|\n)NAME[:\s]+([A-Z][a-z]+\s+[A-Z][a-z]+)(?:\s+(?:SOCIAL|SEC|ID|EMPLOYEE|SSN))',
-            r'([A-Z][a-z]+\s+[A-Z][a-z]+)(?:\s+(?:SOCIAL\s+SEC|EMPLOYEE\s+ID|SSN))',
-        ]
-        
-        for pattern in employee_patterns:
-            match = re.search(pattern, text, re.MULTILINE | re.IGNORECASE)
-            if match:
-                name = match.group(1).strip()
-                # Clean up name - remove any trailing words that shouldn't be there
-                name = re.sub(r'\s+(SOCIAL|SEC|ID|EMPLOYEE|SSN).*$', '', name, flags=re.IGNORECASE)
-                name_parts = name.split()
-                if (len(name_parts) >= 2 and 
-                    not any(word in name.upper() for word in 
-                    ['EMPLOYEE', 'COMPANY', 'ADDRESS', 'DEPARTMENT', 'POSITION', 'PAY', 'PERIOD', 'DATE', 'SOCIAL']) and
-                    all(part[0].isupper() for part in name_parts if part and len(part) > 0)):
-                    details['employee_name'] = name
-                    break
-        
-        # Extract employee ID - more flexible patterns
-        empid_patterns = [
-            r'EMPLOYEE\s*(?:ID|NUMBER|#)[:\s]*\n?\s*([A-Z0-9\-]{3,})',
-            r'(?:EMP\s*)?ID[:\s]*([A-Z]{2,}-[A-Z0-9\-]{3,})',
-            r'(?:^|\n)([A-Z]{2,3}-\d{4,})(?:\n|$)',
-            r'EMP\s*ID[:\s]*([A-Z0-9\-]{4,})',
-            r'EMPLOYEE\s+#[:\s]*([A-Z0-9\-]{3,})',
-            r'ID[:\s]+([A-Z0-9\-]{4,})',
-        ]
-        for pattern in empid_patterns:
-            empid_match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
-            if empid_match and empid_match.group(1):
-                emp_id = empid_match.group(1).strip()
-                if (len(emp_id) >= 3 and 
-                    not any(word in emp_id.upper() for word in ['EMPLOYEE', 'NAME', 'SSN', 'FEDERAL', 'STATE', 'PAY']) and
-                    (any(c.isdigit() for c in emp_id) or '-' in emp_id or any(c.isalpha() for c in emp_id))):
-                    details['employee_id'] = emp_id
-                    break
-        
-        # Extract pay period
-        period_patterns = [
-            r'(?:PAY\s+PERIOD|Period)[:\s]*\n?\s*(\d{1,2}/\d{1,2}/\d{2,4})\s*[-–to\s]+\s*(\d{1,2}/\d{1,2}/\d{2,4})',
-            r'(\d{2}/\d{2}/\d{4})\s*[-–]\s*(\d{2}/\d{2}/\d{4})',
-        ]
-        for pattern in period_patterns:
-            period_match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
-            if period_match:
-                details['pay_period_start'] = period_match.group(1)
-                details['pay_period_end'] = period_match.group(2)
-                break
-        
-        # Extract pay date - more flexible patterns
-        date_patterns = [
-            r'PAY\s+DATE[:\s]*\n?\s*(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4})',
-            r'CHECK\s+DATE[:\s]*(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4})',
-            r'PAID\s+DATE[:\s]*(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4})',
-            r'PAY\s+DATE[:\s]+(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4})',
-            r'(?:^|\n)PAY\s+DATE[:\s]*(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4})',
-        ]
-        for pattern in date_patterns:
-            date_match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
-            if date_match and date_match.group(1):
-                details['pay_date'] = date_match.group(1)
-                break
-        
-        # Extract gross pay - CURRENT period only (exclude YTD)
-        # Look for GROSS WAGES followed by CURRENT TOTAL value
-        gross_patterns = [
-            r'GROSS\s+WAGES[:\s]*CURRENT\s+TOTAL[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-            r'GROSS\s+(?:PAY|EARNINGS|WAGES)[:\s]*CURRENT\s+TOTAL[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-            r'CURRENT\s+TOTAL[:\s]*\$?\s*([\d,]+\.?\d{0,2})(?=\s*(?:YTD|DEDUCTIONS|NET|YEAR))',
-            r'GROSS\s+(?:PAY|EARNINGS|WAGES)[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-        ]
-        for pattern in gross_patterns:
-            gross_match = re.search(pattern, text, re.IGNORECASE | re.DOTALL | re.MULTILINE)
-            if gross_match and gross_match.group(1):
-                # Make sure it's not a YTD value by checking context
-                match_text = gross_match.group(0)
-                # Get surrounding context to verify
-                start_pos = max(0, gross_match.start() - 50)
-                end_pos = min(len(text), gross_match.end() + 50)
-                context = text[start_pos:end_pos].upper()
-                if 'YTD' not in context and 'YEAR TO DATE' not in context:
-                    details['gross_pay'] = gross_match.group(1).replace(',', '')
-                    break
-        
-        # Extract net pay - CURRENT period only (exclude YTD)
-        # Strategy: Find NET PAY that appears AFTER DEDUCTIONS but BEFORE any YTD section
-        best_net_match = None
-        
-        # First, find where YTD section starts (if it exists)
-        ytd_section_start = None
-        ytd_markers = [
-            r'YTD\s+GROSS',
-            r'YTD\s+DEDCTIONS',
-            r'YTD\s+DEDUCTIONS',
-            r'YEAR\s+TO\s+DATE',
-        ]
-        for marker in ytd_markers:
-            ytd_match = re.search(marker, text, re.IGNORECASE | re.MULTILINE)
-            if ytd_match:
-                ytd_section_start = ytd_match.start()
-                break
-        
-        # Find NET PAY that comes before YTD section
-        net_patterns = [
-            r'NET\s+PAY[:\s]+([\d,]+\.\d{2})',
-            r'NET\s+PAY\s*:\s*([\d,]+\.\d{2})',
-            r'NET\s+PAY\s+([\d,]+\.\d{2})',
-            r'DEDUCTIONS[:\s]+[\d,]+\.?\d{0,2}.*?NET\s+PAY[:\s]*([\d,]+\.\d{2})',
-            r'TOTAL[:\s]+DEDUCTIONS.*?NET\s+PAY[:\s]*([\d,]+\.\d{2})',
-        ]
-        
-        all_matches = []
-        for pattern in net_patterns:
-            for match in re.finditer(pattern, text, re.IGNORECASE | re.DOTALL | re.MULTILINE):
-                if match and match.group(1):
-                    # Must be before YTD section if YTD section exists
-                    if ytd_section_start is None or match.start() < ytd_section_start:
-                        # Check context to ensure it's not YTD
-                        before_text = text[max(0, match.start() - 15):match.start()].upper()
-                        if 'YTD' not in before_text and 'YEAR TO DATE' not in before_text:
-                            all_matches.append(match)
-        
-        # Sort by position (earlier = more likely current period)
-        all_matches.sort(key=lambda m: m.start())
-        
-        # Take the last match before YTD section (most likely to be current period NET PAY)
-        if all_matches:
-            # Get the match closest to YTD section but before it
-            if ytd_section_start:
-                valid_matches = [m for m in all_matches if m.start() < ytd_section_start]
-                if valid_matches:
-                    best_net_match = valid_matches[-1]  # Last one before YTD
-                else:
-                    best_net_match = all_matches[0]  # Fallback to first
+            if openai_key:
+                data_tools = PaystubDataAccessTools()
+                self.ai_agent = PaystubFraudAnalysisAgent(
+                    api_key=openai_key,
+                    model=os.getenv('AI_MODEL', 'o4-mini'),
+                    data_tools=data_tools
+                )
+                logger.info("Initialized PaystubFraudAnalysisAgent")
             else:
-                best_net_match = all_matches[-1]  # Last match if no YTD section
-        
-        if best_net_match:
-            details['net_pay'] = best_net_match.group(1).replace(',', '').strip()
-        else:
-            # Final fallback: Look for NET PAY that's clearly not YTD
-            net_label_match = re.search(r'NET\s+PAY(?!\s+YTD)', text, re.IGNORECASE | re.MULTILINE)
-            if net_label_match:
-                after_text = text[net_label_match.end():net_label_match.end() + 30]
-                number_match = re.search(r'([\d,]+\.\d{2})', after_text)
-                if number_match:
-                    before_num = after_text[:number_match.start()].upper()
-                    if 'YTD' not in before_num:
-                        details['net_pay'] = number_match.group(1).replace(',', '').strip()
-        
-        # Extract taxes - CURRENT period only (exclude YTD)
-        tax_patterns = {
-            'federal_tax': [
-                r'FED\s+TAX[:\s]*(?:CURRENT\s+TOTAL)?[:\s]*\$?\s*([\d,]+\.?\d{0,2})(?!\s*YTD)',
-                r'FEDERAL\s+(?:INCOME\s+)?TAX[:\s]*(?:CURRENT\s+TOTAL)?[:\s]*\$?\s*([\d,]+\.?\d{0,2})(?!\s*YTD)',
-                r'FEDERAL\s+WITHHOLDING[:\s]*CURRENT\s+TOTAL[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-                r'FED\s+TAX[:\s]*CURRENT[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-            ],
-            'state_tax': [
-                r'(?:[A-Z]{2}\s+)?ST\s+TAX[:\s]*(?:CURRENT\s+TOTAL)?[:\s]*\$?\s*([\d,]+\.?\d{0,2})(?!\s*YTD)',
-                r'STATE\s+(?:INCOME\s+)?(?:TAX|WITHHOLDING)?[:\s]*(?:CURRENT\s+TOTAL)?[:\s]*\$?\s*([\d,]+\.?\d{0,2})(?!\s*YTD)',
-                r'STATE\s+TAX[:\s]*CURRENT\s+TOTAL[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-                r'STATE\s+WITHHOLDING[:\s]*CURRENT[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-                r'CA\s+SDI[:\s]*CURRENT[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-                r'NY\s+ST\s+TAX[:\s]*CURRENT[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-            ],
-            'social_security': [
-                r'FICA\s+SS\s+TAX[:\s]*(?:CURRENT\s+TOTAL)?[:\s]*\$?\s*([\d,]+\.?\d{0,2})(?!\s*YTD)',
-                r'SOCIAL\s+SECURITY\s+TAX[:\s]*(?:CURRENT\s+TOTAL)?[:\s]*\$?\s*([\d,]+\.?\d{0,2})(?!\s*YTD)',
-                r'SS\s+TAX[:\s]*CURRENT[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-                r'OASDI[:\s]*CURRENT[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-            ],
-            'medicare': [
-                r'FICA\s+MED\s+TAX[:\s]*(?:CURRENT\s+TOTAL)?[:\s]*\$?\s*([\d,]+\.?\d{0,2})(?!\s*YTD)',
-                r'MEDICARE\s+TAX[:\s]*(?:CURRENT\s+TOTAL)?[:\s]*\$?\s*([\d,]+\.?\d{0,2})(?!\s*YTD)',
-                r'MED\s+TAX[:\s]*CURRENT[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-                r'MEDICARE[:\s]*CURRENT[:\s]*\$?\s*([\d,]+\.?\d{0,2})',
-            ]
-        }
-        
-        for field, patterns in tax_patterns.items():
-            for pattern in patterns:
-                match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
-                if match and match.group(1):
-                    # Make sure it's not a YTD value
-                    match_text = match.group(0)
-                    if 'YTD' not in match_text.upper() and 'YEAR TO DATE' not in match_text.upper():
-                        details[field] = match.group(1).replace(',', '')
-                        break
-        
-        # Extract YTD values if available - must explicitly be YTD
-        # Use very flexible patterns to handle OCR variations
-        ytd_patterns = {
-            'ytd_gross': [
-                # Most common formats first - be very flexible
-                r'YTD\s+GROSS[:\s]*([\d,]+\.\d{2})',
-                r'YTD\s+GROSS\s*:\s*([\d,]+\.\d{2})',
-                r'YTD\s+GROSS\s+([\d,]+\.\d{2})',
-                r'YTD\s+GROSS[:\s]*([\d,]+\.?\d{0,2})',
-                r'YTD\s+GROSS[:\s]*\$?\s*([\d,]+\.\d{2})',
-                r'YEAR\s+TO\s+DATE\s+GROSS[:\s]*\$?\s*([\d,]+\.\d{2})',
-                r'YTD\s+GROSS\s+WAGES[:\s]*\$?\s*([\d,]+\.\d{2})',
-                r'YTD\s+EARNINGS[:\s]*\$?\s*([\d,]+\.\d{2})',
-            ],
-            'ytd_net': [
-                # Most common formats first - MUST have NET PAY, not just NET
-                r'YTD\s+NET\s+PAY[:\s]+([\d,]+\.\d{2})',
-                r'YTD\s+NET\s+PAY\s*:\s*([\d,]+\.\d{2})',
-                r'YTD\s+NET\s+PAY\s+([\d,]+\.\d{2})',
-                r'YTD\s+NET\s+PAY[:\s]*\$?\s*([\d,]+\.\d{2})',
-                r'YEAR\s+TO\s+DATE\s+NET\s+PAY[:\s]*\$?\s*([\d,]+\.\d{2})',
-                r'YTD\s+NET\s+AMOUNT[:\s]*\$?\s*([\d,]+\.\d{2})',
-                # Only use YTD NET (without PAY) if we're sure it's not GROSS
-                r'YTD\s+NET[:\s]+([\d,]+\.\d{2})(?!.*GROSS)',
-            ]
-        }
-        
-        for field, patterns in ytd_patterns.items():
-            found = False
-            for pattern in patterns:
-                match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE | re.DOTALL)
-                if match and match.group(1):
-                    value = match.group(1).replace(',', '').strip()
-                    if value and value != '0' and len(value) > 0:
-                        details[field] = value
-                        found = True
-                        break
-            
-            # Enhanced Fallback: Look for YTD label and find number nearby with multiple strategies
-            if not found:
-                ytd_label = None
-                if field == 'ytd_gross':
-                    # Try multiple label patterns
-                    label_patterns = [
-                        r'YTD\s+GROSS',
-                        r'YTD\s+GROSS\s+WAGES',
-                        r'YTD\s+EARNINGS',
-                    ]
-                    for lp in label_patterns:
-                        ytd_label = re.search(lp, text, re.IGNORECASE | re.MULTILINE)
-                        if ytd_label:
-                            break
-                elif field == 'ytd_net':
-                    # Try multiple label patterns - MUST have NET PAY, not just NET
-                    label_patterns = [
-                        r'YTD\s+NET\s+PAY',
-                        r'YTD\s+NET\s+PAY\s*:',
-                        r'YTD\s+NET\s+PAY\s+',
-                    ]
-                    for lp in label_patterns:
-                        ytd_label = re.search(lp, text, re.IGNORECASE | re.MULTILINE | re.DOTALL)
-                        if ytd_label:
-                            break
-                    
-                    # If still not found, look for YTD NET PAY that appears after YTD GROSS or YTD DEDCTIONS
-                    if not ytd_label:
-                        # Find the summary section and search after it
-                        summary_match = re.search(r'YTD\s+(?:GROSS|DEDCTIONS|DEDUCTIONS)', text, re.IGNORECASE | re.MULTILINE)
-                        if summary_match:
-                            # Look for YTD NET PAY in the text after summary (within 200 chars)
-                            after_summary_text = text[summary_match.end():summary_match.end() + 200]
-                            net_match = re.search(r'YTD\s+NET\s+PAY', after_summary_text, re.IGNORECASE | re.MULTILINE)
-                            if net_match:
-                                # Create a match object with adjusted positions
-                                class AdjustedMatch:
-                                    def __init__(self, original_match, offset):
-                                        self._original = original_match
-                                        self._offset = offset
-                                    def start(self):
-                                        return self._original.start() + self._offset
-                                    def end(self):
-                                        return self._original.end() + self._offset
-                                    def group(self, n=0):
-                                        return self._original.group(n)
-                                
-                                ytd_label = AdjustedMatch(net_match, summary_match.end())
-                
-                if ytd_label:
-                    # Get the line containing the YTD label
-                    line_start = text.rfind('\n', 0, ytd_label.start()) + 1
-                    line_end = text.find('\n', ytd_label.end())
-                    if line_end == -1:
-                        line_end = len(text)
-                    line_text = text[line_start:line_end]
-                    
-                    # Look for number on the same line, after the label
-                    after_label = line_text[ytd_label.end() - line_start:]
-                    # Try multiple number patterns - prefer exact decimal format
-                    number_patterns = [
-                        r'([\d,]+\.\d{2})',  # Standard format: 5,000.00
-                        r'([\d,]+\.\d{1,2})',  # Allow 1-2 decimals
-                        r'([\d,]+)',  # Just numbers with commas
-                    ]
-                    for np in number_patterns:
-                        number_match = re.search(np, after_label)
-                        if number_match:
-                            value = number_match.group(1).replace(',', '').strip()
-                            # Validate it's a reasonable amount (not too small, has digits)
-                            if value and value != '0' and len(value) > 0 and value.replace('.', '').isdigit():
-                                value_float = float(value)
-                                # Make sure it's not part of a date or other number
-                                if value_float > 10:  # Reasonable minimum for YTD values
-                                    # For YTD Net, validate it's less than YTD Gross (if we have it)
-                                    if field == 'ytd_net' and details.get('ytd_gross'):
-                                        try:
-                                            ytd_gross_val = float(details['ytd_gross'].replace(',', ''))
-                                            if value_float > ytd_gross_val:
-                                                # This might be wrong - skip it
-                                                continue
-                                        except:
-                                            pass
-                                    details[field] = value
-                                    found = True
-                                    break
-                    if found:
-                        break
-            
-            # Final fallback: Search line by line for YTD values
-            if not found:
-                lines = text.split('\n')
-                for i, line in enumerate(lines):
-                    line_upper = line.upper().strip()
-                    if field == 'ytd_gross':
-                        # Must have YTD and GROSS, but NOT NET
-                        if 'YTD' in line_upper and 'GROSS' in line_upper and 'NET' not in line_upper:
-                            # Extract number from this line
-                            numbers = re.findall(r'([\d,]+\.\d{2})', line)
-                            if numbers:
-                                value = numbers[0].replace(',', '').strip()
-                                if value and float(value) > 10:
-                                    details[field] = value
-                                    found = True
-                                    break
-                    elif field == 'ytd_net':
-                        # Must have YTD and NET PAY (or NET), but NOT GROSS
-                        if ('YTD' in line_upper and 'NET' in line_upper and 
-                            'GROSS' not in line_upper and 
-                            ('PAY' in line_upper or 'NET PAY' in line_upper)):
-                            # Extract number from this line
-                            numbers = re.findall(r'([\d,]+\.\d{2})', line)
-                            if numbers:
-                                value = numbers[0].replace(',', '').strip()
-                                value_float = float(value)
-                                if value_float > 10:
-                                    # Validate it's less than YTD Gross if we have it
-                                    if details.get('ytd_gross'):
-                                        try:
-                                            ytd_gross_val = float(details['ytd_gross'].replace(',', ''))
-                                            if value_float <= ytd_gross_val:
-                                                details[field] = value
-                                                found = True
-                                                break
-                                        except:
-                                            details[field] = value
-                                            found = True
-                                            break
-                                    else:
-                                        details[field] = value
-                                        found = True
-                                        break
-        
-        # Calculate confidence - improved scoring
-        critical_fields = ['company_name', 'employee_name', 'pay_date']
-        important_fields = ['gross_pay', 'net_pay', 'employee_id']
-        optional_fields = ['federal_tax', 'state_tax', 'social_security', 'medicare', 'ytd_gross', 'ytd_net']
-        
-        critical_filled = sum(1 for k in critical_fields if details.get(k))
-        important_filled = sum(1 for k in important_fields if details.get(k))
-        optional_filled = sum(1 for k in optional_fields if details.get(k))
-        
-        # More lenient scoring - if we have at least 2 critical fields, boost score
-        critical_bonus = 10 if critical_filled >= 2 else 0
-        
-        # Base confidence calculation
-        base_confidence = (
-            (critical_filled / len(critical_fields)) * 45 +
-            (important_filled / len(important_fields)) * 35 +
-            (optional_filled / len(optional_fields)) * 20
+                logger.warning("OPENAI_API_KEY not set - AI analysis will be skipped")
+        except ImportError:
+            logger.warning("AI agent not available - AI analysis will be skipped")
+            self.ai_agent = None
+
+    def extract_and_analyze(self, file_path: str) -> Dict:
+        """
+        Complete paystub analysis pipeline - NO EARLY EXITS
+        Always runs full evaluation regardless of missing fields
+
+        Args:
+            file_path: Path to paystub image/PDF file
+
+        Returns:
+            Complete analysis results dict with all rule outputs, issues, and final decision
+        """
+        logger.info(f"Starting paystub analysis for: {file_path}")
+
+        # Stage 1: OCR Extraction (Mindee only)
+        extracted_data, raw_text = self._extract_with_mindee(file_path)
+        logger.info(f"Extracted data from Mindee: {list(extracted_data.keys())}")
+
+        # Stage 2: Normalization
+        normalized_data = self._normalize_data(extracted_data)
+
+        # Stage 3: Validation Rules (collects issues but doesn't exit early)
+        validation_issues = self._collect_validation_issues(normalized_data)
+        logger.info(f"Validation issues found: {len(validation_issues)}")
+
+        # Stage 4: ML Fraud Detection
+        ml_analysis = self._run_ml_fraud_detection(normalized_data, raw_text)
+        logger.info(f"ML fraud analysis complete: {ml_analysis.get('risk_level')}")
+
+        # Stage 5: Employee History & Duplicate Detection (continue regardless)
+        employee_info = self._get_employee_info(normalized_data)
+        duplicate_check = self._check_duplicate(normalized_data)
+        if duplicate_check:
+            logger.warning("Duplicate paystub detected - will be included in issues")
+            validation_issues.append("Duplicate paystub submission detected")
+
+        # Stage 6: AI Fraud Analysis (always runs unless initialization failed)
+        ai_analysis = self._run_ai_analysis(normalized_data, ml_analysis, employee_info)
+        logger.info(f"AI analysis complete: {ai_analysis.get('recommendation') if ai_analysis else 'N/A'}")
+
+        # Stage 7: Generate Anomalies
+        anomalies = self._generate_anomalies(normalized_data, ml_analysis, ai_analysis)
+
+        # Stage 8: Calculate Confidence Score
+        confidence_score = self._calculate_confidence(normalized_data, ml_analysis, ai_analysis)
+
+        # Stage 9: Determine Final Decision Based on All Collected Issues
+        overall_decision = self._determine_final_decision(
+            validation_issues=validation_issues,
+            ml_analysis=ml_analysis,
+            ai_analysis=ai_analysis,
+            normalized_data=normalized_data
         )
+
+        # Stage 10: Build Final Response with ALL results
+        return self._build_complete_response(
+            extracted_data=extracted_data,
+            normalized_data=normalized_data,
+            ml_analysis=ml_analysis,
+            ai_analysis=ai_analysis,
+            anomalies=anomalies,
+            confidence_score=confidence_score,
+            validation_issues=validation_issues,
+            overall_decision=overall_decision,
+            duplicate_detected=duplicate_check,
+            raw_text=raw_text
+        )
+
+    def _extract_with_mindee(self, file_path: str) -> Tuple[Dict, str]:
+        """Extract paystub data using Mindee API only (no fallback)"""
+        if not mindee_client:
+            raise RuntimeError("Mindee client not initialized. Check API key and installation.")
+
+        try:
+            # Use ClientV2 API with InferenceParameters
+            logger.info(f"Extracting with Mindee using model ID: {MINDEE_MODEL_ID_PAYSTUB}")
+            
+            # Create inference parameters with the model ID
+            params = InferenceParameters(model_id=MINDEE_MODEL_ID_PAYSTUB, raw_text=True)
+            input_source = PathInput(file_path)
+            
+            # Parse document using ClientV2 with model ID
+            logger.info(f"Calling Mindee API with model ID...")
+            response = mindee_client.enqueue_and_get_inference(input_source, params)
+            
+            # Extract fields from the response
+            logger.info(f"Processing Mindee response...")
+            
+            if not response or not hasattr(response, 'inference'):
+                raise ValueError("Invalid Mindee API response: missing inference object")
+            
+            if not response.inference or not hasattr(response.inference, 'result'):
+                raise ValueError("Invalid Mindee API response: missing result object")
+            
+            result = response.inference.result
+            if not result:
+                raise ValueError("Invalid Mindee API response: result is None")
+            
+            fields = result.fields or {}
+            logger.info(f"Extracted {len(fields)} fields from Mindee response")
+            
+            # Get raw text
+            raw_text = getattr(result, "raw_text", "") or ""
+            if raw_text and not isinstance(raw_text, str):
+                raw_text = str(raw_text)
+            
+            # Convert Mindee fields to simple dict
+            extracted = {}
+            
+            # Map Mindee field names to our schema
+            # Based on Mindee Payslip schema: First Name, Last Name, Employee Address, Pay Period Start/End Date,
+            # Gross Pay, Net Pay, Deductions (array), Taxes (array), Employer Name, Employer Address, SSN, Employee ID
+            field_mapping = {
+                'first_name': 'first_name',
+                'last_name': 'last_name',
+                'employee_address': 'employee_address',
+                'pay_period_start_date': 'pay_period_start_date',
+                'pay_period_end_date': 'pay_period_end_date',
+                'gross_pay': 'gross_pay',
+                'net_pay': 'net_pay',
+                'deductions': 'deductions',
+                'taxes': 'taxes',
+                'employer_name': 'employer_name',
+                'employer_address': 'employer_address',
+                'social_security_number': 'social_security_number',
+                'employee_id': 'employee_id',
+            }
+
+            for name, field_data in fields.items():
+                logger.debug(f"Processing field {name}: {field_data} (type: {type(field_data)})")
+
+                # Extract the actual value from SimpleField object
+                value = None
+                if hasattr(field_data, 'value'):
+                    # SimpleField object - extract the value
+                    value = field_data.value
+                elif hasattr(field_data, 'items'):
+                    # List field - extract items (for deductions, taxes arrays)
+                    values = []
+                    for item in field_data.items:
+                        if hasattr(item, 'value'):
+                            values.append(item.value)
+                        elif hasattr(item, 'fields'):
+                            # Nested object (like deduction or tax with name and amount)
+                            nested_dict = {}
+                            for k, v in item.fields.items():
+                                if hasattr(v, 'value'):
+                                    nested_dict[k] = v.value
+                                else:
+                                    nested_dict[k] = v
+                            values.append(nested_dict)
+                        else:
+                            values.append(item)
+                    value = values
+                elif hasattr(field_data, 'fields'):
+                    # Nested object (like address)
+                    nested_dict = {}
+                    for k, v in field_data.fields.items():
+                        if hasattr(v, 'value'):
+                            nested_dict[k] = v.value
+                        else:
+                            nested_dict[k] = v
+                    value = nested_dict
+                else:
+                    # Already a plain value
+                    value = field_data
+
+                # Map field name to standard name if needed
+                standard_name = field_mapping.get(name, name)
+                extracted[standard_name] = value
+
+                logger.info(f"  → Extracted {name}: {value}")
+
+            # Combine first_name and last_name into employee_name
+            if extracted.get('first_name') or extracted.get('last_name'):
+                first = extracted.get('first_name', '')
+                last = extracted.get('last_name', '')
+                extracted['employee_name'] = f"{first} {last}".strip()
+                logger.info(f"Combined first_name and last_name to employee_name: {extracted['employee_name']}")
+
+            # Extract company_name from employer_name
+            if extracted.get('employer_name') and not extracted.get('company_name'):
+                extracted['company_name'] = extracted['employer_name']
+                logger.info(f"Set company_name from employer_name: {extracted['company_name']}")
+
+            # Process deductions array to extract individual tax fields
+            deductions = extracted.get('deductions', [])
+            taxes = extracted.get('taxes', [])
+            
+            # Combine deductions and taxes for processing
+            all_deductions = []
+            if isinstance(deductions, list):
+                all_deductions.extend(deductions)
+            if isinstance(taxes, list):
+                all_deductions.extend(taxes)
+            
+            # Extract tax amounts from deductions/taxes arrays
+            for deduction in all_deductions:
+                if isinstance(deduction, dict):
+                    name = str(deduction.get('name', '')).upper()
+                    amount = deduction.get('amount')
+                    
+                    if amount is not None:
+                        try:
+                            amount_val = float(str(amount).replace(',', '').replace('$', ''))
+                        except:
+                            amount_val = None
+                        
+                        if amount_val is not None:
+                            if 'FEDERAL' in name or 'FED' in name:
+                                if not extracted.get('federal_tax'):
+                                    extracted['federal_tax'] = amount_val
+                            elif 'STATE' in name or 'ST ' in name:
+                                if not extracted.get('state_tax'):
+                                    extracted['state_tax'] = amount_val
+                            elif 'SOCIAL' in name or 'SS' in name or 'OASDI' in name:
+                                if not extracted.get('social_security'):
+                                    extracted['social_security'] = amount_val
+                            elif 'MEDICARE' in name or 'MED' in name:
+                                if not extracted.get('medicare'):
+                                    extracted['medicare'] = amount_val
+
+            logger.info(f"Successfully extracted {len(extracted)} fields from Mindee: {list(extracted.keys())}")
+            logger.info(f"Extracted data summary: {extracted}")
+            return extracted, raw_text
+
+        except Exception as e:
+            logger.error(f"Mindee extraction failed: {e}", exc_info=True)
+            raise RuntimeError(f"Failed to extract paystub data: {str(e)}") from e
+
+    def _normalize_data(self, extracted_data: Dict) -> Dict:
+        """Normalize paystub data"""
+        try:
+            normalizer = PaystubNormalizerFactory.get_normalizer()
+            if normalizer:
+                normalized_paystub = normalizer.normalize(extracted_data)
+                normalized_data = normalized_paystub.to_dict()
+                logger.info("Normalization complete")
+                return normalized_data
+            else:
+                logger.warning("No normalizer found - using raw extracted data")
+                return extracted_data
+        except Exception as e:
+            logger.warning(f"Normalization failed: {e}. Using raw extracted data.")
+            return extracted_data
+
+    def _collect_validation_issues(self, normalized_data: Dict) -> List[str]:
+        """Collect validation issues without exiting early"""
+        issues = []
         
-        # Add bonus for having key fields
-        if details.get('gross_pay') and details.get('net_pay'):
-            base_confidence += 5
+        # Check for missing critical fields
+        # Use pay_period_start or pay_period_end instead of pay_date
+        critical_fields = ['company_name', 'employee_name', 'gross_pay', 'net_pay']
+        missing_critical = [field for field in critical_fields if not normalized_data.get(field)]
+        # Check for date fields
+        if not (normalized_data.get('pay_period_start') or normalized_data.get('pay_period_end')):
+            missing_critical.append('pay_period')
+        if missing_critical:
+            issues.append(f"Missing critical fields: {', '.join(missing_critical)}")
         
-        confidence = min(base_confidence + critical_bonus, 100.0)
+        # Check for impossible values
+        gross = normalized_data.get('gross_pay', 0)
+        net = normalized_data.get('net_pay', 0)
+        try:
+            gross_val = float(str(gross).replace(',', '').replace('$', '')) if gross else 0
+            net_val = float(str(net).replace(',', '').replace('$', '')) if net else 0
+            if gross_val > 0 and net_val > gross_val:
+                issues.append("CRITICAL: Net pay is greater than gross pay (impossible)")
+        except:
+            pass
         
-        details['confidence_score'] = round(confidence, 2)
-        details['extraction_timestamp'] = datetime.now().isoformat()
+        return issues
+
+    def _run_ml_fraud_detection(self, normalized_data: Dict, raw_text: str) -> Dict:
+        """Run ML fraud detection"""
+        if not self.ml_detector:
+            return {
+                'fraud_risk_score': 0.5,
+                'risk_level': 'MEDIUM',
+                'model_confidence': 0.5,
+                'model_scores': {},
+                'feature_importance': []
+            }
         
-        # Perform AI Analysis
-        if self.ai_agent and self.fraud_detector:
-            try:
-                # 1. Normalize Data
-                normalized_data = NormalizerFactory.normalize_data('paystub', details)
-                
-                # 2. ML Fraud Prediction
-                ml_analysis = self.fraud_detector.predict_fraud(normalized_data, text)
-                
-                # Mock customer ID
-                customer_id = 'CUST_PAYSTUB_001'
-                
-                # 3. AI Agent Analysis
-                ai_analysis = self.ai_agent.analyze_fraud(ml_analysis, normalized_data, customer_id)
-                
-                # Add results to details
-                details['fraud_risk_score'] = ml_analysis['fraud_risk_score']
-                details['model_confidence'] = ml_analysis['model_confidence']
-                details['ai_recommendation'] = ai_analysis.get('recommendation', 'UNKNOWN')
-                details['actionable_recommendations'] = ai_analysis.get('actionable_recommendations', [])
-                details['ai_analysis'] = ai_analysis
-                details['normalized_data'] = normalized_data
-                
-            except Exception as e:
-                print(f"Error in Paystub AI analysis: {e}")
-                import traceback
-                traceback.print_exc()
+        try:
+            return self.ml_detector.predict_fraud(normalized_data, raw_text)
+        except Exception as e:
+            logger.error(f"ML fraud detection failed: {e}")
+            return {
+                'fraud_risk_score': 0.5,
+                'risk_level': 'MEDIUM',
+                'model_confidence': 0.5,
+                'model_scores': {},
+                'feature_importance': []
+            }
+
+    def _get_employee_info(self, normalized_data: Dict) -> Dict:
+        """Get employee history information"""
+        employee_name = normalized_data.get('employee_name')
+        if not employee_name:
+            return {}
         
-        return details
+        try:
+            from .database.paystub_customer_storage import PaystubCustomerStorage
+            storage = PaystubCustomerStorage()
+            return storage.get_employee_history(employee_name)
+        except Exception as e:
+            logger.warning(f"Failed to get employee history: {e}")
+            return {}
+
+    def _check_duplicate(self, normalized_data: Dict) -> bool:
+        """Check if this paystub is a duplicate"""
+        employee_name = normalized_data.get('employee_name')
+        pay_period_start = normalized_data.get('pay_period_start')
+        pay_period_end = normalized_data.get('pay_period_end')
+        # Use pay_period_end as pay_date for duplicate check if pay_date doesn't exist
+        pay_date = normalized_data.get('pay_date') or pay_period_end
+        
+        if not (employee_name and pay_period_start):
+            return False
+        
+        try:
+            from .database.paystub_customer_storage import PaystubCustomerStorage
+            storage = PaystubCustomerStorage()
+            return storage.check_duplicate_paystub(employee_name, pay_date, pay_period_start)
+        except Exception as e:
+            logger.warning(f"Failed to check duplicate: {e}")
+            return False
+
+    def _run_ai_analysis(self, normalized_data: Dict, ml_analysis: Dict, employee_info: Dict) -> Optional[Dict]:
+        """Run AI fraud analysis"""
+        if not self.ai_agent:
+            return None
+        
+        try:
+            employee_name = normalized_data.get('employee_name')
+            ai_analysis = self.ai_agent.analyze_fraud(
+                extracted_data=normalized_data,
+                ml_analysis=ml_analysis,
+                employee_name=employee_name
+            )
+            
+            # CRITICAL: Post-AI validation - Force REJECT if escalate_count > 0 but AI didn't return REJECT
+            # This matches money order logic: repeat offenders MUST be rejected
+            if employee_info and employee_info.get('escalate_count', 0) > 0:
+                escalate_count = employee_info.get('escalate_count', 0)
+                if ai_analysis and ai_analysis.get('recommendation') != 'REJECT':
+                    logger.warning(
+                        f"[POST_AI_VALIDATION] Employee {employee_name} has escalate_count={escalate_count} "
+                        f"but AI returned {ai_analysis.get('recommendation')}. "
+                        f"Overriding to REJECT per repeat offender policy."
+                    )
+                    # Force REJECT for repeat offenders
+                    ai_analysis['recommendation'] = 'REJECT'
+                    ai_analysis['confidence_score'] = 1.0
+                    if 'reasoning' not in ai_analysis:
+                        ai_analysis['reasoning'] = []
+                    ai_analysis['reasoning'].insert(0, 
+                        f"CRITICAL: Overridden to REJECT because employee has escalate_count={escalate_count}. "
+                        f"Repeat offenders are automatically rejected per policy."
+                    )
+                    if 'key_indicators' not in ai_analysis:
+                        ai_analysis['key_indicators'] = []
+                    ai_analysis['key_indicators'].insert(0, f"Repeat offender detected (escalate_count: {escalate_count})")
+            
+            return ai_analysis
+        except Exception as e:
+            logger.error(f"AI analysis failed: {e}")
+            return None
+
+    def _generate_anomalies(self, normalized_data: Dict, ml_analysis: Dict, ai_analysis: Optional[Dict]) -> list:
+        """Generate list of anomalies"""
+        anomalies = []
+        
+        # Add ML-detected anomalies
+        if ml_analysis.get('feature_importance'):
+            anomalies.extend(ml_analysis['feature_importance'])
+        
+        # Add AI-detected key indicators
+        if ai_analysis and ai_analysis.get('key_indicators'):
+            anomalies.extend(ai_analysis['key_indicators'])
+        
+        return anomalies
+
+    def _calculate_confidence(self, normalized_data: Dict, ml_analysis: Dict, ai_analysis: Optional[Dict]) -> float:
+        """Calculate overall confidence score"""
+        ml_confidence = ml_analysis.get('model_confidence', 0.5)
+        ai_confidence = ai_analysis.get('confidence_score', 0.5) if ai_analysis else 0.5
+        
+        # Weighted average
+        return (ml_confidence * 0.4 + ai_confidence * 0.6)
+
+    def _determine_final_decision(self, validation_issues: list, ml_analysis: Dict, ai_analysis: Optional[Dict], normalized_data: Dict) -> str:
+        """Determine final decision based on all collected information"""
+        # AI recommendation takes precedence
+        if ai_analysis and ai_analysis.get('recommendation'):
+            return ai_analysis['recommendation']
+        
+        # Fallback to ML score
+        fraud_risk_score = ml_analysis.get('fraud_risk_score', 0.0)
+        if fraud_risk_score >= 0.85:
+            return 'REJECT'
+        elif fraud_risk_score >= 0.5:
+            return 'ESCALATE'
+        else:
+            return 'APPROVE'
+
+    def _build_complete_response(
+        self,
+        extracted_data: Dict,
+        normalized_data: Dict,
+        ml_analysis: Dict,
+        ai_analysis: Optional[Dict],
+        anomalies: list,
+        confidence_score: float,
+        validation_issues: list,
+        overall_decision: str,
+        duplicate_detected: bool,
+        raw_text: str
+    ) -> Dict:
+        """Build complete analysis response"""
+        return {
+            'success': True,
+            'document_type': 'PAYSTUB',
+            'extracted_data': extracted_data,
+            'normalized_data': normalized_data,
+            'ml_analysis': ml_analysis,
+            'ai_analysis': ai_analysis or {},
+            'fraud_risk_score': ml_analysis.get('fraud_risk_score', 0.0),
+            'risk_level': ml_analysis.get('risk_level', 'UNKNOWN'),
+            'model_confidence': ml_analysis.get('model_confidence', 0.0),
+            'ai_recommendation': ai_analysis.get('recommendation', 'UNKNOWN') if ai_analysis else 'UNKNOWN',
+            'ai_confidence': ai_analysis.get('confidence_score', 0.0) if ai_analysis else 0.0,
+            'anomalies': anomalies,
+            'validation_issues': validation_issues,
+            'confidence_score': confidence_score,
+            'overall_decision': overall_decision,
+            'duplicate_detected': duplicate_detected,
+            'raw_text_preview': raw_text[:500] if raw_text else '',
+            'extraction_timestamp': datetime.now().isoformat()
+        }
 

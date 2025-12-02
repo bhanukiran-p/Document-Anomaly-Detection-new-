@@ -68,7 +68,7 @@ class CheckExtractor:
     def __init__(self):
         """Initialize all components"""
         # ML Fraud Detector
-        model_dir = os.getenv("ML_MODEL_DIR", "ml_models")
+        model_dir = os.getenv("ML_MODEL_DIR", "models")
         self.ml_detector = CheckFraudDetector(model_dir=model_dir)
         logger.info("Initialized CheckFraudDetector")
 

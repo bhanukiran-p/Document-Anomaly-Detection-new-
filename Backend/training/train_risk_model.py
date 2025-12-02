@@ -45,6 +45,8 @@ class RiskModelTrainer:
         self.model = None
         self.scaler = StandardScaler()
         self.feature_names = []
+        # Default to global models directory (for backward compatibility)
+        # Individual document types will override this
         self.model_dir = 'models'
         os.makedirs(self.model_dir, exist_ok=True)
     
@@ -161,36 +163,123 @@ class RiskModelTrainer:
         
         return df
     
-    def generate_dummy_paystub_data(self, n_samples=1000, document_type='paystub') -> pd.DataFrame:
-        """Generate dummy paystub data for training"""
-        print(f"Generating {n_samples} dummy paystub samples...")
+    def generate_dummy_paystub_data(self, n_samples=2000, document_type='paystub') -> pd.DataFrame:
+        """Generate dummy paystub data for training with proper risk distribution"""
+        print(f"Generating {n_samples} dummy paystub samples with improved risk distribution...")
         
         data = []
         
+        # Target distribution:
+        # - Legitimate (0-30%): 40% of samples
+        # - Slightly suspicious (31-70%): 40% of samples
+        # - Highly suspicious (71-100%): 20% of samples
+        
         for i in range(n_samples):
-            has_company = random.random() > 0.08
-            has_employee = random.random() > 0.05
-            has_gross = random.random() > 0.03
-            has_net = random.random() > 0.03
-            has_date = random.random() > 0.08
+            # Determine target risk category
+            category_rand = random.random()
+            if category_rand < 0.4:
+                # Legitimate paystubs (0-30%)
+                target_min, target_max = 0, 30
+            elif category_rand < 0.8:
+                # Slightly suspicious (31-70%)
+                target_min, target_max = 31, 70
+            else:
+                # Highly suspicious (71-100%)
+                target_min, target_max = 71, 100
             
+            # Generate features based on target risk level
+            if target_max <= 30:
+                # Legitimate: Most fields present, no errors
+                has_company = random.random() > 0.05  # 95% have company
+                has_employee = random.random() > 0.03  # 97% have employee
+                has_gross = random.random() > 0.02     # 98% have gross
+                has_net = random.random() > 0.02      # 98% have net
+                has_date = random.random() > 0.05      # 95% have date
+                tax_error_prob = 0.05  # 5% have tax errors
+                text_quality_min = 0.7
+            elif target_max <= 70:
+                # Slightly suspicious: Some fields missing, some errors
+                has_company = random.random() > 0.15   # 85% have company
+                has_employee = random.random() > 0.20  # 80% have employee
+                has_gross = random.random() > 0.10     # 90% have gross
+                has_net = random.random() > 0.10       # 90% have net
+                has_date = random.random() > 0.25      # 75% have date
+                tax_error_prob = 0.20  # 20% have tax errors
+                text_quality_min = 0.4
+            else:
+                # Highly suspicious: Many fields missing, many errors
+                has_company = random.random() > 0.40    # 60% have company
+                has_employee = random.random() > 0.50  # 50% have employee
+                has_gross = random.random() > 0.30     # 70% have gross
+                has_net = random.random() > 0.30       # 70% have net
+                has_date = random.random() > 0.50      # 50% have date
+                tax_error_prob = 0.60  # 60% have tax errors
+                text_quality_min = 0.2
+            
+            # Generate amounts
             if has_gross and has_net:
                 gross = random.uniform(1000, 10000)
-                net = random.uniform(500, gross * 0.9)  # Net should be less than gross
-                tax_error = 1 if net >= gross else 0
+                # For high-risk, sometimes make net >= gross (tax error)
+                if random.random() < tax_error_prob:
+                    net = random.uniform(gross, gross * 1.2)  # Net >= gross (impossible!)
+                    tax_error = 1
+                else:
+                    net = random.uniform(500, gross * 0.9)  # Normal: net < gross
+                    tax_error = 0
             else:
                 gross = 0
                 net = 0
-                tax_error = 1
+                tax_error = 1 if random.random() < tax_error_prob else 0
             
             missing_fields = sum([not has_company, not has_employee, not has_gross, not has_net, not has_date])
-            text_quality = random.uniform(0.5, 1.0)
+            text_quality = random.uniform(text_quality_min, 1.0)
             
-            risk_score = (missing_fields / 5) * 25
+            # IMPROVED RISK SCORE FORMULA (can reach 100%)
+            risk_score = 0.0
+            
+            # Missing fields: up to 35 points (increased from 25)
+            risk_score += (missing_fields / 5) * 35
+            
+            # Tax error: +30 points (increased from 20, critical issue)
             if tax_error:
+                risk_score += 30
+            
+            # Low text quality: up to 20 points (NEW)
+            if text_quality < 0.5:
                 risk_score += 20
-            risk_score += random.uniform(-3, 3)
+            elif text_quality < 0.7:
+                risk_score += 10
+            elif text_quality < 0.8:
+                risk_score += 5
+            
+            # Suspicious amount patterns: up to 15 points (NEW)
+            if gross > 0:
+                if gross > 50000:  # Very high salary (suspicious)
+                    risk_score += 8
+                if gross == net:  # No deductions at all (very suspicious)
+                    risk_score += 15
+                elif gross > 0 and net > 0 and (gross - net) < gross * 0.1:  # Very low deductions
+                    risk_score += 5
+            
+            # Missing critical fields individually: up to 10 points (NEW)
+            if not has_company:
+                risk_score += 5
+            if not has_employee:
+                risk_score += 5
+            
+            # Random variation: wider range for more diversity
+            risk_score += random.uniform(-5, 5)
+            
+            # Cap at 100
             risk_score = max(0, min(100, risk_score))
+            
+            # If target is high-risk but score is too low, boost it
+            if target_min >= 71 and risk_score < 60:
+                risk_score = random.uniform(71, 100)
+            elif target_min >= 31 and risk_score < 25:
+                risk_score = random.uniform(31, 70)
+            elif target_max <= 30 and risk_score > 35:
+                risk_score = random.uniform(0, 30)
             
             features = {
                 'has_company': 1 if has_company else 0,
@@ -211,6 +300,16 @@ class RiskModelTrainer:
         df = pd.DataFrame(data)
         print(f"Generated {len(df)} samples")
         print(f"Risk score distribution: min={df['risk_score'].min():.1f}, max={df['risk_score'].max():.1f}, mean={df['risk_score'].mean():.1f}")
+        
+        # Print detailed distribution
+        legitimate = len(df[(df['risk_score'] >= 0) & (df['risk_score'] <= 30)])
+        slightly_suspicious = len(df[(df['risk_score'] > 30) & (df['risk_score'] <= 70)])
+        highly_suspicious = len(df[df['risk_score'] > 70])
+        
+        print(f"\nRisk Score Distribution:")
+        print(f"  Legitimate (0-30%): {legitimate} samples ({legitimate/len(df)*100:.1f}%)")
+        print(f"  Slightly Suspicious (31-70%): {slightly_suspicious} samples ({slightly_suspicious/len(df)*100:.1f}%)")
+        print(f"  Highly Suspicious (71-100%): {highly_suspicious} samples ({highly_suspicious/len(df)*100:.1f}%)")
         
         # Optionally save to CSV/Excel for review
         save_training_data = os.getenv('SAVE_TRAINING_DATA', 'true').lower() == 'true'  # Default to True
@@ -342,7 +441,31 @@ class RiskModelTrainer:
         with open(metadata_path, 'w') as f:
             json.dump(metadata, f, indent=2)
         
-        # Also save as latest
+        # Also save as latest in document-specific folder
+        # Map document types to their specific model directories
+        doc_specific_dirs = {
+            'check': 'check/ml/models',
+            'paystub': 'paystub/ml/models',
+            'money_order': 'money_order/ml/models',
+            'bank_statement': 'bank_statement/ml/models'
+        }
+        
+        # Save to document-specific folder if it exists
+        if document_type in doc_specific_dirs:
+            doc_dir = doc_specific_dirs[document_type]
+            os.makedirs(doc_dir, exist_ok=True)
+            
+            doc_latest_model = os.path.join(doc_dir, f"{document_type}_risk_model_latest.pkl")
+            doc_latest_scaler = os.path.join(doc_dir, f"{document_type}_scaler_latest.pkl")
+            doc_latest_metadata = os.path.join(doc_dir, f"{document_type}_model_metadata_latest.json")
+            
+            import shutil
+            shutil.copy(model_path, doc_latest_model)
+            shutil.copy(scaler_path, doc_latest_scaler)
+            shutil.copy(metadata_path, doc_latest_metadata)
+            print(f"  Also saved to document-specific folder: {doc_dir}")
+        
+        # Also save as latest in global models directory (for backward compatibility)
         latest_model_path = os.path.join(self.model_dir, f"{document_type}_risk_model_latest.pkl")
         latest_scaler_path = os.path.join(self.model_dir, f"{document_type}_scaler_latest.pkl")
         latest_metadata_path = os.path.join(self.model_dir, f"{document_type}_model_metadata_latest.json")
@@ -356,7 +479,7 @@ class RiskModelTrainer:
         print(f"  Model: {model_path}")
         print(f"  Scaler: {scaler_path}")
         print(f"  Metadata: {metadata_path}")
-        print(f"  Latest versions also saved")
+        print(f"  Latest versions also saved to global models directory")
         
         return model_path, scaler_path, metadata_path
 

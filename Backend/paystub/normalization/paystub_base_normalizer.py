@@ -54,18 +54,34 @@ class PaystubBaseNormalizer(ABC):
         
         # Map fields
         for ocr_field, std_field in field_mappings.items():
+            # Skip None mappings (fields processed separately)
+            if std_field is None:
+                continue
+                
             if ocr_field in ocr_data and ocr_data[ocr_field]:
                 raw_value = ocr_data[ocr_field]
                 
+                # Skip if already normalized (avoid overwriting)
+                if std_field in normalized_data and normalized_data[std_field]:
+                    continue
+                
                 # Apply normalization based on field type
                 if 'amount' in std_field or 'tax' in std_field or 'pay' in std_field or 'gross' in std_field or 'net' in std_field:
-                    normalized_data[std_field] = self._normalize_amount(raw_value)
+                    normalized_value = self._normalize_amount(raw_value)
+                    if normalized_value is not None:
+                        normalized_data[std_field] = normalized_value
                 elif 'date' in std_field or 'period' in std_field:
-                    normalized_data[std_field] = self._normalize_date(raw_value)
+                    normalized_value = self._normalize_date(raw_value)
+                    if normalized_value is not None:
+                        normalized_data[std_field] = normalized_value
                 elif 'hours' in std_field or 'rate' in std_field:
-                    normalized_data[std_field] = self._normalize_numeric(raw_value)
+                    normalized_value = self._normalize_numeric(raw_value)
+                    if normalized_value is not None:
+                        normalized_data[std_field] = normalized_value
                 else:
-                    normalized_data[std_field] = self._clean_string(raw_value)
+                    normalized_value = self._clean_string(raw_value)
+                    if normalized_value is not None:
+                        normalized_data[std_field] = normalized_value
         
         return NormalizedPaystub(**normalized_data)
 

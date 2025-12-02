@@ -25,7 +25,7 @@ class CheckFraudDetector:
     Uses ensemble of Random Forest and XGBoost models
     """
 
-    def __init__(self, model_dir: str = 'ml_models'):
+    def __init__(self, model_dir: str = 'models'):
         """
         Initialize check fraud detector
 
@@ -36,19 +36,12 @@ class CheckFraudDetector:
         self.feature_extractor = CheckFeatureExtractor()
         self.models_loaded = False
 
-        # Model paths - use check/ml/ directory for check-specific models
+        # Model paths - use check/ml/models directory (self-contained, NO FALLBACK)
         ml_dir = os.path.join(os.path.dirname(__file__), 'models')
         os.makedirs(ml_dir, exist_ok=True)
         self.rf_model_path = os.path.join(ml_dir, 'check_random_forest.pkl')
         self.xgb_model_path = os.path.join(ml_dir, 'check_xgboost.pkl')
         self.scaler_path = os.path.join(ml_dir, 'check_feature_scaler.pkl')
-        
-        # Fallback to global ml_models directory if check-specific models don't exist
-        if not os.path.exists(self.rf_model_path):
-            fallback_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'ml_models')
-            self.rf_model_path = os.path.join(fallback_dir, 'check_random_forest.pkl')
-            self.xgb_model_path = os.path.join(fallback_dir, 'check_xgboost.pkl')
-            self.scaler_path = os.path.join(fallback_dir, 'check_feature_scaler.pkl')
 
         # Load models
         self._load_models()

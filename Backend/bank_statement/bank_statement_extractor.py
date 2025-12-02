@@ -64,7 +64,7 @@ class BankStatementExtractor:
         # ML Fraud Detector - will be imported when ml module is ready
         try:
             from .ml.bank_statement_fraud_detector import BankStatementFraudDetector
-            model_dir = os.getenv("ML_MODEL_DIR", "ml_models")
+            model_dir = os.getenv("ML_MODEL_DIR", "models")
             self.ml_detector = BankStatementFraudDetector(model_dir=model_dir)
             logger.info("Initialized BankStatementFraudDetector")
         except ImportError:

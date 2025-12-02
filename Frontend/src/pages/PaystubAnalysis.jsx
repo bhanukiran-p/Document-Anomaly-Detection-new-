@@ -367,7 +367,7 @@ const PaystubAnalysis = () => {
                   </div>
 
                   {/* Actionable Recommendations Card */}
-                  {results.actionable_recommendations && results.actionable_recommendations.length > 0 && (
+                  {results.ai_analysis && results.ai_analysis.actionable_recommendations && results.ai_analysis.actionable_recommendations.length > 0 && (
                     <div style={{
                       ...resultCardStyle,
                       marginBottom: '1.5rem',
@@ -377,9 +377,202 @@ const PaystubAnalysis = () => {
                         Actionable Recommendations
                       </div>
                       <ul style={{ margin: 0, paddingLeft: '1.5rem', color: colors.foreground }}>
-                        {results.actionable_recommendations.map((rec, index) => (
+                        {results.ai_analysis.actionable_recommendations.map((rec, index) => (
                           <li key={index} style={{ marginBottom: '0.5rem', fontSize: '1.1rem' }}>{rec}</li>
                         ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Analysis Details Section - Similar to Money Order */}
+              {results && (results.ai_analysis || results.ml_analysis) && (
+                <div style={{
+                  ...resultCardStyle,
+                  marginBottom: '1.5rem',
+                  backgroundColor: colors.card,
+                  border: `1px solid ${colors.border}`,
+                }}>
+                  <h4 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"/>
+                      <path d="M12 6v6l4 2"/>
+                    </svg>
+                    Analysis Details
+                  </h4>
+
+                  {results.ai_analysis && results.ai_analysis.summary ? (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <strong style={{ color: colors.foreground }}>Summary:</strong>
+                      <p style={{ color: colors.mutedForeground, marginTop: '0.5rem' }}>
+                        {results.ai_analysis.summary}
+                      </p>
+                    </div>
+                  ) : results.ml_analysis ? (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <strong style={{ color: colors.foreground }}>Summary:</strong>
+                      <p style={{ color: colors.mutedForeground, marginTop: '0.5rem' }}>
+                        {results.ml_analysis.risk_level === 'HIGH' || results.ml_analysis.risk_level === 'CRITICAL' 
+                          ? 'High fraud risk - requires immediate review'
+                          : results.ml_analysis.risk_level === 'MEDIUM'
+                          ? 'Moderate fraud risk - requires human review'
+                          : 'Low fraud risk - proceed with caution'}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {results.ai_analysis && results.ai_analysis.reasoning ? (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <strong style={{ color: colors.foreground }}>Reasoning:</strong>
+                      <div style={{ color: colors.mutedForeground, marginTop: '0.5rem', whiteSpace: 'pre-wrap' }}>
+                        {Array.isArray(results.ai_analysis.reasoning) 
+                          ? results.ai_analysis.reasoning.map((reason, idx) => (
+                              <div key={idx} style={{ marginBottom: '0.5rem' }}>
+                                • {reason}
+                              </div>
+                            ))
+                          : typeof results.ai_analysis.reasoning === 'string'
+                          ? results.ai_analysis.reasoning.split('\n').map((line, idx) => (
+                              <div key={idx} style={{ marginBottom: '0.3rem' }}>{line}</div>
+                            ))
+                          : String(results.ai_analysis.reasoning)}
+                      </div>
+                      {results.ml_analysis && (
+                        <div style={{ color: colors.mutedForeground, marginTop: '0.5rem', padding: '0.75rem', backgroundColor: colors.secondary, borderRadius: '0.5rem' }}>
+                          <strong>ML Model Results:</strong> Random Forest {((results.ml_analysis.fraud_risk_score || 0) * 100).toFixed(1)}%, 
+                          combined fraud risk {((results.ml_analysis.fraud_risk_score || 0) * 100).toFixed(1)}% 
+                          with {((results.ml_analysis.model_confidence || 0) * 100).toFixed(1)}% model confidence
+                          {((results.ml_analysis.fraud_risk_score || 0) * 100) < 30 
+                            ? ' - indicates no algorithmic red flags'
+                            : ' - indicates potential fraud risk'}
+                        </div>
+                      )}
+                    </div>
+                  ) : results.ml_analysis ? (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <strong style={{ color: colors.foreground }}>Reasoning:</strong>
+                      <p style={{ color: colors.mutedForeground, marginTop: '0.5rem' }}>
+                        AI analysis unavailable - using ML-based fallback decision<br/>
+                        ML fraud score: {((results.ml_analysis.fraud_risk_score || 0) * 100).toFixed(2)}%<br/>
+                        Risk level: {results.ml_analysis.risk_level || 'UNKNOWN'}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {results.ai_analysis && results.ai_analysis.key_indicators && results.ai_analysis.key_indicators.length > 0 ? (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <strong style={{ color: colors.foreground }}>Key Fraud Indicators:</strong>
+                      <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
+                        {results.ai_analysis.key_indicators.map((indicator, idx) => (
+                          <li key={idx} style={{ marginBottom: '0.3rem' }}>{indicator}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : results.ml_analysis && results.ml_analysis.anomalies && results.ml_analysis.anomalies.length > 0 ? (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <strong style={{ color: colors.foreground }}>Key Fraud Indicators:</strong>
+                      <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
+                        {results.ml_analysis.anomalies.map((indicator, idx) => (
+                          <li key={idx} style={{ marginBottom: '0.3rem' }}>{indicator}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <strong style={{ color: colors.foreground }}>Key Fraud Indicators:</strong>
+                      <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
+                        <li>None identified by ML or manual review</li>
+                      </ul>
+                    </div>
+                  )}
+
+                  {results.ai_analysis && results.ai_analysis.verification_notes && (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <strong style={{ color: colors.foreground }}>Verification Notes:</strong>
+                      <p style={{ color: colors.mutedForeground, marginTop: '0.5rem', whiteSpace: 'pre-wrap' }}>
+                        {results.ai_analysis.verification_notes}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Risk Analysis Details - Feature Importance */}
+              {results && results.ml_analysis && (
+                <div style={{
+                  ...resultCardStyle,
+                  marginBottom: '1.5rem',
+                  backgroundColor: colors.card,
+                  border: `1px solid ${colors.border}`,
+                }}>
+                  <h4 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M3 3v18h18"/>
+                      <path d="M18 17V9"/>
+                      <path d="M13 17V5"/>
+                      <path d="M8 17v-3"/>
+                    </svg>
+                    Risk Analysis
+                  </h4>
+
+                  {results.ml_analysis.risk_level && (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <strong style={{ color: colors.foreground }}>Risk Level:</strong>
+                      <span style={{
+                        marginLeft: '0.5rem',
+                        color: results.ml_analysis.risk_level === 'HIGH' || results.ml_analysis.risk_level === 'CRITICAL' ? primary : 
+                               results.ml_analysis.risk_level === 'MEDIUM' ? colors.status.warning : colors.status.success,
+                        fontWeight: 'bold'
+                      }}>
+                        {results.ml_analysis.risk_level}
+                      </span>
+                    </div>
+                  )}
+
+                  {results.ml_analysis.model_scores && (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <strong style={{ color: colors.foreground }}>Model Scores:</strong>
+                      <div style={{ color: colors.mutedForeground, marginTop: '0.5rem' }}>
+                        {results.ml_analysis.model_scores.random_forest !== undefined && (
+                          <div>Primary Analysis: {((results.ml_analysis.model_scores.random_forest || 0) * 100).toFixed(1)}%</div>
+                        )}
+                        {results.ml_analysis.model_scores.xgboost !== undefined && (
+                          <div>Secondary Analysis: {((results.ml_analysis.model_scores.xgboost || 0) * 100).toFixed(1)}%</div>
+                        )}
+                        {results.ml_analysis.model_scores.ensemble !== undefined && (
+                          <div>Ensemble Score: {((results.ml_analysis.model_scores.ensemble || 0) * 100).toFixed(1)}%</div>
+                        )}
+                        {results.ml_analysis.model_scores.heuristic !== undefined && (
+                          <div>Heuristic Score: {((results.ml_analysis.model_scores.heuristic || 0) * 100).toFixed(1)}%</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {results.ml_analysis && Array.isArray(results.ml_analysis.feature_importance) && results.ml_analysis.feature_importance.length > 0 ? (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <strong style={{ color: colors.foreground }}>Top Risk Indicators:</strong>
+                      <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
+                        {results.ml_analysis.feature_importance.slice(0, 5).map((item, idx) => {
+                          if (typeof item === 'string') {
+                            return <li key={idx} style={{ marginBottom: '0.3rem' }}>{item}</li>;
+                          } else if (item.feature && item.importance) {
+                            return (
+                              <li key={idx} style={{ marginBottom: '0.3rem' }}>
+                                {item.feature}: {(item.importance * 100).toFixed(1)}%
+                              </li>
+                            );
+                          }
+                          return null;
+                        })}
+                      </ul>
+                    </div>
+                  ) : (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <strong style={{ color: colors.foreground }}>Top Risk Indicators:</strong>
+                      <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
+                        <li>No significant risk factors identified</li>
                       </ul>
                     </div>
                   )}
