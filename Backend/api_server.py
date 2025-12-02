@@ -677,8 +677,15 @@ def analyze_bank_statement():
             ai_analysis = result.get('ai_analysis')
             if ai_analysis:
                 recommendation = ai_analysis.get('recommendation')
+                # Try multiple sources for account holder name
                 extracted_data = result.get('extracted_data', {})
-                account_holder_name = extracted_data.get('account_holder_name') or extracted_data.get('account_holder')
+                normalized_data = result.get('normalized_data', {})
+                account_holder_name = (
+                    normalized_data.get('account_holder_name') or 
+                    extracted_data.get('account_holder_name') or 
+                    extracted_data.get('account_holder') or
+                    (extracted_data.get('account_holder_names', [])[0] if isinstance(extracted_data.get('account_holder_names'), list) and len(extracted_data.get('account_holder_names', [])) > 0 else None)
+                )
 
                 if account_holder_name and recommendation:
                     try:
@@ -691,7 +698,12 @@ def analyze_bank_statement():
                         )
                         logger.info(f"Updated customer {account_holder_name} fraud status: {recommendation}")
                     except Exception as e:
-                        logger.error(f"Failed to update customer fraud status: {e}")
+                        logger.error(f"Failed to update customer fraud status: {e}", exc_info=True)
+                else:
+                    if not account_holder_name:
+                        logger.warning("Cannot update customer fraud status - account holder name missing")
+                    if not recommendation:
+                        logger.warning("Cannot update customer fraud status - AI recommendation missing")
 
             return jsonify({
                 'success': True,

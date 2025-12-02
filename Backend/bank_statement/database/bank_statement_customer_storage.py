@@ -139,7 +139,7 @@ class BankStatementCustomerStorage:
                 update_data['has_fraud_history'] = True
             elif recommendation == 'ESCALATE':
                 update_data['escalate_count'] = customer_history.get('escalate_count', 0) + 1
-
+            
             # Increment total statements
             update_data['total_statements'] = customer_history.get('total_statements', 0) + 1
 
