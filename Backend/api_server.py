@@ -668,7 +668,7 @@ def analyze_bank_statement():
             if os.path.exists(filepath):
                 os.remove(filepath)
 
-            # Store to database
+            # Store to database (customer_id now created during storage)
             user_id = request.form.get('user_id', 'public')
             document_id = store_bank_statement_analysis(user_id, filename, result)
             logger.info(f"Bank statement stored to database: {document_id}")
@@ -681,8 +681,8 @@ def analyze_bank_statement():
                 extracted_data = result.get('extracted_data', {})
                 normalized_data = result.get('normalized_data', {})
                 account_holder_name = (
-                    normalized_data.get('account_holder_name') or 
-                    extracted_data.get('account_holder_name') or 
+                    normalized_data.get('account_holder_name') or
+                    extracted_data.get('account_holder_name') or
                     extracted_data.get('account_holder') or
                     (extracted_data.get('account_holder_names', [])[0] if isinstance(extracted_data.get('account_holder_names'), list) and len(extracted_data.get('account_holder_names', [])) > 0 else None)
                 )
@@ -694,7 +694,7 @@ def analyze_bank_statement():
                         customer_storage.update_customer_fraud_status(
                             account_holder_name=account_holder_name,
                             recommendation=recommendation,
-                            statement_id=result.get('statement_id')
+                            statement_id=document_id
                         )
                         logger.info(f"Updated customer {account_holder_name} fraud status: {recommendation}")
                     except Exception as e:

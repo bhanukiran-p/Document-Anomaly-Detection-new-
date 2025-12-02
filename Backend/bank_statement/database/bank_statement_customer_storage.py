@@ -26,6 +26,53 @@ class BankStatementCustomerStorage:
             logger.error(f"Failed to initialize Supabase client: {e}")
             self.supabase = None
 
+    def get_or_create_customer(self, account_holder_name: str) -> Optional[str]:
+        """
+        Get existing customer or create new one with UUID
+
+        Args:
+            account_holder_name: Name of the account holder
+
+        Returns:
+            customer_id (UUID) or None if account_holder_name is empty
+        """
+        if not account_holder_name:
+            return None
+
+        try:
+            # Search for existing customer by name
+            response = self.supabase.table('bank_statement_customers').select('*').eq('name', account_holder_name).execute()
+
+            if response.data and len(response.data) > 0:
+                # Customer exists, return their ID
+                customer = response.data[0]
+                customer_id = customer.get('customer_id')
+                logger.info(f"Found existing bank statement customer: {customer_id}")
+                return customer_id
+            else:
+                # Create new customer with generated UUID
+                from uuid import uuid4
+                from datetime import datetime
+
+                new_customer = {
+                    'customer_id': str(uuid4()),
+                    'name': account_holder_name,
+                    'has_fraud_history': False,
+                    'fraud_count': 0,
+                    'escalate_count': 0,
+                    'total_statements': 0,
+                    'created_at': datetime.utcnow().isoformat(),
+                    'updated_at': datetime.utcnow().isoformat()
+                }
+
+                self.supabase.table('bank_statement_customers').insert([new_customer]).execute()
+                logger.info(f"Created new bank statement customer: {new_customer['customer_id']}")
+                return new_customer['customer_id']
+
+        except Exception as e:
+            logger.error(f"Error in get_or_create_customer: {e}", exc_info=True)
+            return None
+
     def get_customer_history(self, account_holder_name: str) -> Dict:
         """
         Get customer history by account holder name
