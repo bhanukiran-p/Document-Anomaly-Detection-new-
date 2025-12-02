@@ -21,9 +21,86 @@ SCALER_PATH = os.path.join(MODEL_DIR, 'transaction_scaler.pkl')
 
 HIGH_VALUE_THRESHOLD = 3000
 BLACKLISTED_MERCHANT_KEYWORDS = {
-    'western union', 'moneygram', 'binance', 'crypto', 'gambling', 'casino',
-    'betting', 'poker', 'fast payout', 'wire transfer', 'hawala'
+    'western union', 'moneygram', 'binance', 'crypto', 'cryptocurrency',
+    'gambling', 'casino', 'betting', 'poker', 'fast payout', 'wire transfer',
+    'hawala'
 }
+
+STANDARD_FRAUD_REASONS = [
+    'Suspicious login',
+    'Account takeover',
+    'Unusual location',
+    'Unusual device',
+    'Velocity abuse',
+    'Transaction burst',
+    'High-risk merchant',
+    'Unusual amount',
+    'New payee spike',
+    'Cross-border anomaly',
+    'Card-not-present risk',
+    'Money mule pattern',
+    'Structuring / smurfing',
+    'Round-dollar pattern',
+    'Night-time activity',
+    'Other Fraud Pattern'
+]
+
+ONLINE_CATEGORY_KEYWORDS = {
+    'online', 'e-commerce', 'ecommerce', 'digital', 'subscription',
+    'marketplace', 'web', 'saas'
+}
+
+CARD_NOT_PRESENT_KEYWORDS = {
+    'card-not-present', 'c-n-p', 'mail order', 'telephone order', 'moto'
+}
+
+ROUND_DOLLAR_EPSILON = 0.01
+LEGITIMATE_LABEL = 'Legitimate Transaction'
+OTHER_FRAUD_LABEL = 'Other Fraud Pattern'
+
+
+def _get_row_value(row: pd.Series, *keys):
+    """Safely fetch a value from multiple possible column names."""
+    for key in keys:
+        if key in row and pd.notna(row[key]):
+            return row[key]
+    return None
+
+
+def _is_round_dollar(amount: float) -> bool:
+    if amount == 0:
+        return False
+    rounded = round(amount)
+    return (
+        abs(amount - rounded) < ROUND_DOLLAR_EPSILON
+        and int(abs(rounded)) % 100 == 0
+    )
+
+
+def _is_card_not_present(txn_type: str, category: str, description: str) -> bool:
+    text_blobs = [txn_type, category, description]
+    for blob in text_blobs:
+        if blob and any(keyword in blob for keyword in CARD_NOT_PRESENT_KEYWORDS):
+            return True
+    if category and any(keyword in category for keyword in ONLINE_CATEGORY_KEYWORDS):
+        return True
+    if txn_type and any(keyword in txn_type for keyword in ONLINE_CATEGORY_KEYWORDS):
+        return True
+    return False
+
+
+def _looks_like_money_mule(transaction_row: pd.Series, feature_row: pd.Series, amount: float, is_first_time: bool) -> bool:
+    txn_type = str(_get_row_value(transaction_row, 'transaction_type', 'TransactionType', 'type', 'Type') or '').lower()
+    merchant = str(_get_row_value(transaction_row, 'merchant', 'Merchant') or '').lower()
+    suspect_keywords = {'transfer', 'remit', 'crypto', 'wire'}
+    suspicious_merchant = any(keyword in merchant for keyword in suspect_keywords)
+
+    return (
+        (txn_type.find('credit') != -1 or suspicious_merchant)
+        and feature_row.get('amount_to_balance_ratio', 0) > 0.9
+        and feature_row.get('is_foreign_currency', 0) == 1
+        and is_first_time
+    )
 
 
 def detect_fraud_in_transactions(transactions: List[Dict[str, Any]], auto_train: bool = True) -> Dict[str, Any]:
@@ -63,16 +140,18 @@ def detect_fraud_in_transactions(transactions: List[Dict[str, Any]], auto_train:
         # Add predictions to transactions
         df['is_fraud'] = predictions
         df['fraud_probability'] = probabilities
-        df['fraud_reason'] = reasons
+        df['fraud_reason_detail'] = reasons
 
-        # Classify fraud types for flagged transactions
-        fraud_types = []
+        # Classify standardized fraud reasons for transactions
+        standardized_reasons: List[str] = []
         for idx in range(len(df)):
             if df.at[idx, 'is_fraud'] == 1:
-                fraud_types.append(_classify_fraud_type(df.iloc[idx], features_df.iloc[idx]))
+                standardized_reasons.append(_classify_fraud_type(df.iloc[idx], features_df.iloc[idx]))
             else:
-                fraud_types.append('legitimate')
-        df['fraud_type'] = fraud_types
+                standardized_reasons.append(LEGITIMATE_LABEL)
+
+        df['fraud_reason'] = standardized_reasons
+        df['fraud_type'] = standardized_reasons  # backwards compatibility
 
         # Calculate statistics
         fraud_count = int(predictions.sum())
@@ -85,10 +164,10 @@ def detect_fraud_in_transactions(transactions: List[Dict[str, Any]], auto_train:
         total_legitimate_amount = float(legitimate_transactions['amount'].sum()) if len(legitimate_transactions) > 0 else 0
 
         # Summarize fraud type distribution
-        fraud_type_breakdown = _summarize_fraud_types(df)
+        fraud_reason_breakdown = _summarize_fraud_types(df)
 
         # Convert back to list of dictionaries
-        transactions_with_predictions = df.to_dict('records')
+        transactions_with_predictions = _records_with_serializable_timestamps(df.to_dict('records'))
 
         result = {
             'success': True,
@@ -103,8 +182,10 @@ def detect_fraud_in_transactions(transactions: List[Dict[str, Any]], auto_train:
             'average_fraud_probability': round(float(probabilities.mean()), 3),
             'max_fraud_probability': round(float(probabilities.max()), 3),
             'model_type': 'ml_ensemble',
-            'fraud_type_breakdown': fraud_type_breakdown,
-            'dominant_fraud_type': fraud_type_breakdown[0]['type'] if fraud_type_breakdown else None,
+            'fraud_reason_breakdown': fraud_reason_breakdown,
+            'fraud_type_breakdown': fraud_reason_breakdown,
+            'dominant_fraud_reason': fraud_reason_breakdown[0]['type'] if fraud_reason_breakdown else None,
+            'dominant_fraud_type': fraud_reason_breakdown[0]['type'] if fraud_reason_breakdown else None,
             'analyzed_at': datetime.now().isoformat()
         }
 
@@ -365,52 +446,88 @@ def _generate_ml_reasons(predictions: np.ndarray, probabilities: np.ndarray,
 
 def _classify_fraud_type(transaction_row: pd.Series, feature_row: pd.Series) -> str:
     """
-    Infer the most likely fraud archetype for a flagged transaction using
-    engineered features plus original fields. This helps downstream displays
-    explain not just that a transaction is risky, but why.
+    Map the transaction into one of the standardized fraud reason labels.
     """
-    amount = float(transaction_row.get('amount', 0) or 0)
-    merchant = str(transaction_row.get('merchant', '') or '').lower()
-    category = str(transaction_row.get('category', '') or '').lower()
+    amount = float(_get_row_value(transaction_row, 'amount', 'Amount') or 0)
+    merchant = str(_get_row_value(transaction_row, 'merchant', 'Merchant') or '').lower()
+    category = str(_get_row_value(transaction_row, 'category', 'Category') or '').lower()
+    description = str(_get_row_value(transaction_row, 'description', 'Description') or '').lower()
+    transaction_type = str(
+        _get_row_value(transaction_row, 'transaction_type', 'TransactionType', 'type', 'Type') or ''
+    ).lower()
+
     country_mismatch = feature_row.get('country_mismatch', 0) == 1
     login_mismatch = feature_row.get('login_transaction_mismatch', 0) == 1
     is_first_time = feature_row.get('customer_txn_count', 1) <= 1
     high_value = amount >= HIGH_VALUE_THRESHOLD
+    amount_ratio = feature_row.get('amount_to_balance_ratio', 0)
+    amount_deviation = feature_row.get('amount_deviation', 0)
+    amount_zscore = feature_row.get('amount_zscore', 0)
+    is_night = feature_row.get('is_night', 0) == 1
+    is_transfer = feature_row.get('is_transfer', 0) == 1
+    txn_count = feature_row.get('customer_txn_count', 0)
+    high_risk_category = feature_row.get('high_risk_category', 0) == 1
+    merchant_has_numbers = feature_row.get('merchant_has_numbers', 0) == 1
+    is_foreign_currency = feature_row.get('is_foreign_currency', 0) == 1
 
-    # Blacklisted merchant patterns
-    if any(keyword in merchant for keyword in BLACKLISTED_MERCHANT_KEYWORDS):
-        return 'Transaction from blacklisted merchant'
-
-    # Explicit categories that imply blacklisted activity
-    if category in {'blacklisted', 'blocked_merchant'}:
-        return 'Transaction from blacklisted merchant'
-
-    # New country plus high-value spending
-    if country_mismatch and high_value:
-        if is_first_time:
-            return 'New country & high-value first-time spend'
-        return 'New country & high-value transaction'
-
-    # Suspicious login location
+    # Suspicious login / device patterns
     if login_mismatch:
-        return 'Suspicious login location'
+        return 'Suspicious login'
 
-    # High value in foreign currency often correlates with new country spend
-    if feature_row.get('is_foreign_currency', 0) == 1 and high_value:
-        return 'New country & high-value transaction'
+    if is_first_time and merchant_has_numbers:
+        return 'Unusual device'
 
-    # Nighttime spikes
-    if feature_row.get('is_night', 0) == 1 and feature_row.get('amount_deviation', 0) > 2:
-        return 'After-hours high-risk transaction'
+    # Account takeover style moves
+    if (is_transfer and amount_ratio > 0.6) or (feature_row.get('low_balance', 0) == 1 and high_value):
+        return 'Account takeover'
 
-    # Transfer draining account
-    if feature_row.get('is_transfer', 0) == 1 and feature_row.get('amount_to_balance_ratio', 0) > 0.8:
-        return 'Account takeover style transfer'
+    # High-risk merchant categories / keywords
+    if high_risk_category or any(keyword in merchant for keyword in BLACKLISTED_MERCHANT_KEYWORDS):
+        return 'High-risk merchant'
 
-    if feature_row.get('amount_deviation', 0) > 4 or feature_row.get('amount_zscore', 0) > 3:
-        return 'Unusual spend spike'
+    # Cross-border anomalies (geo + currency)
+    if country_mismatch and is_foreign_currency:
+        return 'Cross-border anomaly'
 
-    return 'General anomaly flagged by multiple ML indicators'
+    if country_mismatch:
+        return 'Unusual location'
+
+    # New payee spikes
+    if is_first_time and (is_transfer or 'wire' in transaction_type or 'transfer' in description):
+        return 'New payee spike'
+
+    # Card-not-present / online risk
+    if _is_card_not_present(transaction_type, category, description):
+        return 'Card-not-present risk'
+
+    # Velocity / burst spending
+    if txn_count >= 15:
+        return 'Velocity abuse'
+
+    if txn_count >= 5 and amount_deviation < 1:
+        return 'Transaction burst'
+
+    # Money mule style credits
+    if _looks_like_money_mule(transaction_row, feature_row, amount, is_first_time):
+        return 'Money mule pattern'
+
+    # Structuring / smurfing
+    if 9000 <= amount <= 10000 or (amount >= 5000 and txn_count >= 5 and amount_deviation < 1.5):
+        return 'Structuring / smurfing'
+
+    # Unusual amount spikes
+    if amount_zscore > 3 or amount_deviation > 3:
+        return 'Unusual amount'
+
+    # Round dollar transfers
+    if _is_round_dollar(amount):
+        return 'Round-dollar pattern'
+
+    # Night-time activity
+    if is_night:
+        return 'Night-time activity'
+
+    return OTHER_FRAUD_LABEL
 
 
 def _summarize_fraud_types(df: pd.DataFrame) -> List[Dict[str, Any]]:
@@ -427,9 +544,21 @@ def _summarize_fraud_types(df: pd.DataFrame) -> List[Dict[str, Any]]:
         type_df = fraud_df[fraud_df['fraud_type'] == fraud_type]
         summary.append({
             'type': fraud_type,
+            'label': fraud_type,
             'count': int(count),
             'percentage': round((count / total) * 100, 2) if total else 0.0,
             'total_amount': round(float(type_df['amount'].sum()), 2)
         })
 
     return summary
+
+
+def _records_with_serializable_timestamps(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Ensure pandas Timestamps/NaT become JSON-friendly objects."""
+    for record in records:
+        for key, value in list(record.items()):
+            if pd.isna(value):
+                record[key] = None
+            elif isinstance(value, pd.Timestamp):
+                record[key] = value.isoformat()
+    return records
