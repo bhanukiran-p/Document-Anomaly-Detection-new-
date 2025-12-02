@@ -5,8 +5,8 @@ import EChartsDonut from '../components/EChartsDonut';
 import EChartsLine from '../components/EChartsLine';
 import EChartsBar from '../components/EChartsBar';
 import EChartsSankey from '../components/EChartsSankey';
-import EChartsGeo from '../components/EChartsGeo';
 import EChartsHeatmap from '../components/EChartsHeatmap';
+import EChartsGeo from '../components/EChartsGeo';
 import {
   FaLink,
   FaUpload,
@@ -173,7 +173,7 @@ const RealTimeAnalysis = () => {
   }, [fraudReasonBreakdown]);
 
   const renderPlotVisualization = (plot, options = {}) => {
-    const height = options.height || 220;
+    const height = options.height || 450;
 
     // Debug: Log plot structure
     console.log('Rendering plot:', {
@@ -1018,35 +1018,36 @@ const RealTimeAnalysis = () => {
       borderLeft: `4px solid #10b981`,
     },
     plotsGrid: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
+      display: 'flex',
+      flexDirection: 'column',
       gap: '2rem',
       marginTop: '2rem',
     },
     plotCard: {
       backgroundColor: colors.muted,
-      padding: '1.5rem',
+      padding: '2rem',
       borderRadius: '1rem',
       border: `1px solid ${colors.border}`,
       position: 'relative',
       overflow: 'hidden',
       boxShadow: '0 18px 35px rgba(5, 7, 15, 0.45)',
       transition: 'transform 0.3s ease, box-shadow 0.3s ease',
+      width: '100%',
     },
     plotTitle: {
-      fontSize: '1.1rem',
+      fontSize: '1.3rem',
       fontWeight: '600',
       color: colors.foreground,
-      marginBottom: '1rem',
+      marginBottom: '1.5rem',
     },
     plotDescription: {
-      fontSize: '0.9rem',
+      fontSize: '0.95rem',
       color: colors.mutedForeground,
-      marginTop: '0.75rem',
+      marginTop: '1rem',
     },
     plotCanvas: {
       width: '100%',
-      height: '230px',
+      height: '450px',
     },
     plotDetailsRow: {
       marginTop: '1rem',
@@ -2253,8 +2254,8 @@ const RealTimeAnalysis = () => {
                 &times;
               </button>
             </div>
-            <div style={styles.plotCanvas}>
-              {renderPlotVisualization(zoomedPlot, { height: 320 })}
+            <div style={{ width: '100%', height: '600px' }}>
+              {renderPlotVisualization(zoomedPlot, { height: 600 })}
             </div>
             {zoomedPlot.description && (
               <p style={{ color: '#cbd5f5', marginTop: '1rem' }}>{zoomedPlot.description}</p>

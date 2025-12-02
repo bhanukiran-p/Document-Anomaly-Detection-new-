@@ -5,11 +5,13 @@ Handles connection to Supabase database
 
 import os
 import logging
+from pathlib import Path
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
+# Load environment variables from Backend/.env regardless of working directory
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+load_dotenv(dotenv_path=BACKEND_ROOT / ".env", override=True)
 
 logger = logging.getLogger(__name__)
 

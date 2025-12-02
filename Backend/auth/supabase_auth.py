@@ -11,6 +11,12 @@ import jwt
 import os
 import logging
 
+try:
+    # Ensure we always import the shared Supabase client from the database package
+    from database.supabase_client import get_supabase
+except ImportError:
+    get_supabase = None
+
 logger = logging.getLogger(__name__)
 
 SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key-change-in-production')
@@ -60,7 +66,9 @@ def verify_token(token):
 def register_user_supabase(email, password):
     """Register a new user in Supabase"""
     try:
-        from supabase_client import get_supabase
+        if not get_supabase:
+            raise RuntimeError("Supabase client module not available")
+
         supabase = get_supabase()
 
         # Validate email and password
@@ -120,7 +128,9 @@ def register_user_supabase(email, password):
 def login_user_supabase(email, password):
     """Login user and return JWT token"""
     try:
-        from supabase_client import get_supabase
+        if not get_supabase:
+            raise RuntimeError("Supabase client module not available")
+
         supabase = get_supabase()
 
         # Fetch user from Supabase using Email column
