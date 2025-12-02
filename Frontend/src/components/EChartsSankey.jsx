@@ -10,30 +10,54 @@ const EChartsSankey = ({ data, title, height = 400 }) => {
     '#f59e0b', '#ef4444', '#06b6d4', '#14b8a6'
   ];
 
-  // Format nodes with colors
-  const formattedNodes = nodes.map((node, index) => ({
-    name: node.name,
-    itemStyle: {
-      color: node.nodeColor || colors[index % colors.length],
-      borderColor: '#fff',
-      borderWidth: 2
-    },
-    label: {
-      color: '#e2e8f0',
-      fontWeight: 600
+  const resolveNodeName = (nodeRef) => {
+    if (typeof nodeRef === 'number') {
+      return nodes[nodeRef]?.name ?? `node_${nodeRef}`;
     }
-  }));
+    return nodeRef;
+  };
+
+  // Normalize node data with colors
+  const formattedNodes = nodes.map((node, index) => {
+    const name = node.name || `node_${index}`;
+    return {
+      name,
+      itemStyle: {
+        color: node.nodeColor || colors[index % colors.length],
+        borderColor: '#fff',
+        borderWidth: 2
+      },
+      label: {
+        color: '#e2e8f0',
+        fontWeight: 600
+      }
+    };
+  });
+
+  const nodeColorMap = formattedNodes.reduce((map, node) => {
+    map[node.name] = node.itemStyle.color;
+    return map;
+  }, {});
+
+  const nodeNameSet = new Set(formattedNodes.map(node => node.name));
 
   // Format links with colors
-  const formattedLinks = links.map(link => ({
-    source: link.source,
-    target: link.target,
-    value: link.value,
-    lineStyle: {
-      color: link.color || colors[link.source % colors.length],
-      opacity: 0.4
+  const formattedLinks = links.map(link => {
+    const sourceName = resolveNodeName(link.source);
+    const targetName = resolveNodeName(link.target);
+    if (!nodeNameSet.has(sourceName) || !nodeNameSet.has(targetName)) {
+      return null;
     }
-  }));
+    return {
+      source: sourceName,
+      target: targetName,
+      value: link.value,
+      lineStyle: {
+        color: link.color || nodeColorMap[sourceName] || colors[0],
+        opacity: 0.4
+      }
+    };
+  }).filter(Boolean);
 
   const option = {
     title: {

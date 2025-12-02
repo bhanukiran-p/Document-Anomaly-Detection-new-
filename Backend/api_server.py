@@ -11,10 +11,12 @@ import logging
 import importlib.util
 import uuid
 from datetime import datetime
+from pathlib import Path
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv(override=True)
+# Load environment variables from Backend/.env regardless of working directory
+BACKEND_ROOT = Path(__file__).resolve().parent
+load_dotenv(dotenv_path=BACKEND_ROOT / ".env", override=True)
 
 # Import utilities
 from utils.file_handler import save_uploaded_file, handle_pdf_conversion, cleanup_file
@@ -821,12 +823,40 @@ def regenerate_plots_with_filters():
             'recommendations': insights_result.get('recommendations', [])
         })
         
+
     except Exception as e:
         logger.error(f"Error regenerating plots: {e}", exc_info=True)
         return jsonify({
             'success': False,
             'error': str(e),
             'message': 'Failed to regenerate plots'
+        }), 500
+
+
+@app.route('/custom.geo.json', methods=['GET'])
+def serve_geo_json():
+    """Serve the custom geo JSON file for map visualizations"""
+    try:
+        # Path to the geo.json file in the frontend public folder
+        frontend_public = Path(__file__).resolve().parent.parent / 'Frontend' / 'public' / 'custom.geo.json'
+        
+        if not frontend_public.exists():
+            return jsonify({
+                'error': 'Geo JSON file not found'
+            }), 404
+        
+        response = send_file(
+            str(frontend_public),
+            mimetype='application/json'
+        )
+        # Set cache headers
+        response.cache_control.max_age = 3600  # Cache for 1 hour
+        return response
+    except Exception as e:
+        logger.error(f"Error serving geo JSON: {e}")
+        return jsonify({
+            'error': str(e),
+            'message': 'Failed to serve geo JSON file'
         }), 500
 
 

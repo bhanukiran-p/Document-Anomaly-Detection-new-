@@ -464,11 +464,18 @@ def _build_sankey_plot(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
     nodes: List[str] = []
     node_index: Dict[str, int] = {}
 
-    def add_node(label: str) -> int:
-        if label not in node_index:
-            node_index[label] = len(nodes)
-            nodes.append(label)
-        return node_index[label]
+    def add_node(label: Any) -> int:
+        """Ensure node exists and return its index."""
+        label_str = str(label)
+        if label_str not in node_index:
+            node_index[label_str] = len(nodes)
+            nodes.append(label_str)
+        return node_index[label_str]
+
+    def node_name(label: Any) -> str:
+        """Return canonical node name after registering it."""
+        add_node(label)
+        return str(label)
 
     links: List[Dict[str, Any]] = []
 
@@ -480,28 +487,34 @@ def _build_sankey_plot(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
     ]
 
     for _, row in sankey_df.groupby([type_col, merchant_col]).size().reset_index(name='value').iterrows():
-        source_idx = add_node(row[type_col])
+        source_label = node_name(row[type_col])
+        target_label = node_name(row[merchant_col])
+        source_idx = node_index[source_label]
         links.append({
-            'source': source_idx,
-            'target': add_node(row[merchant_col]),
+            'source': source_label,
+            'target': target_label,
             'value': int(row['value']),
             'color': link_colors[source_idx % len(link_colors)]
         })
 
     for _, row in sankey_df.groupby([merchant_col, 'status']).size().reset_index(name='value').iterrows():
-        source_idx = add_node(row[merchant_col])
+        source_label = node_name(row[merchant_col])
+        target_label = node_name(row['status'])
+        source_idx = node_index[source_label]
         links.append({
-            'source': source_idx,
-            'target': add_node(row['status']),
+            'source': source_label,
+            'target': target_label,
             'value': int(row['value']),
             'color': link_colors[source_idx % len(link_colors)]
         })
 
     for _, row in sankey_df.groupby(['status', gender_col]).size().reset_index(name='value').iterrows():
-        source_idx = add_node(row['status'])
+        source_label = node_name(row['status'])
+        target_label = node_name(row[gender_col])
+        source_idx = node_index[source_label]
         links.append({
-            'source': source_idx,
-            'target': add_node(row[gender_col]),
+            'source': source_label,
+            'target': target_label,
             'value': int(row['value']),
             'color': link_colors[source_idx % len(link_colors)]
         })
@@ -535,13 +548,156 @@ def _first_present_column(df: pd.DataFrame, candidates: Sequence[str]) -> Option
 
 
 def _pseudo_coordinates(city: str, country: str) -> Tuple[float, float]:
-    '''Derive deterministic pseudo coordinates so the UI can plot fictional cities.'''
+    '''
+    Derive deterministic pseudo coordinates so the UI can plot cities.
+    Uses a hash-based approach to generate consistent coordinates for the same city/country pair.
+    '''
+    # Common city coordinates mapping for better visual representation
+    # Using lowercase for case-insensitive matching
+    known_cities_map = {
+        # North America - USA
+        ('new york', 'usa'): (40.7128, -74.0060),
+        ('new york', 'united states'): (40.7128, -74.0060),
+        ('los angeles', 'usa'): (34.0522, -118.2437),
+        ('los angeles', 'united states'): (34.0522, -118.2437),
+        ('chicago', 'usa'): (41.8781, -87.6298),
+        ('chicago', 'united states'): (41.8781, -87.6298),
+        ('san francisco', 'usa'): (37.7749, -122.4194),
+        ('san francisco', 'united states'): (37.7749, -122.4194),
+        ('houston', 'usa'): (29.7604, -95.3698),
+        ('houston', 'united states'): (29.7604, -95.3698),
+        ('miami', 'usa'): (25.7617, -80.1918),
+        ('miami', 'united states'): (25.7617, -80.1918),
+        ('boston', 'usa'): (42.3601, -71.0589),
+        ('boston', 'united states'): (42.3601, -71.0589),
+        ('seattle', 'usa'): (47.6062, -122.3321),
+        ('seattle', 'united states'): (47.6062, -122.3321),
+        ('atlanta', 'usa'): (33.7490, -84.3880),
+        ('atlanta', 'united states'): (33.7490, -84.3880),
+        ('dallas', 'usa'): (32.7767, -96.7970),
+        ('dallas', 'united states'): (32.7767, -96.7970),
+
+        # North America - Canada
+        ('toronto', 'canada'): (43.6532, -79.3832),
+        ('vancouver', 'canada'): (49.2827, -123.1207),
+        ('montreal', 'canada'): (45.5017, -73.5673),
+
+        # North America - Mexico
+        ('mexico city', 'mexico'): (19.4326, -99.1332),
+        ('guadalajara', 'mexico'): (20.6597, -103.3496),
+        ('monterrey', 'mexico'): (25.6866, -100.3161),
+
+        # South America
+        ('sao paulo', 'brazil'): (-23.5505, -46.6333),
+        ('são paulo', 'brazil'): (-23.5505, -46.6333),
+        ('rio de janeiro', 'brazil'): (-22.9068, -43.1729),
+        ('brasilia', 'brazil'): (-15.8267, -47.9218),
+        ('buenos aires', 'argentina'): (-34.6037, -58.3816),
+        ('santiago', 'chile'): (-33.4489, -70.6693),
+        ('lima', 'peru'): (-12.0464, -77.0428),
+        ('bogota', 'colombia'): (4.7110, -74.0721),
+        ('caracas', 'venezuela'): (10.4806, -66.9036),
+
+        # Europe - UK
+        ('london', 'uk'): (51.5074, -0.1278),
+        ('london', 'united kingdom'): (51.5074, -0.1278),
+        ('manchester', 'uk'): (53.4808, -2.2426),
+        ('manchester', 'united kingdom'): (53.4808, -2.2426),
+
+        # Europe - Western
+        ('paris', 'france'): (48.8566, 2.3522),
+        ('berlin', 'germany'): (52.5200, 13.4050),
+        ('madrid', 'spain'): (40.4168, -3.7038),
+        ('rome', 'italy'): (41.9028, 12.4964),
+        ('amsterdam', 'netherlands'): (52.3676, 4.9041),
+        ('brussels', 'belgium'): (50.8503, 4.3517),
+        ('zurich', 'switzerland'): (47.3769, 8.5417),
+        ('vienna', 'austria'): (48.2082, 16.3738),
+        ('barcelona', 'spain'): (41.3851, 2.1734),
+        ('milan', 'italy'): (45.4642, 9.1900),
+
+        # Europe - Eastern
+        ('moscow', 'russia'): (55.7558, 37.6173),
+        ('warsaw', 'poland'): (52.2297, 21.0122),
+        ('prague', 'czech republic'): (50.0755, 14.4378),
+        ('budapest', 'hungary'): (47.4979, 19.0402),
+
+        # Middle East
+        ('dubai', 'uae'): (25.2048, 55.2708),
+        ('dubai', 'united arab emirates'): (25.2048, 55.2708),
+        ('abu dhabi', 'uae'): (24.4539, 54.3773),
+        ('abu dhabi', 'united arab emirates'): (24.4539, 54.3773),
+        ('riyadh', 'saudi arabia'): (24.7136, 46.6753),
+        ('istanbul', 'turkey'): (41.0082, 28.9784),
+        ('tel aviv', 'israel'): (32.0853, 34.7818),
+        ('doha', 'qatar'): (25.2854, 51.5310),
+
+        # Asia - East
+        ('tokyo', 'japan'): (35.6762, 139.6503),
+        ('beijing', 'china'): (39.9042, 116.4074),
+        ('shanghai', 'china'): (31.2304, 121.4737),
+        ('hong kong', 'china'): (22.3193, 114.1694),
+        ('hong kong', 'hong kong'): (22.3193, 114.1694),
+        ('seoul', 'south korea'): (37.5665, 126.9780),
+        ('taipei', 'taiwan'): (25.0330, 121.5654),
+
+        # Asia - South
+        ('mumbai', 'india'): (19.0760, 72.8777),
+        ('delhi', 'india'): (28.7041, 77.1025),
+        ('bangalore', 'india'): (12.9716, 77.5946),
+        ('chennai', 'india'): (13.0827, 80.2707),
+        ('kolkata', 'india'): (22.5726, 88.3639),
+        ('karachi', 'pakistan'): (24.8607, 67.0011),
+        ('dhaka', 'bangladesh'): (23.8103, 90.4125),
+
+        # Asia - Southeast
+        ('singapore', 'singapore'): (1.3521, 103.8198),
+        ('bangkok', 'thailand'): (13.7563, 100.5018),
+        ('kuala lumpur', 'malaysia'): (3.1390, 101.6869),
+        ('jakarta', 'indonesia'): (-6.2088, 106.8456),
+        ('manila', 'philippines'): (14.5995, 120.9842),
+        ('ho chi minh city', 'vietnam'): (10.8231, 106.6297),
+
+        # Oceania
+        ('sydney', 'australia'): (-33.8688, 151.2093),
+        ('melbourne', 'australia'): (-37.8136, 144.9631),
+        ('brisbane', 'australia'): (-27.4698, 153.0251),
+        ('perth', 'australia'): (-31.9505, 115.8605),
+        ('auckland', 'new zealand'): (-36.8485, 174.7633),
+        ('wellington', 'new zealand'): (-41.2865, 174.7762),
+
+        # Africa
+        ('cairo', 'egypt'): (30.0444, 31.2357),
+        ('lagos', 'nigeria'): (6.5244, 3.3792),
+        ('johannesburg', 'south africa'): (-26.2041, 28.0473),
+        ('cape town', 'south africa'): (-33.9249, 18.4241),
+        ('nairobi', 'kenya'): (-1.2921, 36.8219),
+        ('casablanca', 'morocco'): (33.5731, -7.5898),
+    }
+
+    # Check if we have known coordinates (case-insensitive)
+    city_clean = (city or 'Unknown').strip().lower()
+    country_clean = (country or 'Unknown').strip().lower()
+    key_tuple = (city_clean, country_clean)
+
+    if key_tuple in known_cities_map:
+        return known_cities_map[key_tuple]
+
+    # For unknown cities, generate pseudo coordinates with better distribution
     key = f"{city}|{country}".encode('utf-8')
     digest = hashlib.sha256(key).hexdigest()
     lat_seed = int(digest[:8], 16)
     lng_seed = int(digest[8:16], 16)
-    lat = (lat_seed / 0xFFFFFFFF) * 180 - 90
-    lng = (lng_seed / 0xFFFFFFFF) * 360 - 180
+
+    # Generate coordinates with better clustering around populated areas
+    # Avoid extreme polar regions and spread more realistically
+    lat_raw = (lat_seed / 0xFFFFFFFF)
+    lng_raw = (lng_seed / 0xFFFFFFFF)
+
+    # Bias towards populated latitudes (-60 to 70) and spread longitude fully
+    lat = (lat_raw * 130 - 60)  # Range from -60 to 70
+    lng = (lng_raw * 360 - 180)  # Full range -180 to 180
+
     return round(lat, 2), round(lng, 2)
 
 
@@ -570,6 +726,7 @@ def _normalize_fraud_reason(value: Any) -> str:
         return LEGITIMATE_LABEL
 
     return 'Unusual amount'  # Default for unrecognized fraud reasons
+
 
 def _analyze_fraud_patterns(df: pd.DataFrame) -> Dict[str, Any]:
     """Analyze patterns in fraudulent transactions."""
