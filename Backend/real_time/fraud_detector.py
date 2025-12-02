@@ -41,8 +41,7 @@ STANDARD_FRAUD_REASONS = [
     'Money mule pattern',
     'Structuring / smurfing',
     'Round-dollar pattern',
-    'Night-time activity',
-    'Other Fraud Pattern'
+    'Night-time activity'
 ]
 
 ONLINE_CATEGORY_KEYWORDS = {
@@ -56,7 +55,6 @@ CARD_NOT_PRESENT_KEYWORDS = {
 
 ROUND_DOLLAR_EPSILON = 0.01
 LEGITIMATE_LABEL = 'Legitimate Transaction'
-OTHER_FRAUD_LABEL = 'Other Fraud Pattern'
 
 
 def _get_row_value(row: pd.Series, *keys):
@@ -527,7 +525,33 @@ def _classify_fraud_type(transaction_row: pd.Series, feature_row: pd.Series) -> 
     if is_night:
         return 'Night-time activity'
 
-    return OTHER_FRAUD_LABEL
+    # Default fallbacks - ensure EVERY fraud gets a specific label
+    # Check for any amount anomaly first
+    if amount_zscore > 1.5 or amount_deviation > 1.5:
+        return 'Unusual amount'
+
+    # Check for suspicious merchants or categories
+    if high_risk_category:
+        return 'High-risk merchant'
+
+    # Check for transfer-like patterns
+    if is_transfer or 'transfer' in transaction_type or 'wire' in transaction_type:
+        return 'New payee spike'
+
+    # Check for online/card-not-present indicators
+    if 'online' in category or 'digital' in category:
+        return 'Card-not-present risk'
+
+    # Check transaction timing
+    if is_night:
+        return 'Night-time activity'
+
+    # Check transaction count velocity
+    if txn_count >= 3:
+        return 'Transaction burst'
+
+    # Final fallback - unusual amount (since ML flagged it as anomalous)
+    return 'Unusual amount'
 
 
 def _summarize_fraud_types(df: pd.DataFrame) -> List[Dict[str, Any]]:

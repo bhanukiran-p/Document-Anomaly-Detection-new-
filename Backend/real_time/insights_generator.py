@@ -13,7 +13,6 @@ import pandas as pd
 
 from .fraud_detector import (
     LEGITIMATE_LABEL,
-    OTHER_FRAUD_LABEL,
     STANDARD_FRAUD_REASONS,
 )
 
@@ -473,25 +472,38 @@ def _build_sankey_plot(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
 
     links: List[Dict[str, Any]] = []
 
+    # Color palette for links
+    link_colors = [
+        '#10b981', '#3b82f6', '#8b5cf6', '#ec4899',
+        '#f59e0b', '#ef4444', '#06b6d4', '#14b8a6',
+        '#10b981', '#3b82f6', '#8b5cf6', '#ec4899'
+    ]
+
     for _, row in sankey_df.groupby([type_col, merchant_col]).size().reset_index(name='value').iterrows():
+        source_idx = add_node(row[type_col])
         links.append({
-            'source': add_node(row[type_col]),
+            'source': source_idx,
             'target': add_node(row[merchant_col]),
             'value': int(row['value']),
+            'color': link_colors[source_idx % len(link_colors)]
         })
 
     for _, row in sankey_df.groupby([merchant_col, 'status']).size().reset_index(name='value').iterrows():
+        source_idx = add_node(row[merchant_col])
         links.append({
-            'source': add_node(row[merchant_col]),
+            'source': source_idx,
             'target': add_node(row['status']),
             'value': int(row['value']),
+            'color': link_colors[source_idx % len(link_colors)]
         })
 
     for _, row in sankey_df.groupby(['status', gender_col]).size().reset_index(name='value').iterrows():
+        source_idx = add_node(row['status'])
         links.append({
-            'source': add_node(row['status']),
+            'source': source_idx,
             'target': add_node(row[gender_col]),
             'value': int(row['value']),
+            'color': link_colors[source_idx % len(link_colors)]
         })
 
     if not links:
@@ -547,7 +559,7 @@ def _describe_correlation_pair(corr: pd.DataFrame, positive: bool) -> str:
 
 def _normalize_fraud_reason(value: Any) -> str:
     if not value:
-        return OTHER_FRAUD_LABEL
+        return 'Unusual amount'  # Default for unknown fraud reasons
 
     text = str(value).strip()
     for reason in STANDARD_FRAUD_REASONS:
@@ -557,7 +569,7 @@ def _normalize_fraud_reason(value: Any) -> str:
     if text == LEGITIMATE_LABEL:
         return LEGITIMATE_LABEL
 
-    return OTHER_FRAUD_LABEL
+    return 'Unusual amount'  # Default for unrecognized fraud reasons
 
 def _analyze_fraud_patterns(df: pd.DataFrame) -> Dict[str, Any]:
     """Analyze patterns in fraudulent transactions."""
