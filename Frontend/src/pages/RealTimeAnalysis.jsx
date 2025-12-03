@@ -1,14 +1,114 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { colors } from '../styles/colors';
+import EChartsDonut from '../components/EChartsDonut';
+import EChartsLine from '../components/EChartsLine';
+import EChartsBar from '../components/EChartsBar';
+import EChartsSankey from '../components/EChartsSankey';
+import EChartsHeatmap from '../components/EChartsHeatmap';
+import EChartsGeo from '../components/EChartsGeo';
 import {
   FaLink,
   FaUpload,
   FaArrowLeft,
   FaChartBar,
-  FaRobot
+  FaRobot,
+  FaFilter,
+  FaTimes
 } from 'react-icons/fa';
-import { analyzeRealTimeTransactions } from '../services/api';
+import {
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  BarChart,
+  Bar,
+  Sankey
+} from 'recharts';
+import { analyzeRealTimeTransactions, regeneratePlotsWithFilters } from '../services/api';
+
+const STANDARD_FRAUD_REASONS = [
+  'Suspicious login',
+  'Account takeover',
+  'Unusual location',
+  'Unusual device',
+  'Velocity abuse',
+  'Transaction burst',
+  'High-risk merchant',
+  'Unusual amount',
+  'New payee spike',
+  'Cross-border anomaly',
+  'Card-not-present risk',
+  'Money mule pattern',
+  'Structuring / smurfing',
+  'Round-dollar pattern',
+  'Night-time activity'
+];
+
+const plotColorPalette = ['#10b981', '#ef4444', '#60a5fa', '#f97316', '#a78bfa', '#fbbf24'];
+
+const renderHeatmapCellColor = (value) => {
+  if (value === null || value === undefined) return 'rgba(148, 163, 184, 0.2)';
+  const normalized = Math.max(-1, Math.min(1, value));
+  const hue = normalized > 0 ? 10 : 220;
+  const intensity = Math.round(Math.abs(normalized) * 70) + 30;
+  return `hsl(${hue}, 70%, ${100 - intensity}%)`;
+};
+
+const getInsightPoints = (insightsText) => {
+  if (!insightsText) return [];
+
+  const points = [];
+  const numberedMatches = [...insightsText.matchAll(/\*\*(\d+)\.\s*(.+?)(?=(\*\*\d+\.)|$)/gs)];
+
+  if (numberedMatches.length > 0) {
+    numberedMatches.forEach((match) => {
+      const number = match[1];
+      const content = match[2] || '';
+
+      const cleaned = content
+        .replace(/\*\*/g, '')
+        .replace(/–/g, '-')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      const subSegments = cleaned.split(/\s+-\s+/).map((segment) => segment.trim()).filter(Boolean);
+
+      subSegments.forEach((segment, idx) => {
+        if (idx === 0) {
+          points.push(`${number}. ${segment}`);
+        } else {
+          points.push(`- ${segment}`);
+        }
+      });
+    });
+    return points;
+  }
+
+  let normalized = insightsText
+    .replace(/\*\*/g, '')
+    .replace(/•/g, '-')
+    .replace(/–/g, '-')
+    .trim();
+
+  normalized = normalized
+    .replace(/(?=\d+\.)/g, '\n')
+    .replace(/\s+-\s+/g, '\n- ')
+    .replace(/ - /g, '\n- ')
+    .replace(/\. -/g, '.\n-')
+    .replace(/;\s*/g, ';\n');
+
+  return normalized
+    .split(/\n+/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+};
 
 const RealTimeAnalysis = () => {
   const navigate = useNavigate();
@@ -22,8 +122,161 @@ const RealTimeAnalysis = () => {
   const [csvPreview, setCsvPreview] = useState(null);
   const [hoveredPlotIndex, setHoveredPlotIndex] = useState(null);
   const [zoomedPlot, setZoomedPlot] = useState(null);
+  const [filters, setFilters] = useState({
+    amountMin: '',
+    amountMax: '',
+    fraudProbabilityMin: '',
+    fraudProbabilityMax: '',
+    category: '',
+    yearStart: '',
+    yearEnd: '',
+    fraudOnly: false,
+    legitimateOnly: false,
+  });
+  const [showFilters, setShowFilters] = useState(false);
+  const [filteredPlots, setFilteredPlots] = useState(null);
+  const [regeneratingPlots, setRegeneratingPlots] = useState(false);
 
   const primary = colors.primaryColor || colors.accent?.red || '#E53935';
+
+  const formatFraudReason = (fraudType) => {
+    if (!fraudType) return 'N/A';
+    if (fraudType === 'legitimate') return 'Legitimate';
+    if (fraudType.includes(' ')) return fraudType;
+    return fraudType
+      .split('_')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  };
+
+  const topFraudCases = analysisResult?.transactions
+    ? [...analysisResult.transactions]
+        .filter((t) => t.is_fraud === 1)
+        .sort((a, b) => (b.fraud_probability || 0) - (a.fraud_probability || 0))
+        .slice(0, 4)
+    : [];
+
+  const fraudReasonBreakdown =
+    analysisResult?.fraud_detection?.fraud_reason_breakdown ||
+    analysisResult?.fraud_detection?.fraud_type_breakdown ||
+    [];
+  const agentInsights = analysisResult?.agent_analysis?.detailed_insights || '';
+  const insightPoints = getInsightPoints(agentInsights);
+  const reasonCountMap = useMemo(() => {
+    const map = {};
+    fraudReasonBreakdown.forEach((pattern) => {
+      const key = pattern.label || pattern.type;
+      if (!key) return;
+      map[key] = pattern.count;
+    });
+    return map;
+  }, [fraudReasonBreakdown]);
+
+  const renderPlotVisualization = (plot, options = {}) => {
+    const height = options.height || 450;
+
+    // Debug: Log plot structure
+    console.log('Rendering plot:', {
+      title: plot.title,
+      type: plot.type,
+      hasData: !!plot.data,
+      dataLength: Array.isArray(plot.data) ? plot.data.length : 'not array'
+    });
+
+    if (!plot.type) {
+      console.error('Plot missing type property:', plot);
+    }
+
+    switch (plot.type) {
+      case 'donut': {
+        const data = plot.data || [];
+        // Use ECharts for better visuals and performance
+        return <EChartsDonut data={data} title={plot.title} height={height} />;
+      }
+      case 'line_trend': {
+        const data = plot.data || [];
+        return <EChartsLine data={data} title={plot.title} height={height} />;
+      }
+      case 'heatmap': {
+        const xLabels = plot.xLabels || [];
+        const yLabels = plot.yLabels || [];
+        const dataPoints = plot.data || [];
+
+        // Convert to matrix format for ECharts
+        const matrix = yLabels.map(yLabel =>
+          xLabels.map(xLabel => {
+            const cell = dataPoints.find(item => item.x === xLabel && item.y === yLabel);
+            return cell ? cell.value : 0;
+          })
+        );
+
+        return <EChartsHeatmap data={{ matrix, labels: xLabels }} title={plot.title} height={height} />;
+      }
+      case 'geo_scatter': {
+        const data = plot.data || [];
+        return <EChartsGeo data={data} title={plot.title} height={height} />;
+      }
+      case 'bar_reasons': {
+        const data = plot.data || [];
+        return <EChartsBar data={data} title={plot.title} height={height} />;
+      }
+      case 'sankey': {
+        return <EChartsSankey data={plot.data} title={plot.title} height={height} />;
+      }
+      default:
+        return (
+          <div style={styles.missingPlot}>
+            No visualization available for plot type: {plot.type || 'unknown'}
+            {plot.image && <div style={{ fontSize: '0.8rem', marginTop: '0.5rem', color: colors.mutedForeground }}>
+              (Legacy static plot detected but not supported in this view)
+            </div>}
+          </div>
+        );
+    }
+  };
+
+  const handleDownloadCSV = () => {
+    if (!analysisResult?.transactions?.length) return;
+
+    const rows = analysisResult.transactions;
+    const headers = Object.keys(rows[0] || {});
+
+    const escapeValue = (value) => {
+      if (value === null || value === undefined) return '';
+      if (typeof value === 'object') {
+        try {
+          return JSON.stringify(value);
+        } catch {
+          return String(value);
+        }
+      }
+      return String(value);
+    };
+
+    const headerRow = headers.join(',');
+    const dataRows = rows.map((row) =>
+      headers
+        .map((key) => {
+          const rawValue = escapeValue(row[key]);
+          const safeValue = rawValue.replace(/"/g, '""');
+          return `"${safeValue}"`;
+        })
+        .join(',')
+    );
+
+    const csvContent = [headerRow, ...dataRows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `real_time_transactions_${Date.now()}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  
 
   const handleUrlSubmit = async (e) => {
     e.preventDefault();
@@ -173,6 +426,191 @@ const RealTimeAnalysis = () => {
     setError(null);
   };
 
+  const handleFilterChange = (filterName, value) => {
+    let processedValue = value;
+    
+    // Validate fraud probability fields (must be between 0 and 1)
+    if (filterName === 'fraudProbabilityMin' || filterName === 'fraudProbabilityMax') {
+      const numValue = parseFloat(value);
+      if (!isNaN(numValue)) {
+        // Clamp between 0 and 1
+        processedValue = Math.max(0, Math.min(1, numValue)).toString();
+      } else if (value === '' || value === '.') {
+        processedValue = value; // Allow empty or partial input
+      } else {
+        return; // Invalid input, don't update
+      }
+    }
+    
+    // For year fields, allow any input while typing (validate on blur)
+    if (filterName === 'yearStart' || filterName === 'yearEnd') {
+      // Allow empty or numeric input
+      if (value === '' || /^\d+$/.test(value)) {
+        processedValue = value;
+      } else {
+        return; // Invalid input, don't update
+      }
+    }
+    
+    setFilters(prev => ({
+      ...prev,
+      [filterName]: processedValue
+    }));
+  };
+
+  const resetFilters = () => {
+    setFilters({
+      amountMin: '',
+      amountMax: '',
+      fraudProbabilityMin: '',
+      fraudProbabilityMax: '',
+      category: '',
+      yearStart: '',
+      yearEnd: '',
+      fraudOnly: false,
+      legitimateOnly: false,
+    });
+  };
+
+  const getFilteredTransactions = () => {
+    if (!analysisResult?.transactions) return [];
+
+    let filtered = [...analysisResult.transactions];
+
+    // Amount filters
+    if (filters.amountMin !== '') {
+      filtered = filtered.filter(t => t.amount >= parseFloat(filters.amountMin));
+    }
+    if (filters.amountMax !== '') {
+      filtered = filtered.filter(t => t.amount <= parseFloat(filters.amountMax));
+    }
+
+    // Fraud probability filters
+    if (filters.fraudProbabilityMin !== '') {
+      filtered = filtered.filter(t => t.fraud_probability >= parseFloat(filters.fraudProbabilityMin));
+    }
+    if (filters.fraudProbabilityMax !== '') {
+      filtered = filtered.filter(t => t.fraud_probability <= parseFloat(filters.fraudProbabilityMax));
+    }
+
+    // Category filter
+    if (filters.category !== '') {
+      filtered = filtered.filter(t =>
+        t.category?.toLowerCase().includes(filters.category.toLowerCase())
+      );
+    }
+
+    // Year filter
+    if (filters.yearStart !== '' || filters.yearEnd !== '') {
+      filtered = filtered.filter(t => {
+        if (!t.timestamp) return true;
+        const date = new Date(t.timestamp);
+        const year = date.getFullYear();
+        const start = filters.yearStart !== '' ? parseInt(filters.yearStart) : 1900;
+        const end = filters.yearEnd !== '' ? parseInt(filters.yearEnd) : 2100;
+        return year >= start && year <= end;
+      });
+    }
+
+    // Fraud/Legitimate only filters
+    if (filters.fraudOnly) {
+      filtered = filtered.filter(t => t.is_fraud === 1);
+    }
+    if (filters.legitimateOnly) {
+      filtered = filtered.filter(t => t.is_fraud === 0);
+    }
+
+    return filtered;
+  };
+
+  const getFilteredStatistics = () => {
+    const filtered = getFilteredTransactions();
+    const fraudTransactions = filtered.filter(t => t.is_fraud === 1);
+    const legitTransactions = filtered.filter(t => t.is_fraud === 0);
+
+    const totalAmount = filtered.reduce((sum, t) => sum + t.amount, 0);
+    const fraudAmount = fraudTransactions.reduce((sum, t) => sum + t.amount, 0);
+    const legitAmount = legitTransactions.reduce((sum, t) => sum + t.amount, 0);
+
+    return {
+      total_count: filtered.length,
+      fraud_count: fraudTransactions.length,
+      legitimate_count: legitTransactions.length,
+      fraud_percentage: filtered.length > 0 ? (fraudTransactions.length / filtered.length * 100).toFixed(2) : 0,
+      legitimate_percentage: filtered.length > 0 ? (legitTransactions.length / filtered.length * 100).toFixed(2) : 0,
+      total_amount: totalAmount,
+      total_fraud_amount: fraudAmount,
+      total_legitimate_amount: legitAmount,
+    };
+  };
+
+  const getAvailableCategories = () => {
+    if (!analysisResult?.transactions) return [];
+    const categories = new Set(
+      analysisResult.transactions
+        .map(t => t.category)
+        .filter(c => c && c !== 'N/A')
+    );
+    return Array.from(categories).sort();
+  };
+
+  const activeFilterCount = Object.entries(filters).filter(([key, value]) => {
+    if (typeof value === 'boolean') return value;
+    return value !== '';
+  }).length;
+
+  const handleRegeneratePlots = async () => {
+    if (!analysisResult?.transactions) return;
+    
+    setRegeneratingPlots(true);
+    try {
+      // Convert filters to backend format
+      const backendFilters = {
+        amount_min: filters.amountMin ? parseFloat(filters.amountMin) : null,
+        amount_max: filters.amountMax ? parseFloat(filters.amountMax) : null,
+        fraud_probability_min: filters.fraudProbabilityMin ? parseFloat(filters.fraudProbabilityMin) : null,
+        fraud_probability_max: filters.fraudProbabilityMax ? parseFloat(filters.fraudProbabilityMax) : null,
+        category: filters.category || null,
+        year_start: filters.yearStart ? parseInt(filters.yearStart) : null,
+        year_end: filters.yearEnd ? parseInt(filters.yearEnd) : null,
+        fraud_only: filters.fraudOnly || false,
+        legitimate_only: filters.legitimateOnly || false,
+      };
+      
+      // Remove null values
+      Object.keys(backendFilters).forEach(key => {
+        if (backendFilters[key] === null || backendFilters[key] === '') {
+          delete backendFilters[key];
+        }
+      });
+      
+      console.log('Regenerating plots with filters:', backendFilters);
+      console.log('Sending transactions:', analysisResult.transactions.length);
+      
+      const result = await regeneratePlotsWithFilters(analysisResult.transactions, backendFilters);
+      
+      if (result.success) {
+        console.log('Received filtered plots:', result.plots?.length || 0);
+        if (result.plots && result.plots.length > 0) {
+          setFilteredPlots(result.plots);
+          setError(null); // Clear any previous errors
+        } else {
+          setFilteredPlots([]);
+          setError('No plots generated. The filters may have excluded all transactions. Try adjusting your filter criteria.');
+        }
+      } else {
+        console.error('Failed to regenerate plots:', result.error);
+        setError(result.error || 'Failed to regenerate plots');
+        setFilteredPlots(null);
+      }
+    } catch (err) {
+      console.error('Error regenerating plots:', err);
+      setError(err.error || err.message || 'Failed to regenerate plots');
+    } finally {
+      setRegeneratingPlots(false);
+    }
+  };
+
   const handleAnalyze = async () => {
     if (!file) {
       setError('Please select a file first');
@@ -186,6 +624,11 @@ const RealTimeAnalysis = () => {
       const result = await analyzeRealTimeTransactions(file);
 
       if (result.success) {
+        console.log('Analysis result received:', {
+          hasInsights: !!result.insights,
+          plotsCount: result.insights?.plots?.length || 0,
+          firstPlot: result.insights?.plots?.[0]
+        });
         setAnalysisResult(result);
         setShowInsights(false);
       } else {
@@ -437,6 +880,23 @@ const RealTimeAnalysis = () => {
       justifyContent: 'center',
       gap: '0.5rem',
     },
+    downloadButton: {
+      backgroundColor: '#22c55e',
+      color: '#052e16',
+      padding: '0.875rem 2rem',
+      borderRadius: '9999px',
+      border: 'none',
+      cursor: 'pointer',
+      fontSize: '1rem',
+      fontWeight: '600',
+      transition: 'all 0.3s',
+      boxShadow: '0 0 20px rgba(34, 197, 94, 0.4)',
+      flex: 1,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: '0.5rem',
+    },
     transactionList: {
       maxHeight: '400px',
       overflowY: 'auto',
@@ -449,6 +909,105 @@ const RealTimeAnalysis = () => {
       marginBottom: '0.75rem',
       border: `1px solid ${colors.border}`,
     },
+    fraudTypeSection: {
+      marginTop: '1.5rem',
+    },
+    fraudTypeTitle: {
+      color: colors.foreground,
+      fontSize: '1rem',
+      fontWeight: '600',
+      marginBottom: '0.75rem',
+    },
+    fraudTypeGrid: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+      gap: '0.75rem',
+    },
+    fraudTypeCard: {
+      backgroundColor: colors.muted,
+      borderRadius: '0.75rem',
+      padding: '1rem',
+      border: `1px solid ${colors.border}`,
+    },
+    fraudTypeLabel: {
+      fontSize: '0.85rem',
+      color: colors.mutedForeground,
+      marginBottom: '0.35rem',
+      textTransform: 'uppercase',
+      letterSpacing: '0.04em',
+    },
+    fraudTypeCount: {
+      fontSize: '1.4rem',
+      fontWeight: '700',
+      color: colors.foreground,
+    },
+    fraudTypeMeta: {
+      fontSize: '0.8rem',
+      color: colors.mutedForeground,
+      marginTop: '0.35rem',
+    },
+    reasonLegend: {
+      marginTop: '1.25rem',
+      padding: '1rem',
+      borderRadius: '0.75rem',
+      border: `1px dashed ${colors.border}`,
+      backgroundColor: colors.muted
+    },
+    reasonLegendTitle: {
+      fontSize: '0.9rem',
+      fontWeight: '600',
+      color: colors.mutedForeground,
+      marginBottom: '0.5rem',
+      textTransform: 'uppercase',
+      letterSpacing: '0.05em'
+    },
+    reasonLegendGrid: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+      gap: '0.5rem'
+    },
+    reasonLegendChip: {
+      borderRadius: '0.65rem',
+      border: `1px solid ${colors.border}`,
+      padding: '0.6rem 0.75rem',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      fontSize: '0.85rem',
+      backgroundColor: colors.background,
+      transition: 'all 0.2s ease'
+    },
+    topFraudList: {
+      marginTop: '1.5rem',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '0.75rem',
+    },
+    topFraudItem: {
+      backgroundColor: colors.muted,
+      borderRadius: '0.75rem',
+      padding: '0.9rem 1.1rem',
+      border: `1px solid ${colors.border}`,
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: '1rem',
+    },
+    topFraudLabel: {
+      fontWeight: '600',
+      color: colors.foreground,
+      fontSize: '0.95rem',
+    },
+    topFraudMeta: {
+      fontSize: '0.8rem',
+      color: colors.mutedForeground,
+      marginTop: '0.15rem',
+    },
+    topFraudAmount: {
+      fontWeight: '700',
+      color: '#ef4444',
+      fontSize: '1rem',
+    },
     fraudTransaction: {
       borderLeft: `4px solid #ef4444`,
     },
@@ -456,67 +1015,36 @@ const RealTimeAnalysis = () => {
       borderLeft: `4px solid #10b981`,
     },
     plotsGrid: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
+      display: 'flex',
+      flexDirection: 'column',
       gap: '2rem',
       marginTop: '2rem',
     },
     plotCard: {
       backgroundColor: colors.muted,
-      padding: '1.5rem',
+      padding: '2rem',
       borderRadius: '1rem',
       border: `1px solid ${colors.border}`,
       position: 'relative',
       overflow: 'hidden',
       boxShadow: '0 18px 35px rgba(5, 7, 15, 0.45)',
       transition: 'transform 0.3s ease, box-shadow 0.3s ease',
+      width: '100%',
     },
     plotTitle: {
-      fontSize: '1.1rem',
+      fontSize: '1.3rem',
       fontWeight: '600',
       color: colors.foreground,
-      marginBottom: '1rem',
+      marginBottom: '1.5rem',
     },
     plotDescription: {
-      fontSize: '0.9rem',
+      fontSize: '0.95rem',
       color: colors.mutedForeground,
-      marginTop: '0.75rem',
+      marginTop: '1rem',
     },
-    plotImageWrapper: {
-      position: 'relative',
-      borderRadius: '0.75rem',
-      overflow: 'hidden',
-    },
-    plotImage: {
+    plotCanvas: {
       width: '100%',
-      display: 'block',
-    },
-    plotHoverOverlay: {
-      position: 'absolute',
-      inset: 0,
-      background: 'linear-gradient(180deg, rgba(15,23,42,0.05) 0%, rgba(15,23,42,0.9) 100%)',
-      color: '#f8fafc',
-      display: 'flex',
-      flexDirection: 'column',
-      justifyContent: 'center',
-      padding: '1.5rem',
-      gap: '0.75rem',
-      opacity: 0,
-      transition: 'opacity 0.25s ease',
-    },
-    plotOverlayTitle: {
-      fontSize: '0.95rem',
-      fontWeight: 600,
-      letterSpacing: '0.04em',
-      textTransform: 'uppercase',
-      color: '#cbd5f5',
-    },
-    plotDetailItem: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      fontSize: '0.95rem',
-      borderBottom: '1px solid rgba(148, 163, 184, 0.25)',
-      paddingBottom: '0.35rem',
+      height: '450px',
     },
     plotDetailsRow: {
       marginTop: '1rem',
@@ -534,6 +1062,78 @@ const RealTimeAnalysis = () => {
       flexDirection: 'column',
       lineHeight: 1.2,
       border: '1px solid rgba(148, 163, 184, 0.3)',
+    },
+    heatmapWrapper: {
+      width: '100%',
+      overflowX: 'auto',
+      paddingBottom: '0.5rem'
+    },
+    heatmapHeaderRow: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(70px, 1fr))',
+      gap: '4px',
+      fontSize: '0.75rem',
+      color: colors.mutedForeground,
+      marginBottom: '0.25rem'
+    },
+    heatmapCorner: {
+      width: '70px'
+    },
+    heatmapHeaderCell: {
+      textAlign: 'center',
+      fontSize: '0.75rem',
+      fontWeight: 600
+    },
+    heatmapRow: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(70px, 1fr))',
+      gap: '4px',
+      alignItems: 'center'
+    },
+    heatmapCell: {
+      borderRadius: '6px',
+      padding: '0.35rem 0.25rem',
+      fontSize: '0.75rem',
+      textAlign: 'center'
+    },
+    geoMap: {
+      position: 'relative',
+      width: '100%',
+      borderRadius: '0.75rem',
+      background: `
+        radial-gradient(circle at 20% 50%, rgba(59, 130, 246, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 80% 50%, rgba(16, 185, 129, 0.1) 0%, transparent 50%),
+        linear-gradient(135deg, #1e293b 0%, #0f172a 100%)
+      `,
+      border: `1px solid ${colors.border}`,
+      overflow: 'hidden',
+      backgroundImage: `
+        linear-gradient(rgba(148, 163, 184, 0.1) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148, 163, 184, 0.1) 1px, transparent 1px)
+      `,
+      backgroundSize: '50px 50px',
+      backgroundPosition: 'center center'
+    },
+    geoDot: {
+      position: 'absolute',
+      borderRadius: '50%',
+      backgroundColor: '#ef4444',
+      border: '2px solid #fca5a5',
+      transform: 'translate(-50%, -50%)',
+      boxShadow: '0 0 20px rgba(239, 68, 68, 0.9), 0 0 40px rgba(239, 68, 68, 0.5)',
+      cursor: 'pointer',
+      transition: 'all 0.2s ease'
+    },
+    missingPlot: {
+      width: '100%',
+      height: '220px',
+      borderRadius: '0.75rem',
+      border: `1px dashed ${colors.border}`,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      color: colors.mutedForeground,
+      fontSize: '0.9rem'
     },
     zoomModalOverlay: {
       position: 'fixed',
@@ -1028,10 +1628,104 @@ const RealTimeAnalysis = () => {
                 {analysisResult.fraud_detection.model_type}
               </div>
             </div>
+            <div style={styles.statCard}>
+              <div style={styles.statLabel}>Top Fraud Pattern</div>
+              <div style={{ ...styles.statValue, fontSize: '1.1rem' }}>
+                {analysisResult.fraud_detection.dominant_fraud_reason
+                  ? formatFraudReason(analysisResult.fraud_detection.dominant_fraud_reason)
+                  : analysisResult.fraud_detection.dominant_fraud_type
+                  ? formatFraudReason(analysisResult.fraud_detection.dominant_fraud_type)
+                  : 'N/A'}
+              </div>
+            </div>
           </div>
+
+          {fraudReasonBreakdown.length > 0 && (
+            <div style={styles.fraudTypeSection}>
+              <h3 style={styles.fraudTypeTitle}>Fraud Reason Breakdown</h3>
+              <div style={styles.fraudTypeGrid}>
+                {fraudReasonBreakdown.slice(0, 4).map((pattern, idx) => (
+                  <div key={`${pattern.type || pattern.label}-${idx}`} style={styles.fraudTypeCard}>
+                    <div style={styles.fraudTypeLabel}>
+                      {formatFraudReason(pattern.label || pattern.type)}
+                    </div>
+                    <div style={styles.fraudTypeCount}>{pattern.count} cases</div>
+                    <div style={styles.fraudTypeMeta}>
+                      {pattern.percentage}% of fraud • $
+                      {(pattern.total_amount || 0).toLocaleString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={styles.reasonLegend}>
+            <div style={styles.reasonLegendTitle}>Standard Fraud Patterns</div>
+            <div style={styles.reasonLegendGrid}>
+              {STANDARD_FRAUD_REASONS.map((reason) => {
+                const count = reasonCountMap[reason] || 0;
+                const isActive = count > 0;
+                return (
+                  <div
+                    key={reason}
+                    style={{
+                      ...styles.reasonLegendChip,
+                      opacity: isActive ? 1 : 0.45,
+                      borderColor: isActive ? primary : colors.border,
+                      color: colors.foreground
+                    }}
+                  >
+                    <span>{reason}</span>
+                    <span style={{ fontWeight: 600 }}>
+                      {isActive ? `${count} case${count === 1 ? '' : 's'}` : '—'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {topFraudCases.length > 0 && (
+            <div style={styles.topFraudList}>
+              <h3 style={styles.fraudTypeTitle}>Top ML-Flagged Transactions</h3>
+              {topFraudCases.map((txn, idx) => {
+                const txnAmount = typeof txn.amount === 'number' ? txn.amount : parseFloat(txn.amount || 0);
+                return (
+                  <div key={txn.transaction_id || `${txn.merchant}-${idx}`} style={styles.topFraudItem}>
+                    <div>
+                      <div style={styles.topFraudLabel}>{txn.merchant || txn.category || 'Unknown Merchant'}</div>
+                      <div style={styles.topFraudMeta}>
+                        {formatFraudReason(txn.fraud_reason)} • {((txn.fraud_probability || 0) * 100).toFixed(0)}% risk
+                      </div>
+                      {txn.fraud_reason_detail && (
+                        <div style={{ fontSize: '0.75rem', color: colors.mutedForeground, marginTop: '0.25rem' }}>
+                          {txn.fraud_reason_detail}
+                        </div>
+                      )}
+                    </div>
+                    <div style={styles.topFraudAmount}>
+                      ${txnAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* Action Buttons */}
           <div style={styles.buttonGroup}>
+            <button
+              style={{
+                ...styles.downloadButton,
+                opacity: analysisResult?.transactions?.length ? 1 : 0.5,
+                cursor: analysisResult?.transactions?.length ? 'pointer' : 'not-allowed',
+              }}
+              onClick={handleDownloadCSV}
+              disabled={!analysisResult?.transactions?.length}
+            >
+              Download CSV
+            </button>
             <button
               style={styles.insightsButton}
               onClick={() => setShowInsights(!showInsights)}
@@ -1040,6 +1734,31 @@ const RealTimeAnalysis = () => {
               {showInsights ? 'Hide Insights' : 'Show Insights & Plots'}
             </button>
           </div>
+
+          {/* Database Storage Notification */}
+          {analysisResult?.database_status === 'saved' && (
+            <div style={{
+              marginTop: '1rem',
+              padding: '1rem',
+              backgroundColor: '#d1fae5',
+              border: '1px solid #6ee7b7',
+              borderRadius: '0.5rem',
+              color: '#065f46',
+              fontSize: '0.95rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem'
+            }}>
+              <span style={{ fontSize: '1.2rem' }}>✓</span>
+              <div>
+                <strong>Data saved to database</strong>
+                <div style={{ fontSize: '0.85rem', marginTop: '0.25rem', opacity: 0.8 }}>
+                  {analysisResult?.transactions?.length || 0} transactions stored in analyzed_real_time_trn table
+                  {analysisResult?.batch_id && <div style={{ marginTop: '0.25rem' }}>Batch ID: {analysisResult.batch_id.substring(0, 8)}...</div>}
+                </div>
+              </div>
+            </div>
+          )}
 
         </div>
       )}
@@ -1092,24 +1811,50 @@ const RealTimeAnalysis = () => {
               )}
 
               {/* Key Insights - Condensed */}
-              {analysisResult.agent_analysis.detailed_insights && (
+              {agentInsights && (
                 <div style={{ marginBottom: '1.5rem' }}>
                   <h4 style={{ color: colors.foreground, fontSize: '0.95rem', marginBottom: '0.75rem', fontWeight: '600' }}>
                     Key Insights
                   </h4>
-                  <div style={{
-                    backgroundColor: colors.muted,
-                    padding: '1rem',
-                    borderRadius: '0.5rem',
-                    border: `1px solid ${colors.border}`,
-                    fontSize: '0.9rem',
-                    color: colors.foreground,
-                    lineHeight: '1.6',
-                    maxHeight: '200px',
-                    overflowY: 'auto'
-                  }}>
-                    {analysisResult.agent_analysis.detailed_insights}
-                  </div>
+                  {insightPoints.length > 0 ? (
+                    <ul style={{
+                      backgroundColor: colors.muted,
+                      padding: '1rem 1.25rem',
+                      borderRadius: '0.5rem',
+                      border: `1px solid ${colors.border}`,
+                      fontSize: '0.9rem',
+                      color: colors.foreground,
+                      lineHeight: '1.6',
+                      maxHeight: '220px',
+                      overflowY: 'auto',
+                      margin: 0,
+                      listStyle: 'disc',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.5rem'
+                    }}>
+                      {insightPoints.map((point, idx) => (
+                        <li key={idx} style={{ marginLeft: '1rem' }}>
+                          {point}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div style={{
+                      backgroundColor: colors.muted,
+                      padding: '1rem',
+                      borderRadius: '0.5rem',
+                      border: `1px solid ${colors.border}`,
+                      fontSize: '0.9rem',
+                      color: colors.foreground,
+                      lineHeight: '1.6',
+                      maxHeight: '200px',
+                      overflowY: 'auto',
+                      whiteSpace: 'pre-line'
+                    }}>
+                      {agentInsights}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1139,14 +1884,360 @@ const RealTimeAnalysis = () => {
             </div>
           )}
 
-          {/* Plots */}
-          {analysisResult.insights.plots?.length > 0 && (
-            <div>
-              <h3 style={{ color: colors.foreground, fontSize: '1.1rem', marginBottom: '1rem' }}>
-                Visual Analytics
+          {/* Filter Panel */}
+          <div style={{ marginBottom: '2rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ color: colors.foreground, fontSize: '1.1rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <FaFilter style={{ color: primary }} />
+                Plot Filters
+                {activeFilterCount > 0 && (
+                  <span style={{
+                    backgroundColor: primary,
+                    color: 'white',
+                    borderRadius: '9999px',
+                    padding: '0.25rem 0.75rem',
+                    fontSize: '0.75rem',
+                    fontWeight: '600',
+                    marginLeft: '0.5rem'
+                  }}>
+                    {activeFilterCount} active
+                  </span>
+                )}
               </h3>
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                style={{
+                  backgroundColor: 'transparent',
+                  color: colors.foreground,
+                  border: `2px solid ${colors.border}`,
+                  padding: '0.5rem 1rem',
+                  borderRadius: '0.5rem',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem',
+                  fontWeight: '600',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem'
+                }}
+              >
+                {showFilters ? <FaTimes /> : <FaFilter />}
+                {showFilters ? 'Hide Filters' : 'Show Filters'}
+              </button>
+            </div>
+            
+            {showFilters && (
+              <div style={{
+                backgroundColor: colors.muted,
+                padding: '1.5rem',
+                borderRadius: '0.75rem',
+                border: `1px solid ${colors.border}`,
+                marginBottom: '1rem'
+              }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                  <div>
+                    <label style={styles.label}>Min Amount ($)</label>
+                    <input
+                      type="number"
+                      value={filters.amountMin}
+                      onChange={(e) => handleFilterChange('amountMin', e.target.value)}
+                      placeholder="0"
+                      style={styles.input}
+                    />
+                  </div>
+                  <div>
+                    <label style={styles.label}>Max Amount ($)</label>
+                    <input
+                      type="number"
+                      value={filters.amountMax}
+                      onChange={(e) => handleFilterChange('amountMax', e.target.value)}
+                      placeholder="∞"
+                      style={styles.input}
+                    />
+                  </div>
+                  <div>
+                    <label style={styles.label}>
+                      Min Fraud Probability
+                      <span style={{ fontSize: '0.75rem', color: colors.mutedForeground, marginLeft: '0.5rem' }}>
+                        (0.00 = 0%, 1.00 = 100%)
+                      </span>
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="1"
+                      value={filters.fraudProbabilityMin}
+                      onChange={(e) => handleFilterChange('fraudProbabilityMin', e.target.value)}
+                      onBlur={(e) => {
+                        const val = parseFloat(e.target.value);
+                        if (!isNaN(val)) {
+                          const clamped = Math.max(0, Math.min(1, val));
+                          if (clamped !== val) {
+                            handleFilterChange('fraudProbabilityMin', clamped.toString());
+                          }
+                        }
+                      }}
+                      placeholder="0.00"
+                      style={{
+                        ...styles.input,
+                        borderColor: filters.fraudProbabilityMin && (parseFloat(filters.fraudProbabilityMin) < 0 || parseFloat(filters.fraudProbabilityMin) > 1) 
+                          ? '#ef4444' 
+                          : styles.input.borderColor
+                      }}
+                    />
+                    {filters.fraudProbabilityMin && (parseFloat(filters.fraudProbabilityMin) < 0 || parseFloat(filters.fraudProbabilityMin) > 1) && (
+                      <div style={{ fontSize: '0.75rem', color: '#ef4444', marginTop: '0.25rem' }}>
+                        Must be between 0.00 and 1.00
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label style={styles.label}>
+                      Max Fraud Probability
+                      <span style={{ fontSize: '0.75rem', color: colors.mutedForeground, marginLeft: '0.5rem' }}>
+                        (0.00 = 0%, 1.00 = 100%)
+                      </span>
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="1"
+                      value={filters.fraudProbabilityMax}
+                      onChange={(e) => handleFilterChange('fraudProbabilityMax', e.target.value)}
+                      onBlur={(e) => {
+                        const val = parseFloat(e.target.value);
+                        if (!isNaN(val)) {
+                          const clamped = Math.max(0, Math.min(1, val));
+                          if (clamped !== val) {
+                            handleFilterChange('fraudProbabilityMax', clamped.toString());
+                          }
+                        }
+                      }}
+                      placeholder="1.00"
+                      style={{
+                        ...styles.input,
+                        borderColor: filters.fraudProbabilityMax && (parseFloat(filters.fraudProbabilityMax) < 0 || parseFloat(filters.fraudProbabilityMax) > 1) 
+                          ? '#ef4444' 
+                          : styles.input.borderColor
+                      }}
+                    />
+                    {filters.fraudProbabilityMax && (parseFloat(filters.fraudProbabilityMax) < 0 || parseFloat(filters.fraudProbabilityMax) > 1) && (
+                      <div style={{ fontSize: '0.75rem', color: '#ef4444', marginTop: '0.25rem' }}>
+                        Must be between 0.00 and 1.00
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label style={styles.label}>Category</label>
+                    <input
+                      type="text"
+                      value={filters.category}
+                      onChange={(e) => handleFilterChange('category', e.target.value)}
+                      placeholder="Filter by category"
+                      style={styles.input}
+                    />
+                  </div>
+                  <div>
+                    <label style={styles.label}>
+                      Start Year
+                      <span style={{ fontSize: '0.75rem', color: colors.mutedForeground, marginLeft: '0.5rem' }}>
+                        (1900-2100)
+                      </span>
+                    </label>
+                    <input
+                      type="number"
+                      min="1900"
+                      max="2100"
+                      value={filters.yearStart}
+                      onChange={(e) => handleFilterChange('yearStart', e.target.value)}
+                      onBlur={(e) => {
+                        const val = parseInt(e.target.value);
+                        if (!isNaN(val)) {
+                          const clamped = Math.max(1900, Math.min(2100, val));
+                          if (clamped !== val) {
+                            handleFilterChange('yearStart', clamped.toString());
+                          }
+                        }
+                      }}
+                      placeholder="1900"
+                      style={{
+                        ...styles.input,
+                        borderColor: filters.yearStart && (parseInt(filters.yearStart) < 1900 || parseInt(filters.yearStart) > 2100)
+                          ? '#ef4444'
+                          : styles.input.borderColor
+                      }}
+                    />
+                    {filters.yearStart && (parseInt(filters.yearStart) < 1900 || parseInt(filters.yearStart) > 2100) && (
+                      <div style={{ fontSize: '0.75rem', color: '#ef4444', marginTop: '0.25rem' }}>
+                        Must be between 1900 and 2100
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label style={styles.label}>
+                      End Year
+                      <span style={{ fontSize: '0.75rem', color: colors.mutedForeground, marginLeft: '0.5rem' }}>
+                        (1900-2100)
+                      </span>
+                    </label>
+                    <input
+                      type="number"
+                      min="1900"
+                      max="2100"
+                      value={filters.yearEnd}
+                      onChange={(e) => handleFilterChange('yearEnd', e.target.value)}
+                      onBlur={(e) => {
+                        const val = parseInt(e.target.value);
+                        if (!isNaN(val)) {
+                          const clamped = Math.max(1900, Math.min(2100, val));
+                          if (clamped !== val) {
+                            handleFilterChange('yearEnd', clamped.toString());
+                          }
+                        }
+                      }}
+                      placeholder="2100"
+                      style={{
+                        ...styles.input,
+                        borderColor: filters.yearEnd && (parseInt(filters.yearEnd) < 1900 || parseInt(filters.yearEnd) > 2100)
+                          ? '#ef4444'
+                          : styles.input.borderColor
+                      }}
+                    />
+                    {filters.yearEnd && (parseInt(filters.yearEnd) < 1900 || parseInt(filters.yearEnd) > 2100) && (
+                      <div style={{ fontSize: '0.75rem', color: '#ef4444', marginTop: '0.25rem' }}>
+                        Must be between 1900 and 2100
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: colors.foreground, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={filters.fraudOnly}
+                      onChange={(e) => {
+                        handleFilterChange('fraudOnly', e.target.checked);
+                        if (e.target.checked) handleFilterChange('legitimateOnly', false);
+                      }}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    Fraud Only
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: colors.foreground, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={filters.legitimateOnly}
+                      onChange={(e) => {
+                        handleFilterChange('legitimateOnly', e.target.checked);
+                        if (e.target.checked) handleFilterChange('fraudOnly', false);
+                      }}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    Legitimate Only
+                  </label>
+                </div>
+                
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                  <button
+                    onClick={handleRegeneratePlots}
+                    disabled={regeneratingPlots}
+                    style={{
+                      backgroundColor: primary,
+                      color: 'white',
+                      padding: '0.75rem 2rem',
+                      borderRadius: '0.5rem',
+                      border: 'none',
+                      cursor: regeneratingPlots ? 'not-allowed' : 'pointer',
+                      fontSize: '0.95rem',
+                      fontWeight: '600',
+                      opacity: regeneratingPlots ? 0.6 : 1
+                    }}
+                  >
+                    {regeneratingPlots ? '⏳ Regenerating...' : '🔄 Apply Filters to Plots'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      resetFilters();
+                      setFilteredPlots(null);
+                    }}
+                    style={{
+                      backgroundColor: 'transparent',
+                      color: colors.foreground,
+                      border: `2px solid ${colors.border}`,
+                      padding: '0.75rem 2rem',
+                      borderRadius: '0.5rem',
+                      cursor: 'pointer',
+                      fontSize: '0.95rem',
+                      fontWeight: '600',
+                      transition: 'all 0.3s'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.backgroundColor = colors.muted;
+                      e.target.style.borderColor = primary;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.backgroundColor = 'transparent';
+                      e.target.style.borderColor = colors.border;
+                    }}
+                  >
+                    Reset Filters
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Plots */}
+          {(() => {
+            const plotsToDisplay = filteredPlots || analysisResult.insights.plots;
+            console.log('Plots to display:', plotsToDisplay);
+            return plotsToDisplay?.length > 0;
+          })() && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h3 style={{ color: colors.foreground, fontSize: '1.1rem', margin: 0 }}>
+                  Visual Analytics
+                  {filteredPlots && (
+                    <span style={{ 
+                      fontSize: '0.85rem', 
+                      color: primary,
+                      marginLeft: '0.5rem',
+                      fontWeight: '600',
+                      backgroundColor: `${primary}20`,
+                      padding: '0.25rem 0.75rem',
+                      borderRadius: '0.5rem'
+                    }}>
+                      🔍 Filtered ({filteredPlots.length} plots)
+                    </span>
+                  )}
+                  {!filteredPlots && (
+                    <span style={{ fontSize: '0.85rem', color: colors.mutedForeground, marginLeft: '0.5rem' }}>
+                      (All Data)
+                    </span>
+                  )}
+                </h3>
+                {filteredPlots && (
+                  <button
+                    onClick={() => setFilteredPlots(null)}
+                    style={{
+                      backgroundColor: 'transparent',
+                      color: colors.foreground,
+                      border: `1px solid ${colors.border}`,
+                      padding: '0.5rem 1rem',
+                      borderRadius: '0.5rem',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem',
+                      fontWeight: '600'
+                    }}
+                  >
+                    Show All Plots
+                  </button>
+                )}
+              </div>
               <div style={styles.plotsGrid}>
-                {analysisResult.insights.plots.map((plot, idx) => {
+                {(filteredPlots || analysisResult.insights.plots).map((plot, idx) => {
                   const isHovered = hoveredPlotIndex === idx;
                   return (
                     <div
@@ -1164,8 +2255,8 @@ const RealTimeAnalysis = () => {
                       onClick={() => setZoomedPlot(plot)}
                     >
                       <div style={styles.plotTitle}>{plot.title}</div>
-                      <div style={styles.plotImageWrapper}>
-                        <img src={plot.image} alt={plot.title} style={styles.plotImage} />
+                      <div style={styles.plotCanvas}>
+                        {renderPlotVisualization(plot)}
                       </div>
                       {plot.description && (
                         <div style={styles.plotDescription}>{plot.description}</div>
@@ -1198,11 +2289,9 @@ const RealTimeAnalysis = () => {
                 &times;
               </button>
             </div>
-            <img
-              src={zoomedPlot.image}
-              alt={zoomedPlot.title}
-              style={styles.zoomModalImg}
-            />
+            <div style={{ width: '100%', height: '600px' }}>
+              {renderPlotVisualization(zoomedPlot, { height: 600 })}
+            </div>
             {zoomedPlot.description && (
               <p style={{ color: '#cbd5f5', marginTop: '1rem' }}>{zoomedPlot.description}</p>
             )}

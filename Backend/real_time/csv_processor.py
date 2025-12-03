@@ -52,7 +52,7 @@ def process_transaction_csv(file_path: str) -> Dict[str, Any]:
         df = _clean_data(df)
 
         # Convert to list of dictionaries
-        transactions = df.to_dict('records')
+        transactions = _dataframe_to_serializable_records(df)
 
         # Calculate summary statistics
         summary = _calculate_summary(df)
@@ -260,6 +260,20 @@ def _get_column_info(df: pd.DataFrame) -> List[Dict[str, Any]]:
         column_info.append(info)
 
     return column_info
+
+
+def _dataframe_to_serializable_records(df: pd.DataFrame) -> List[Dict[str, Any]]:
+    """
+    Convert dataframe rows to dict records with safe serialization for JSON.
+    """
+    records = df.to_dict('records')
+    for record in records:
+        for key, value in list(record.items()):
+            if pd.isna(value):
+                record[key] = None
+            elif isinstance(value, pd.Timestamp):
+                record[key] = value.isoformat()
+    return records
 
 
 def validate_csv_format(df: pd.DataFrame) -> Dict[str, Any]:

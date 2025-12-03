@@ -70,7 +70,7 @@ else:
 # Load the production extractor
 try:
     spec = importlib.util.spec_from_file_location(
-        "production_extractor",
+        "production_extractor", 
         "production_google_vision-extractor.py"
     )
     production_extractor = importlib.util.module_from_spec(spec)
@@ -1552,6 +1552,102 @@ def get_paystubs_insights():
             'success': False,
             'error': str(e),
             'message': 'Failed to fetch paystub insights'
+        }), 500
+
+
+@app.route('/api/real-time/regenerate-plots', methods=['POST'])
+def regenerate_plots_with_filters():
+    """
+    Regenerate plots with filter parameters applied.
+    Expects JSON body with 'transactions' array and 'filters' object.
+    """
+    try:
+        data = request.get_json()
+        
+        if not data or 'transactions' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'Transactions data required'
+            }), 400
+        
+        transactions = data['transactions']
+        filters = data.get('filters', {})
+        
+        # Create a mock analysis result structure
+        fraud_result = {
+            'success': True,
+            'transactions': transactions,
+            'fraud_count': sum(1 for t in transactions if t.get('is_fraud') == 1),
+            'legitimate_count': sum(1 for t in transactions if t.get('is_fraud') == 0),
+            'fraud_percentage': 0,
+            'legitimate_percentage': 0,
+            'total_fraud_amount': sum(t.get('amount', 0) for t in transactions if t.get('is_fraud') == 1),
+            'total_legitimate_amount': sum(t.get('amount', 0) for t in transactions if t.get('is_fraud') == 0),
+            'total_amount': sum(t.get('amount', 0) for t in transactions),
+            'average_fraud_probability': sum(t.get('fraud_probability', 0) for t in transactions) / len(transactions) if transactions else 0,
+            'model_type': 'filtered'
+        }
+        
+        if len(transactions) > 0:
+            fraud_result['fraud_percentage'] = (fraud_result['fraud_count'] / len(transactions)) * 100
+            fraud_result['legitimate_percentage'] = (fraud_result['legitimate_count'] / len(transactions)) * 100
+        
+        # Generate insights with filters
+        from real_time.insights_generator import generate_insights
+        logger.info(f"Regenerating plots with {len(transactions)} transactions and filters: {filters}")
+        insights_result = generate_insights(fraud_result, filters=filters)
+        
+        if not insights_result.get('success'):
+            logger.error(f"Failed to generate insights: {insights_result.get('error')}")
+            return jsonify({
+                'success': False,
+                'error': insights_result.get('error', 'Failed to generate plots')
+            }), 500
+        
+        logger.info(f"Successfully generated {len(insights_result.get('plots', []))} plots with filters applied")
+        
+        return jsonify({
+            'success': True,
+            'plots': insights_result.get('plots', []),
+            'statistics': insights_result.get('statistics', {}),
+            'fraud_patterns': insights_result.get('fraud_patterns', {}),
+            'recommendations': insights_result.get('recommendations', [])
+        })
+        
+
+    except Exception as e:
+        logger.error(f"Error regenerating plots: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to regenerate plots'
+        }), 500
+
+
+@app.route('/custom.geo.json', methods=['GET'])
+def serve_geo_json():
+    """Serve the custom geo JSON file for map visualizations"""
+    try:
+        # Path to the geo.json file in the frontend public folder
+        frontend_public = Path(__file__).resolve().parent.parent / 'Frontend' / 'public' / 'custom.geo.json'
+        
+        if not frontend_public.exists():
+            return jsonify({
+                'error': 'Geo JSON file not found'
+            }), 404
+        
+        response = send_file(
+            str(frontend_public),
+            mimetype='application/json'
+        )
+        # Set cache headers
+        response.cache_control.max_age = 3600  # Cache for 1 hour
+        return response
+    except Exception as e:
+        logger.error(f"Error serving geo JSON: {e}")
+        return jsonify({
+            'error': str(e),
+            'message': 'Failed to serve geo JSON file'
         }), 500
 
 
