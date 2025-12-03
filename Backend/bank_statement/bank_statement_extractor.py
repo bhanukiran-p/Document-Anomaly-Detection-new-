@@ -481,7 +481,23 @@ class BankStatementExtractor:
         transactions = data.get('transactions', [])
         if transactions:
             # Check for suspicious transaction patterns
-            large_transactions = [t for t in transactions if isinstance(t, dict) and t.get('amount', {}).get('value', 0) > 10000]
+            # Handle both dict format {'amount': {'value': float}} and direct format {'amount': float}
+            def get_amount_value(txn):
+                """Safely extract amount value from transaction"""
+                if not isinstance(txn, dict):
+                    return 0
+                amount = txn.get('amount')
+                if amount is None:
+                    return 0
+                # If amount is a dict with 'value' key
+                if isinstance(amount, dict):
+                    return amount.get('value', 0)
+                # If amount is a direct numeric value
+                if isinstance(amount, (int, float)):
+                    return abs(float(amount))  # Use absolute value for comparison
+                return 0
+            
+            large_transactions = [t for t in transactions if get_amount_value(t) > 10000]
             if large_transactions:
                 anomalies.append(f"{len(large_transactions)} large transactions (>$10,000) detected")
 
