@@ -3,7 +3,7 @@ import { useDropzone } from 'react-dropzone';
 import { analyzeBankStatement } from '../services/api';
 import { colors } from '../styles/colors';
 import { FaExclamationTriangle, FaUniversity, FaCog } from 'react-icons/fa';
-import * as pdfjsLib from 'pdfjs-dist';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.js';
 
 const buildBankStatementSections = (data) => ({
   'Account Information': [
