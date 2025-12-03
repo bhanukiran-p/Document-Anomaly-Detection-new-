@@ -433,11 +433,26 @@ class PaystubFraudDetector:
                     "Multiple indicators (low quality, missing fields, tax errors) suggest this document may have been manually edited."
                 )
 
-        # Deduplicate fraud_types and fraud_reasons
-        fraud_types = list(dict.fromkeys(fraud_types))  # Preserve order, remove duplicates
-        fraud_reasons = list(dict.fromkeys(fraud_reasons))  # Preserve order, remove duplicates
+        # Select only the primary (most severe) fraud type
+        # Severity order: FABRICATED_DOCUMENT > ZERO_WITHHOLDING_SUSPICIOUS > UNREALISTIC_PROPORTIONS > ALTERED_LEGITIMATE_DOCUMENT
+        severity_order = {
+            FABRICATED_DOCUMENT: 4,
+            ZERO_WITHHOLDING_SUSPICIOUS: 3,
+            UNREALISTIC_PROPORTIONS: 2,
+            ALTERED_LEGITIMATE_DOCUMENT: 1,
+        }
 
-        logger.info(f"Classified fraud types: {fraud_types}")
+        if fraud_types:
+            # Get the most severe fraud type
+            primary_fraud_type = max(fraud_types, key=lambda x: severity_order.get(x, 0))
+            fraud_types = [primary_fraud_type]
+
+            # Keep only the reason for the primary fraud type
+            fraud_reasons = [reason for reason in fraud_reasons if primary_fraud_type.lower().replace('_', '') in reason.lower().replace('_', '') or len(fraud_reasons) == 1]
+            if not fraud_reasons and fraud_reasons != []:
+                fraud_reasons = [f"Detected as {primary_fraud_type.replace('_', ' ').title()}"]
+
+        logger.info(f"Classified fraud type: {fraud_types}")
         logger.debug(f"Generated fraud reasons: {fraud_reasons}")
 
         return {
