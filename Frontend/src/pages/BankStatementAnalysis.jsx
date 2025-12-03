@@ -1,15 +1,141 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { analyzeBankStatement, validatePDFForFraud } from '../services/api';
+import { analyzeBankStatement } from '../services/api';
 import { colors } from '../styles/colors';
+import { FaExclamationTriangle, FaUniversity, FaCog } from 'react-icons/fa';
+import * as pdfjsLib from 'pdfjs-dist';
+
+const buildBankStatementSections = (data) => ({
+  'Account Information': [
+    { label: 'Bank Name', value: data.bank_name || 'N/A' },
+    { label: 'Account Holder', value: data.account_holder || 'N/A' },
+    { label: 'Account Number', value: data.account_number || 'N/A' },
+    { label: 'Statement Period', value: data.statement_period || 'N/A' },
+  ],
+  'Balance Summary': [
+    { label: 'Opening Balance', value: data.balances?.opening_balance || 'N/A' },
+    { label: 'Ending Balance', value: data.balances?.ending_balance || 'N/A' },
+    { label: 'Available Balance', value: data.balances?.available_balance || 'N/A' },
+    { label: 'Current Balance', value: data.balances?.current_balance || 'N/A' },
+  ],
+  'Transaction Summary': [
+    { label: 'Total Transactions', value: data.summary?.transaction_count ?? 'N/A' },
+    { label: 'Total Credits', value: data.summary?.total_credits ?? 'N/A' },
+    { label: 'Total Debits', value: data.summary?.total_debits ?? 'N/A' },
+    { label: 'Net Activity', value: data.summary?.net_activity ?? 'N/A' },
+  ],
+  'Transactions (sample)': (data.transactions || []).slice(0, 10).map((txn) => ({
+    label: txn.date || 'Date',
+    value: `${txn.description || 'Transaction'} | Amount: ${txn.amount || 'N/A'} | Balance: ${txn.balance || 'N/A'}`,
+  })),
+});
+
+const isMissing = (value) => {
+  if (value === undefined || value === null) return true;
+  if (typeof value === 'number') return false;
+  const normalized = String(value).trim().toLowerCase();
+  return (
+    !normalized ||
+    normalized === 'n/a' ||
+    normalized === 'na' ||
+    normalized === 'none' ||
+    normalized === 'unknown' ||
+    normalized === 'missing'
+  );
+};
+
+const buildBankCriticalFactors = (data = {}, anomalies = []) => {
+  const factors = [];
+  const addFactor = (text) => {
+    if (text && !factors.includes(text)) {
+      factors.push(text);
+    }
+  };
+
+  const anomalyText = Array.isArray(anomalies) ? anomalies.join(' | ').toLowerCase() : '';
+  const balances = data.balances || {};
+  const summary = data.summary || {};
+  const transactionCount = Array.isArray(data.transactions) ? data.transactions.length : summary.transaction_count;
+
+  if (isMissing(data.bank_name)) {
+    addFactor('Bank name missing — issuing institution cannot be confirmed.');
+  }
+
+  if (isMissing(data.account_holder)) {
+    addFactor('Account holder absent — ownership cannot be proven.');
+  }
+
+  if (isMissing(data.account_number)) {
+    addFactor('Account number unavailable — no way to reference the account.');
+  }
+
+  if (isMissing(data.statement_period)) {
+    addFactor('Statement period missing — coverage window unclear.');
+  }
+
+  if (isMissing(balances.opening_balance) || isMissing(balances.ending_balance)) {
+    addFactor('Opening/ending balances not captured — balance movement cannot be reconciled.');
+  }
+
+  if (!transactionCount || transactionCount < 3) {
+    addFactor('Too few transactions detected — insufficient activity for validation.');
+  }
+
+  if (anomalyText.includes('balances inconsistent') || anomalyText.includes('amount mismatch')) {
+    addFactor('Balance math inconsistent with net activity per ML review.');
+  }
+
+  if (anomalyText.includes('invalid date')) {
+    addFactor('Statement or transaction dates flagged as invalid.');
+  }
+
+  if (anomalyText.includes('missing critical fields')) {
+    addFactor('Multiple mandatory sections left blank according to ML model.');
+  }
+
+  return factors;
+};
 
 const BankStatementAnalysis = () => {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
-  const [fraudResults, setFraudResults] = useState(null);
   const [error, setError] = useState(null);
+
+  useEffect(() => {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `${process.env.PUBLIC_URL}/pdf.worker.min.js`;
+  }, []);
+
+  const renderPdfPreview = async (fileObject) => {
+    try {
+      const fileReader = new FileReader();
+      fileReader.onload = async (e) => {
+        const typedArray = new Uint8Array(e.target.result);
+        const pdf = await pdfjsLib.getDocument(typedArray).promise;
+        const page = await pdf.getPage(1);
+        const viewport = page.getViewport({ scale: 2 });
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        await page.render({ canvasContext: context, viewport }).promise;
+        setPreview(canvas.toDataURL('image/png'));
+      };
+      fileReader.readAsArrayBuffer(fileObject);
+    } catch (err) {
+      console.error('Error rendering PDF preview:', err);
+      setPreview(null);
+    }
+  };
+
+  const toPercent = (value) => {
+    if (value === null || value === undefined) return 0;
+    const num = Number(value);
+    if (!Number.isFinite(num)) return 0;
+    const percent = num <= 1 ? num * 100 : num;
+    return Math.max(0, Math.min(100, percent));
+  };
 
   const onDrop = useCallback((acceptedFiles) => {
     const selectedFile = acceptedFiles[0];
@@ -17,13 +143,15 @@ const BankStatementAnalysis = () => {
       setFile(selectedFile);
       setError(null);
       setResults(null);
-      setFraudResults(null);
 
       // Create preview for images
       if (selectedFile.type.startsWith('image/')) {
         const reader = new FileReader();
         reader.onload = () => setPreview(reader.result);
         reader.readAsDataURL(selectedFile);
+      } else if (selectedFile.type === 'application/pdf') {
+        // Render PDF preview
+        renderPdfPreview(selectedFile);
       } else {
         setPreview(null);
       }
@@ -47,31 +175,56 @@ const BankStatementAnalysis = () => {
 
     setLoading(true);
     setError(null);
+    setResults(null);
 
     try {
-      // Analyze bank statement
       const response = await analyzeBankStatement(file);
-      setResults(response.data);
+      console.log('✅ Bank statement analysis response received:', response);
+      console.log('Response success:', response.success);
+      console.log('Response has data:', !!response.data);
 
-      // Check for fraud/tampering if it's a PDF
-      if (file.type === 'application/pdf') {
-        try {
-          const fraudResponse = await validatePDFForFraud(file);
-          setFraudResults(fraudResponse.data);
-        } catch (fraudErr) {
-          console.warn('Fraud detection warning:', fraudErr);
-          // Don't fail the entire operation if fraud detection fails
-        }
+      if (response.success === false) {
+        console.log('❌ Analysis failed - showing error');
+        setError(response.error || response.message || 'Failed to analyze bank statement. Please try again.');
+        setResults(null);
+      } else if (response.success === true && response.data) {
+        console.log('✅ Analysis successful - displaying results');
+        // Process results to ensure ml_analysis and ai_analysis are properly extracted
+        const processedResults = {
+          ...response.data,
+          // Extract ML analysis fields
+          fraud_risk_score: response.data.ml_analysis?.fraud_risk_score || response.data.fraud_risk_score || 0,
+          risk_level: response.data.ml_analysis?.risk_level || response.data.risk_level || 'UNKNOWN',
+          model_confidence: response.data.ml_analysis?.model_confidence || response.data.model_confidence || 0,
+          // Extract AI analysis fields with proper naming
+          ai_recommendation: response.data.ai_analysis?.recommendation || response.data.ai_recommendation || 'UNKNOWN',
+          ai_confidence: response.data.ai_analysis?.confidence_score || response.data.ai_confidence || 0,
+          // Ensure ml_analysis and ai_analysis objects exist
+          ml_analysis: response.data.ml_analysis || {},
+          ai_analysis: response.data.ai_analysis || {},
+        };
+        setResults(processedResults);
+        setError(null);
+      } else {
+        console.log('⚠️ Unexpected response format:', response);
+        setError('Received unexpected response format from server');
+        setResults(null);
       }
     } catch (err) {
-      setError(err.error || 'Failed to analyze bank statement. Please try again.');
+      console.error('❌ Bank statement analysis error caught:', err);
+      const errorMessage = err.error || err.message || err.response?.data?.error || err.response?.data?.message || 'Failed to analyze bank statement. Please try again.';
+      setError(errorMessage);
+      setResults(null);
     } finally {
       setLoading(false);
     }
   };
 
   const downloadJSON = () => {
-    const dataStr = JSON.stringify(results, null, 2);
+    const payload = results
+      ? { ...results, extracted_sections: buildBankStatementSections(results) }
+      : results;
+    const dataStr = JSON.stringify(payload, null, 2);
     const dataBlob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(dataBlob);
     const link = document.createElement('a');
@@ -80,19 +233,123 @@ const BankStatementAnalysis = () => {
     link.click();
   };
 
+  const downloadCSV = () => {
+    if (!results) return;
+
+    // Filter anomalies to exclude AI recommendations and risk scores
+    const filteredAnomalies = (results.anomalies || []).filter(anomaly => {
+      const anomalyLower = String(anomaly).toLowerCase();
+      return !anomalyLower.includes('ai recommendation') &&
+             !anomalyLower.includes('high fraud risk detected') &&
+             !anomalyLower.includes('risk score');
+    });
+
+    const fraudRiskPercent = toPercent(results.fraud_risk_score ?? results.ml_analysis?.fraud_risk_score);
+    const modelConfidencePercent = toPercent(results.model_confidence ?? results.ml_analysis?.model_confidence);
+    const aiConfidencePercent = toPercent(results.ai_confidence ?? results.ai_analysis?.confidence);
+    const riskLevel = (results.risk_level || results.ml_analysis?.risk_level || 'UNKNOWN').toString().toUpperCase();
+    const aiRecommendation = (results.ai_recommendation || results.ai_analysis?.recommendation || 'UNKNOWN').toString().toUpperCase();
+
+    // Helper to escape CSV values
+    const escapeCSV = (value) => {
+      if (value === null || value === undefined) return '';
+      const str = String(value);
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    // CSV Headers
+    const headers = [
+      'Document Type',
+      'Timestamp',
+      'Bank Name',
+      'Account Holder',
+      'Account Number',
+      'Statement Period',
+      'Opening Balance',
+      'Ending Balance',
+      'Available Balance',
+      'Total Transactions',
+      'Total Credits',
+      'Total Debits',
+      'Net Activity',
+      'Fraud Risk Score (%)',
+      'Risk Level',
+      'Model Confidence (%)',
+      'AI Recommendation',
+      'AI Confidence (%)',
+      'Anomaly Count',
+      'Top Anomalies'
+    ];
+
+    // CSV Data
+    const row = [
+      'Bank Statement',
+      results.timestamp || new Date().toISOString(),
+      results.bank_name || 'N/A',
+      results.account_holder || 'N/A',
+      results.account_number || 'N/A',
+      results.statement_period || 'N/A',
+      results.balances?.opening_balance || 'N/A',
+      results.balances?.ending_balance || 'N/A',
+      results.balances?.available_balance || 'N/A',
+      results.summary?.transaction_count ?? 'N/A',
+      results.summary?.total_credits ?? 'N/A',
+      results.summary?.total_debits ?? 'N/A',
+      results.summary?.net_activity ?? 'N/A',
+      fraudRiskPercent.toFixed(1),
+      riskLevel,
+      modelConfidencePercent.toFixed(1),
+      aiRecommendation,
+      aiConfidencePercent.toFixed(1),
+      filteredAnomalies.length,
+      filteredAnomalies.slice(0, 3).join(' | ')
+    ];
+
+    const csvContent = [
+      headers.map(escapeCSV).join(','),
+      row.map(escapeCSV).join(',')
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `bank_statement_analysis_${new Date().getTime()}.csv`;
+    link.click();
+  };
+
+  const emphasizeAnomaly = (text) => {
+    if (!text) return text;
+    const lower = text.toLowerCase();
+    const highlightKeywords = ['missing', 'invalid', 'mismatch', 'critical'];
+    const shouldEmphasize = highlightKeywords.some((keyword) => lower.includes(keyword));
+    return shouldEmphasize ? <strong>{text}</strong> : text;
+  };
+
   // Styles
+  // Use primaryColor for new design system red
+  const primary = colors.primaryColor || colors.accent?.red || '#E53935';
+
   const containerStyle = {
     maxWidth: '1400px',
     margin: '0 auto',
+    backgroundColor: colors.background,
+    minHeight: '100vh',
+    color: colors.foreground,
+    padding: '1.5rem',
   };
 
   const headerStyle = {
-    background: `linear-gradient(135deg, ${colors.primary.navy} 0%, ${colors.primary.blue} 100%)`,
+    background: 'linear-gradient(135deg, #0f1820 0%, #1a2332 100%)',
     padding: '2rem',
-    borderRadius: '12px',
-    color: colors.neutral.white,
+    borderRadius: '0.75rem',
+    color: colors.foreground,
     textAlign: 'center',
     marginBottom: '2rem',
+    border: `1px solid ${colors.border}`,
   };
 
   const gridStyle = {
@@ -102,41 +359,54 @@ const BankStatementAnalysis = () => {
   };
 
   const cardStyle = {
-    backgroundColor: colors.background.card,
-    borderRadius: '12px',
+    backgroundColor: colors.card,
+    borderRadius: '0.75rem',
     padding: '2rem',
-    boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+    boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)',
+    border: `1px solid ${colors.border}`,
   };
 
   const dropzoneStyle = {
-    border: `2px dashed ${isDragActive ? colors.primary.blue : colors.neutral.gray300}`,
-    borderRadius: '12px',
+    border: `2px dashed ${isDragActive ? primary : colors.border}`,
+    borderRadius: '0.75rem',
     padding: '3rem',
     textAlign: 'center',
-    backgroundColor: isDragActive ? colors.primary.lightBlue : colors.background.main,
+    backgroundColor: isDragActive ? colors.muted : colors.secondary,
     cursor: 'pointer',
     transition: 'all 0.2s',
   };
 
   const buttonStyle = {
-    backgroundColor: colors.accent.red,
-    color: colors.neutral.white,
-    padding: '0.5rem 1.25rem',
-    borderRadius: '9999px', // Pill shape
+    backgroundColor: primary,
+    color: colors.primaryForeground,
+    padding: '1rem 2rem',
+    borderRadius: '50px',
     fontSize: '1rem',
     fontWeight: '600',
     width: '100%',
     marginTop: '1rem',
     cursor: loading ? 'not-allowed' : 'pointer',
     opacity: loading ? 0.6 : 1,
+    boxShadow: `0 0 20px ${primary}40`,
+    transition: 'all 0.3s',
   };
 
   const resultCardStyle = {
-    backgroundColor: colors.background.main,
+    backgroundColor: colors.secondary,
     padding: '1.5rem',
-    borderRadius: '8px',
-    borderLeft: `4px solid ${colors.primary.blue}`,
+    borderRadius: '0.5rem',
+    borderLeft: `4px solid ${primary}`,
     marginBottom: '1rem',
+    border: `1px solid ${colors.border}`,
+  };
+
+  const infoCardStyle = {
+    backgroundColor: colors.card,
+    padding: '1.5rem',
+    borderRadius: '0.5rem',
+    border: `1px solid ${colors.border}`,
+    marginBottom: '1rem',
+    color: colors.foreground,
   };
 
   const confidenceStyle = (confidence) => {
@@ -163,29 +433,25 @@ const BankStatementAnalysis = () => {
     };
   };
 
-  const transactionRowStyle = (isDebit) => ({
-    display: 'grid',
-    gridTemplateColumns: '80px 1fr 120px 120px',
-    gap: '1rem',
-    padding: '0.75rem',
-    backgroundColor: colors.background.card,
-    borderRadius: '6px',
-    marginBottom: '0.5rem',
-    fontSize: '0.9rem',
-    borderLeft: `3px solid ${isDebit ? colors.accent.red : colors.status.success}`,
-  });
+  const analysisData = results;
+  const mlAnalysis = analysisData?.ml_analysis || {};
+  const aiAnalysis = analysisData?.ai_analysis || {};
+  const anomalies = analysisData?.anomalies || [];
+  const criticalFactors = analysisData ? buildBankCriticalFactors(analysisData, anomalies) : [];
 
   return (
     <div style={containerStyle}>
       <div style={headerStyle}>
-        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Bank Statement Analysis</h1>
+        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>
+          Bank Statement <span style={{ color: primary }}>Analysis</span>
+        </h1>
         <p>Extract and analyze bank statement details with transaction history</p>
       </div>
 
       <div style={gridStyle}>
         {/* Upload Section */}
         <div style={cardStyle}>
-          <h2 style={{ color: colors.primary.navy, marginBottom: '1.5rem' }}>
+          <h2 style={{ color: colors.foreground, marginBottom: '1.5rem' }}>
             Upload Bank Statement
           </h2>
 
@@ -196,24 +462,25 @@ const BankStatementAnalysis = () => {
             padding: '1rem',
             marginBottom: '1rem',
           }}>
-            <p style={{ color: '#856404', fontSize: '0.875rem', margin: 0, fontWeight: '500' }}>
-              ⚠️ Only upload bank statement documents (checking/savings account statements)
-            </p>
+            <div style={{ color: '#856404', fontSize: '0.875rem', margin: 0, fontWeight: '500', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <FaExclamationTriangle />
+              <span>Only upload bank statement documents (checking/savings account statements)</span>
+            </div>
           </div>
 
           <div {...getRootProps()} style={dropzoneStyle}>
             <input {...getInputProps()} />
-            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🏦</div>
+            <FaUniversity style={{ fontSize: '3rem', marginBottom: '1rem', color: colors.foreground }} />
             {isDragActive ? (
-              <p style={{ color: colors.primary.blue, fontWeight: '500' }}>
+              <p style={{ color: primary, fontWeight: '500' }}>
                 Drop the bank statement here...
               </p>
             ) : (
               <div>
-                <p style={{ color: colors.neutral.gray700, marginBottom: '0.5rem' }}>
+                <p style={{ color: colors.foreground, marginBottom: '0.5rem' }}>
                   Drop your bank statement here or click to browse
                 </p>
-                <p style={{ color: colors.neutral.gray500, fontSize: '0.875rem' }}>
+                <p style={{ color: colors.mutedForeground, fontSize: '0.875rem' }}>
                   Bank Statements Only - JPG, JPEG, PNG, PDF
                 </p>
               </div>
@@ -223,7 +490,7 @@ const BankStatementAnalysis = () => {
           {file && (
             <div style={{ marginTop: '1.5rem' }}>
               <div style={{
-                backgroundColor: colors.primary.lightBlue,
+                backgroundColor: colors.muted,
                 padding: '1rem',
                 borderRadius: '8px',
               }}>
@@ -240,7 +507,8 @@ const BankStatementAnalysis = () => {
                     style={{
                       width: '100%',
                       borderRadius: '8px',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                      border: `1px solid ${colors.border}`
                     }}
                   />
                 </div>
@@ -274,17 +542,17 @@ const BankStatementAnalysis = () => {
 
         {/* Results Section */}
         <div style={cardStyle}>
-          <h2 style={{ color: colors.primary.navy, marginBottom: '1.5rem' }}>
+          <h2 style={{ color: colors.foreground, marginBottom: '1.5rem' }}>
             Analysis Results
           </h2>
 
           {!results && !loading && (
             <div style={{
-              backgroundColor: colors.primary.lightBlue,
+              backgroundColor: colors.muted,
               padding: '2rem',
               borderRadius: '8px',
               textAlign: 'center',
-              color: colors.primary.navy,
+              color: colors.foreground,
             }}>
               <p>Upload a bank statement on the left to begin analysis</p>
             </div>
@@ -292,265 +560,298 @@ const BankStatementAnalysis = () => {
 
           {loading && (
             <div style={{ textAlign: 'center', padding: '3rem' }}>
-              <div className="spin" style={{
+              <FaCog className="spin" style={{
                 fontSize: '3rem',
-                color: colors.primary.blue,
-              }}>⚙️</div>
+                color: primary,
+              }} />
               <p style={{ marginTop: '1rem', color: colors.neutral.gray600 }}>
                 Analyzing bank statement...
               </p>
             </div>
           )}
 
-          {results && (
+          {analysisData && (
             <div className="fade-in">
-              {/* Fraud Detection Results */}
-              {fraudResults && (() => {
-                // Determine risk level and colors
-                const riskScore = fraudResults.risk_score;
-                let riskLevel, bgColor, borderColor, textColor, emoji, explanation;
-
-                if (riskScore >= 0.7) {
-                  riskLevel = 'HIGH RISK';
-                  bgColor = '#ffebee';  // Light red
-                  borderColor = '#d32f2f';  // Dark red
-                  textColor = '#d32f2f';
-                  emoji = '🔴';
-                  explanation = 'This document shows multiple high-risk fraud indicators. Manual review recommended.';
-                } else if (riskScore >= 0.45) {
-                  riskLevel = 'MEDIUM RISK';
-                  bgColor = '#fff3e0';  // Light orange
-                  borderColor = '#f57c00';  // Dark orange
-                  textColor = '#f57c00';
-                  emoji = '🟡';
-                  explanation = 'This document has some suspicious patterns. Consider additional verification.';
-                } else if (riskScore >= 0.25) {
-                  riskLevel = 'LOW RISK';
-                  bgColor = '#e3f2fd';  // Light blue
-                  borderColor = '#1976d2';  // Dark blue
-                  textColor = '#1976d2';
-                  emoji = '🔵';
-                  explanation = 'This document has minor concerns. Likely legitimate but worth noting.';
-                } else {
-                  riskLevel = 'CLEAN';
-                  bgColor = '#e8f5e9';  // Light green
-                  borderColor = '#388e3c';  // Dark green
-                  textColor = '#388e3c';
-                  emoji = '🟢';
-                  explanation = 'This document appears to be legitimate with no significant fraud indicators.';
-                }
+              {/* Risk Cards */}
+              {(() => {
+                const fraudRiskPercent = toPercent(analysisData.fraud_risk_score ?? mlAnalysis.fraud_risk_score);
+                const modelConfidencePercent = toPercent(analysisData.model_confidence ?? mlAnalysis.model_confidence);
+                const aiConfidencePercent = toPercent(analysisData.ai_confidence ?? aiAnalysis.confidence);
+                const riskLevel = mlAnalysis.risk_level || analysisData.risk_level || 'UNKNOWN';
+                const aiRecommendation = (analysisData.ai_recommendation || aiAnalysis.recommendation || 'UNKNOWN').toUpperCase();
+                const aiColor = aiRecommendation === 'APPROVE'
+                  ? colors.status.success
+                  : aiRecommendation === 'REJECT'
+                    ? primary
+                    : colors.status.warning;
 
                 return (
-                  <div style={{
-                    backgroundColor: bgColor,
-                    border: `2px solid ${borderColor}`,
-                    borderRadius: '12px',
-                    padding: '1.5rem',
-                    marginBottom: '1.5rem',
-                  }}>
+                  <>
                     <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      marginBottom: '1rem',
-                      fontSize: '1.3rem',
-                      fontWeight: '600',
+                      ...resultCardStyle,
+                      backgroundColor: `${primary}20`,
+                      borderLeft: `4px solid ${primary}`
                     }}>
-                      <span style={{ marginRight: '0.75rem', fontSize: '2rem' }}>
-                        {emoji}
-                      </span>
-                      <span style={{ color: textColor }}>
-                        {riskLevel}
-                      </span>
+                      <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
+                        Fraud Risk Score
+                      </div>
+                      <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: primary }}>
+                        {fraudRiskPercent.toFixed(1)}%
+                      </div>
+                      <div style={{ marginTop: '0.25rem', color: colors.mutedForeground }}>
+                        Risk Level: <strong>{riskLevel}</strong>
+                      </div>
                     </div>
 
                     <div style={{
-                      marginBottom: '1rem',
-                      padding: '1rem',
-                      backgroundColor: 'rgba(255,255,255,0.7)',
-                      borderRadius: '8px',
-                      borderLeft: `4px solid ${borderColor}`,
+                      ...resultCardStyle,
+                      backgroundColor: `${colors.status.success}20`,
+                      borderLeft: `4px solid ${colors.status.success}`
                     }}>
-                      <p style={{ margin: '0.5rem 0', color: '#333' }}>
-                        <strong>Risk Score:</strong> {riskScore.toFixed(3)} / 1.000
-                      </p>
-                      <p style={{ margin: '0.5rem 0', color: textColor, fontStyle: 'italic' }}>
-                        {explanation}
-                      </p>
+                      <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
+                        Model Confidence
+                      </div>
+                      <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: colors.status.success }}>
+                        {modelConfidencePercent.toFixed(1)}%
+                      </div>
                     </div>
 
-                    {fraudResults.suspicious_indicators && fraudResults.suspicious_indicators.length > 0 && (
-                      <div style={{ marginBottom: '1rem' }}>
-                        <h4 style={{ color: textColor, marginBottom: '0.5rem' }}>🚫 Suspicious Indicators:</h4>
-                        <ul style={{ margin: '0', paddingLeft: '1.5rem', color: '#333' }}>
-                          {fraudResults.suspicious_indicators.map((indicator, idx) => (
-                            <li key={idx} style={{ marginBottom: '0.35rem' }}>{indicator}</li>
-                          ))}
-                        </ul>
+                    <div style={{
+                      ...resultCardStyle,
+                      backgroundColor: `${aiColor}20`,
+                      borderLeft: `4px solid ${aiColor}`
+                    }}>
+                      <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
+                        AI Recommendation
                       </div>
-                    )}
-
-                    {fraudResults.warnings && fraudResults.warnings.length > 0 && (
-                      <div>
-                        <h4 style={{ color: colors.status.warning, marginBottom: '0.5rem' }}>⚠️ Warnings:</h4>
-                        <ul style={{ margin: '0', paddingLeft: '1.5rem', color: colors.status.warning }}>
-                          {fraudResults.warnings.map((warning, idx) => (
-                            <li key={idx} style={{ marginBottom: '0.35rem' }}>{warning}</li>
-                          ))}
-                        </ul>
+                      <div style={{ fontSize: '2rem', fontWeight: 'bold', color: aiColor }}>
+                        {aiRecommendation}
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  </>
                 );
               })()}
 
-              {results.summary?.confidence && (
-                <div style={confidenceStyle(results.summary.confidence)}>
-                  [{results.summary.confidence >= 80 ? 'HIGH' : results.summary.confidence >= 60 ? 'MEDIUM' : 'LOW'}]
-                  Confidence: {results.summary.confidence?.toFixed(1)}%
+              {anomalies.length > 0 && (
+                <div style={{
+                  ...infoCardStyle,
+                  backgroundColor: `${colors.status.warning}10`,
+                  borderLeft: `4px solid ${colors.status.warning}`
+                }}>
+                  <h4 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                      <line x1="12" y1="9" x2="12" y2="13"/>
+                      <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    Detected Anomalies
+                  </h4>
+                  <ul style={{ color: colors.mutedForeground, paddingLeft: '1.5rem' }}>
+                    {anomalies.map((anomaly, idx) => (
+                      <li key={idx} style={{ marginBottom: '0.4rem' }}>
+                        {emphasizeAnomaly(anomaly)}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
 
-              <h3 style={{ color: colors.primary.navy, marginBottom: '1rem' }}>
-                Account Information
-              </h3>
-              <div style={resultCardStyle}>
-                <p><strong>Bank Name:</strong> {results.bank_name || 'N/A'}</p>
-                <p><strong>Account Holder:</strong> {results.account_holder || 'N/A'}</p>
-                <p><strong>Account Number:</strong> {results.account_number ? `****${results.account_number}` : 'N/A'}</p>
-                <p><strong>Statement Period:</strong> {results.statement_period || 'N/A'}</p>
-              </div>
-
-              <h3 style={{ color: colors.primary.navy, marginBottom: '1rem', marginTop: '1.5rem' }}>
-                Balance Summary
-              </h3>
-              <div style={resultCardStyle}>
-                <p><strong>Opening Balance:</strong>
-                  <span style={{ color: colors.primary.navy, fontSize: '1.1rem', fontWeight: '600', marginLeft: '0.5rem' }}>
-                    {results.balances?.opening_balance || 'N/A'}
-                  </span>
-                </p>
-                <p><strong>Ending Balance:</strong>
-                  <span style={{ color: colors.status.success, fontSize: '1.1rem', fontWeight: '600', marginLeft: '0.5rem' }}>
-                    {results.balances?.ending_balance || 'N/A'}
-                  </span>
-                </p>
-                {results.balances?.available_balance && (
-                  <p><strong>Available Balance:</strong> {results.balances.available_balance}</p>
-                )}
-                {results.balances?.current_balance && (
-                  <p><strong>Current Balance:</strong> {results.balances.current_balance}</p>
-                )}
-              </div>
-
-              {results.summary && (
-                <>
-                  <h3 style={{ color: colors.primary.navy, marginBottom: '1rem', marginTop: '1.5rem' }}>
-                    Transaction Summary
-                  </h3>
-                  <div style={resultCardStyle}>
-                    <p><strong>Total Transactions:</strong> {results.summary.transaction_count || 0}</p>
-                    <p><strong>Total Credits:</strong>
-                      <span style={{ color: colors.status.success, fontWeight: '600', marginLeft: '0.5rem' }}>
-                        {results.summary.total_credits !== null && results.summary.total_credits !== undefined
-                          ? `$${results.summary.total_credits.toFixed(2)}`
-                          : 'N/A'}
-                      </span>
-                    </p>
-                    <p><strong>Total Debits:</strong>
-                      <span style={{ color: colors.accent.red, fontWeight: '600', marginLeft: '0.5rem' }}>
-                        {results.summary.total_debits !== null && results.summary.total_debits !== undefined
-                          ? `$${Math.abs(results.summary.total_debits).toFixed(2)}`
-                          : 'N/A'}
-                      </span>
-                    </p>
-                    <p><strong>Net Activity:</strong>
-                      <span style={{
-                        color: results.summary.net_activity >= 0 ? colors.status.success : colors.accent.red,
-                        fontWeight: '600',
-                        marginLeft: '0.5rem'
-                      }}>
-                        {results.summary.net_activity !== null && results.summary.net_activity !== undefined
-                          ? `$${results.summary.net_activity.toFixed(2)}`
-                          : 'N/A'}
-                      </span>
-                    </p>
-                  </div>
-                </>
-              )}
-
-              {results.transactions && results.transactions.length > 0 && (
-                <>
-                  <h3 style={{ color: colors.primary.navy, marginBottom: '1rem', marginTop: '1.5rem' }}>
-                    Recent Transactions ({Math.min(results.transactions.length, 10)} shown)
-                  </h3>
-                  <div style={{
-                    backgroundColor: colors.background.main,
-                    padding: '1rem',
-                    borderRadius: '8px',
-                    maxHeight: '400px',
-                    overflowY: 'auto'
-                  }}>
-                    {/* Header */}
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: '80px 1fr 120px 120px',
-                      gap: '1rem',
-                      padding: '0.75rem',
-                      fontWeight: '600',
-                      color: colors.primary.navy,
-                      borderBottom: `2px solid ${colors.neutral.gray300}`,
-                      marginBottom: '0.5rem',
-                      fontSize: '0.9rem',
-                    }}>
-                      <div>Date</div>
-                      <div>Description</div>
-                      <div>Amount</div>
-                      <div>Balance</div>
-                    </div>
-
-                    {/* Transaction rows */}
-                    {results.transactions.slice(0, 10).map((txn, index) => (
-                      <div key={index} style={transactionRowStyle(txn.amount_value < 0)}>
-                        <div style={{ fontWeight: '500' }}>{txn.date || 'N/A'}</div>
-                        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {txn.description || 'No description'}
-                        </div>
-                        <div style={{
-                          fontWeight: '600',
-                          color: txn.amount_value < 0 ? colors.accent.red : colors.status.success
-                        }}>
-                          {txn.amount || 'N/A'}
-                        </div>
-                        <div style={{ fontWeight: '500' }}>{txn.balance || 'N/A'}</div>
-                      </div>
+              {criticalFactors.length > 0 && (
+                <div style={{
+                  ...infoCardStyle,
+                  backgroundColor: `${primary}10`,
+                  borderLeft: `4px solid ${primary}`
+                }}>
+                  <h4 style={{ color: colors.foreground, marginBottom: '0.75rem', fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="12" y1="8" x2="12" y2="13" />
+                      <line x1="12" y1="16" x2="12.01" y2="16" />
+                    </svg>
+                    Key Missing / Risk Factors
+                  </h4>
+                  <ul style={{ color: colors.foreground, paddingLeft: '1.5rem', marginBottom: 0 }}>
+                    {criticalFactors.map((factor, idx) => (
+                      <li key={idx} style={{ marginBottom: '0.35rem' }}>
+                        <strong>{factor}</strong>
+                      </li>
                     ))}
-                  </div>
-
-                  {results.transactions.length > 10 && (
-                    <p style={{
-                      color: colors.neutral.gray600,
-                      fontSize: '0.875rem',
-                      marginTop: '0.5rem',
-                      fontStyle: 'italic'
-                    }}>
-                      + {results.transactions.length - 10} more transactions (download JSON for full list)
-                    </p>
-                  )}
-                </>
+                  </ul>
+                </div>
               )}
 
-              <button
-                style={{
-                  ...buttonStyle,
-                  backgroundColor: colors.primary.navy,
-                  marginTop: '1.5rem',
-                }}
-                onClick={downloadJSON}
-                onMouseEnter={(e) => e.target.style.backgroundColor = colors.primary.blue}
-                onMouseLeave={(e) => e.target.style.backgroundColor = colors.primary.navy}
-              >
-                Download Full Results (JSON)
-              </button>
+              {/* Analysis Details Section - Always Display */}
+              <div style={{
+                ...infoCardStyle,
+                backgroundColor: colors.card,
+                border: `1px solid ${colors.border}`,
+              }}>
+                <h4 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"/>
+                    <path d="M12 6v6l4 2"/>
+                  </svg>
+                  Analysis Details
+                </h4>
+                
+                {aiAnalysis.summary ? (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <strong style={{ color: colors.foreground }}>Summary:</strong>
+                    <p style={{ color: colors.mutedForeground, marginTop: '0.5rem' }}>{aiAnalysis.summary}</p>
+                  </div>
+                ) : (
+                  <p style={{ color: colors.mutedForeground, fontStyle: 'italic' }}>No summary available</p>
+                )}
+
+                {Array.isArray(aiAnalysis.reasoning) && aiAnalysis.reasoning.length > 0 ? (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <strong style={{ color: colors.foreground }}>Reasoning:</strong>
+                    <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
+                      {aiAnalysis.reasoning.map((reason, idx) => (
+                        <li key={idx} style={{ marginBottom: '0.3rem' }}>{reason}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : aiAnalysis.reasoning ? (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <strong style={{ color: colors.foreground }}>Reasoning:</strong>
+                    <p style={{ color: colors.mutedForeground, marginTop: '0.5rem', whiteSpace: 'pre-wrap' }}>{aiAnalysis.reasoning}</p>
+                  </div>
+                ) : null}
+
+                {Array.isArray(aiAnalysis.key_indicators) && aiAnalysis.key_indicators.length > 0 ? (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <strong style={{ color: colors.foreground }}>Key Fraud Indicators:</strong>
+                    <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
+                      {aiAnalysis.key_indicators.map((indicator, idx) => (
+                        <li key={idx} style={{ marginBottom: '0.3rem' }}>{indicator}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <p style={{ color: colors.mutedForeground, fontStyle: 'italic' }}>No key indicators identified</p>
+                )}
+
+                {Array.isArray(aiAnalysis.actionable_recommendations) && aiAnalysis.actionable_recommendations.length > 0 && (
+                  <div>
+                    <strong style={{ color: colors.foreground }}>Actionable Recommendations:</strong>
+                    <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
+                      {aiAnalysis.actionable_recommendations.map((rec, idx) => (
+                        <li key={idx} style={{ marginBottom: '0.3rem' }}>{rec}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              {/* Risk Analysis Section - Always Display */}
+              <div style={{
+                ...infoCardStyle,
+                backgroundColor: colors.card,
+                border: `1px solid ${colors.border}`,
+              }}>
+                <h4 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M3 3v18h18"/>
+                    <path d="M18 17V9"/>
+                    <path d="M13 17V5"/>
+                    <path d="M8 17v-3"/>
+                  </svg>
+                  Risk Analysis
+                </h4>
+
+                {mlAnalysis.risk_level ? (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <strong style={{ color: colors.foreground }}>Risk Level:</strong>
+                    <span style={{
+                      marginLeft: '0.5rem',
+                      color: ['HIGH', 'CRITICAL'].includes(mlAnalysis.risk_level) ? primary : colors.status.success,
+                      fontWeight: 'bold'
+                    }}>
+                      {mlAnalysis.risk_level}
+                    </span>
+                  </div>
+                ) : (
+                  <p style={{ color: colors.mutedForeground, fontStyle: 'italic', marginBottom: '1rem' }}>Risk level not available</p>
+                )}
+
+                {Array.isArray(mlAnalysis.feature_importance) && mlAnalysis.feature_importance.length > 0 ? (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <strong style={{ color: colors.foreground }}>Top Risk Indicators:</strong>
+                    <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
+                      {mlAnalysis.feature_importance.slice(0, 5).map((item, idx) => {
+                        if (typeof item === 'string') {
+                          return <li key={idx} style={{ marginBottom: '0.3rem' }}>{item}</li>;
+                        } else if (item.feature && item.importance) {
+                          return (
+                            <li key={idx} style={{ marginBottom: '0.3rem' }}>
+                              {item.feature}: {(item.importance * 100).toFixed(1)}%
+                            </li>
+                          );
+                        }
+                        return null;
+                      })}
+                    </ul>
+                  </div>
+                ) : (
+                  <p style={{ color: colors.mutedForeground, fontStyle: 'italic', marginBottom: '1rem' }}>No risk indicators identified</p>
+                )}
+
+                {mlAnalysis.model_scores ? (
+                  <div style={{ fontSize: '0.85rem', color: colors.mutedForeground, marginTop: '1rem' }}>
+                    <strong style={{ color: colors.foreground }}>Analysis Scores:</strong>
+                    {mlAnalysis.model_scores.random_forest !== undefined && (
+                      <div style={{ marginTop: '0.5rem' }}>Random Forest: {(mlAnalysis.model_scores.random_forest * 100).toFixed(1)}%</div>
+                    )}
+                    {mlAnalysis.model_scores.xgboost !== undefined && (
+                      <div>XGBoost: {(mlAnalysis.model_scores.xgboost * 100).toFixed(1)}%</div>
+                    )}
+                    {mlAnalysis.model_scores.ensemble !== undefined && (
+                      <div>Ensemble: {(mlAnalysis.model_scores.ensemble * 100).toFixed(1)}%</div>
+                    )}
+                  </div>
+                ) : (
+                  <p style={{ color: colors.mutedForeground, fontStyle: 'italic', fontSize: '0.85rem' }}>Model scores not available</p>
+                )}
+              </div>
+
+              <div style={{
+                ...infoCardStyle,
+                backgroundColor: colors.card,
+                border: `1px solid ${colors.border}`
+              }}>
+                <p style={{ margin: 0 }}>
+                  Download results in JSON format for complete details or CSV format for dashboard/analytics integration.
+                </p>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1.5rem' }}>
+                <button
+                  style={{
+                    ...buttonStyle,
+                    backgroundColor: primary,
+                    marginTop: 0,
+                  }}
+                  onClick={downloadJSON}
+                  onMouseEnter={(e) => e.target.style.backgroundColor = colors.accent.redDark}
+                  onMouseLeave={(e) => e.target.style.backgroundColor = primary}
+                >
+                  Download JSON
+                </button>
+
+                <button
+                  style={{
+                    ...buttonStyle,
+                    backgroundColor: colors.status.success,
+                    marginTop: 0,
+                  }}
+                  onClick={downloadCSV}
+                  onMouseEnter={(e) => e.target.style.backgroundColor = colors.status.successDark || '#1b5e20'}
+                  onMouseLeave={(e) => e.target.style.backgroundColor = colors.status.success}
+                >
+                  Download CSV
+                </button>
+              </div>
             </div>
           )}
         </div>

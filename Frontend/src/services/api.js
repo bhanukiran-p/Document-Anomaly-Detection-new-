@@ -22,7 +22,9 @@ export const analyzeCheck = async (file) => {
     });
     return response.data;
   } catch (error) {
-    throw error.response?.data || { error: 'Failed to analyze check' };
+    const errorData = error.response?.data || { error: 'Failed to analyze check', message: error.message || 'Network error' };
+    console.error('Check analysis API error:', errorData);
+    throw errorData;
   }
 };
 
@@ -39,7 +41,9 @@ export const analyzePaystub = async (file) => {
     });
     return response.data;
   } catch (error) {
-    throw error.response?.data || { error: 'Failed to analyze paystub' };
+    const errorData = error.response?.data || { error: 'Failed to analyze paystub', message: error.message || 'Network error' };
+    console.error('Paystub analysis API error:', errorData);
+    throw errorData;
   }
 };
 
@@ -56,7 +60,9 @@ export const analyzeMoneyOrder = async (file) => {
     });
     return response.data;
   } catch (error) {
-    throw error.response?.data || { error: 'Failed to analyze money order' };
+    const errorData = error.response?.data || { error: 'Failed to analyze money order', message: error.message || 'Network error' };
+    console.error('Money order analysis API error:', errorData);
+    throw errorData;
   }
 };
 
@@ -73,7 +79,9 @@ export const analyzeBankStatement = async (file) => {
     });
     return response.data;
   } catch (error) {
-    throw error.response?.data || { error: 'Failed to analyze bank statement' };
+    const errorData = error.response?.data || { error: 'Failed to analyze bank statement', message: error.message || 'Network error' };
+    console.error('Bank statement analysis API error:', errorData);
+    throw errorData;
   }
 };
 
@@ -114,6 +122,51 @@ export const getFraudModelsStatus = async () => {
     return response.data;
   } catch (error) {
     throw error.response?.data || { error: 'Failed to get fraud models status' };
+  }
+};
+
+// Feedback API
+export const submitFeedback = async (analysisId, isFraud, notes = '', userId = null) => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/feedback/submit`, {
+      analysis_id: analysisId,
+      is_fraud: isFraud,
+      notes,
+      user_id: userId
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Feedback submission error:', error);
+    throw error.response?.data || { error: 'Failed to submit feedback' };
+  }
+};
+
+export const getFeedbackStats = async () => {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/feedback/stats`);
+    return response.data;
+  } catch (error) {
+    console.error('Feedback stats error:', error);
+    throw error.response?.data || { error: 'Failed to get feedback stats' };
+  }
+};
+
+// Real-time Transaction Analysis API
+export const analyzeRealTimeTransactions = async (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const response = await axios.post(`${API_BASE_URL}/real-time/analyze`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  } catch (error) {
+    const errorData = error.response?.data || { error: 'Failed to analyze transactions', message: error.message || 'Network error' };
+    console.error('Real-time transaction analysis API error:', errorData);
+    throw errorData;
   }
 };
 

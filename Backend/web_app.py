@@ -1,20 +1,21 @@
 """
 Flask Web Application for Check Extraction
-User-friendly web interface for the Google Vision API Check Extractor
+User-friendly UI layered on top of the Mindee-powered extractor.
 """
 
 from flask import Flask, render_template, request, jsonify, send_from_directory
 import os
-import json
-import importlib.util
 from werkzeug.utils import secure_filename
 from datetime import datetime
 
-# Import the module with hyphen in filename
-spec = importlib.util.spec_from_file_location("extractor_module", "production_google_vision-extractor.py")
-extractor_module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(extractor_module)
-ProductionCheckExtractor = extractor_module.ProductionCheckExtractor
+try:
+    from mindee_extractor import extract_check
+    EXTRACTOR_AVAILABLE = True
+    EXTRACTOR_ERROR = None
+except Exception as exc:
+    EXTRACTOR_AVAILABLE = False
+    EXTRACTOR_ERROR = str(exc)
+    extract_check = None
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'check-extractor-secret-key'
@@ -24,16 +25,6 @@ app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
 
 # Create uploads folder if it doesn't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-
-# Initialize the extractor
-CREDENTIALS_PATH = "google-credentials.json"
-try:
-    extractor = ProductionCheckExtractor(CREDENTIALS_PATH)
-    EXTRACTOR_AVAILABLE = True
-except Exception as e:
-    print(f"Warning: Could not initialize extractor: {e}")
-    EXTRACTOR_AVAILABLE = False
-
 
 def allowed_file(filename):
     """Check if file extension is allowed"""
@@ -53,7 +44,7 @@ def upload_file():
     if not EXTRACTOR_AVAILABLE:
         return jsonify({
             'success': False,
-            'error': 'Google Vision API not available. Check credentials.'
+            'error': f'Mindee extractor not available: {EXTRACTOR_ERROR or "missing API key"}'
         }), 500
     
     # Check if file was uploaded
@@ -81,14 +72,16 @@ def upload_file():
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
         
-        # Extract check details
-        details = extractor.extract_check_details(filepath)
+        # Extract check details via Mindee
+        result = extract_check(filepath)
+        details = result.get('extracted_data', {})
         
-        # Return results
         return jsonify({
             'success': True,
             'filename': filename,
-            'details': details
+            'details': details,
+            'raw_fields': result.get('raw_fields', {}),
+            'raw_text': result.get('raw_text')
         })
     
     except Exception as e:
@@ -120,10 +113,11 @@ if __name__ == '__main__':
     print("=" * 60)
     
     if EXTRACTOR_AVAILABLE:
-        print("[OK] Google Vision API initialized successfully")
+        print("[OK] Mindee client initialized successfully")
     else:
-        print("[WARNING] Google Vision API not available")
-        print("         Please check your credentials file")
+        print("[WARNING] Mindee extractor not available")
+        if EXTRACTOR_ERROR:
+            print(f"         Reason: {EXTRACTOR_ERROR}")
     
     print("\n[INFO] Starting web server...")
     print("[INFO] Open your browser and navigate to:")

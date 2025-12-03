@@ -2,6 +2,7 @@ import React from 'react'; // eslint-disable-line no-unused-vars
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext'; // eslint-disable-line no-unused-vars
 import Header from './components/Header';
+import Breadcrumb from './components/Breadcrumb';
 import Footer from './components/Footer';
 import ProtectedRoute from './components/ProtectedRoute'; // eslint-disable-line no-unused-vars
 import LandingPage from './pages/LandingPage';
@@ -14,11 +15,23 @@ import CheckAnalysis from './pages/CheckAnalysis';
 import PaystubAnalysis from './pages/PaystubAnalysis';
 import MoneyOrderAnalysis from './pages/MoneyOrderAnalysis';
 import BankStatementAnalysis from './pages/BankStatementAnalysis';
+import RealTimeAnalysis from './pages/RealTimeAnalysis.jsx';
+import AllDocumentsInsightsPage from './pages/AllDocumentsInsightsPage';
+import PaystubInsightsPage from './pages/PaystubInsightsPage';
 import './styles/GlobalStyles.css';
 
 function AppContent() {
   const location = useLocation();
-  const isCustomLayout = location.pathname === '/' || location.pathname === '/splash' || location.pathname === '/transaction-type' || location.pathname === '/login' || location.pathname === '/register';
+  const isCustomLayout = location.pathname === '/' || location.pathname === '/splash' || location.pathname === '/transaction-type' || location.pathname === '/login' || location.pathname === '/register' || location.pathname === '/all-documents-insights' || location.pathname === '/paystub-insights';
+  
+  // Pages that should show breadcrumb (starting from transaction-type and its children)
+  const shouldShowBreadcrumb = location.pathname === '/transaction-type' || 
+    location.pathname === '/finance' || 
+    location.pathname === '/check-analysis' || 
+    location.pathname === '/paystub-analysis' || 
+    location.pathname === '/money-order-analysis' || 
+    location.pathname === '/bank-statement-analysis' || 
+    location.pathname === '/real-time-analysis';
 
   const appStyle = {
     display: 'flex',
@@ -34,6 +47,7 @@ function AppContent() {
   return (
     <div style={appStyle}>
       {!isCustomLayout && <Header />}
+      {!isCustomLayout && shouldShowBreadcrumb && <Breadcrumb />}
       <main style={mainStyle}>
         <Routes>
           <Route path="/" element={<LandingPage />} />
@@ -46,6 +60,9 @@ function AppContent() {
           <Route path="/paystub-analysis" element={<PaystubAnalysis />} />
           <Route path="/money-order-analysis" element={<MoneyOrderAnalysis />} />
           <Route path="/bank-statement-analysis" element={<BankStatementAnalysis />} />
+          <Route path="/real-time-analysis" element={<RealTimeAnalysis />} />
+          <Route path="/all-documents-insights" element={<ProtectedRoute><AllDocumentsInsightsPage /></ProtectedRoute>} />
+          <Route path="/paystub-insights" element={<PaystubInsightsPage />} />
         </Routes>
       </main>
       {!isCustomLayout && <Footer />}

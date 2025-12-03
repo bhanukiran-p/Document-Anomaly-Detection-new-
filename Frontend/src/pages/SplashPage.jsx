@@ -29,7 +29,7 @@ const SplashPage = () => {
   };
   
   const logoImageStyle = {
-    height: '50px',
+    height: '80px',
     width: 'auto',
   };
   
@@ -320,11 +320,11 @@ const SplashPage = () => {
     <div style={pageStyle}>
       {/* Header */}
       <header style={headerStyle}>
-        <div 
+        <div
           style={{ ...logoContainerStyle, cursor: 'pointer' }}
           onClick={() => navigate('/')}
         >
-          <img src="/logo.png" alt="XFORIA DAD Logo" style={logoImageStyle} />
+          <img src="/New_FD.png" alt="XFORIA DAD Logo" style={logoImageStyle} />
           <div style={taglineStyle}>Your Guardian against Fraud</div>
         </div>
         
@@ -675,4 +675,3 @@ const SplashPage = () => {
 };
 
 export default SplashPage;
-

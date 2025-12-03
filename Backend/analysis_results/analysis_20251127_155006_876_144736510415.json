@@ -1,0 +1,83 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "Western Union",
+    "serial_number": "144736510415",
+    "serial_secondary": null,
+    "amount": "$305.00",
+    "amount_in_words": null,
+    "payee": "THE ANNA",
+    "purchaser": null,
+    "sender_address": "PORT RICHEY, FL 34673",
+    "date": null,
+    "location": "RICHEY, FL 34673",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "critical",
+      "type": "fraud_risk_critical",
+      "message": "[ESCALATE] The money order has high fraud scores from the ML models but lacks sufficient information for a definitive conclusion."
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Amount parsing confidence low"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Invalid date format"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Missing critical fields (score: 0.25)"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Issuer-specific validation failed"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Serial number doesn't match issuer pattern"
+    },
+    {
+      "severity": "critical",
+      "type": "ai_indicator",
+      "message": "High ML model fraud scores"
+    },
+    {
+      "severity": "critical",
+      "type": "ai_indicator",
+      "message": "Missing critical information in the money order data"
+    }
+  ],
+  "confidence_score": 74,
+  "raw_text": "WESTERN\nUNION\nMONEY\nORDER\nTHIS DOCUMENT CONTAINS A TRUE WATERMARK HOLD UP TO LIGHT TO VIEW\nWESTERN UNION FINANCIAL SERVICES INC. - ISSUER\nPayable at Wells Fargo Bank Grand Junction Downtown, N.A., Grand Junction, Colorado\nEnglewood, Colorado\nWESTERNI MONEY\nENION ORDER\nA 342117 D 052112\nT 1126 05\nMONEY\nWENTERTH FOR INAER Y\nKRION DER 144736510415 L 001787\nLA TENNISOWNY\n14-473651041\n$ 305.00\nLOAD THIS DIRECTION, THIS SIDE UP\nPAY EXACTLY\nTHREE HUNDRED FIVE DOLLARS AND NO CENTS\nPAY TO THE ANNA\nORDER OF\nMICHALIK\nP.O. Box 2CHASER'S ADDRESS\nPORT RICHEY, FL 34673\n0\u2446102100400\u2446 40144736510415\u2448\nCHILIENFRPORT JUNE\nTe fegant\nMONEY ORDER RECEIPT - NON NEGOTIABLE\nCHASER'S SIGNATURE\n2012\nTry the new Western Union Payments service for all your bills\nand get guaranteed proof of payment. To learn more and to\nsearch over 10,000 billers, goto WesternUnionPaysMyBills.com.\nAGT 342117 LOC 001787 DT 052112 $305.00 3HUNDRED5DOLLARS AND\nNO CENTS\nPayable to:\nRETAIN THIS MONEY ORDER RECEIPT. IT MUST BE INCLUDED WITH ALL REFUND REQUESTS. BE SURE TO READ IMPORTANT\nINFORMATION BELOW AND ON BACK\nPURCHASE A AGREEMENT: You the purchaser agree that Western Union Financial Services Inc, (WUFSI) need not stop payment\non, or replace, or refund a lost or stolen WUFSI Money Order unless (1) you fill in the face of the Money Order at the time of\npurchase, and (2) you report the loss or theft to Westem Union Financial Services Inc. in writing immediately, and (3) You provide\nWUFSI with this original Money Order receipt issued by Westem Union Financial Services Inc., Englewood, Colorado. For customer\nservice, call 1-800-999-9660\n* 1 4 4 7 3 6 5 1 0 4 1\n*\nLOAD THIS DIRECTION, THIS SIDE UP->\nColoring",
+  "timestamp": "2025-11-27T15:50:06.876780",
+  "normalized_data": {
+    "issuer_name": "Western Union",
+    "serial_primary": "144736510415",
+    "serial_secondary": null,
+    "recipient": "THE ANNA",
+    "sender_name": null,
+    "sender_address": "PORT RICHEY, FL 34673",
+    "amount_numeric": {
+      "value": 305.0,
+      "currency": "USD"
+    },
+    "amount_written": null,
+    "date": null,
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 0.6,
+  "ml_analysis": {
+    "fraud_risk_score": 1.0,
+    "risk_level": "CRITICAL",
+    "model_confidence": 0.966,
+    "model_scores": {
+      "random_forest": 0.978,
+      "xgboost": 

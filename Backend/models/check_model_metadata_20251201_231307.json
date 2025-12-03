@@ -1,0 +1,22 @@
+{
+  "document_type": "check",
+  "model_type": "random_forest",
+  "feature_names": [
+    "has_bank_name",
+    "has_payee",
+    "has_amount",
+    "has_date",
+    "has_signature",
+    "amount_value",
+    "amount_suspicious",
+    "date_valid",
+    "date_future",
+    "text_quality",
+    "suspicious_chars",
+    "missing_fields_count"
+  ],
+  "model_path": "check_risk_model_20251201_231307.pkl",
+  "scaler_path": "check_scaler_20251201_231307.pkl",
+  "trained_at": "20251201_231307",
+  "feature_count": 12
+}

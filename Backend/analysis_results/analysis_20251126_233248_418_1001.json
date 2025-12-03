@@ -1,0 +1,227 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "bank_name": "CHASE BANK",
+    "country": null,
+    "check_type": null,
+    "payee_name": "City Water Department",
+    "amount_numeric": 125.75,
+    "amount": "$125.75",
+    "amount_words": "One Hundred Twenty-Five and 75/100 DOLLARS",
+    "date": "2025-10-26",
+    "check_number": "1001",
+    "routing_number": "021000021",
+    "account_number": "987654321",
+    "memo": "Water Bill - Act 789",
+    "signature_detected": true,
+    "currency": null,
+    "payer_name": "JENNIFER CHEN",
+    "payer_address": "456 OAK AVE, ANYTOWN, NY 12345",
+    "raw_ocr_text": "CHASE BANK\nJENNIFER CHEN\n456 OAK AVE, ANYTOWN, NY 12345\n\nPAY TO THE\nORDER OF\nCity Water Department\n$125.75\n\nOne Hundred Twenty-Five and 75/100 DOLLARS\n\nMEMO\nWater Bill - Act 789\n\n021000021 987654321 1007\nCHECK # 1001\n\nDATE\n10/26/2025\n\nDOLLARS\n\nAUTHORIZED SIGNATURE\n\nJennifer Ciher\n\nORIGINAL DOCUMENT\n\n"
+  },
+  "raw_fields": {
+    "payer_name": "JENNIFER CHEN",
+    "payer_address": "456 OAK AVE, ANYTOWN, NY 12345",
+    "pay_to": "City Water Department",
+    "check_date": "2025-10-26",
+    "number_amount": 125.75,
+    "word_amount": "One Hundred Twenty-Five and 75/100 DOLLARS",
+    "bank_name": "CHASE BANK",
+    "routing_number": "021000021",
+    "account_number": "987654321",
+    "check_number": "1001",
+    "signature": true,
+    "memo": "Water Bill - Act 789"
+  },
+  "raw_text": "CHASE BANK\nJENNIFER CHEN\n456 OAK AVE, ANYTOWN, NY 12345\n\nPAY TO THE\nORDER OF\nCity Water Department\n$125.75\n\nOne Hundred Twenty-Five and 75/100 DOLLARS\n\nMEMO\nWater Bill - Act 789\n\n021000021 987654321 1007\nCHECK # 1001\n\nDATE\n10/26/2025\n\nDOLLARS\n\nAUTHORIZED SIGNATURE\n\nJennifer Ciher\n\nORIGINAL DOCUMENT\n\n",
+  "timestamp": "2025-11-26T23:32:48.417180",
+  "anomalies": [
+    "High fraud risk detected: CRITICAL (score: 100.00%)",
+    "AI recommendation: REJECT"
+  ],
+  "confidence_score": 0.9944000000000001,
+  "normalized_data": {
+    "bank_name": "CHASE BANK",
+    "country": null,
+    "check_number": "1001",
+    "routing_number": "021000021",
+    "account_number": "987654321",
+    "check_type": null,
+    "payer_name": "JENNIFER CHEN",
+    "payer_address": "456 OAK AVE, ANYTOWN, NY 12345",
+    "payee_name": "City Water Department",
+    "amount_numeric": 125.75,
+    "amount_words": "One Hundred Twenty-Five and 75/100 DOLLARS",
+    "currency": null,
+    "date": "10-26-2025",
+    "memo": "Water Bill - Act 789",
+    "signature_detected": true
+  },
+  "missing_fields": [
+    "country",
+    "check_type",
+    "currency"
+  ],
+  "ml_analysis": {
+    "fraud_risk_score": 1.0,
+    "risk_level": "CRITICAL",
+    "model_confidence": 0.972,
+    "model_scores": {
+      "random_forest": 0.983,
+      "xgboost": 0.996999979019165,
+      "ensemble": 0.992,
+      "adjusted": 1.0
+    },
+    "feature_importance": [
+      "Amount parsing confidence low",
+      "Missing critical fields (score: 0.55)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "Invalid serial format: 'N/A'",
+      "Invalid issuer: 'CHASE BANK'"
+    ],
+    "missing_field_scores": [
+      {
+        "field": "Amount (numeric)",
+        "is_present": true,
+        "max_score_percent": 95,
+        "applied_score_percent": 0
+      },
+      {
+        "field": "Amount (written)",
+        "is_present": false,
+        "max_score_percent": 80,
+        "applied_score_percent": 80
+      },
+      {
+        "field": "Serial number",
+        "is_present": false,
+        "max_score_percent": 85,
+        "applied_score_percent": 85
+      },
+      {
+        "field": "Payee / recipient",
+        "is_present": true,
+        "max_score_percent": 75,
+        "applied_score_percent": 0
+      },
+      {
+        "field": "Sender / purchaser",
+        "is_present": true,
+        "max_score_percent": 60,
+        "applied_score_percent": 0
+      },
+      {
+        "field": "Issue date",
+        "is_present": true,
+        "max_score_percent": 40,
+        "applied_score_percent": 0
+      },
+      {
+        "field": "Signature",
+        "is_present": false,
+        "max_score_percent": 70,
+        "applied_score_percent": 70
+      },
+      {
+        "field": "Issuer",
+        "is_present": true,
+        "max_score_percent": 35,
+        "applied_score_percent": 0
+      }
+    ],
+    "prediction_type": "model"
+  },
+  "ml_fraud_analysis": {
+    "fraud_risk_score": 1.0,
+    "risk_level": "CRITICAL",
+    "model_confidence": 0.972,
+    "model_scores": {
+      "random_forest": 0.983,
+      "xgboost": 0.996999979019165,
+      "ensemble": 0.992,
+      "adjusted": 1.0
+    },
+    "feature_importance": [
+      "Amount parsing confidence low",
+      "Missing critical fields (score: 0.55)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "Invalid serial format: 'N/A'",
+      "Invalid issuer: 'CHASE BANK'"
+    ],
+    "missing_field_scores": [
+      {
+        "field": "Amount (numeric)",
+        "is_present": true,
+        "max_score_percent": 95,
+        "applied_score_percent": 0
+      },
+      {
+        "field": "Amount (written)",
+        "is_present": false,
+        "max_score_percent": 80,
+        "applied_score_percent": 80
+      },
+      {
+        "field": "Serial number",
+        "is_present": false,
+        "max_score_percent": 85,
+        "applied_score_percent": 85
+      },
+      {
+        "field": "Payee / recipient",
+        "is_present": true,
+        "max_score_percent": 75,
+        "applied_score_percent": 0
+      },
+      {
+        "field": "Sender / purchaser",
+        "is_present": true,
+        "max_score_percent": 60,
+        "applied_score_percent": 0
+      },
+      {
+        "field": "Issue date",
+        "is_present": true,
+        "max_score_percent": 40,
+        "applied_score_percent": 0
+      },
+      {
+        "field": "Signature",
+        "is_present": false,
+        "max_score_percent": 70,
+        "applied_score_percent": 70
+      },
+      {
+        "field": "Issuer",
+        "is_present": true,
+        "max_score_percent": 35,
+        "applied_score_percent": 0
+      }
+    ],
+    "prediction_type": "model"
+  },
+  "ai_analysis": {
+    "recommendation": "REJECT",
+    "confidence": 0.9,
+    "summary": "High fraud risk (100.0%). Multiple red flags detected.",
+    "reasoning": "ML models indicate high probability of fraud. Critical anomalies found.",
+    "key_indicators": [
+      "Amount parsing confidence low",
+      "Missing critical fields (score: 0.55)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format"
+    ],
+    "verification_notes": "Manual verification recommended for borderline cases",
+    "training_insights": "N/A (fallback mode - training data not analyzed)",
+    "historical_comparison": "N/A (fallback mode - past cases not analyzed)",
+    "analysis_type": "rule_based",
+    "model_used": "fallback"
+  },
+  "analysis_id": "analysis_20251126_233248_418_1001",
+  "saved_timestamp": "2025-11-26T23:32:48.418170"
+}

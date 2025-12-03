@@ -1,0 +1,32 @@
+{
+  "document_type": "paystub",
+  "model_type": "random_forest",
+  "feature_names": [
+    "has_company",
+    "has_employee",
+    "has_gross",
+    "has_net",
+    "has_date",
+    "gross_pay",
+    "net_pay",
+    "tax_error",
+    "text_quality",
+    "missing_fields_count",
+    "ytd_gross",
+    "ytd_net",
+    "ytd_gross_ratio",
+    "ytd_net_ratio",
+    "has_federal_tax",
+    "has_state_tax",
+    "has_social_security",
+    "has_medicare",
+    "total_tax_amount",
+    "tax_to_gross_ratio",
+    "net_to_gross_ratio",
+    "deduction_percentage"
+  ],
+  "model_path": "paystub_risk_model_20251202_170341.pkl",
+  "scaler_path": "paystub_scaler_20251202_170341.pkl",
+  "trained_at": "20251202_170341",
+  "feature_count": 22
+}

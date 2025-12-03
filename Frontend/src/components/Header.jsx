@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { colors } from '../styles/colors';
@@ -10,30 +10,24 @@ const Header = () => {
   // eslint-disable-next-line no-unused-vars
   const { user, logout } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const logoutButtonRef = useRef(null);
 
   const handleLogout = () => {
     logout();
     setIsMenuOpen(false);
     navigate('/');
   };
-
-  // Reset button styles when sidebar opens
-  useEffect(() => {
-    if (isMenuOpen && logoutButtonRef.current) {
-      logoutButtonRef.current.style.backgroundColor = colors.accent.red;
-      logoutButtonRef.current.style.transform = 'none';
-    }
-  }, [isMenuOpen]);
   
   const headerStyle = {
-    backgroundColor: colors.neutral.white,
-    borderBottom: `2px solid ${colors.primary.navy}`,
+    backgroundColor: colors.card,
+    borderBottom: `1px solid ${colors.border}`,
     padding: '1rem 2rem',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+    position: 'sticky',
+    top: 0,
+    zIndex: 100,
+    backdropFilter: 'blur(10px)',
   };
   
   const logoStyle = {
@@ -44,25 +38,26 @@ const Header = () => {
   };
   
   const logoImageStyle = {
-    height: '50px',
+    height: '80px',
     width: 'auto',
   };
   
   const taglineStyle = {
     fontSize: '1rem',
     fontWeight: '500',
-    color: colors.accent.red,
+    color: colors.primaryColor || colors.accent?.red || '#E53935',
   };
   
   const hamburgerButtonStyle = {
     backgroundColor: 'transparent',
     border: 'none',
     fontSize: '1.5rem',
-    color: colors.primary.navy,
+    color: colors.foreground,
     cursor: 'pointer',
     padding: '0.5rem',
     display: 'flex',
     alignItems: 'center',
+    transition: 'color 0.2s',
   };
   
   const navOverlayStyle = {
@@ -71,13 +66,14 @@ const Header = () => {
     right: isMenuOpen ? 0 : '-100%',
     width: '300px',
     height: '100vh',
-    backgroundColor: colors.neutral.white,
-    boxShadow: '-4px 0 8px rgba(0,0,0,0.1)',
+    backgroundColor: colors.card,
+    boxShadow: `-4px 0 8px ${colors.background}80`,
     transition: 'right 0.3s ease',
     zIndex: 1000,
     display: 'flex',
     flexDirection: 'column',
     padding: '2rem',
+    borderLeft: `1px solid ${colors.border}`,
   };
   
   const navBackdropStyle = {
@@ -86,7 +82,7 @@ const Header = () => {
     left: 0,
     width: '100vw',
     height: '100vh',
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(3, 5, 7, 0.8)',
     zIndex: 999,
     display: isMenuOpen ? 'block' : 'none',
   };
@@ -96,9 +92,10 @@ const Header = () => {
     backgroundColor: 'transparent',
     border: 'none',
     fontSize: '1.5rem',
-    color: colors.primary.navy,
+    color: colors.foreground,
     cursor: 'pointer',
     marginBottom: '2rem',
+    transition: 'color 0.2s',
   };
   
   const navStyle = {
@@ -109,41 +106,43 @@ const Header = () => {
   
   const linkStyle = (isActive) => ({
     padding: '0.75rem 1rem',
-    borderRadius: '0.375rem',
+    borderRadius: '0.5rem',
     fontWeight: '500',
-    backgroundColor: isActive ? colors.primary.lightBlue : 'transparent',
-    color: isActive ? colors.primary.navy : colors.neutral.gray700,
+    backgroundColor: isActive ? colors.muted : 'transparent',
+    color: isActive ? (colors.primaryColor || colors.accent?.red || '#E53935') : colors.foreground,
     transition: 'all 0.2s',
     textDecoration: 'none',
     display: 'block',
   });
 
-  // eslint-disable-next-line no-unused-vars
+  const logoutButtonWrapperStyle = {
+    marginTop: 'auto',
+    paddingTop: '2rem',
+    borderTop: `1px solid ${colors.border}`,
+    display: 'flex',
+    justifyContent: 'center',
+  };
+
   const logoutButtonStyle = {
-    padding: '0.5rem 1.25rem',
-    borderRadius: '9999px', // Pill shape
-    fontWeight: '500',
-    backgroundColor: colors.accent.red,
-    color: colors.neutral.white,
+    width: '56px',
+    height: '56px',
+    borderRadius: '50%',
+    backgroundColor: colors.primaryColor || colors.accent?.red || '#E53935',
+    color: colors.primaryForeground,
     border: 'none',
     cursor: 'pointer',
-    transition: 'all 0.2s',
-    width: 'auto',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '0.5rem',
-    marginTop: '2rem',
-    borderTop: `1px solid ${colors.neutral.gray200}`,
-    paddingTop: '2rem',
-    alignSelf: 'center'
+    fontSize: '1.25rem',
+    transition: 'transform 0.2s, box-shadow 0.2s',
   };
   
   return (
     <>
       <header style={headerStyle}>
         <Link to="/" style={logoStyle}>
-          <img src="/logo.png" alt="XFORIA DAD Logo" style={logoImageStyle} />
+          <img src="/New_FD.png" alt="XFORIA DAD Logo" style={logoImageStyle} />
           <div style={taglineStyle}>
             Your Guardian against Fraud
           </div>
@@ -152,6 +151,8 @@ const Header = () => {
         <button 
           style={hamburgerButtonStyle}
           onClick={() => setIsMenuOpen(true)}
+            onMouseEnter={(e) => e.target.style.color = colors.primaryColor || colors.accent?.red || '#E53935'}
+          onMouseLeave={(e) => e.target.style.color = colors.foreground}
         >
           <FaBars />
         </button>
@@ -168,6 +169,8 @@ const Header = () => {
         <button 
           style={closeButtonStyle}
           onClick={() => setIsMenuOpen(false)}
+            onMouseEnter={(e) => e.target.style.color = colors.primaryColor || colors.accent?.red || '#E53935'}
+          onMouseLeave={(e) => e.target.style.color = colors.foreground}
         >
           <FaTimes />
         </button>
@@ -222,26 +225,36 @@ const Header = () => {
           >
             Money Order Analysis
           </Link>
+          <Link
+            to="/bank-statement-analysis"
+            style={linkStyle(location.pathname === '/bank-statement-analysis')}
+            onClick={() => setIsMenuOpen(false)}
+          >
+            Bank Statement Analysis
+          </Link>
         </nav>
 
-        <button
-          ref={logoutButtonRef}
-          style={logoutButtonStyle}
-          onClick={handleLogout}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = colors.accent.redDark;
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = colors.accent.red;
-          }}
-        >
-          <FaSignOutAlt style={{ fontSize: '1.1rem', flexShrink: 0 }} />
-          <span>Logout</span>
-        </button>
+        <div style={logoutButtonWrapperStyle}>
+          <button
+            style={logoutButtonStyle}
+            aria-label="Logout"
+            title="Logout"
+            onClick={handleLogout}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'scale(1.05)';
+              e.currentTarget.style.boxShadow = `0 0 20px ${(colors.primaryColor || colors.accent?.red || '#E53935')}60`;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'scale(1)';
+              e.currentTarget.style.boxShadow = 'none';
+            }}
+          >
+            <FaSignOutAlt />
+          </button>
+        </div>
       </div>
     </>
   );
 };
 
 export default Header;
-
