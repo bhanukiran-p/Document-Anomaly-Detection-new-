@@ -13,6 +13,8 @@ from werkzeug.utils import secure_filename
 import importlib.util
 import re
 import fitz
+import uuid
+from datetime import datetime
 from google.cloud import vision
 from auth import login_user, register_user
 from database.supabase_client import get_supabase, check_connection as check_supabase_connection
@@ -1424,6 +1426,24 @@ def analyze_real_time_transactions():
                     'message': 'AI analysis unavailable'
                 }
 
+            # Step 6: Save analyzed transactions to database
+            from database.analyzed_transactions_db import save_analyzed_transactions
+
+            batch_id = str(uuid.uuid4())
+            analysis_id = f"analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+            db_save_success, db_error = save_analyzed_transactions(
+                transactions=fraud_result.get('transactions', []),
+                batch_id=batch_id,
+                analysis_id=analysis_id,
+                model_type='transaction_fraud_model'
+            )
+
+            if db_save_success:
+                logger.info(f"Successfully saved {len(fraud_result.get('transactions', []))} transactions to database (batch: {batch_id})")
+            else:
+                logger.warning(f"Failed to save transactions to database: {db_error}")
+
             # Clean up temp file
             if os.path.exists(filepath):
                 os.remove(filepath)
@@ -1435,6 +1455,9 @@ def analyze_real_time_transactions():
                 'fraud_detection': fraud_result,
                 'insights': insights_result,
                 'agent_analysis': agent_analysis.get('agent_analysis') if agent_analysis and agent_analysis.get('success') else None,
+                'batch_id': batch_id if db_save_success else None,
+                'analysis_id': analysis_id if db_save_success else None,
+                'database_saved': db_save_success,
                 'message': 'Real-time transaction analysis completed successfully'
             }
 
@@ -1674,5 +1697,5 @@ if __name__ == '__main__':
     print(f"  - GET  /api/paystubs/insights")
     print("=" * 60)
 
-    app.run(debug=True, host='0.0.0.0', port=5001)
+    app.run(debug=False, host='0.0.0.0', port=5001, use_reloader=False)
 

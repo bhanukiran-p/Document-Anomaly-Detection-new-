@@ -128,8 +128,8 @@ const RealTimeAnalysis = () => {
     fraudProbabilityMin: '',
     fraudProbabilityMax: '',
     category: '',
-    yearStart: '',
-    yearEnd: '',
+    dateStart: '',
+    dateEnd: '',
     fraudOnly: false,
     legitimateOnly: false,
   });
@@ -138,6 +138,61 @@ const RealTimeAnalysis = () => {
   const [regeneratingPlots, setRegeneratingPlots] = useState(false);
 
   const primary = colors.primaryColor || colors.accent?.red || '#E53935';
+
+  const renderMarkdownText = (text) => {
+    if (!text) return null;
+
+    // Split by lines but preserve structure
+    const lines = text.split('\n');
+
+    return lines.map((line, idx) => {
+      // Remove markdown bold syntax
+      const cleanLine = line.replace(/\*\*/g, '');
+
+      // Check if it's a bullet point
+      if (cleanLine.trim().startsWith('-') || cleanLine.trim().startsWith('•')) {
+        const content = cleanLine.replace(/^[-•]\s*/, '').trim();
+        if (content) {
+          return (
+            <div key={idx} style={{
+              marginLeft: '1rem',
+              marginBottom: '0.5rem',
+              display: 'flex',
+              gap: '0.5rem'
+            }}>
+              <span style={{ color: colors.mutedForeground }}>•</span>
+              <span>{content}</span>
+            </div>
+          );
+        }
+      }
+
+      // Check if it's a numbered item
+      const numberedMatch = cleanLine.match(/^(\d+)\.\s*(.+)/);
+      if (numberedMatch) {
+        return (
+          <div key={idx} style={{
+            marginBottom: '0.75rem',
+            fontWeight: '600'
+          }}>
+            <span style={{ color: primary }}>{numberedMatch[1]}. </span>
+            <span>{numberedMatch[2]}</span>
+          </div>
+        );
+      }
+
+      // Regular line
+      if (cleanLine.trim()) {
+        return (
+          <div key={idx} style={{ marginBottom: '0.5rem' }}>
+            {cleanLine}
+          </div>
+        );
+      }
+
+      return null;
+    }).filter(Boolean);
+  };
 
   const formatFraudReason = (fraudType) => {
     if (!fraudType) return 'N/A';
@@ -190,11 +245,13 @@ const RealTimeAnalysis = () => {
     switch (plot.type) {
       case 'donut': {
         const data = plot.data || [];
+        console.log('🔥 DONUT DATA:', data);
         // Use ECharts for better visuals and performance
         return <EChartsDonut data={data} title={plot.title} height={height} />;
       }
       case 'line_trend': {
         const data = plot.data || [];
+        console.log('🔥 LINE DATA:', data);
         return <EChartsLine data={data} title={plot.title} height={height} />;
       }
       case 'heatmap': {
@@ -210,17 +267,22 @@ const RealTimeAnalysis = () => {
           })
         );
 
+        console.log('🔥 HEATMAP DATA:', { xLabels, yLabels, matrix });
+
         return <EChartsHeatmap data={{ matrix, labels: xLabels }} title={plot.title} height={height} />;
       }
       case 'geo_scatter': {
         const data = plot.data || [];
+        console.log('🔥 GEO DATA:', data);
         return <EChartsGeo data={data} title={plot.title} height={height} />;
       }
       case 'bar_reasons': {
         const data = plot.data || [];
+        console.log('🔥 BAR DATA:', data);
         return <EChartsBar data={data} title={plot.title} height={height} />;
       }
       case 'sankey': {
+        console.log('🔥 SANKEY DATA:', plot.data);
         return <EChartsSankey data={plot.data} title={plot.title} height={height} />;
       }
       default:
@@ -442,16 +504,6 @@ const RealTimeAnalysis = () => {
       }
     }
     
-    // For year fields, allow any input while typing (validate on blur)
-    if (filterName === 'yearStart' || filterName === 'yearEnd') {
-      // Allow empty or numeric input
-      if (value === '' || /^\d+$/.test(value)) {
-        processedValue = value;
-      } else {
-        return; // Invalid input, don't update
-      }
-    }
-    
     setFilters(prev => ({
       ...prev,
       [filterName]: processedValue
@@ -465,8 +517,8 @@ const RealTimeAnalysis = () => {
       fraudProbabilityMin: '',
       fraudProbabilityMax: '',
       category: '',
-      yearStart: '',
-      yearEnd: '',
+      dateStart: '',
+      dateEnd: '',
       fraudOnly: false,
       legitimateOnly: false,
     });
@@ -500,15 +552,27 @@ const RealTimeAnalysis = () => {
       );
     }
 
-    // Year filter
-    if (filters.yearStart !== '' || filters.yearEnd !== '') {
+    // Date filter
+    if (filters.dateStart !== '' || filters.dateEnd !== '') {
       filtered = filtered.filter(t => {
         if (!t.timestamp) return true;
-        const date = new Date(t.timestamp);
-        const year = date.getFullYear();
-        const start = filters.yearStart !== '' ? parseInt(filters.yearStart) : 1900;
-        const end = filters.yearEnd !== '' ? parseInt(filters.yearEnd) : 2100;
-        return year >= start && year <= end;
+        const txnDate = new Date(t.timestamp);
+        if (isNaN(txnDate.getTime())) return true;
+        
+        let isWithinRange = true;
+        if (filters.dateStart !== '') {
+          const startDate = new Date(`${filters.dateStart}T00:00:00`);
+          if (!isNaN(startDate.getTime())) {
+            isWithinRange = isWithinRange && txnDate >= startDate;
+          }
+        }
+        if (filters.dateEnd !== '' && isWithinRange) {
+          const endDate = new Date(`${filters.dateEnd}T23:59:59.999`);
+          if (!isNaN(endDate.getTime())) {
+            isWithinRange = isWithinRange && txnDate <= endDate;
+          }
+        }
+        return isWithinRange;
       });
     }
 
@@ -571,8 +635,8 @@ const RealTimeAnalysis = () => {
         fraud_probability_min: filters.fraudProbabilityMin ? parseFloat(filters.fraudProbabilityMin) : null,
         fraud_probability_max: filters.fraudProbabilityMax ? parseFloat(filters.fraudProbabilityMax) : null,
         category: filters.category || null,
-        year_start: filters.yearStart ? parseInt(filters.yearStart) : null,
-        year_end: filters.yearEnd ? parseInt(filters.yearEnd) : null,
+        date_start: filters.dateStart || null,
+        date_end: filters.dateEnd || null,
         fraud_only: filters.fraudOnly || false,
         legitimate_only: filters.legitimateOnly || false,
       };
@@ -1015,8 +1079,8 @@ const RealTimeAnalysis = () => {
       borderLeft: `4px solid #10b981`,
     },
     plotsGrid: {
-      display: 'flex',
-      flexDirection: 'column',
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(500px, 1fr))',
       gap: '2rem',
       marginTop: '2rem',
     },
@@ -1816,45 +1880,19 @@ const RealTimeAnalysis = () => {
                   <h4 style={{ color: colors.foreground, fontSize: '0.95rem', marginBottom: '0.75rem', fontWeight: '600' }}>
                     Key Insights
                   </h4>
-                  {insightPoints.length > 0 ? (
-                    <ul style={{
-                      backgroundColor: colors.muted,
-                      padding: '1rem 1.25rem',
-                      borderRadius: '0.5rem',
-                      border: `1px solid ${colors.border}`,
-                      fontSize: '0.9rem',
-                      color: colors.foreground,
-                      lineHeight: '1.6',
-                      maxHeight: '220px',
-                      overflowY: 'auto',
-                      margin: 0,
-                      listStyle: 'disc',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '0.5rem'
-                    }}>
-                      {insightPoints.map((point, idx) => (
-                        <li key={idx} style={{ marginLeft: '1rem' }}>
-                          {point}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <div style={{
-                      backgroundColor: colors.muted,
-                      padding: '1rem',
-                      borderRadius: '0.5rem',
-                      border: `1px solid ${colors.border}`,
-                      fontSize: '0.9rem',
-                      color: colors.foreground,
-                      lineHeight: '1.6',
-                      maxHeight: '200px',
-                      overflowY: 'auto',
-                      whiteSpace: 'pre-line'
-                    }}>
-                      {agentInsights}
-                    </div>
-                  )}
+                  <div style={{
+                    backgroundColor: colors.muted,
+                    padding: '1rem',
+                    borderRadius: '0.5rem',
+                    border: `1px solid ${colors.border}`,
+                    fontSize: '0.9rem',
+                    color: colors.foreground,
+                    lineHeight: '1.6',
+                    maxHeight: '400px',
+                    overflowY: 'auto'
+                  }}>
+                    {renderMarkdownText(agentInsights)}
+                  </div>
                 </div>
               )}
 
@@ -1865,19 +1903,24 @@ const RealTimeAnalysis = () => {
                     Recommendations
                   </h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    {analysisResult.agent_analysis.recommendations.slice(0, 5).map((rec, idx) => (
-                      <div key={idx} style={{
-                        backgroundColor: colors.muted,
-                        padding: '0.75rem',
-                        borderRadius: '0.5rem',
-                        border: `1px solid ${colors.border}`,
-                        borderLeft: `3px solid ${primary}`,
-                        fontSize: '0.85rem',
-                        color: colors.foreground
-                      }}>
-                        {rec}
-                      </div>
-                    ))}
+                    {analysisResult.agent_analysis.recommendations.slice(0, 7).map((rec, idx) => {
+                      // Remove markdown bold syntax and bullet points from start
+                      const cleanRec = rec.replace(/\*\*/g, '').replace(/^[-•]\s*/, '').trim();
+                      return (
+                        <div key={idx} style={{
+                          backgroundColor: colors.muted,
+                          padding: '0.75rem 1rem',
+                          borderRadius: '0.5rem',
+                          border: `1px solid ${colors.border}`,
+                          borderLeft: `3px solid ${primary}`,
+                          fontSize: '0.85rem',
+                          color: colors.foreground,
+                          lineHeight: '1.5'
+                        }}>
+                          {cleanRec}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -1955,160 +1998,77 @@ const RealTimeAnalysis = () => {
                     />
                   </div>
                   <div>
-                    <label style={styles.label}>
-                      Min Fraud Probability
-                      <span style={{ fontSize: '0.75rem', color: colors.mutedForeground, marginLeft: '0.5rem' }}>
-                        (0.00 = 0%, 1.00 = 100%)
-                      </span>
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="1"
+                    <label style={styles.label}>Min Fraud Probability</label>
+                    <select
                       value={filters.fraudProbabilityMin}
                       onChange={(e) => handleFilterChange('fraudProbabilityMin', e.target.value)}
-                      onBlur={(e) => {
-                        const val = parseFloat(e.target.value);
-                        if (!isNaN(val)) {
-                          const clamped = Math.max(0, Math.min(1, val));
-                          if (clamped !== val) {
-                            handleFilterChange('fraudProbabilityMin', clamped.toString());
-                          }
-                        }
-                      }}
-                      placeholder="0.00"
-                      style={{
-                        ...styles.input,
-                        borderColor: filters.fraudProbabilityMin && (parseFloat(filters.fraudProbabilityMin) < 0 || parseFloat(filters.fraudProbabilityMin) > 1) 
-                          ? '#ef4444' 
-                          : styles.input.borderColor
-                      }}
-                    />
-                    {filters.fraudProbabilityMin && (parseFloat(filters.fraudProbabilityMin) < 0 || parseFloat(filters.fraudProbabilityMin) > 1) && (
-                      <div style={{ fontSize: '0.75rem', color: '#ef4444', marginTop: '0.25rem' }}>
-                        Must be between 0.00 and 1.00
-                      </div>
-                    )}
+                      style={styles.input}
+                    >
+                      <option value="">-- Select Min --</option>
+                      <option value="0">0% (All)</option>
+                      <option value="0.1">10%</option>
+                      <option value="0.2">20%</option>
+                      <option value="0.3">30%</option>
+                      <option value="0.4">40%</option>
+                      <option value="0.5">50%</option>
+                      <option value="0.6">60%</option>
+                      <option value="0.7">70%</option>
+                      <option value="0.8">80%</option>
+                      <option value="0.9">90%</option>
+                    </select>
                   </div>
                   <div>
-                    <label style={styles.label}>
-                      Max Fraud Probability
-                      <span style={{ fontSize: '0.75rem', color: colors.mutedForeground, marginLeft: '0.5rem' }}>
-                        (0.00 = 0%, 1.00 = 100%)
-                      </span>
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="1"
+                    <label style={styles.label}>Max Fraud Probability</label>
+                    <select
                       value={filters.fraudProbabilityMax}
                       onChange={(e) => handleFilterChange('fraudProbabilityMax', e.target.value)}
-                      onBlur={(e) => {
-                        const val = parseFloat(e.target.value);
-                        if (!isNaN(val)) {
-                          const clamped = Math.max(0, Math.min(1, val));
-                          if (clamped !== val) {
-                            handleFilterChange('fraudProbabilityMax', clamped.toString());
-                          }
-                        }
-                      }}
-                      placeholder="1.00"
-                      style={{
-                        ...styles.input,
-                        borderColor: filters.fraudProbabilityMax && (parseFloat(filters.fraudProbabilityMax) < 0 || parseFloat(filters.fraudProbabilityMax) > 1) 
-                          ? '#ef4444' 
-                          : styles.input.borderColor
-                      }}
-                    />
-                    {filters.fraudProbabilityMax && (parseFloat(filters.fraudProbabilityMax) < 0 || parseFloat(filters.fraudProbabilityMax) > 1) && (
-                      <div style={{ fontSize: '0.75rem', color: '#ef4444', marginTop: '0.25rem' }}>
-                        Must be between 0.00 and 1.00
-                      </div>
-                    )}
+                      style={styles.input}
+                    >
+                      <option value="">-- Select Max --</option>
+                      <option value="0.1">10%</option>
+                      <option value="0.2">20%</option>
+                      <option value="0.3">30%</option>
+                      <option value="0.4">40%</option>
+                      <option value="0.5">50%</option>
+                      <option value="0.6">60%</option>
+                      <option value="0.7">70%</option>
+                      <option value="0.8">80%</option>
+                      <option value="0.9">90%</option>
+                      <option value="1">100%</option>
+                    </select>
                   </div>
                   <div>
                     <label style={styles.label}>Category</label>
-                    <input
-                      type="text"
+                    <select
                       value={filters.category}
                       onChange={(e) => handleFilterChange('category', e.target.value)}
-                      placeholder="Filter by category"
+                      style={styles.input}
+                    >
+                      <option value="">-- All Categories --</option>
+                      {getAvailableCategories().map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={styles.label}>Start Date</label>
+                    <input
+                      type="date"
+                      value={filters.dateStart}
+                      onChange={(e) => handleFilterChange('dateStart', e.target.value)}
                       style={styles.input}
                     />
                   </div>
                   <div>
-                    <label style={styles.label}>
-                      Start Year
-                      <span style={{ fontSize: '0.75rem', color: colors.mutedForeground, marginLeft: '0.5rem' }}>
-                        (1900-2100)
-                      </span>
-                    </label>
+                    <label style={styles.label}>End Date</label>
                     <input
-                      type="number"
-                      min="1900"
-                      max="2100"
-                      value={filters.yearStart}
-                      onChange={(e) => handleFilterChange('yearStart', e.target.value)}
-                      onBlur={(e) => {
-                        const val = parseInt(e.target.value);
-                        if (!isNaN(val)) {
-                          const clamped = Math.max(1900, Math.min(2100, val));
-                          if (clamped !== val) {
-                            handleFilterChange('yearStart', clamped.toString());
-                          }
-                        }
-                      }}
-                      placeholder="1900"
-                      style={{
-                        ...styles.input,
-                        borderColor: filters.yearStart && (parseInt(filters.yearStart) < 1900 || parseInt(filters.yearStart) > 2100)
-                          ? '#ef4444'
-                          : styles.input.borderColor
-                      }}
+                      type="date"
+                      value={filters.dateEnd}
+                      onChange={(e) => handleFilterChange('dateEnd', e.target.value)}
+                      style={styles.input}
                     />
-                    {filters.yearStart && (parseInt(filters.yearStart) < 1900 || parseInt(filters.yearStart) > 2100) && (
-                      <div style={{ fontSize: '0.75rem', color: '#ef4444', marginTop: '0.25rem' }}>
-                        Must be between 1900 and 2100
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <label style={styles.label}>
-                      End Year
-                      <span style={{ fontSize: '0.75rem', color: colors.mutedForeground, marginLeft: '0.5rem' }}>
-                        (1900-2100)
-                      </span>
-                    </label>
-                    <input
-                      type="number"
-                      min="1900"
-                      max="2100"
-                      value={filters.yearEnd}
-                      onChange={(e) => handleFilterChange('yearEnd', e.target.value)}
-                      onBlur={(e) => {
-                        const val = parseInt(e.target.value);
-                        if (!isNaN(val)) {
-                          const clamped = Math.max(1900, Math.min(2100, val));
-                          if (clamped !== val) {
-                            handleFilterChange('yearEnd', clamped.toString());
-                          }
-                        }
-                      }}
-                      placeholder="2100"
-                      style={{
-                        ...styles.input,
-                        borderColor: filters.yearEnd && (parseInt(filters.yearEnd) < 1900 || parseInt(filters.yearEnd) > 2100)
-                          ? '#ef4444'
-                          : styles.input.borderColor
-                      }}
-                    />
-                    {filters.yearEnd && (parseInt(filters.yearEnd) < 1900 || parseInt(filters.yearEnd) > 2100) && (
-                      <div style={{ fontSize: '0.75rem', color: '#ef4444', marginTop: '0.25rem' }}>
-                        Must be between 1900 and 2100
-                      </div>
-                    )}
                   </div>
                 </div>
                 
