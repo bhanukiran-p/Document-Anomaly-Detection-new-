@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
 import { colors } from '../styles/colors';
@@ -334,6 +334,14 @@ const AllDocumentsInsights = () => {
     },
     multiple: false
   });
+
+  // Auto-fetch data when component mounts or switches to API mode
+  useEffect(() => {
+    if (inputMode === 'api' && documentsList.length === 0 && !loadingDocumentsList && !csvData) {
+      fetchDocumentsList(null, null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inputMode]);
 
   const fetchDocumentsList = async (dateFilter = null, documentType = null) => {
     setLoadingDocumentsList(true);
