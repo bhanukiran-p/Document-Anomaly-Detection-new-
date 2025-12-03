@@ -5,7 +5,7 @@ import {
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, AreaChart, Area,
   ComposedChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine
 } from 'recharts';
-import { FaUpload, FaCog } from 'react-icons/fa';
+import { FaUpload, FaCog, FaRedo } from 'react-icons/fa';
 
 // Custom Tooltip Component
 const CustomTooltip = ({ active, payload, label }) => {
@@ -725,6 +725,38 @@ const PaystubInsights = () => {
               ))}
             </select>
           )}
+
+          <button
+            onClick={() => {
+              setSearchQuery('');
+              setEmployerFilter(null);
+              setDateFilter(null);
+              setFraudTypeFilter(null);
+            }}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '4px',
+              border: `1px solid ${colors.border}`,
+              backgroundColor: colors.secondary,
+              color: colors.foreground,
+              cursor: 'pointer',
+              fontSize: '14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.backgroundColor = colors.muted;
+              e.target.style.borderColor = primary;
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.backgroundColor = colors.secondary;
+              e.target.style.borderColor = colors.border;
+            }}
+          >
+            <FaRedo /> Reset Filters
+          </button>
 
           <span style={styles.recordCount}>
             Showing {filteredData.length} of {totalRecords} paystubs
