@@ -44,7 +44,9 @@ const PaystubInsights = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState(null); // null, 'last_30', 'last_60', 'last_90', 'older'
   const [employerFilter, setEmployerFilter] = useState(null);
+  const [fraudTypeFilter, setFraudTypeFilter] = useState(null);
   const [availableEmployers, setAvailableEmployers] = useState([]);
+  const [availableFraudTypes, setAvailableFraudTypes] = useState([]);
   const [totalRecords, setTotalRecords] = useState(0);
 
   const parseCSV = (text) => {
@@ -284,6 +286,28 @@ const PaystubInsights = () => {
         const employers = [...new Set(rows.map(r => r['employer_name'] || 'Unknown'))];
         setAvailableEmployers(employers.sort());
 
+        // Extract available fraud types
+        const fraudTypes = new Set();
+        rows.forEach(r => {
+          const fraudType = r['fraud_types'];
+          if (fraudType) {
+            if (Array.isArray(fraudType)) {
+              fraudType.forEach(ft => {
+                const typeStr = String(ft || '').trim();
+                if (typeStr && typeStr !== 'No Flag' && typeStr !== 'null' && typeStr !== 'undefined') {
+                  fraudTypes.add(typeStr.replace(/_/g, ' '));
+                }
+              });
+            } else {
+              const typeStr = String(fraudType || '').trim();
+              if (typeStr && typeStr !== 'No Flag' && typeStr !== 'null' && typeStr !== 'undefined') {
+                fraudTypes.add(typeStr.replace(/_/g, ' '));
+              }
+            }
+          }
+        });
+        setAvailableFraudTypes(Array.from(fraudTypes).sort());
+
         const processed = processData(rows);
         setCsvData(processed);
         setPaystubsList(rows);
@@ -316,6 +340,28 @@ const PaystubInsights = () => {
 
       const employers = [...new Set(rows.map(r => r.employer_name || 'Unknown'))];
       setAvailableEmployers(employers.sort());
+
+      // Extract available fraud types
+      const fraudTypes = new Set();
+      rows.forEach(r => {
+        const fraudType = r.fraud_types;
+        if (fraudType) {
+          if (Array.isArray(fraudType)) {
+            fraudType.forEach(ft => {
+              const typeStr = String(ft || '').trim();
+              if (typeStr && typeStr !== 'No Flag' && typeStr !== 'null' && typeStr !== 'undefined') {
+                fraudTypes.add(typeStr.replace(/_/g, ' '));
+              }
+            });
+          } else {
+            const typeStr = String(fraudType || '').trim();
+            if (typeStr && typeStr !== 'No Flag' && typeStr !== 'null' && typeStr !== 'undefined') {
+              fraudTypes.add(typeStr.replace(/_/g, ' '));
+            }
+          }
+        }
+      });
+      setAvailableFraudTypes(Array.from(fraudTypes).sort());
 
       const processed = processData(rows);
       setCsvData(processed);
@@ -358,11 +404,33 @@ const PaystubInsights = () => {
       });
     }
 
+    // Filter by fraud type
+    if (fraudTypeFilter && fraudTypeFilter !== '' && fraudTypeFilter !== 'All Fraud Types') {
+      filtered = filtered.filter(p => {
+        const fraudType = p.fraud_types;
+        if (!fraudType) return false;
+        
+        // Handle different formats: string, array, or null
+        if (Array.isArray(fraudType)) {
+          return fraudType.some(ft => {
+            const typeStr = String(ft || '').trim();
+            return typeStr === fraudTypeFilter || typeStr.replace(/_/g, ' ') === fraudTypeFilter;
+          });
+        } else {
+          const typeStr = String(fraudType || '').trim();
+          return typeStr === fraudTypeFilter || typeStr.replace(/_/g, ' ') === fraudTypeFilter;
+        }
+      });
+    }
+
     return filtered;
   };
 
   const filteredData = getFilteredData();
+  // Always process filtered data - if no filters, filteredData === allPaystubsData
   const processedData = filteredData.length > 0 ? processData(filteredData, employerFilter) : null;
+  // Use processedData when available (from filters or initial load), fallback to csvData
+  const displayData = processedData || csvData;
 
   const primary = colors.primaryColor || colors.accent?.red || '#E53935';
   const COLORS = [
@@ -431,7 +499,7 @@ const PaystubInsights = () => {
       )}
 
       {/* Filters Section */}
-      {(csvData || processedData) && (
+      {displayData && (
         <div style={styles.filtersSection}>
           <input
             type="text"
@@ -464,6 +532,19 @@ const PaystubInsights = () => {
             <option value="older">Older</option>
           </select>
 
+          {availableFraudTypes.length > 0 && (
+            <select
+              value={fraudTypeFilter || ''}
+              onChange={(e) => setFraudTypeFilter(e.target.value || null)}
+              style={styles.select}
+            >
+              <option value="">All Fraud Types</option>
+              {availableFraudTypes.map(fraudType => (
+                <option key={fraudType} value={fraudType}>{fraudType}</option>
+              ))}
+            </select>
+          )}
+
           <span style={styles.recordCount}>
             Showing {filteredData.length} of {totalRecords} paystubs
           </span>
@@ -474,43 +555,43 @@ const PaystubInsights = () => {
       {loadingPaystubsList && <div style={styles.loading}>Fetching paystubs from database...</div>}
 
       {/* Summary KPI Cards */}
-      {(csvData || processedData) && (
+      {displayData && (
         <div style={styles.kpiContainer}>
           <div style={styles.kpiCard}>
-            <div style={styles.kpiValue}>{(csvData || processedData).summary.totalPaystubs}</div>
+            <div style={styles.kpiValue}>{displayData.summary.totalPaystubs}</div>
             <div style={styles.kpiLabel}>Total Paystubs</div>
           </div>
           <div style={styles.kpiCard}>
-            <div style={styles.kpiValue}>{(csvData || processedData).summary.avgFraudRisk}%</div>
+            <div style={styles.kpiValue}>{displayData.summary.avgFraudRisk}%</div>
             <div style={styles.kpiLabel}>Avg Fraud Risk</div>
           </div>
           <div style={styles.kpiCard}>
-            <div style={styles.kpiValue}>${(csvData || processedData).summary.avgGrossPay}</div>
+            <div style={styles.kpiValue}>${displayData.summary.avgGrossPay}</div>
             <div style={styles.kpiLabel}>Avg Gross Pay</div>
           </div>
           <div style={styles.kpiCard}>
-            <div style={styles.kpiValue}>${(csvData || processedData).summary.avgNetPay}</div>
+            <div style={styles.kpiValue}>${displayData.summary.avgNetPay}</div>
             <div style={styles.kpiLabel}>Avg Net Pay</div>
           </div>
           <div style={styles.kpiCard}>
-            <div style={styles.kpiValue}>{(csvData || processedData).summary.uniqueEmployers}</div>
+            <div style={styles.kpiValue}>{displayData.summary.uniqueEmployers}</div>
             <div style={styles.kpiLabel}>Unique Employers</div>
           </div>
           <div style={styles.kpiCard}>
-            <div style={styles.kpiValue}>{(csvData || processedData).summary.uniqueEmployees}</div>
+            <div style={styles.kpiValue}>{displayData.summary.uniqueEmployees}</div>
             <div style={styles.kpiLabel}>Unique Employees</div>
           </div>
         </div>
       )}
 
       {/* Charts Section */}
-      {(csvData || processedData) && (
+      {displayData && (
         <div style={styles.chartsContainer}>
           {/* Risk Distribution */}
           <div style={styles.chartBox}>
             <h3 style={styles.chartTitle}>Fraud Risk Distribution</h3>
             <ResponsiveContainer width="100%" height={320}>
-              <BarChart data={(csvData || processedData).riskDistribution} margin={{ top: 10, right: 20, left: 10, bottom: 10 }}>
+              <BarChart data={displayData.riskDistribution} margin={{ top: 10, right: 20, left: 10, bottom: 10 }}>
                 <defs>
                   <linearGradient id="riskGradient" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor={primary} stopOpacity={1} />
@@ -543,7 +624,7 @@ const PaystubInsights = () => {
             <ResponsiveContainer width="100%" height={320}>
               <PieChart>
                 <Pie
-                  data={(csvData || processedData).recommendationData}
+                  data={displayData.recommendationData}
                   cx="50%"
                   cy="50%"
                   labelLine={false}
@@ -555,7 +636,7 @@ const PaystubInsights = () => {
                   stroke={colors.card}
                   strokeWidth={2}
                 >
-                  {(csvData || processedData).recommendationData.map((entry, index) => {
+                  {displayData.recommendationData.map((entry, index) => {
                     const colorMap = {
                       'APPROVE': colors.status.success || '#4CAF50',
                       'REJECT': primary,
@@ -584,7 +665,7 @@ const PaystubInsights = () => {
             <ResponsiveContainer width="100%" height={320}>
               <PieChart>
                 <Pie
-                  data={(csvData || processedData).riskLevelData}
+                  data={displayData.riskLevelData}
                   cx="50%"
                   cy="50%"
                   labelLine={false}
@@ -596,7 +677,7 @@ const PaystubInsights = () => {
                   stroke={colors.card}
                   strokeWidth={2}
                 >
-                  {(csvData || processedData).riskLevelData.map((entry, index) => (
+                  {displayData.riskLevelData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
@@ -614,7 +695,7 @@ const PaystubInsights = () => {
             <h3 style={styles.chartTitle}>Risk by Employer (Top 10)</h3>
             <ResponsiveContainer width="100%" height={350}>
               <BarChart
-                data={(csvData || processedData).riskByEmployerData}
+                data={displayData.riskByEmployerData}
                 margin={{ top: 20, right: 30, left: 20, bottom: 80 }}
               >
                 <defs>
@@ -656,10 +737,10 @@ const PaystubInsights = () => {
           {/* Top High-Risk Employees */}
           <div style={styles.chartBox}>
             <h3 style={styles.chartTitle}>Top High-Risk Employees (≥50%)</h3>
-            {(csvData || processedData).topHighRiskEmployees && (csvData || processedData).topHighRiskEmployees.length > 0 ? (
+            {displayData.topHighRiskEmployees && displayData.topHighRiskEmployees.length > 0 ? (
               <ResponsiveContainer width="100%" height={350}>
                 <BarChart
-                  data={(csvData || processedData).topHighRiskEmployees}
+                  data={displayData.topHighRiskEmployees}
                   margin={{ top: 20, right: 30, left: 20, bottom: 80 }}
                 >
                 <defs>
@@ -714,13 +795,13 @@ const PaystubInsights = () => {
           </div>
 
           {/* Fraud Type Distribution */}
-          {(csvData || processedData).fraudTypeData.length > 0 && (
+          {displayData.fraudTypeData && displayData.fraudTypeData.length > 0 && (
             <div style={styles.chartBox}>
               <h3 style={styles.chartTitle}>Fraud Type Distribution</h3>
               <ResponsiveContainer width="100%" height={320}>
                 <PieChart>
                   <Pie
-                    data={(csvData || processedData).fraudTypeData}
+                    data={displayData.fraudTypeData}
                     cx="50%"
                     cy="50%"
                     labelLine={false}
@@ -732,7 +813,7 @@ const PaystubInsights = () => {
                     stroke={colors.card}
                     strokeWidth={2}
                   >
-                    {(csvData || processedData).fraudTypeData.map((entry, index) => (
+                    {displayData.fraudTypeData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
