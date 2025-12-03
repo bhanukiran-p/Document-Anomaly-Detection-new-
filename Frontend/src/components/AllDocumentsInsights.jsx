@@ -274,6 +274,9 @@ const AllDocumentsInsights = () => {
       ? (riskScores.reduce((a, b) => a + b, 0) / riskScores.length * 100).toFixed(1)
       : '0.0';
     const highRiskCount = riskLevelData.highCount;
+    const highRiskPercent = totalDocuments > 0 
+      ? ((highRiskCount / totalDocuments) * 100).toFixed(1)
+      : '0.0';
 
     return {
       fraudRateData,
@@ -285,7 +288,8 @@ const AllDocumentsInsights = () => {
       metrics: {
         totalDocuments,
         avgRiskScore,
-        highRiskCount
+        highRiskCount,
+        highRiskPercent
       }
     };
   };
@@ -942,9 +946,9 @@ const AllDocumentsInsights = () => {
             </div>
             <div style={metricCardStyle}>
               <div style={{ fontSize: '2rem', fontWeight: 'bold', color: primary, marginBottom: '0.5rem' }}>
-                {csvData.metrics.highRiskCount}
+                {csvData.metrics.highRiskPercent}%
               </div>
-              <div style={{ color: colors.mutedForeground }}>High Risk Documents</div>
+              <div style={{ color: colors.mutedForeground }}>High Risk Documents %</div>
             </div>
           </div>
         </div>

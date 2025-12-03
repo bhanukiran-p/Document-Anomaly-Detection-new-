@@ -571,53 +571,112 @@ const PaystubInsights = () => {
       <h1 style={styles.title}>Paystub Insights Dashboard</h1>
 
       {/* Input Mode Selector */}
-      <div style={styles.modeSelector}>
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
         <button
+          onClick={() => {
+            setInputMode('upload');
+            setCsvData(null);
+            setError(null);
+          }}
           style={{
-            ...styles.modeButton,
+            flex: 1,
+            padding: '0.75rem',
+            borderRadius: '0.5rem',
             backgroundColor: inputMode === 'upload' ? primary : colors.secondary,
             color: inputMode === 'upload' ? colors.primaryForeground : colors.foreground,
+            border: `1px solid ${colors.border}`,
+            cursor: 'pointer',
             fontWeight: inputMode === 'upload' ? '600' : '500',
+            transition: 'all 0.3s',
           }}
-          onClick={() => setInputMode('upload')}
         >
-          <FaUpload /> CSV Upload
+          Upload CSV
         </button>
         <button
-          style={{
-            ...styles.modeButton,
-            backgroundColor: inputMode === 'api' ? primary : colors.secondary,
-            color: inputMode === 'api' ? colors.primaryForeground : colors.foreground,
-            fontWeight: inputMode === 'api' ? '600' : '500',
-          }}
           onClick={() => {
             setInputMode('api');
+            setCsvData(null);
+            setError(null);
+            setEmployerFilter(null);
+            setFraudTypeFilter(null);
+            setAllPaystubsData([]);
             fetchPaystubsFromAPI();
           }}
+          style={{
+            flex: 1,
+            padding: '0.75rem',
+            borderRadius: '0.5rem',
+            backgroundColor: inputMode === 'api' ? primary : colors.secondary,
+            color: inputMode === 'api' ? colors.primaryForeground : colors.foreground,
+            border: `1px solid ${colors.border}`,
+            cursor: 'pointer',
+            fontWeight: inputMode === 'api' ? '600' : '500',
+            transition: 'all 0.3s',
+          }}
         >
-          <FaCog /> Database
+          Live Data
         </button>
       </div>
 
-      {error && <div style={styles.error}>{error}</div>}
-
       {/* CSV Upload Mode */}
       {inputMode === 'upload' && (
-        <div
-          {...getRootProps()}
-          style={{...styles.dropzone, ...(isDragActive ? styles.dropzoneActive : {})}}
-        >
-          <input {...getInputProps()} />
-          <FaUpload size={32} style={{marginBottom: '10px'}} />
-          {isDragActive ? (
-            <p>Drop CSV file here...</p>
-          ) : (
-            <>
-              <p>Drag and drop CSV file here, or click to select</p>
-              <small>Expected columns: paystub_id, employee_name, employer_name, gross_pay, net_pay, fraud_risk_score, ai_recommendation, fraud_types, created_at</small>
-            </>
+        <>
+          <div
+            {...getRootProps()}
+            style={{
+              border: `2px dashed ${isDragActive ? primary : colors.border}`,
+              borderRadius: '0.75rem',
+              padding: '3rem',
+              textAlign: 'center',
+              backgroundColor: isDragActive ? colors.muted : colors.secondary,
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              marginBottom: '1.5rem',
+            }}
+          >
+            <input {...getInputProps()} />
+            <FaUpload style={{ fontSize: '2rem', marginBottom: '1rem', color: colors.foreground }} />
+            {isDragActive ? (
+              <p style={{ color: primary, fontWeight: '500' }}>
+                Drop the CSV file here...
+              </p>
+            ) : (
+              <div>
+                <p style={{ color: colors.foreground, marginBottom: '0.5rem' }}>
+                  Drag and drop your CSV file here, or click to browse
+                </p>
+                <p style={{ color: colors.mutedForeground, fontSize: '0.875rem' }}>
+                  CSV file with paystub analysis data
+                </p>
+              </div>
+            )}
+          </div>
+
+          {error && inputMode === 'upload' && (
+            <div style={{
+              backgroundColor: colors.accent.redLight,
+              color: colors.accent.red,
+              padding: '1rem',
+              borderRadius: '8px',
+              marginTop: '1rem',
+              fontWeight: '500',
+            }}>
+              {error}
+            </div>
           )}
-        </div>
+
+          {loading && inputMode === 'upload' && (
+            <div style={{ textAlign: 'center', padding: '2rem' }}>
+              <FaCog className="spin" style={{
+                fontSize: '2rem',
+                color: primary,
+              }} />
+              <p style={{ marginTop: '0.5rem', color: colors.mutedForeground }}>
+                Processing CSV...
+              </p>
+            </div>
+          )}
+        </>
       )}
 
       {/* Filters Section */}
