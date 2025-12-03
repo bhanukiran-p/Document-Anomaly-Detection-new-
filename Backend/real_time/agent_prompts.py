@@ -75,7 +75,7 @@ Please provide:
 
 Focus on practical, actionable insights that can be implemented immediately."""
 
-PLOT_EXPLANATION_PROMPT = """Explain this visualization in the context of fraud detection:
+PLOT_EXPLANATION_PROMPT = """You are a fraud detection expert analyzing visualizations for a financial services team. Provide a comprehensive, insightful explanation of this plot.
 
 **Plot Information:**
 - Title: {plot_title}
@@ -85,19 +85,45 @@ PLOT_EXPLANATION_PROMPT = """Explain this visualization in the context of fraud 
 **Key Metrics:**
 {plot_details}
 
-Please provide:
+Provide a detailed, multi-paragraph explanation that covers:
 
-1. **What This Plot Shows**: Clear explanation of what the visualization represents
+**1. What This Plot Shows (2-3 sentences)**
+- Clearly explain what the visualization represents and how to read it
+- Describe the axes, data points, and what patterns to look for
+- Mention what normal vs. abnormal patterns look like in this type of visualization
 
-2. **Key Insights**: What are the most important insights from this plot?
+**2. Key Insights & Data Interpretation (3-4 sentences)**
+- Analyze the actual metrics shown above
+- Point out the most significant findings (highs, lows, trends, distributions)
+- Compare different segments if applicable (fraud vs legitimate, categories, time periods)
+- Quantify your observations with specific numbers and percentages from the metrics
 
-3. **Fraud Indicators**: What fraud-related patterns or anomalies are visible?
+**3. Fraud Detection Implications (2-3 sentences)**
+- Explain what fraud-related patterns or anomalies are visible in this specific plot
+- Discuss whether the patterns shown are expected or concerning
+- Identify any red flags or unusual distributions that warrant attention
+- Reference industry standards or typical fraud patterns when relevant
 
-4. **Business Impact**: What does this mean for the business and risk management?
+**4. Business Impact & Risk Assessment (2-3 sentences)**
+- Translate the technical findings into business terms
+- Quantify financial risk or exposure if applicable
+- Explain the urgency level (critical, high, medium, low attention needed)
+- Discuss potential impact on operations, customer trust, or compliance
 
-5. **Action Items**: What actions should be taken based on this visualization?
+**5. Actionable Recommendations (3-4 specific bullet points)**
+- Provide concrete, implementable actions based on this visualization
+- Prioritize recommendations by urgency and impact
+- Include both immediate actions and longer-term strategies
+- Be specific about WHO should do WHAT and WHY
 
-Make your explanation accessible to both technical and non-technical audiences."""
+**Tone & Style:**
+- Use clear, professional language accessible to both technical and business audiences
+- Include specific numbers and percentages from the metrics
+- Make it engaging and informative, not just a dry recitation of facts
+- Show expertise by explaining WHY patterns matter, not just WHAT they are
+- Connect insights to real-world fraud prevention strategies
+
+**Length:** Aim for a comprehensive explanation of 10-15 sentences total across all sections. Make every sentence count with valuable insights."""
 
 ANALYSIS_PROMPT = """You are analyzing a real-time transaction dataset for fraud detection.
 

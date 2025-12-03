@@ -16,9 +16,16 @@ export const AuthProvider = ({ children }) => {
     const storedUser = localStorage.getItem('user');
 
     if (token && storedUser) {
-      setUser(JSON.parse(storedUser));
-      // Set default Authorization header
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      try {
+        const parsedUser = JSON.parse(storedUser);
+        setUser(parsedUser);
+        // Set default Authorization header
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      } catch (parseError) {
+        console.warn('Invalid user data in storage, clearing session.', parseError);
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('user');
+      }
     }
     setLoading(false);
   }, []);
