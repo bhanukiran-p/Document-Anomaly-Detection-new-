@@ -191,11 +191,21 @@ const RealTimeAnalysis = () => {
       case 'donut': {
         const data = plot.data || [];
         // Use ECharts for better visuals and performance
-        return <EChartsDonut data={data} title={plot.title} height={height} />;
+        return (
+          <>
+            {console.log('🔥 DONUT DATA:', data)}
+            <EChartsDonut data={data} title={plot.title} height={height} />
+          </>
+        );
       }
       case 'line_trend': {
         const data = plot.data || [];
-        return <EChartsLine data={data} title={plot.title} height={height} />;
+        return (
+          <>
+            {console.log('🔥 LINE DATA:', data)}
+            <EChartsLine data={data} title={plot.title} height={height} />
+          </>
+        );
       }
       case 'heatmap': {
         const xLabels = plot.xLabels || [];
@@ -210,18 +220,38 @@ const RealTimeAnalysis = () => {
           })
         );
 
-        return <EChartsHeatmap data={{ matrix, labels: xLabels }} title={plot.title} height={height} />;
+        return (
+          <>
+            {console.log('🔥 HEATMAP DATA:', { xLabels, yLabels, matrix, raw: dataPoints })}
+            <EChartsHeatmap data={{ matrix, labels: xLabels }} title={plot.title} height={height} />
+          </>
+        );
       }
       case 'geo_scatter': {
         const data = plot.data || [];
-        return <EChartsGeo data={data} title={plot.title} height={height} />;
+        return (
+          <>
+            {console.log('🔥 GEO DATA:', data)}
+            <EChartsGeo data={data} title={plot.title} height={height} />
+          </>
+        );
       }
       case 'bar_reasons': {
         const data = plot.data || [];
-        return <EChartsBar data={data} title={plot.title} height={height} />;
+        return (
+          <>
+            {console.log('🔥 BAR DATA:', data)}
+            <EChartsBar data={data} title={plot.title} height={height} />
+          </>
+        );
       }
       case 'sankey': {
-        return <EChartsSankey data={plot.data} title={plot.title} height={height} />;
+        return (
+          <>
+            {console.log('🔥 SANKEY DATA:', plot.data)}
+            <EChartsSankey data={plot.data} title={plot.title} height={height} />
+          </>
+        );
       }
       default:
         return (

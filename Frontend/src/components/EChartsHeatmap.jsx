@@ -137,7 +137,6 @@ import ReactECharts from 'echarts-for-react';
 const EChartsHeatmap = ({ data, title, height = 400 }) => {
   const { matrix = [], labels = [] } = data || {};
 
-  // If no data or inconsistent shapes, don't render ECharts at all
   const hasValidMatrix =
     Array.isArray(matrix) &&
     matrix.length > 0 &&
@@ -161,7 +160,6 @@ const EChartsHeatmap = ({ data, title, height = 400 }) => {
     );
   }
 
-  // Convert matrix to ECharts format, but only if both axes have labels
   const heatmapData = [];
   matrix.forEach((row, i) => {
     if (!Array.isArray(row)) return;
@@ -207,10 +205,8 @@ const EChartsHeatmap = ({ data, title, height = 400 }) => {
       textStyle: {
         color: '#e2e8f0'
       },
-      formatter: (params) => {
-        if (!params || !params.value || params.value.length < 3) {
-          return '';
-        }
+      formatter: params => {
+        if (!params || !params.value || params.value.length < 3) return '';
         const [xIdx, yIdx, rawVal] = params.value;
         const xLabel = labels[xIdx] ?? xIdx;
         const yLabel = labels[yIdx] ?? yIdx;
@@ -267,10 +263,8 @@ const EChartsHeatmap = ({ data, title, height = 400 }) => {
         data: heatmapData,
         label: {
           show: true,
-          formatter: (params) => {
-            if (!params || !params.value || params.value.length < 3) {
-              return '';
-            }
+          formatter: params => {
+            if (!params || !params.value || params.value.length < 3) return '';
             const v = params.value[2];
             return typeof v === 'number' && !Number.isNaN(v)
               ? v.toFixed(2)

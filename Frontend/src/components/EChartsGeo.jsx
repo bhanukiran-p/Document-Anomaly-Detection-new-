@@ -436,12 +436,12 @@ const EChartsGeo = ({ data, title, height = 400 }) => {
           break;
         } catch (error) {
           console.warn(`Map source failed: ${url}`, error);
-          // Continue to next source
           if (i === sources.length - 1) {
-            // Last source failed
             console.error('All map sources failed');
             if (isMounted) {
-              setMapError('Unable to load map data from any source. Please check your network connection.');
+              setMapError(
+                'Unable to load map data from any source. Please check your network connection.'
+              );
               setMapLoaded(false);
             }
           }
@@ -458,14 +458,16 @@ const EChartsGeo = ({ data, title, height = 400 }) => {
 
   if (mapError) {
     return (
-      <div style={{
-        height: `${height}px`,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: '#f87171',
-        fontSize: '0.9rem'
-      }}>
+      <div
+        style={{
+          height: `${height}px`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#f87171',
+          fontSize: '0.9rem'
+        }}
+      >
         {mapError}
       </div>
     );
@@ -473,14 +475,16 @@ const EChartsGeo = ({ data, title, height = 400 }) => {
 
   if (!mapLoaded) {
     return (
-      <div style={{
-        height: `${height}px`,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: '#94a3b8',
-        fontSize: '0.9rem'
-      }}>
+      <div
+        style={{
+          height: `${height}px`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#94a3b8',
+          fontSize: '0.9rem'
+        }}
+      >
         Loading map data...
       </div>
     );
@@ -489,14 +493,16 @@ const EChartsGeo = ({ data, title, height = 400 }) => {
   if (!data || !Array.isArray(data) || data.length === 0) {
     console.warn('EChartsGeo: No data provided');
     return (
-      <div style={{
-        height: `${height}px`,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: '#94a3b8',
-        fontSize: '0.9rem'
-      }}>
+      <div
+        style={{
+          height: `${height}px`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#94a3b8',
+          fontSize: '0.9rem'
+        }}
+      >
         No location data available
       </div>
     );
@@ -504,7 +510,6 @@ const EChartsGeo = ({ data, title, height = 400 }) => {
 
   console.log('EChartsGeo: Processing data points:', data.length);
 
-  // Convert lat/lng to ECharts format with validation
   const geoData = data
     .filter(point => {
       if (!point || typeof point !== 'object') {
@@ -541,15 +546,17 @@ const EChartsGeo = ({ data, title, height = 400 }) => {
   if (!geoData || geoData.length === 0) {
     console.warn('EChartsGeo: No valid data points after processing');
     return (
-      <div style={{
-        height: `${height}px`,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: '#94a3b8',
-        fontSize: '0.9rem'
-      }}>
+      <div
+        style={{
+          height: `${height}px`,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#94a3b8',
+          fontSize: '0.9rem'
+        }}
+      >
         <div>No valid location data available</div>
         <div style={{ fontSize: '0.75rem', marginTop: '0.5rem', color: '#64748b' }}>
           {data.length} data point(s) provided but none had valid coordinates
@@ -558,7 +565,6 @@ const EChartsGeo = ({ data, title, height = 400 }) => {
     );
   }
 
-  // Calculate symbol sizes ahead of time to avoid issues in formatter
   const counts = geoData.map(p => (p.value && p.value[2]) || 0).filter(c => c > 0);
   const maxCount = counts.length > 0 ? Math.max(...counts) : 1;
 
@@ -575,7 +581,7 @@ const EChartsGeo = ({ data, title, height = 400 }) => {
     },
     tooltip: {
       trigger: 'item',
-      formatter: (params) => {
+      formatter: params => {
         try {
           if (!params || !params.value) return '';
           const value = params.value;
@@ -631,7 +637,7 @@ const EChartsGeo = ({ data, title, height = 400 }) => {
         type: 'scatter',
         coordinateSystem: 'geo',
         data: geoData,
-        symbolSize: function(val) {
+        symbolSize: function (val) {
           try {
             if (!val || !Array.isArray(val) || val.length < 3) {
               return 15;
