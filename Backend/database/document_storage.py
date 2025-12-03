@@ -613,6 +613,9 @@ class DocumentStorage:
             # Store only the primary (first) fraud type as a string
             primary_fraud_type = fraud_types[0] if fraud_types else None
 
+            # Format fraud type label for display (remove underscores and title case)
+            primary_fraud_type_label = primary_fraud_type.replace('_', ' ').title() if primary_fraud_type else None
+
             # Ensure fraud_explanations is a list of dicts
             if not isinstance(fraud_explanations, list):
                 fraud_explanations = []
@@ -652,8 +655,8 @@ class DocumentStorage:
                 # Anomaly data
                 'anomaly_count': len(analysis_data.get('anomalies', [])),
                 'top_anomalies': json.dumps(analysis_data.get('anomalies', [])[:5]),
-                # Fraud types - store as single string (primary fraud type only)
-                'fraud_types': self._safe_string(primary_fraud_type),
+                # Fraud types - store as human-readable label (primary fraud type only)
+                'fraud_types': self._safe_string(primary_fraud_type_label),
                 'fraud_explanations': json.dumps(fraud_explanations)
             }
 
