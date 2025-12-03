@@ -13,22 +13,20 @@ from .paystub_feature_extractor import PaystubFeatureExtractor
 
 logger = logging.getLogger(__name__)
 
-# Fraud Type Taxonomy
-PAY_AMOUNT_TAMPERING = "PAY_AMOUNT_TAMPERING"
-MISSING_CRITICAL_FIELDS = "MISSING_CRITICAL_FIELDS"
-TEMPORAL_INCONSISTENCY = "TEMPORAL_INCONSISTENCY"
-TAX_WITHHOLDING_ANOMALY = "TAX_WITHHOLDING_ANOMALY"
-YTD_INCONSISTENCY = "YTD_INCONSISTENCY"
-BASIC_DATA_QUALITY_ISSUE = "BASIC_DATA_QUALITY_ISSUE"
+# Fraud Type Taxonomy - 5 fraud types (4 document-level + 1 history-based)
+FABRICATED_DOCUMENT = "FABRICATED_DOCUMENT"
+UNREALISTIC_PROPORTIONS = "UNREALISTIC_PROPORTIONS"
+ALTERED_LEGITIMATE_DOCUMENT = "ALTERED_LEGITIMATE_DOCUMENT"
+ZERO_WITHHOLDING_SUSPICIOUS = "ZERO_WITHHOLDING_SUSPICIOUS"
+REPEAT_OFFENDER = "REPEAT_OFFENDER"
 
 # Human-readable labels (optional, for UI display)
 FRAUD_TYPE_LABELS = {
-    PAY_AMOUNT_TAMPERING: "Pay amount tampering / inconsistent pay amounts",
-    MISSING_CRITICAL_FIELDS: "Missing critical paystub information",
-    TEMPORAL_INCONSISTENCY: "Date or pay period inconsistency",
-    TAX_WITHHOLDING_ANOMALY: "Tax withholdings missing or abnormal",
-    YTD_INCONSISTENCY: "Year-to-date amounts inconsistent with current period",
-    BASIC_DATA_QUALITY_ISSUE: "General data quality or OCR extraction quality issues",
+    FABRICATED_DOCUMENT: "Completely fake paystub with non-existent employer or synthetic identity",
+    UNREALISTIC_PROPORTIONS: "Net/gross ratios and tax/deduction percentages that don't make sense",
+    ALTERED_LEGITIMATE_DOCUMENT: "Real paystub that has been manually edited or tampered with",
+    ZERO_WITHHOLDING_SUSPICIOUS: "No federal/state tax or mandatory deductions where they should exist",
+    REPEAT_OFFENDER: "Employee with history of fraudulent submissions and escalations",
 }
 
 
@@ -94,21 +92,35 @@ class PaystubFraudDetector:
                 self.scaler = joblib.load(self.scaler_path)
                 logger.info("Loaded feature scaler for paystubs")
             else:
-                logger.warning(f"Feature scaler not found at {self.scaler_path}")
-                self.scaler = None
+                raise RuntimeError(
+                    f"Feature scaler not found at {self.scaler_path}. "
+                    f"Please train the model using: python training/train_risk_model.py"
+                )
 
-            self.models_loaded = (self.model is not None)
+            # Verify model expects 18 features
+            if metadata and 'feature_count' in metadata:
+                expected_features = metadata.get('feature_count', 0)
+                if expected_features != 18:
+                    raise RuntimeError(
+                        f"Model was trained with {expected_features} features, but system expects 18 features. "
+                        f"Please retrain the model using: python training/train_risk_model.py"
+                    )
+
+            self.models_loaded = (self.model is not None and self.scaler is not None)
 
         except ImportError:
-            logger.error("joblib not available - ML model cannot be loaded without joblib")
-            self.model = None
-            self.scaler = None
-            self.models_loaded = False
+            raise RuntimeError(
+                "joblib not available - ML model cannot be loaded without joblib. "
+                "Install with: pip install joblib"
+            )
+        except RuntimeError:
+            # Re-raise RuntimeErrors (these are intentional, no fallback)
+            raise
         except Exception as e:
-            logger.error(f"Error loading models: {e}")
-            self.model = None
-            self.scaler = None
-            self.models_loaded = False
+            raise RuntimeError(
+                f"Error loading models: {e}. "
+                f"Please ensure models are trained using: python training/train_risk_model.py"
+            )
 
     def predict_fraud(self, paystub_data: Dict, raw_text: str = "") -> Dict:
         """
@@ -152,24 +164,33 @@ class PaystubFraudDetector:
             if self.scaler:
                 X = self.scaler.transform(X)
 
-            # Get prediction from model
-            if self.model:
-                # Model predicts risk score (0-100), convert to 0-1
-                risk_score_raw = self.model.predict(X)[0]
-                fraud_risk_score = min(1.0, max(0.0, risk_score_raw / 100.0))  # Convert 0-100 to 0-1
-                
-                # Get feature importance if available
-                feature_importance = []
-                if hasattr(self.model, 'feature_importances_'):
-                    importances = self.model.feature_importances_
-                    # Get top 3 most important features
-                    top_indices = np.argsort(importances)[-3:][::-1]
-                    for idx in top_indices:
-                        if importances[idx] > 0:
-                            feature_importance.append(f"{feature_names[idx]}: {importances[idx]:.3f}")
-            else:
-                fraud_risk_score = 0.5
-                feature_importance = []
+            # Get prediction from model - NO FALLBACKS
+            if not self.model:
+                raise RuntimeError(
+                    "ML model is None. This should never happen if models_loaded is True. "
+                    "Please retrain the model using: python training/train_risk_model.py"
+                )
+            
+            # Validate feature count matches model expectations
+            if len(features) != 18:
+                raise RuntimeError(
+                    f"Feature count mismatch: Expected 18 features, got {len(features)}. "
+                    "This is a critical error - no fallback available."
+                )
+            
+            # Model predicts risk score (0-100), convert to 0-1
+            risk_score_raw = self.model.predict(X)[0]
+            fraud_risk_score = min(1.0, max(0.0, risk_score_raw / 100.0))  # Convert 0-100 to 0-1
+            
+            # Get feature importance if available
+            feature_importance = []
+            if hasattr(self.model, 'feature_importances_'):
+                importances = self.model.feature_importances_
+                # Get top 5 most important features (for 18 features)
+                top_indices = np.argsort(importances)[-5:][::-1]
+                for idx in top_indices:
+                    if importances[idx] > 0:
+                        feature_importance.append(f"{feature_names[idx]}: {importances[idx]:.3f}")
 
             # Determine risk level
             if fraud_risk_score < 0.3:
@@ -209,22 +230,46 @@ class PaystubFraudDetector:
 
 
     def _generate_indicators(self, features: List[float], feature_names: List[str], paystub_data: Dict) -> List[str]:
-        """Generate fraud indicators based on features"""
+        """Generate fraud indicators based on all 22 features - NO FALLBACKS"""
         indicators = []
+        feature_dict = dict(zip(feature_names, features))
 
-        # Check tax error
-        if features[7] == 1.0:  # tax_error
+        # Check tax error (feature 8)
+        if feature_dict.get('tax_error', 0.0) == 1.0:
             indicators.append("CRITICAL: Net Pay >= Gross Pay (impossible)")
 
-        # Check missing fields
-        missing_count = int(features[9])  # missing_fields_count
+        # Check missing fields (feature 10)
+        missing_count = int(feature_dict.get('missing_fields_count', 0.0))
         if missing_count > 0:
             indicators.append(f"Missing {missing_count} critical fields")
 
-        # Check text quality
-        text_quality = features[8]
+        # Check text quality (feature 9)
+        text_quality = feature_dict.get('text_quality', 1.0)
         if text_quality < 0.7:
             indicators.append("Low extraction quality")
+
+        # Check zero withholding (features 15-20)
+        has_federal = feature_dict.get('has_federal_tax', 0.0) == 1.0
+        has_state = feature_dict.get('has_state_tax', 0.0) == 1.0
+        has_ss = feature_dict.get('has_social_security', 0.0) == 1.0
+        has_medicare = feature_dict.get('has_medicare', 0.0) == 1.0
+        gross = feature_dict.get('gross_pay', 0.0)
+        
+        if gross > 1000:
+            if not has_federal and not has_state and not has_ss and not has_medicare:
+                indicators.append("CRITICAL: No tax withholdings detected")
+            elif not has_ss or not has_medicare:
+                indicators.append("WARNING: Missing mandatory FICA taxes (Social Security/Medicare)")
+
+        # Check unrealistic proportions (features 21-22)
+        net_to_gross = feature_dict.get('net_to_gross_ratio', 0.0)
+        tax_to_gross = feature_dict.get('tax_to_gross_ratio', 0.0)
+        
+        if gross > 0:
+            if net_to_gross > 0.95:
+                indicators.append(f"WARNING: Net pay is {net_to_gross*100:.1f}% of gross (unrealistically high)")
+            if tax_to_gross < 0.02 and gross > 1000:
+                indicators.append(f"WARNING: Tax withholdings are only {tax_to_gross*100:.1f}% of gross (unrealistically low)")
 
         return indicators
 
@@ -237,10 +282,11 @@ class PaystubFraudDetector:
     ) -> Dict:
         """
         Classify fraud types and generate machine-readable reasons based on features and anomalies.
+        Uses all 18 features - NO FALLBACKS.
         
         Args:
-            features: List of 10 feature values
-            feature_names: List of feature names
+            features: List of 18 feature values
+            feature_names: List of feature names (18 features)
             normalized_data: Normalized paystub data dictionary
             anomalies: List of anomaly strings from ML analysis
             
@@ -254,7 +300,7 @@ class PaystubFraudDetector:
         # Build feature dictionary for easier access
         feature_dict = dict(zip(feature_names, features))
         
-        # Extract feature values with safe defaults
+        # Extract feature values - NO FALLBACKS, use 0.0 if missing
         has_company = feature_dict.get('has_company', 0.0) == 1.0
         has_employee = feature_dict.get('has_employee', 0.0) == 1.0
         has_gross = feature_dict.get('has_gross', 0.0) == 1.0
@@ -265,13 +311,21 @@ class PaystubFraudDetector:
         tax_error = feature_dict.get('tax_error', 0.0) == 1.0
         text_quality = feature_dict.get('text_quality', 1.0)
         missing_fields_count = int(feature_dict.get('missing_fields_count', 0.0))
+        
+        # Extract new features (11-18) - NO FALLBACKS
+        has_federal_tax = feature_dict.get('has_federal_tax', 0.0) == 1.0
+        has_state_tax = feature_dict.get('has_state_tax', 0.0) == 1.0
+        has_social_security = feature_dict.get('has_social_security', 0.0) == 1.0
+        has_medicare = feature_dict.get('has_medicare', 0.0) == 1.0
+        total_tax_amount = feature_dict.get('total_tax_amount', 0.0)
+        tax_to_gross_ratio = feature_dict.get('tax_to_gross_ratio', 0.0)
+        net_to_gross_ratio = feature_dict.get('net_to_gross_ratio', 0.0)
+        deduction_percentage = feature_dict.get('deduction_percentage', 0.0)
 
         # Extract additional data from normalized_data
         pay_period_start = normalized_data.get('pay_period_start')
         pay_period_end = normalized_data.get('pay_period_end')
         pay_date = normalized_data.get('pay_date')
-        ytd_gross = normalized_data.get('ytd_gross', 0)
-        ytd_net = normalized_data.get('ytd_net', 0)
         federal_tax = normalized_data.get('federal_tax', 0)
         state_tax = normalized_data.get('state_tax', 0)
         social_security = normalized_data.get('social_security', 0)
@@ -290,191 +344,94 @@ class PaystubFraudDetector:
 
         gross_pay_val = get_numeric(gross_pay) if gross_pay else 0.0
         net_pay_val = get_numeric(net_pay) if net_pay else 0.0
-        ytd_gross_val = get_numeric(ytd_gross) if ytd_gross else 0.0
-        ytd_net_val = get_numeric(ytd_net) if ytd_net else 0.0
 
-        # 1. PAY_AMOUNT_TAMPERING
-        if tax_error or (gross_pay_val > 0 and net_pay_val >= gross_pay_val):
-            if PAY_AMOUNT_TAMPERING not in fraud_types:
-                fraud_types.append(PAY_AMOUNT_TAMPERING)
+        # ===== ONLY THE 4 DOCUMENT-LEVEL FRAUD TYPES =====
+        
+        # 1. FABRICATED_DOCUMENT
+        # Missing company + low text quality + missing employee suggests fabricated document
+        if not has_company and text_quality < 0.6:
+            if FABRICATED_DOCUMENT not in fraud_types:
+                fraud_types.append(FABRICATED_DOCUMENT)
                 fraud_reasons.append(
-                    "Net pay is greater than or equal to gross pay, which is not possible on a valid paystub."
+                    "Missing employer name combined with low extraction quality suggests this may be a fabricated document."
                 )
-        
-        # Check for unusually high net-to-gross ratio (suspicious)
-        if gross_pay_val > 0 and net_pay_val > 0:
-            net_to_gross_ratio = net_pay_val / gross_pay_val
-            if net_to_gross_ratio > 0.95 and not tax_error:
-                if PAY_AMOUNT_TAMPERING not in fraud_types:
-                    fraud_types.append(PAY_AMOUNT_TAMPERING)
-                    fraud_reasons.append(
-                        f"Net pay (${net_pay_val:,.2f}) is unusually close to gross pay (${gross_pay_val:,.2f}), "
-                        f"suggesting taxes or deductions may have been removed or tampered with."
-                    )
-
-        # 2. TAX_WITHHOLDING_ANOMALY
-        # Check if no taxes detected but should have them
-        has_any_tax = (federal_tax and get_numeric(federal_tax) > 0) or \
-                     (state_tax and get_numeric(state_tax) > 0) or \
-                     (social_security and get_numeric(social_security) > 0) or \
-                     (medicare and get_numeric(medicare) > 0)
-        
-        # Check anomalies for tax-related issues
-        tax_anomaly_detected = any(
-            'tax' in str(anom).lower() or 'withholding' in str(anom).lower() or 'no tax' in str(anom).lower()
-            for anom in anomalies
-        )
-        
-        if (gross_pay_val > 1000 and not has_any_tax) or tax_anomaly_detected:
-            if TAX_WITHHOLDING_ANOMALY not in fraud_types:
-                fraud_types.append(TAX_WITHHOLDING_ANOMALY)
+        if not has_company and not has_employee and missing_fields_count >= 3:
+            if FABRICATED_DOCUMENT not in fraud_types:
+                fraud_types.append(FABRICATED_DOCUMENT)
                 fraud_reasons.append(
-                    "No tax withholdings were detected even though a normal salary paystub is expected to include taxes."
+                    "Missing critical identifying information (employer and employee names) suggests a fabricated document."
                 )
 
-        # 3. MISSING_CRITICAL_FIELDS
-        missing_fields_list = []
-        if not has_company:
-            missing_fields_list.append("employer name")
-        if not has_employee:
-            missing_fields_list.append("employee name")
-        if not has_gross:
-            missing_fields_list.append("gross pay")
-        if not has_net:
-            missing_fields_list.append("net pay")
-        if not has_date:
-            missing_fields_list.append("pay period dates")
-        
-        if missing_fields_count > 0 or missing_fields_list:
-            if MISSING_CRITICAL_FIELDS not in fraud_types:
-                fraud_types.append(MISSING_CRITICAL_FIELDS)
-                if missing_fields_list:
-                    fraud_reasons.append(
-                        f"Missing critical fields: {', '.join(missing_fields_list)}."
-                    )
-                else:
-                    fraud_reasons.append(
-                        f"Missing {missing_fields_count} critical field(s) required for paystub verification."
-                    )
-
-        # 4. TEMPORAL_INCONSISTENCY
-        # Check for future dates
-        pay_date_in_future = False
-        pay_period_in_future = False
-        date_order_invalid = False
-        
-        try:
-            today = datetime.now().date()
-            
-            # Check pay_date
-            if pay_date:
-                try:
-                    if isinstance(pay_date, str):
-                        # Try common date formats
-                        for fmt in ['%Y-%m-%d', '%m/%d/%Y', '%m-%d-%Y', '%Y/%m/%d']:
-                            try:
-                                pay_date_obj = datetime.strptime(pay_date, fmt).date()
-                                if pay_date_obj > today:
-                                    pay_date_in_future = True
-                                break
-                            except:
-                                continue
-                    elif hasattr(pay_date, 'date'):
-                        if pay_date.date() > today:
-                            pay_date_in_future = True
-                except:
-                    pass
-            
-            # Check pay_period_end
-            if pay_period_end:
-                try:
-                    if isinstance(pay_period_end, str):
-                        for fmt in ['%Y-%m-%d', '%m/%d/%Y', '%m-%d-%Y', '%Y/%m/%d']:
-                            try:
-                                period_end_obj = datetime.strptime(pay_period_end, fmt).date()
-                                if period_end_obj > today:
-                                    pay_period_in_future = True
-                                break
-                            except:
-                                continue
-                    elif hasattr(pay_period_end, 'date'):
-                        if pay_period_end.date() > today:
-                            pay_period_in_future = True
-                except:
-                    pass
-            
-            # Check date order (start should be before end)
-            if pay_period_start and pay_period_end:
-                try:
-                    start_str = str(pay_period_start)
-                    end_str = str(pay_period_end)
-                    for fmt in ['%Y-%m-%d', '%m/%d/%Y', '%m-%d-%Y', '%Y/%m/%d']:
-                        try:
-                            start_obj = datetime.strptime(start_str, fmt).date()
-                            end_obj = datetime.strptime(end_str, fmt).date()
-                            if start_obj > end_obj:
-                                date_order_invalid = True
-                            break
-                        except:
-                            continue
-                except:
-                    pass
-        except Exception as e:
-            logger.debug(f"Error checking temporal consistency: {e}")
-
-        if pay_date_in_future or pay_period_in_future:
-            if TEMPORAL_INCONSISTENCY not in fraud_types:
-                fraud_types.append(TEMPORAL_INCONSISTENCY)
+        # 2. UNREALISTIC_PROPORTIONS
+        # Net > 95% of gross (suspicious)
+        if gross_pay_val > 0 and net_to_gross_ratio > 0.95:
+            if UNREALISTIC_PROPORTIONS not in fraud_types:
+                fraud_types.append(UNREALISTIC_PROPORTIONS)
                 fraud_reasons.append(
-                    "Pay date or pay period appears to be in the future relative to the analysis date."
+                    f"Net pay represents {net_to_gross_ratio*100:.1f}% of gross pay, which is unrealistic for W-2 style paystubs "
+                    f"(typically 60-85% after taxes and deductions)."
                 )
         
-        if date_order_invalid:
-            if TEMPORAL_INCONSISTENCY not in fraud_types:
-                fraud_types.append(TEMPORAL_INCONSISTENCY)
+        # Tax withholding < 2% of gross (suspicious)
+        if gross_pay_val > 1000 and tax_to_gross_ratio < 0.02:
+            if UNREALISTIC_PROPORTIONS not in fraud_types:
+                fraud_types.append(UNREALISTIC_PROPORTIONS)
                 fraud_reasons.append(
-                    "Pay period start and end dates are inconsistent or out of order."
-                )
-
-        # 5. YTD_INCONSISTENCY
-        # Check if YTD is lower than current period (should be cumulative)
-        if gross_pay_val > 0 and ytd_gross_val > 0:
-            if ytd_gross_val < gross_pay_val:
-                if YTD_INCONSISTENCY not in fraud_types:
-                    fraud_types.append(YTD_INCONSISTENCY)
-                    fraud_reasons.append(
-                        f"Year-to-date gross pay (${ytd_gross_val:,.2f}) is lower than current period gross pay "
-                        f"(${gross_pay_val:,.2f}), which is inconsistent as YTD should be cumulative."
-                    )
-        
-        if net_pay_val > 0 and ytd_net_val > 0:
-            if ytd_net_val < net_pay_val:
-                if YTD_INCONSISTENCY not in fraud_types:
-                    fraud_types.append(YTD_INCONSISTENCY)
-                    fraud_reasons.append(
-                        f"Year-to-date net pay (${ytd_net_val:,.2f}) is lower than current period net pay "
-                        f"(${net_pay_val:,.2f}), which is inconsistent as YTD should be cumulative."
-                    )
-
-        # 6. BASIC_DATA_QUALITY_ISSUE
-        if text_quality < 0.7:
-            if BASIC_DATA_QUALITY_ISSUE not in fraud_types:
-                fraud_types.append(BASIC_DATA_QUALITY_ISSUE)
-                fraud_reasons.append(
-                    "Overall text extraction quality is low, which makes the paystub hard to verify reliably."
+                    f"Tax withholdings represent only {tax_to_gross_ratio*100:.1f}% of gross pay, which is unrealistically low "
+                    f"(typically 15-30% for W-2 employees)."
                 )
         
-        # Check anomalies for OCR/extraction issues
-        ocr_anomaly_detected = any(
-            'ocr' in str(anom).lower() or 'extraction' in str(anom).lower() or 'quality' in str(anom).lower()
-            for anom in anomalies
-        )
+        # Deduction percentage > 50% without explanation (suspicious)
+        if gross_pay_val > 0 and deduction_percentage > 0.50:
+            if UNREALISTIC_PROPORTIONS not in fraud_types:
+                fraud_types.append(UNREALISTIC_PROPORTIONS)
+                fraud_reasons.append(
+                    f"Deductions represent {deduction_percentage*100:.1f}% of gross pay, which is unusually high "
+                    f"(typically 15-40% including taxes)."
+                )
+
+        # 3. ZERO_WITHHOLDING_SUSPICIOUS
+        # No taxes at all for meaningful gross pay
+        if gross_pay_val > 1000:
+            if not has_federal_tax and not has_state_tax and not has_social_security and not has_medicare:
+                if ZERO_WITHHOLDING_SUSPICIOUS not in fraud_types:
+                    fraud_types.append(ZERO_WITHHOLDING_SUSPICIOUS)
+                    fraud_reasons.append(
+                        f"No tax withholdings detected (federal, state, Social Security, or Medicare) for gross pay of ${gross_pay_val:,.2f}, "
+                        f"which is suspicious for W-2 style paystubs in taxable jurisdictions."
+                    )
+            elif not has_social_security and not has_medicare:
+                # Missing mandatory FICA taxes
+                if ZERO_WITHHOLDING_SUSPICIOUS not in fraud_types:
+                    fraud_types.append(ZERO_WITHHOLDING_SUSPICIOUS)
+                    fraud_reasons.append(
+                        "Missing mandatory Social Security and Medicare withholdings (FICA taxes), which are required for W-2 employees."
+                    )
+            elif total_tax_amount < gross_pay_val * 0.02:
+                # Total taxes < 2% of gross (very suspicious)
+                if ZERO_WITHHOLDING_SUSPICIOUS not in fraud_types:
+                    fraud_types.append(ZERO_WITHHOLDING_SUSPICIOUS)
+                    fraud_reasons.append(
+                        f"Total tax withholdings (${total_tax_amount:,.2f}) represent only {tax_to_gross_ratio*100:.1f}% of gross pay, "
+                        f"which is unrealistically low for W-2 employees (typically 15-30%)."
+                    )
+
+        # 5. ALTERED_LEGITIMATE_DOCUMENT
+        # Low text quality + suspicious ratios suggests tampering
+        if text_quality < 0.6 and (net_to_gross_ratio > 0.90 or tax_to_gross_ratio < 0.05):
+            if ALTERED_LEGITIMATE_DOCUMENT not in fraud_types:
+                fraud_types.append(ALTERED_LEGITIMATE_DOCUMENT)
+                fraud_reasons.append(
+                    "Low extraction quality combined with unrealistic proportions suggests this legitimate paystub may have been altered or tampered with."
+                )
         
-        if ocr_anomaly_detected and BASIC_DATA_QUALITY_ISSUE not in fraud_types:
-            fraud_types.append(BASIC_DATA_QUALITY_ISSUE)
-            fraud_reasons.append(
-                "The paystub has OCR or extraction issues reported by the system."
-            )
+        # Suspicious patterns that suggest manual editing
+        if text_quality < 0.7 and missing_fields_count > 0 and (tax_error or net_to_gross_ratio > 0.95):
+            if ALTERED_LEGITIMATE_DOCUMENT not in fraud_types:
+                fraud_types.append(ALTERED_LEGITIMATE_DOCUMENT)
+                fraud_reasons.append(
+                    "Multiple indicators (low quality, missing fields, tax errors) suggest this document may have been manually edited."
+                )
 
         # Deduplicate fraud_types and fraud_reasons
         fraud_types = list(dict.fromkeys(fraud_types))  # Preserve order, remove duplicates

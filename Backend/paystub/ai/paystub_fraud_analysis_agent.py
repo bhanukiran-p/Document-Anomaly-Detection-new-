@@ -116,7 +116,7 @@ class PaystubFraudAnalysisAgent:
         else:
             logger.warning("Employee name not found in extracted_data")
 
-        policy_decision = self._apply_policy_rules(employee_name, employee_info, ml_analysis)
+        policy_decision = self._apply_policy_rules(employee_name, employee_info, ml_analysis, extracted_data)
         if policy_decision:
             return policy_decision
 
@@ -130,53 +130,38 @@ class PaystubFraudAnalysisAgent:
             employee_info
         )
 
-    def _apply_policy_rules(self, employee_name: Optional[str], employee_info: Optional[Dict], ml_analysis: Optional[Dict] = None) -> Optional[Dict]:
+    def _apply_policy_rules(self, employee_name: Optional[str], employee_info: Optional[Dict], ml_analysis: Optional[Dict] = None, extracted_data: Optional[Dict] = None) -> Optional[Dict]:
         """Enforce mandatory employee-history policy before any LLM call."""
         if not employee_name:
-            logger.warning("Employee name missing; defaulting to ESCALATE per policy.")
-            return self._create_first_time_escalation("Unknown Employee", is_new_employee=True)
+            raise ValueError("Employee name is required for fraud analysis. Cannot proceed without employee identification.")
 
         employee_info = employee_info or {}
         escalate_count = employee_info.get('escalate_count', 0) or 0
         fraud_count = employee_info.get('fraud_count', 0) or 0
 
-        # UPDATED POLICY: Check for repeat offenders, but only auto-reject if fraud risk >= 20%
-        # If fraud risk < 20%, allow approval even with escalate_count > 0
+        # Check for duplicates BEFORE repeat offender check
+        if employee_name and extracted_data:
+            pay_date = extracted_data.get('pay_date')
+            pay_period_start = extracted_data.get('pay_period_start')
+            if pay_date and pay_period_start:
+                is_duplicate = self.data_tools.check_duplicate(employee_name, pay_date, pay_period_start)
+                if is_duplicate:
+                    logger.warning(f"Duplicate paystub detected: {pay_date} from {employee_name}")
+                    return self._create_duplicate_rejection(pay_date, employee_name)
+
+        # UPDATED POLICY: Repeat offenders always go to LLM for decision
+        # No auto-reject for repeat offenders - LLM will make the decision based on risk score
         if escalate_count > 0:
             fraud_risk_score = ml_analysis.get('fraud_risk_score', 0.0) if ml_analysis else 0.0
             fraud_risk_percent = fraud_risk_score * 100
-            
-            if fraud_risk_percent >= 20:
-                logger.warning(
-                    f"REPEAT OFFENDER DETECTED: {employee_name} has escalate_count={escalate_count} "
-                    f"and fraud_risk_score={fraud_risk_percent:.1f}% (>= 20%). Auto-rejecting."
-                )
-                rejection = self._create_repeat_offender_rejection(employee_name, escalate_count, fraud_count)
-                # Include ML fraud types if available
-                if ml_analysis:
-                    ml_fraud_types = ml_analysis.get('fraud_types', [])
-                    ml_fraud_reasons = ml_analysis.get('fraud_reasons', [])
-                    if ml_fraud_types:
-                        rejection['fraud_types'] = ml_fraud_types
-                    if ml_fraud_reasons and not rejection.get('fraud_explanations'):
-                        rejection['fraud_explanations'] = [{
-                            'type': ml_fraud_types[0] if ml_fraud_types else 'MISSING_CRITICAL_FIELDS',
-                            'reasons': [
-                                f"Escalation count: {escalate_count}",
-                                f"Fraud count: {fraud_count} {'incident' if fraud_count == 1 else 'incidents'}",
-                                f"Employee status: Repeat Employee"
-                            ]
-                        }]
-                return rejection
-            else:
-                logger.info(
-                    f"REPEAT OFFENDER DETECTED: {employee_name} has escalate_count={escalate_count} "
-                    f"but fraud_risk_score={fraud_risk_percent:.1f}% (< 20%). Allowing analysis to proceed."
-                )
-                # Don't auto-reject, let the analysis proceed normally
+            logger.info(
+                f"REPEAT OFFENDER DETECTED: {employee_name} has escalate_count={escalate_count} "
+                f"and fraud_risk_score={fraud_risk_percent:.1f}%. Proceeding to LLM for decision."
+            )
+            # Don't auto-reject, let the LLM make the decision based on risk score
 
-        # If we reach here, employee has no escalations logged → proceed to LLM for decision
-        logger.info(f"Employee {employee_name} has no escalations; proceeding to LLM analysis.")
+        # Proceed to LLM for decision
+        logger.info(f"Proceeding to LLM analysis for employee: {employee_name}")
         return None
 
     def _llm_analysis(
@@ -199,21 +184,6 @@ class PaystubFraudAnalysisAgent:
                 if employee_name:
                     employee_info = self.data_tools.get_employee_history(employee_name)
                     logger.info(f"Retrieved employee history for: {employee_name}")
-
-            # MANDATORY REPEAT OFFENDER CHECK - BEFORE ANY LLM ANALYSIS
-            escalate_count = employee_info.get('escalate_count', 0)
-            if escalate_count > 0:
-                logger.warning(f"REPEAT OFFENDER DETECTED: {employee_name} has escalate_count={escalate_count}. Auto-rejecting.")
-                return self._create_repeat_offender_rejection(employee_name, escalate_count)
-
-            # Check for duplicates
-            pay_date = extracted_data.get('pay_date')
-            pay_period_start = extracted_data.get('pay_period_start')
-            if pay_date and pay_period_start and employee_name:
-                is_duplicate = self.data_tools.check_duplicate(employee_name, pay_date, pay_period_start)
-                if is_duplicate:
-                    logger.warning(f"Duplicate paystub detected: {pay_date} from {employee_name}")
-                    return self._create_duplicate_rejection(pay_date, employee_name)
 
             # Format the analysis prompt
             analysis_prompt = format_analysis_template(
@@ -301,15 +271,15 @@ class PaystubFraudAnalysisAgent:
         }
 
     def _create_repeat_offender_rejection(self, employee_name: str, escalate_count: int, fraud_count: int = 0) -> Dict:
-        """Create rejection response for repeat offenders (escalate_count > 0 and fraud risk >= 20%)"""
+        """Create rejection response for repeat offenders (escalate_count > 0 and fraud risk >= 40%)"""
         return {
             'recommendation': 'REJECT',
             'confidence_score': 1.0,
-            'summary': f'Automatic rejection: {employee_name} is a flagged repeat offender with fraud risk >= 20%',
+            'summary': f'Automatic rejection: {employee_name} is a flagged repeat offender with fraud risk >= 40%',
             'reasoning': [
                 f'Employee {employee_name} has escalate_count = {escalate_count}',
                 f'Employee has fraud_count = {fraud_count}',
-                'Per updated policy: repeat offenders with fraud risk >= 20% are automatically rejected',
+                'Per updated policy: repeat offenders with fraud risk >= 40% are automatically rejected',
                 'This employee was previously escalated and current paystub shows elevated fraud risk',
                 'LLM analysis skipped - mandatory reject rule applies'
             ],
@@ -323,13 +293,13 @@ class PaystubFraudAnalysisAgent:
                 'Flag employee account for fraud investigation',
                 'Contact employee to verify legitimacy of future submissions'
             ],
-            'fraud_types': ['MISSING_CRITICAL_FIELDS'],  # Default for repeat offenders
+            'fraud_types': ['REPEAT_OFFENDER'],  # Separate classification for repeat offenders
             'fraud_explanations': [{
-                'type': 'MISSING_CRITICAL_FIELDS',
+                'type': 'REPEAT_OFFENDER',
                 'reasons': [
-                    f'Escalation count: {escalate_count}',
-                    f'Fraud count: {fraud_count} {"incident" if fraud_count == 1 else "incidents"}',
-                    'Employee status: Repeat Employee'
+                    f'Employee has {escalate_count} previous escalation{"s" if escalate_count != 1 else ""}',
+                    f'Employee has {fraud_count} previous fraud incident{"s" if fraud_count != 1 else ""}',
+                    'Employee status: Repeat Employee with documented fraud history'
                 ]
             }]
         }
@@ -354,42 +324,19 @@ class PaystubFraudAnalysisAgent:
                 'Flag employee account for review',
                 'Investigate potential fraud attempt'
             ],
-            'fraud_types': ['MISSING_CRITICAL_FIELDS'],
+            'fraud_types': ['FABRICATED_DOCUMENT'],  # Duplicate submission is a form of fabrication
             'fraud_explanations': [{
-                'type': 'MISSING_CRITICAL_FIELDS',
+                'type': 'FABRICATED_DOCUMENT',
                 'reasons': [f'Duplicate paystub detected for {pay_date} from {employee_name}. This paystub was previously submitted.']
             }]
         }
 
     def _parse_text_response(self, text_response: str) -> Dict:
-        """Parse text response if JSON parsing fails"""
-        # Simple heuristic parsing
-        result = {
-            'recommendation': 'ESCALATE',  # Default to safe option
-            'confidence_score': 0.7,
-            'summary': text_response[:200],
-            'reasoning': [],
-            'key_indicators': [],
-            'actionable_recommendations': []
-        }
-
-        # Try to extract recommendation
-        text_lower = text_response.lower()
-        if 'approve' in text_lower and 'reject' not in text_lower:
-            result['recommendation'] = 'APPROVE'
-        elif 'reject' in text_lower:
-            result['recommendation'] = 'REJECT'
-        else:
-            result['recommendation'] = 'ESCALATE'
-
-        # Extract reasoning (look for bullet points or numbered lists)
-        lines = text_response.split('\n')
-        for line in lines:
-            line = line.strip()
-            if line.startswith(('-', '*', '•')) or (len(line) > 2 and line[0].isdigit() and line[1] in '.):'):
-                result['reasoning'].append(line.lstrip('-*•0123456789.) '))
-
-        return result
+        """Parse text response if JSON parsing fails - NO FALLBACKS"""
+        raise RuntimeError(
+            f"LLM response could not be parsed as JSON. This is a critical error. "
+            f"Response was: {text_response[:500]}"
+        )
 
     def _validate_and_format_result(self, result: Dict, ml_analysis: Dict, employee_info: Dict) -> Dict:
         """Validate and format the AI result"""
@@ -403,10 +350,12 @@ class PaystubFraudAnalysisAgent:
             'actionable_recommendations': result.get('actionable_recommendations', [])
         }
 
-        # Validate recommendation value
+        # Validate recommendation value - NO FALLBACKS
         if validated['recommendation'] not in ['APPROVE', 'REJECT', 'ESCALATE']:
-            logger.warning(f"Invalid recommendation: {validated['recommendation']}, defaulting to ESCALATE")
-            validated['recommendation'] = 'ESCALATE'
+            raise ValueError(
+                f"Invalid recommendation from LLM: {validated['recommendation']}. "
+                f"Must be one of: APPROVE, REJECT, ESCALATE. This is a critical error."
+            )
 
         # Ensure reasoning is a list
         if not isinstance(validated['reasoning'], list):

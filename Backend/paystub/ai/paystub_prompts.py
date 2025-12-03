@@ -18,6 +18,16 @@ You have access to:
 CRITICAL: You MUST follow the Decision Guidelines below STRICTLY. These are RULES, not suggestions.
 The decision rules provided are MANDATORY and take precedence over subjective judgment.
 
+IMPORTANT - FRAUD TYPE TAXONOMY:
+The system uses ONLY the following 5 fraud types. You MUST use these exact fraud type IDs:
+1. FABRICATED_DOCUMENT - Completely fake paystub with non-existent employer or synthetic identity
+2. UNREALISTIC_PROPORTIONS - Net/gross ratios and tax/deduction percentages that don't make sense
+3. ALTERED_LEGITIMATE_DOCUMENT - Real paystub that has been manually edited or tampered with
+4. ZERO_WITHHOLDING_SUSPICIOUS - No federal/state tax or mandatory deductions where they should exist
+5. REPEAT_OFFENDER - Employee with history of fraudulent submissions and escalations (based on employee history, not document analysis)
+
+DO NOT use any other fraud type names. Only use the 5 types listed above.
+
 Your decisions must be:
 - Data-driven and evidence-based
 - Consistent with employment verification regulations
@@ -89,17 +99,17 @@ Respond ONLY with a JSON object using this exact structure:
 {{
   "recommendation": "APPROVE" | "ESCALATE" | "REJECT",
   "confidence_score": 0.0-1.0,
-  "fraud_types": ["PAY_AMOUNT_TAMPERING", "MISSING_CRITICAL_FIELDS", ...],
+  "fraud_types": ["FABRICATED_DOCUMENT", "UNREALISTIC_PROPORTIONS", "ALTERED_LEGITIMATE_DOCUMENT", "ZERO_WITHHOLDING_SUSPICIOUS", "REPEAT_OFFENDER"],
   "fraud_explanations": [
     {{
-      "type": "PAY_AMOUNT_TAMPERING",
+      "type": "FABRICATED_DOCUMENT",
       "reasons": [
         "Short, clear reason 1.",
         "Short, clear reason 2."
       ]
     }},
     {{
-      "type": "MISSING_CRITICAL_FIELDS",
+      "type": "UNREALISTIC_PROPORTIONS",
       "reasons": [
         "Short, clear reason 1."
       ]
@@ -114,12 +124,23 @@ Respond ONLY with a JSON object using this exact structure:
   "actionable_recommendations": ["action 1", "action 2", ...]
 }}
 
-Rules:
+CRITICAL FRAUD TYPE RULES:
+- You MUST use ONLY these 5 fraud type IDs (no others):
+  1. "FABRICATED_DOCUMENT" - For fake paystubs with non-existent employers or synthetic identities
+  2. "UNREALISTIC_PROPORTIONS" - For unrealistic net/gross ratios, tax percentages, or deduction amounts
+  3. "ALTERED_LEGITIMATE_DOCUMENT" - For real paystubs that have been manually edited or tampered with
+  4. "ZERO_WITHHOLDING_SUSPICIOUS" - For missing federal/state taxes or mandatory deductions (FICA/Medicare)
+  5. "REPEAT_OFFENDER" - For employees with history of fraudulent submissions and escalations (based on employee history)
+- DO NOT use any old fraud type names (PAY_AMOUNT_TAMPERING, MISSING_CRITICAL_FIELDS, YTD_LOGIC_FAILURE, etc.)
+- If the ML layer detected fraud types, use those same types in your response
+- Map any old fraud type references to the appropriate new type from the 5 valid types above
+
+General Rules:
 - Use simple English.
 - Reasons must reference actual paystub data (amounts, dates, missing fields, etc.).
 - Do not invent values that are not present.
 - Only return JSON. No markdown, no extra commentary.
-- fraud_types should be a list of fraud type IDs (e.g., "PAY_AMOUNT_TAMPERING", "MISSING_CRITICAL_FIELDS").
+- fraud_types should be a list of fraud type IDs from the 6 valid types listed above.
 - fraud_explanations should be a list of objects, each with a "type" (fraud type ID) and "reasons" (list of strings).
 """
 
@@ -127,8 +148,8 @@ Rules:
 RECOMMENDATION_GUIDELINES = """
 ## MANDATORY DECISION TABLE FOR PAYSTUB FRAUD ANALYSIS
 
-**CRITICAL: Repeat offenders (escalate_count > 0) are auto-rejected BEFORE LLM processes the paystub.**
-**The LLM must strictly follow this decision table for all other cases. NO EXCEPTIONS.**
+**CRITICAL: All paystubs, including repeat offenders, proceed to LLM analysis.**
+**The LLM must strictly follow this decision table. NO EXCEPTIONS.**
 
 ### DECISION MATRIX
 | Employee Type | Risk Score | Decision |
@@ -142,7 +163,8 @@ RECOMMENDATION_GUIDELINES = """
 | Clean History | > 85% | REJECT |
 | Fraud History | < 30% | APPROVE |
 | Fraud History | ≥ 30% | REJECT |
-| Repeat Offender (escalate_count > 0) | Any | REJECT (auto, before LLM) |
+| Repeat Offender (escalate_count > 0) | < 40% | APPROVE (Low risk, previous escalations noted but not blocking) |
+| Repeat Offender (escalate_count > 0) | ≥ 40% | Follow decision table below based on risk score (ESCALATE or REJECT) |
 
 ### EMPLOYEE CLASSIFICATION
 **New Employee:**
@@ -157,12 +179,12 @@ RECOMMENDATION_GUIDELINES = """
 
 **Repeat Offender:**
 - escalate_count > 0
-- ALWAYS REJECTED before LLM processes the paystub
-- LLM is skipped entirely for these cases
+- Always proceeds to LLM analysis (no auto-reject)
+- If fraud_risk_score < 40% → APPROVE (per decision matrix)
+- If fraud_risk_score >= 40% → LLM decides based on risk score (ESCALATE or REJECT)
 
 ### AUTOMATIC REJECTION CONDITIONS (Regardless of ML Score)
-1. Repeat Offender (escalate_count > 0) → REJECT (auto, before LLM)
-2. Duplicate Paystub Detected → REJECT
+1. Duplicate Paystub Detected → REJECT
 
 ### ESCALATION CONDITIONS (For New Employees)
 **IMPORTANT: New employees with high risk should be ESCALATED, not REJECTED**
@@ -172,19 +194,21 @@ RECOMMENDATION_GUIDELINES = """
 - Missing Tax Withholdings → ESCALATE (for new employees, needs verification)
 - Round Number Amounts (suspicious) → ESCALATE (for new employees)
 
-### AUTOMATIC REJECTION CONDITIONS (For Repeat Employees Only)
-1. Missing Critical Fields → REJECT (if repeat employee)
-2. Future-Dated Paystub → REJECT (if repeat employee)
-3. Net Pay > Gross Pay → REJECT (if repeat employee)
-4. Missing Tax Withholdings → REJECT (if repeat employee)
-5. Round Number Amounts → REJECT (if repeat employee)
+### AUTOMATIC REJECTION CONDITIONS (For Repeat Employees Only - ONLY if risk >= 40%)
+**IMPORTANT: These conditions only apply if fraud_risk_score >= 40%. For repeat employees with risk < 40%, follow the decision matrix above (APPROVE).**
+1. Missing Critical Fields → REJECT (if repeat employee AND risk >= 40%)
+2. Future-Dated Paystub → REJECT (if repeat employee AND risk >= 40%)
+3. Net Pay > Gross Pay → REJECT (if repeat employee AND risk >= 40%)
+4. Missing Tax Withholdings → REJECT (if repeat employee AND risk >= 40%)
+5. Round Number Amounts → REJECT (if repeat employee AND risk >= 40%)
 
 ### CRITICAL RULES (IN PRIORITY ORDER):
-1. **If escalate_count > 0 → MUST REJECT** (auto, before LLM - repeat offender policy)
-2. If fraud_risk_score is 100.0% or >= 95% AND employee is NEW → MUST ESCALATE (not REJECT)
-3. If fraud_risk_score is 100.0% or >= 95% AND employee is REPEAT with fraud history → MUST REJECT
-4. **New employees with high risk should be escalated for human review, not auto-rejected**
-5. Repeat fraudsters should face stricter thresholds (REJECT at >= 30% risk)
+1. **If escalate_count > 0 AND fraud_risk_score < 40% → MUST APPROVE** (low risk, previous escalations noted but not blocking)
+2. **If escalate_count > 0 AND fraud_risk_score >= 40% → LLM decides** (proceed to LLM analysis, no auto-reject)
+3. If fraud_risk_score is 100.0% or >= 5% AND employee is NEW → MUST ESCALATE (not REJECT)
+4. If fraud_risk_score is 100.0% or >= 95% AND employee is REPEAT with fraud history → MUST REJECT
+5. **New employees with high risk should be escalated for human review, not auto-rejected**
+6. **Repeat offenders with low risk (< 40%) should be APPROVED, not rejected or escalated**
 
 ### IMPORTANT NOTES
 - ML score determines the risk_score bucket only

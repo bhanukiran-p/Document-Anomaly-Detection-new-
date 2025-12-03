@@ -371,6 +371,11 @@ const PaystubAnalysis = () => {
 
                   {/* Fraud Type Card - Primary Fraud Type with Employee History as Reasons */}
                   {(() => {
+                    // Hide if recommendation is APPROVE
+                    if (results.ai_recommendation === 'APPROVE') {
+                      return false;
+                    }
+                    
                     // Check if we have fraud types or employee info to display
                     const fraudTypes = results.fraud_types || 
                                       results.data?.fraud_types || 
@@ -396,31 +401,63 @@ const PaystubAnalysis = () => {
                       const isNewEmployee = !employeeInfo.employee_id;
                       const employeeStatus = isNewEmployee ? 'New Employee' : 'Repeat Employee';
                       
-                      // Get primary fraud type
-                      const primaryFraudType = fraudTypes.length > 0 
-                        ? fraudTypes[0].replace(/_/g, ' ')
-                        : 'MISSING CRITICAL FIELDS';
-                      
-                      // Build reasons from employee history
-                      const reasons = [];
-                      if (escalateCount > 0) {
-                        reasons.push(`Escalation count: ${escalateCount}`);
-                      }
-                      if (fraudCount > 0) {
-                        reasons.push(`Fraud count: ${fraudCount} ${fraudCount === 1 ? 'incident' : 'incidents'}`);
-                      }
-                      reasons.push(`Employee status: ${employeeStatus}`);
-                      
-                      // If we have fraud explanations, use first 2, otherwise use employee history
-                      const fraudExplanations = results.fraud_explanations || 
+                      // Get fraud explanations from multiple possible locations
+                      const fraudExplanations = results.fraud_explanations ||
                                                 results.data?.fraud_explanations ||
                                                 results.ai_analysis?.fraud_explanations ||
                                                 results.data?.ai_analysis?.fraud_explanations || [];
                       
-                      let displayReasons = reasons;
-                      if (fraudExplanations.length > 0 && fraudExplanations[0].reasons && fraudExplanations[0].reasons.length > 0) {
-                        // Use fraud explanation reasons if available, but prioritize employee history
-                        displayReasons = reasons.length > 0 ? reasons : fraudExplanations[0].reasons.slice(0, 2);
+                      // Get primary fraud type - prioritize fraud_types, then fraud_explanations, then default
+                      let primaryFraudType = null;
+                      if (fraudTypes.length > 0) {
+                        primaryFraudType = fraudTypes[0].replace(/_/g, ' ');
+                      } else if (fraudExplanations.length > 0 && fraudExplanations[0].type) {
+                        // Use fraud explanation type if available
+                        primaryFraudType = fraudExplanations[0].type.replace(/_/g, ' ');
+                      } else if (escalateCount > 0 || fraudCount > 0) {
+                        // For repeat employees, default to FABRICATED_DOCUMENT
+                        primaryFraudType = 'FABRICATED_DOCUMENT';
+                      } else {
+                        // Last resort: use FABRICATED_DOCUMENT (removed MISSING_CRITICAL_FIELDS)
+                        primaryFraudType = 'FABRICATED_DOCUMENT';
+                      }
+                      
+                      // HYBRID APPROACH: Combine document-level fraud explanations with REPEAT_OFFENDER info
+                      let displayReasons = [];
+                      
+                      // First, add document-level fraud explanations (exclude REPEAT_OFFENDER)
+                      const documentLevelExplanations = fraudExplanations.filter(exp => 
+                        exp.type !== 'REPEAT_OFFENDER'
+                      );
+                      if (documentLevelExplanations.length > 0) {
+                        documentLevelExplanations.forEach(exp => {
+                          if (exp.reasons && exp.reasons.length > 0) {
+                            displayReasons.push(...exp.reasons.slice(0, 2));
+                          }
+                        });
+                      }
+                      
+                      // Then, add REPEAT_OFFENDER explanations (based on employee history)
+                      const repeatOffenderExplanations = fraudExplanations.filter(exp => 
+                        exp.type === 'REPEAT_OFFENDER'
+                      );
+                      if (repeatOffenderExplanations.length > 0) {
+                        repeatOffenderExplanations.forEach(exp => {
+                          if (exp.reasons && exp.reasons.length > 0) {
+                            displayReasons.push(...exp.reasons);
+                          }
+                        });
+                      }
+                      
+                      // Fallback: if no explanations, use employee history
+                      if (displayReasons.length === 0) {
+                        if (escalateCount > 0) {
+                          displayReasons.push(`Employee has ${escalateCount} previous escalation${escalateCount !== 1 ? 's' : ''}`);
+                        }
+                        if (fraudCount > 0) {
+                          displayReasons.push(`Employee has ${fraudCount} previous fraud incident${fraudCount !== 1 ? 's' : ''}`);
+                        }
+                        displayReasons.push(`Employee status: ${employeeStatus} with documented fraud history`);
                       }
                       
                       return (
@@ -457,7 +494,7 @@ const PaystubAnalysis = () => {
                   ) : null}
 
                   {/* Actionable Recommendations Card */}
-                  {results.ai_analysis && results.ai_analysis.actionable_recommendations && results.ai_analysis.actionable_recommendations.length > 0 && (
+                  {results.ai_recommendation !== 'APPROVE' && results.ai_analysis && results.ai_analysis.actionable_recommendations && results.ai_analysis.actionable_recommendations.length > 0 && (
                     <div style={{
                       ...resultCardStyle,
                       marginBottom: '1.5rem',
