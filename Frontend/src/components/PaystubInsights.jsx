@@ -7,6 +7,31 @@ import {
 } from 'recharts';
 import { FaUpload, FaCog } from 'react-icons/fa';
 
+// Custom Tooltip Component
+const CustomTooltip = ({ active, payload, label }) => {
+  if (active && payload && payload.length) {
+    return (
+      <div style={{
+        backgroundColor: colors.card,
+        border: `1px solid ${colors.border}`,
+        borderRadius: '8px',
+        padding: '12px',
+        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
+      }}>
+        <p style={{ margin: '0 0 8px 0', fontWeight: '600', color: colors.foreground }}>
+          {label}
+        </p>
+        {payload.map((entry, index) => (
+          <p key={index} style={{ margin: '4px 0', color: entry.color }}>
+            <span style={{ fontWeight: '600' }}>{entry.name || entry.dataKey}:</span> {typeof entry.value === 'number' ? entry.value.toFixed(1) : entry.value}
+          </p>
+        ))}
+      </div>
+    );
+  }
+  return null;
+};
+
 const PaystubInsights = () => {
   const [csvData, setCsvData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -148,31 +173,50 @@ const PaystubInsights = () => {
     });
 
     const topHighRiskEmployees = Object.entries(employeeRisks)
-      .map(([name, data]) => ({
-        name,
-        fullName: name,
-        avgRisk: (data.totalRisk / data.count).toFixed(1),
-        count: data.count,
-        maxRisk: data.maxRisk.toFixed(1)
-      }))
-      .filter(item => parseFloat(item.avgRisk) >= 50)
-      .sort((a, b) => parseFloat(b.avgRisk) - parseFloat(a.avgRisk))
+      .map(([name, data]) => {
+        const avgRisk = parseFloat((data.totalRisk / data.count).toFixed(1));
+        return {
+          name,
+          fullName: name,
+          avgRisk: avgRisk, // Store as number for chart
+          avgRiskDisplay: avgRisk.toFixed(1), // For display purposes
+          count: data.count,
+          maxRisk: parseFloat(data.maxRisk.toFixed(1))
+        };
+      })
+      .filter(item => item.avgRisk >= 50)
+      .sort((a, b) => b.avgRisk - a.avgRisk)
       .slice(0, 10);
 
     // 6. Fraud Type Distribution
     const fraudTypeCount = {};
     rows.forEach(r => {
-      const fraudType = (r['fraud_types'] || 'No Flag').trim();
-      if (fraudType && fraudType !== 'No Flag') {
-        fraudTypeCount[fraudType] = (fraudTypeCount[fraudType] || 0) + 1;
+      let fraudType = r['fraud_types'];
+      
+      // Handle different data formats: string, array, or null/undefined
+      if (Array.isArray(fraudType)) {
+        // If it's an array, process each element
+        fraudType.forEach(ft => {
+          const typeStr = String(ft || '').trim();
+          if (typeStr && typeStr !== 'No Flag' && typeStr !== 'null' && typeStr !== 'undefined') {
+            fraudTypeCount[typeStr] = (fraudTypeCount[typeStr] || 0) + 1;
+          }
+        });
+      } else {
+        // If it's a string or other type
+        const typeStr = String(fraudType || 'No Flag').trim();
+        if (typeStr && typeStr !== 'No Flag' && typeStr !== 'null' && typeStr !== 'undefined' && typeStr.length > 0) {
+          fraudTypeCount[typeStr] = (fraudTypeCount[typeStr] || 0) + 1;
+        }
       }
     });
 
     const fraudTypeData = Object.entries(fraudTypeCount)
       .map(([name, count]) => ({
-        name: name.replace(/_/g, ' '),
+        name: name.replace(/_/g, ' ').trim() || 'Unknown Fraud Type',
         value: count
       }))
+      .filter(item => item.name && item.name !== 'Unknown Fraud Type' || item.value > 0) // Filter out empty names
       .sort((a, b) => b.value - a.value);
 
     // 7. Income Distribution Stats
@@ -320,7 +364,17 @@ const PaystubInsights = () => {
   const filteredData = getFilteredData();
   const processedData = filteredData.length > 0 ? processData(filteredData, employerFilter) : null;
 
-  const COLORS = [colors.accent.red, colors.status.warning, colors.accent.red, colors.accent.redDark, colors.status.success];
+  const primary = colors.primaryColor || colors.accent?.red || '#E53935';
+  const COLORS = [
+    primary,
+    colors.status.warning || '#FFA726',
+    colors.accent.redDark || '#C62828',
+    '#FF6B6B',
+    colors.status.success || '#4CAF50',
+    '#9C27B0',
+    '#2196F3',
+    '#FF9800'
+  ];
 
   return (
     <div style={styles.container}>
@@ -444,135 +498,239 @@ const PaystubInsights = () => {
         <div style={styles.chartsContainer}>
           {/* Risk Distribution */}
           <div style={styles.chartBox}>
-            <h3>Fraud Risk Distribution</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={(csvData || processedData).riskDistribution}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="range" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="count" fill={colors.accent.red} />
+            <h3 style={styles.chartTitle}>Fraud Risk Distribution</h3>
+            <ResponsiveContainer width="100%" height={320}>
+              <BarChart data={(csvData || processedData).riskDistribution} margin={{ top: 10, right: 20, left: 10, bottom: 10 }}>
+                <defs>
+                  <linearGradient id="riskGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={primary} stopOpacity={1} />
+                    <stop offset="100%" stopColor={primary} stopOpacity={0.7} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.3} />
+                <XAxis 
+                  dataKey="range" 
+                  tick={{ fill: colors.foreground, fontSize: 12 }}
+                  stroke={colors.border}
+                />
+                <YAxis 
+                  tick={{ fill: colors.foreground, fontSize: 12 }}
+                  stroke={colors.border}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar 
+                  dataKey="count" 
+                  fill="url(#riskGradient)"
+                  radius={[8, 8, 0, 0]}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>
 
           {/* AI Recommendation Distribution */}
           <div style={styles.chartBox}>
-            <h3>AI Recommendation Breakdown</h3>
-            <ResponsiveContainer width="100%" height={300}>
+            <h3 style={styles.chartTitle}>AI Recommendation Breakdown</h3>
+            <ResponsiveContainer width="100%" height={320}>
               <PieChart>
                 <Pie
                   data={(csvData || processedData).recommendationData}
                   cx="50%"
                   cy="50%"
                   labelLine={false}
-                  label={({ name, value }) => `${name}: ${value}`}
-                  outerRadius={80}
+                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                  outerRadius={100}
+                  innerRadius={40}
                   fill="#8884d8"
                   dataKey="value"
+                  stroke={colors.card}
+                  strokeWidth={2}
                 >
-                  {(csvData || processedData).recommendationData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
+                  {(csvData || processedData).recommendationData.map((entry, index) => {
+                    const colorMap = {
+                      'APPROVE': colors.status.success || '#4CAF50',
+                      'REJECT': primary,
+                      'ESCALATE': colors.status.warning || '#FFA726'
+                    };
+                    return (
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={colorMap[entry.name] || COLORS[index % COLORS.length]}
+                      />
+                    );
+                  })}
                 </Pie>
-                <Tooltip />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend 
+                  wrapperStyle={{ color: colors.foreground }}
+                  iconType="circle"
+                />
               </PieChart>
             </ResponsiveContainer>
           </div>
 
           {/* Risk Level Distribution */}
           <div style={styles.chartBox}>
-            <h3>Risk Level Distribution</h3>
-            <ResponsiveContainer width="100%" height={300}>
+            <h3 style={styles.chartTitle}>Risk Level Distribution</h3>
+            <ResponsiveContainer width="100%" height={320}>
               <PieChart>
                 <Pie
                   data={(csvData || processedData).riskLevelData}
                   cx="50%"
                   cy="50%"
                   labelLine={false}
-                  label={({ name, value }) => `${name}: ${value}`}
-                  outerRadius={80}
+                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                  outerRadius={100}
+                  innerRadius={40}
                   fill="#8884d8"
                   dataKey="value"
+                  stroke={colors.card}
+                  strokeWidth={2}
                 >
                   {(csvData || processedData).riskLevelData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend 
+                  wrapperStyle={{ color: colors.foreground }}
+                  iconType="circle"
+                />
               </PieChart>
             </ResponsiveContainer>
           </div>
 
           {/* Risk by Employer */}
           <div style={styles.chartBox}>
-            <h3>Risk by Employer (Top 10)</h3>
-            <ResponsiveContainer width="100%" height={300}>
+            <h3 style={styles.chartTitle}>Risk by Employer (Top 10)</h3>
+            <ResponsiveContainer width="100%" height={350}>
               <BarChart
                 data={(csvData || processedData).riskByEmployerData}
-                margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
+                margin={{ top: 20, right: 30, left: 20, bottom: 80 }}
               >
-                <CartesianGrid strokeDasharray="3 3" />
+                <defs>
+                  <linearGradient id="employerGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={primary} stopOpacity={1} />
+                    <stop offset="100%" stopColor={primary} stopOpacity={0.6} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.3} />
                 <XAxis
                   dataKey="name"
                   angle={-45}
                   textAnchor="end"
                   height={100}
                   interval={0}
+                  tick={{ fill: colors.foreground, fontSize: 11 }}
+                  stroke={colors.border}
                 />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="avgRisk" fill={colors.accent.red} name="Avg Risk %" />
+                <YAxis 
+                  tick={{ fill: colors.foreground, fontSize: 12 }}
+                  stroke={colors.border}
+                  label={{ value: 'Risk %', angle: -90, position: 'insideLeft', fill: colors.foreground }}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend 
+                  wrapperStyle={{ color: colors.foreground }}
+                  iconType="square"
+                />
+                <Bar 
+                  dataKey="avgRisk" 
+                  fill="url(#employerGradient)" 
+                  name="Avg Risk %"
+                  radius={[8, 8, 0, 0]}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>
 
           {/* Top High-Risk Employees */}
           <div style={styles.chartBox}>
-            <h3>Top High-Risk Employees (≥50%)</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart
-                data={(csvData || processedData).topHighRiskEmployees}
-                margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" />
+            <h3 style={styles.chartTitle}>Top High-Risk Employees (≥50%)</h3>
+            {(csvData || processedData).topHighRiskEmployees && (csvData || processedData).topHighRiskEmployees.length > 0 ? (
+              <ResponsiveContainer width="100%" height={350}>
+                <BarChart
+                  data={(csvData || processedData).topHighRiskEmployees}
+                  margin={{ top: 20, right: 30, left: 20, bottom: 80 }}
+                >
+                <defs>
+                  <linearGradient id="employeeGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#FF6B6B" stopOpacity={1} />
+                    <stop offset="100%" stopColor="#FF6B6B" stopOpacity={0.6} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.3} />
                 <XAxis
                   dataKey="name"
                   angle={-45}
                   textAnchor="end"
                   height={100}
                   interval={0}
+                  tick={{ fill: colors.foreground, fontSize: 11 }}
+                  stroke={colors.border}
                 />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="avgRisk" fill={colors.accent.orange} name="Avg Risk %" />
+                <YAxis 
+                  tick={{ fill: colors.foreground, fontSize: 12 }}
+                  stroke={colors.border}
+                  label={{ value: 'Risk %', angle: -90, position: 'insideLeft', fill: colors.foreground }}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend 
+                  wrapperStyle={{ color: colors.foreground }}
+                  iconType="square"
+                />
+                <Bar 
+                  dataKey="avgRisk" 
+                  fill="url(#employeeGradient)" 
+                  name="Avg Risk %"
+                  radius={[8, 8, 0, 0]}
+                />
               </BarChart>
             </ResponsiveContainer>
+            ) : (
+              <div style={{
+                padding: '3rem',
+                textAlign: 'center',
+                color: colors.mutedForeground,
+                backgroundColor: colors.secondary,
+                borderRadius: '8px',
+                border: `1px solid ${colors.border}`
+              }}>
+                <p>No employees found with risk score ≥ 50%</p>
+                <p style={{ fontSize: '0.875rem', marginTop: '0.5rem' }}>
+                  Try adjusting filters or upload data with higher risk scores
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Fraud Type Distribution */}
           {(csvData || processedData).fraudTypeData.length > 0 && (
             <div style={styles.chartBox}>
-              <h3>Fraud Type Distribution</h3>
-              <ResponsiveContainer width="100%" height={300}>
+              <h3 style={styles.chartTitle}>Fraud Type Distribution</h3>
+              <ResponsiveContainer width="100%" height={320}>
                 <PieChart>
                   <Pie
                     data={(csvData || processedData).fraudTypeData}
                     cx="50%"
                     cy="50%"
                     labelLine={false}
-                    label={({ name, value }) => `${name}: ${value}`}
-                    outerRadius={80}
+                    label={({ name, percent }) => percent > 0.05 ? `${name}: ${(percent * 100).toFixed(0)}%` : ''}
+                    outerRadius={100}
+                    innerRadius={40}
                     fill="#8884d8"
                     dataKey="value"
+                    stroke={colors.card}
+                    strokeWidth={2}
                   >
                     {(csvData || processedData).fraudTypeData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend 
+                    wrapperStyle={{ color: colors.foreground }}
+                    iconType="circle"
+                  />
                 </PieChart>
               </ResponsiveContainer>
             </div>
@@ -708,9 +866,19 @@ const styles = {
   },
   chartBox: {
     backgroundColor: colors.card,
-    padding: '20px',
-    borderRadius: '8px',
-    border: `1px solid ${colors.border}`
+    padding: '24px',
+    borderRadius: '12px',
+    border: `1px solid ${colors.border}`,
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+    transition: 'all 0.3s ease',
+  },
+  chartTitle: {
+    fontSize: '18px',
+    fontWeight: '600',
+    color: colors.foreground,
+    marginBottom: '20px',
+    paddingBottom: '12px',
+    borderBottom: `2px solid ${colors.border}`,
   }
 };
 

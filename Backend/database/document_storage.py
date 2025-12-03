@@ -602,50 +602,71 @@ class DocumentStorage:
             if not isinstance(deductions, list):
                 deductions = []
 
-            # Extract fraud types and explanations (prefer AI, fallback to ML)
-            fraud_types = ai_analysis.get('fraud_types') if ai_analysis else ml_analysis.get('fraud_types', [])
-            fraud_explanations = ai_analysis.get('fraud_explanations', []) if ai_analysis else []
+            # Get AI recommendation first
+            ai_recommendation = ai_analysis.get('recommendation', 'UNKNOWN') if ai_analysis else 'UNKNOWN'
+            ai_recommendation = ai_recommendation.upper()
 
-            # Ensure fraud_types is a list, then extract first element as primary fraud type
-            if not isinstance(fraud_types, list):
-                fraud_types = [fraud_types] if fraud_types else []
+            # Only store fraud types if recommendation is REJECT
+            # For ESCALATE or APPROVE, store "Escalated" or "No Fraud Found"
+            primary_fraud_type = None
+            primary_fraud_type_label = None
+            fraud_explanations = []
+            
+            if ai_recommendation == 'REJECT':
+                # Only show fraud types for REJECT recommendations
+                fraud_types = ai_analysis.get('fraud_types') if ai_analysis else ml_analysis.get('fraud_types', [])
+                fraud_explanations = ai_analysis.get('fraud_explanations', []) if ai_analysis else []
 
-            # Store only the primary (first) fraud type as a string
-            primary_fraud_type = fraud_types[0] if fraud_types else None
+                # Ensure fraud_types is a list, then extract first element as primary fraud type
+                if not isinstance(fraud_types, list):
+                    fraud_types = [fraud_types] if fraud_types else []
 
-            # Format fraud type label for display (remove underscores and title case)
-            primary_fraud_type_label = primary_fraud_type.replace('_', ' ').title() if primary_fraud_type else None
+                # Store only the primary (first) fraud type as a string
+                primary_fraud_type = fraud_types[0] if fraud_types else None
 
-            # Ensure fraud_explanations is a list of dicts
+                # Format fraud type label for display (remove underscores and title case)
+                primary_fraud_type_label = primary_fraud_type.replace('_', ' ').title() if primary_fraud_type else None
+            elif ai_recommendation == 'ESCALATE':
+                # For ESCALATE, store "Escalated" and "No Fraud Found"
+                primary_fraud_type = 'ESCALATED'
+                primary_fraud_type_label = 'Escalated'
+                fraud_explanations = [{
+                    'type': 'ESCALATED',
+                    'reasons': ['No fraud detected. Document escalated for manual review.']
+                }]
+            elif ai_recommendation == 'APPROVE':
+                # For APPROVE, store "Approved" and "No Fraud Found"
+                primary_fraud_type = 'APPROVED'
+                primary_fraud_type_label = 'Approved'
+                fraud_explanations = [{
+                    'type': 'APPROVED',
+                    'reasons': ['No fraud detected. Document approved.']
+                }]
+
+            # Ensure fraud_explanations is a list of dicts (already set above, but double-check)
             if not isinstance(fraud_explanations, list):
                 fraud_explanations = []
 
             # Prepare paystub data
+            # Match exact schema: paystubs table has employer_address, employer_country, employer_email
+            # But NOT: employer_city, employer_state, employer_zip, employer_phone
+            # Also NOT: pay_period_start, pay_period_end, pay_date (these don't exist in schema)
             paystub_data = {
                 'paystub_id': str(uuid.uuid4()),
                 'document_id': document_id,
                 'employee_name': self._safe_string(extracted.get('employee_name')),
-                'employee_first_name': self._safe_string(extracted.get('employee_first_name')),
-                'employee_last_name': self._safe_string(extracted.get('employee_last_name')),
                 'employee_address': self._safe_string(extracted.get('employee_address')),
                 'employee_id_number': self._safe_string(extracted.get('employee_id')),
                 'employer_id': employer_id,
                 'employer_name': self._safe_string(extracted.get('employer_name')),
                 'employer_address': self._safe_string(extracted.get('employer_address')),
-                'employer_city': self._safe_string(extracted.get('employer_city')),
-                'employer_state': self._safe_string(extracted.get('employer_state')),
-                'employer_zip': self._safe_string(extracted.get('employer_zip')),
                 'employer_country': self._safe_string(extracted.get('employer_country', 'USA')),
-                'employer_phone': self._safe_string(extracted.get('employer_phone')),
                 'employer_email': self._safe_string(extracted.get('employer_email')),
-                'pay_period_start': self._parse_date(extracted.get('pay_period_start')),
-                'pay_period_end': self._parse_date(extracted.get('pay_period_end')),
-                'pay_date': self._parse_date(extracted.get('pay_date')),
                 'gross_pay': self._parse_amount(extracted.get('gross_pay')),
                 'net_pay': self._parse_amount(extracted.get('net_pay')),
                 'ytd_gross': self._parse_amount(extracted.get('ytd_gross')),
                 'ytd_net': self._parse_amount(extracted.get('ytd_net')),
-                'deductions': json.dumps(deductions),
+                'deductions': json.dumps(deductions) if deductions else None,
                 # ML Analysis results
                 'fraud_risk_score': self._parse_amount(ml_analysis.get('fraud_risk_score')),
                 'risk_level': self._safe_string(ml_analysis.get('risk_level')),
@@ -654,15 +675,20 @@ class DocumentStorage:
                 'ai_recommendation': self._safe_string(ai_analysis.get('recommendation')) if ai_analysis else None,
                 # Anomaly data
                 'anomaly_count': len(analysis_data.get('anomalies', [])),
-                'top_anomalies': json.dumps(analysis_data.get('anomalies', [])[:5]),
+                'top_anomalies': json.dumps(analysis_data.get('anomalies', [])[:5]) if analysis_data.get('anomalies') else None,
                 # Fraud types - store as human-readable label (primary fraud type only)
                 'fraud_types': self._safe_string(primary_fraud_type_label),
-                'fraud_explanations': json.dumps(fraud_explanations)
+                'fraud_explanations': json.dumps(fraud_explanations) if fraud_explanations else '[]'
             }
 
             # Insert paystub record
-            self.supabase.table('paystubs').insert([paystub_data]).execute()
-            logger.info(f"Stored paystub: {paystub_data['paystub_id']}")
+            try:
+                self.supabase.table('paystubs').insert([paystub_data]).execute()
+                logger.info(f"Stored paystub: {paystub_data['paystub_id']}")
+            except Exception as insert_error:
+                logger.error(f"Error inserting paystub into database: {insert_error}", exc_info=True)
+                logger.error(f"Paystub data keys: {list(paystub_data.keys())}")
+                raise insert_error
 
             # Update document status
             self._update_document_status(document_id, 'success')
@@ -670,7 +696,7 @@ class DocumentStorage:
             return document_id
 
         except Exception as e:
-            logger.error(f"Error storing paystub: {e}")
+            logger.error(f"Error storing paystub: {e}", exc_info=True)
             if document_id:
                 self._update_document_status(document_id, 'failed')
             return None

@@ -284,7 +284,7 @@ const CheckAnalysis = () => {
   };
   
   const headerStyle = {
-    background: colors.gradients.navy,
+    background: 'linear-gradient(135deg, #0f1820 0%, #1a2332 100%)',
     padding: '2rem',
     borderRadius: '0.75rem',
     color: colors.foreground,
@@ -367,7 +367,9 @@ const CheckAnalysis = () => {
   return (
     <div style={containerStyle}>
       <div style={headerStyle}>
-        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Check Analysis</h1>
+        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>
+          Check <span style={{ color: primary }}>Analysis</span>
+        </h1>
         <p>Analyze bank checks for fraud detection</p>
       </div>
 

@@ -97,7 +97,7 @@ const PaystubAnalysis = () => {
   };
 
   const headerStyle = {
-    background: colors.gradients.navy,
+    background: 'linear-gradient(135deg, #0f1820 0%, #1a2332 100%)',
     padding: '2rem',
     borderRadius: '0.75rem',
     color: colors.foreground,
@@ -196,7 +196,9 @@ const PaystubAnalysis = () => {
   return (
     <div style={containerStyle}>
       <div style={headerStyle}>
-        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Paystub Analysis</h1>
+        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>
+          Paystub <span style={{ color: primary }}>Analysis</span>
+        </h1>
         <p>Analyze paystubs for payroll verification</p>
       </div>
 
