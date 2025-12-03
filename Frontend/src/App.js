@@ -17,11 +17,12 @@ import MoneyOrderAnalysis from './pages/MoneyOrderAnalysis';
 import BankStatementAnalysis from './pages/BankStatementAnalysis';
 import RealTimeAnalysis from './pages/RealTimeAnalysis.jsx';
 import AllDocumentsInsightsPage from './pages/AllDocumentsInsightsPage';
+import PaystubInsightsPage from './pages/PaystubInsightsPage';
 import './styles/GlobalStyles.css';
 
 function AppContent() {
   const location = useLocation();
-  const isCustomLayout = location.pathname === '/' || location.pathname === '/splash' || location.pathname === '/transaction-type' || location.pathname === '/login' || location.pathname === '/register' || location.pathname === '/all-documents-insights';
+  const isCustomLayout = location.pathname === '/' || location.pathname === '/splash' || location.pathname === '/transaction-type' || location.pathname === '/login' || location.pathname === '/register' || location.pathname === '/all-documents-insights' || location.pathname === '/paystub-insights';
   
   // Pages that should show breadcrumb (starting from transaction-type and its children)
   const shouldShowBreadcrumb = location.pathname === '/transaction-type' || 
@@ -61,6 +62,7 @@ function AppContent() {
           <Route path="/bank-statement-analysis" element={<BankStatementAnalysis />} />
           <Route path="/real-time-analysis" element={<RealTimeAnalysis />} />
           <Route path="/all-documents-insights" element={<ProtectedRoute><AllDocumentsInsightsPage /></ProtectedRoute>} />
+          <Route path="/paystub-insights" element={<PaystubInsightsPage />} />
         </Routes>
       </main>
       {!isCustomLayout && <Footer />}

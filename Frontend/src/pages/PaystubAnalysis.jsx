@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { analyzePaystub } from '../services/api';
 import { colors } from '../styles/colors';
+import PaystubInsights from '../components/PaystubInsights.jsx';
 
 const PaystubAnalysis = () => {
   const [file, setFile] = useState(null);
@@ -9,6 +10,7 @@ const PaystubAnalysis = () => {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState('analyze');
 
   const onDrop = useCallback((acceptedFiles) => {
     const selectedFile = acceptedFiles[0];
@@ -72,6 +74,18 @@ const PaystubAnalysis = () => {
   // Styles
   // Use primaryColor for new design system red
   const primary = colors.primaryColor || colors.accent?.red || '#E53935';
+
+  const tabStyle = (isActive) => ({
+    padding: '1rem 2rem',
+    borderRadius: '0.75rem 0.75rem 0 0',
+    backgroundColor: isActive ? primary : colors.secondary,
+    color: isActive ? colors.primaryForeground : colors.foreground,
+    border: `1px solid ${colors.border}`,
+    borderBottom: isActive ? 'none' : `1px solid ${colors.border}`,
+    cursor: 'pointer',
+    fontWeight: isActive ? '600' : '500',
+    transition: 'all 0.3s',
+  });
 
   const containerStyle = {
     maxWidth: '1400px',
@@ -186,6 +200,28 @@ const PaystubAnalysis = () => {
         <p>Analyze paystubs for payroll verification</p>
       </div>
 
+      {/* Tab Navigation */}
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
+        <button
+          onClick={() => setActiveTab('analyze')}
+          style={tabStyle(activeTab === 'analyze')}
+          onMouseEnter={(e) => activeTab === 'analyze' || (e.target.style.backgroundColor = colors.muted)}
+          onMouseLeave={(e) => activeTab === 'analyze' || (e.target.style.backgroundColor = colors.secondary)}
+        >
+          Single Paystub Analysis
+        </button>
+        <button
+          onClick={() => setActiveTab('insights')}
+          style={tabStyle(activeTab === 'insights')}
+          onMouseEnter={(e) => activeTab === 'insights' || (e.target.style.backgroundColor = colors.muted)}
+          onMouseLeave={(e) => activeTab === 'insights' || (e.target.style.backgroundColor = colors.secondary)}
+        >
+          Insights
+        </button>
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === 'analyze' && (
       <div style={gridStyle}>
         {/* Upload Section */}
         <div style={cardStyle}>
@@ -600,6 +636,12 @@ const PaystubAnalysis = () => {
           )}
         </div>
       </div>
+      )}
+
+      {/* Insights Tab */}
+      {activeTab === 'insights' && (
+        <PaystubInsights />
+      )}
     </div>
   );
 };

@@ -376,16 +376,16 @@ const CheckAnalysis = () => {
         <button
           onClick={() => setActiveTab('analyze')}
           style={tabStyle(activeTab === 'analyze')}
-          onMouseEnter={(e) => !activeTab && (e.target.style.backgroundColor = colors.muted)}
-          onMouseLeave={(e) => !activeTab && (e.target.style.backgroundColor = colors.secondary)}
+          onMouseEnter={(e) => activeTab === 'analyze' || (e.target.style.backgroundColor = colors.muted)}
+          onMouseLeave={(e) => activeTab === 'analyze' || (e.target.style.backgroundColor = colors.secondary)}
         >
           Single Check Analysis
         </button>
         <button
           onClick={() => setActiveTab('insights')}
           style={tabStyle(activeTab === 'insights')}
-          onMouseEnter={(e) => !activeTab && (e.target.style.backgroundColor = colors.muted)}
-          onMouseLeave={(e) => !activeTab && (e.target.style.backgroundColor = colors.secondary)}
+          onMouseEnter={(e) => activeTab === 'insights' || (e.target.style.backgroundColor = colors.muted)}
+          onMouseLeave={(e) => activeTab === 'insights' || (e.target.style.backgroundColor = colors.secondary)}
         >
           Insights
         </button>
