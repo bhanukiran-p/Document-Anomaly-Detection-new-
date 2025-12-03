@@ -398,6 +398,9 @@ def analyze_paystub():
             elif ml_fraud_types:
                 fraud_type = ml_fraud_types[0] if isinstance(ml_fraud_types, list) else ml_fraud_types
 
+            # Format fraud type for display (remove underscores and title case)
+            fraud_type_label = fraud_type.replace('_', ' ').title() if fraud_type else None
+
             # For fraud explanations, prefer AI but include ML reasons if AI doesn't have structured explanations
             fraud_explanations = ai_analysis.get('fraud_explanations', []) if ai_analysis else []
             # If no AI explanations but we have a fraud type and reasons, build explanations from ML
@@ -405,7 +408,7 @@ def analyze_paystub():
                 ml_fraud_reasons = ml_analysis.get('fraud_reasons', [])
                 fraud_explanations = [{
                     'type': fraud_type,
-                    'reasons': ml_fraud_reasons if ml_fraud_reasons else [f"Detected as {fraud_type.replace('_', ' ').title()} by ML analysis."]
+                    'reasons': ml_fraud_reasons if ml_fraud_reasons else [f"Detected as {fraud_type_label} by ML analysis."]
                 }]
 
             # Build structured response
@@ -414,7 +417,8 @@ def analyze_paystub():
                 'fraud_risk_score': ml_analysis.get('fraud_risk_score', 0.0),
                 'risk_level': ml_analysis.get('risk_level', 'UNKNOWN'),
                 'model_confidence': ml_analysis.get('model_confidence', 0.0),
-                'fraud_type': fraud_type,  # Single fraud type
+                'fraud_type': fraud_type,  # Single fraud type (machine format)
+                'fraud_type_label': fraud_type_label,  # Human-readable format (e.g., "Zero Withholding Suspicious")
                 'fraud_explanations': fraud_explanations if isinstance(fraud_explanations, list) else [],
                 'ai_recommendation': ai_analysis.get('recommendation', 'UNKNOWN'),
                 'ai_confidence': ai_analysis.get('confidence_score', 0.0),
