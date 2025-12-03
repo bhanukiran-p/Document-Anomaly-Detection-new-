@@ -226,7 +226,7 @@ const MoneyOrderAnalysis = () => {
           onMouseEnter={(e) => !activeTab && (e.target.style.backgroundColor = colors.muted)}
           onMouseLeave={(e) => !activeTab && (e.target.style.backgroundColor = colors.secondary)}
         >
-          Single Money Order Analysis
+          Analysis
         </button>
         <button
           onClick={() => setActiveTab('insights')}

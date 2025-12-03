@@ -607,13 +607,13 @@ class DocumentStorage:
             ai_recommendation = ai_recommendation.upper()
 
             # Only store fraud types if recommendation is REJECT
-            # For ESCALATE or APPROVE, store "Escalated" or "No Fraud Found"
+            # For ESCALATE or APPROVE, keep fraud_type as None (no fraud detected)
             primary_fraud_type = None
             primary_fraud_type_label = None
             fraud_explanations = []
             
             if ai_recommendation == 'REJECT':
-                # Only show fraud types for REJECT recommendations
+                # Only store fraud types for REJECT recommendations (actual fraud detected)
                 fraud_types = ai_analysis.get('fraud_types') if ai_analysis else ml_analysis.get('fraud_types', [])
                 fraud_explanations = ai_analysis.get('fraud_explanations', []) if ai_analysis else []
 
@@ -626,22 +626,7 @@ class DocumentStorage:
 
                 # Format fraud type label for display (remove underscores and title case)
                 primary_fraud_type_label = primary_fraud_type.replace('_', ' ').title() if primary_fraud_type else None
-            elif ai_recommendation == 'ESCALATE':
-                # For ESCALATE, store "Escalated" and "No Fraud Found"
-                primary_fraud_type = 'ESCALATED'
-                primary_fraud_type_label = 'Escalated'
-                fraud_explanations = [{
-                    'type': 'ESCALATED',
-                    'reasons': ['No fraud detected. Document escalated for manual review.']
-                }]
-            elif ai_recommendation == 'APPROVE':
-                # For APPROVE, store "Approved" and "No Fraud Found"
-                primary_fraud_type = 'APPROVED'
-                primary_fraud_type_label = 'Approved'
-                fraud_explanations = [{
-                    'type': 'APPROVED',
-                    'reasons': ['No fraud detected. Document approved.']
-                }]
+            # For ESCALATE or APPROVE, primary_fraud_type remains None (no fraud detected)
 
             # Ensure fraud_explanations is a list of dicts (already set above, but double-check)
             if not isinstance(fraud_explanations, list):

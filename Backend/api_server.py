@@ -392,13 +392,13 @@ def analyze_paystub():
             ai_recommendation = ai_recommendation.upper()
 
             # Only show fraud types if recommendation is REJECT
-            # For ESCALATE or APPROVE, show "Escalated" or "No Fraud Found"
+            # For ESCALATE or APPROVE, keep fraud_type as None (no fraud detected)
             fraud_type = None
             fraud_type_label = None
             fraud_explanations = []
             
             if ai_recommendation == 'REJECT':
-                # Only show fraud types for REJECT recommendations
+                # Only show fraud types for REJECT recommendations (actual fraud detected)
                 ai_fraud_types = ai_analysis.get('fraud_types', []) if ai_analysis else []
                 ml_fraud_types = ml_analysis.get('fraud_types', [])
 
@@ -420,22 +420,7 @@ def analyze_paystub():
                         'type': fraud_type,
                         'reasons': ml_fraud_reasons if ml_fraud_reasons else [f"Detected as {fraud_type_label} by ML analysis."]
                     }]
-            elif ai_recommendation == 'ESCALATE':
-                # For ESCALATE, show "Escalated" and "No Fraud Found"
-                fraud_type = 'ESCALATED'
-                fraud_type_label = 'Escalated'
-                fraud_explanations = [{
-                    'type': 'ESCALATED',
-                    'reasons': ['No fraud detected. Document escalated for manual review.']
-                }]
-            elif ai_recommendation == 'APPROVE':
-                # For APPROVE, show "Approved" and "No Fraud Found"
-                fraud_type = 'APPROVED'
-                fraud_type_label = 'Approved'
-                fraud_explanations = [{
-                    'type': 'APPROVED',
-                    'reasons': ['No fraud detected. Document approved.']
-                }]
+            # For ESCALATE or APPROVE, fraud_type remains None (no fraud detected)
 
             # Build structured response
             response_data = {

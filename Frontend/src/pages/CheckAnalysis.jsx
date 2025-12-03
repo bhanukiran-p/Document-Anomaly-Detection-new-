@@ -381,7 +381,7 @@ const CheckAnalysis = () => {
           onMouseEnter={(e) => activeTab === 'analyze' || (e.target.style.backgroundColor = colors.muted)}
           onMouseLeave={(e) => activeTab === 'analyze' || (e.target.style.backgroundColor = colors.secondary)}
         >
-          Single Check Analysis
+          Analysis
         </button>
         <button
           onClick={() => setActiveTab('insights')}
