@@ -118,14 +118,13 @@ const MoneyOrderAnalysis = () => {
   };
 
   const headerStyle = {
-    background: colors.gradients.dark,
+    background: 'linear-gradient(135deg, #0f1820 0%, #1a2332 100%)',
     padding: '2rem',
     borderRadius: '0.75rem',
     color: colors.foreground,
     textAlign: 'center',
     marginBottom: '2rem',
     border: `1px solid ${colors.border}`,
-    boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)',
   };
 
   const gridStyle = {
@@ -213,8 +212,8 @@ const MoneyOrderAnalysis = () => {
   return (
     <div style={containerStyle}>
       <div style={headerStyle}>
-        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem', color: colors.foreground }}>
-          Money Order Analysis
+        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>
+          Money Order <span style={{ color: primary }}>Analysis</span>
         </h1>
         <p style={{ color: colors.mutedForeground }}>Analyze money orders for fraud and anomaly detection</p>
       </div>

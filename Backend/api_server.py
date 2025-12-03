@@ -386,29 +386,55 @@ def analyze_paystub():
             ml_analysis = details.get('ml_analysis', {})
             ai_analysis = details.get('ai_analysis', {})
             employee_info = details.get('employee_info', {})
+            
+            # Get AI recommendation first
+            ai_recommendation = ai_analysis.get('recommendation', 'UNKNOWN') if ai_analysis else 'UNKNOWN'
+            ai_recommendation = ai_recommendation.upper()
 
-            # Prefer AI fraud type/explanations, fallback to ML (single fraud type only)
-            ai_fraud_types = ai_analysis.get('fraud_types', []) if ai_analysis else []
-            ml_fraud_types = ml_analysis.get('fraud_types', [])
-
-            # Extract the primary fraud type (should be a single-element list)
+            # Only show fraud types if recommendation is REJECT
+            # For ESCALATE or APPROVE, show "Escalated" or "No Fraud Found"
             fraud_type = None
-            if ai_fraud_types:
-                fraud_type = ai_fraud_types[0] if isinstance(ai_fraud_types, list) else ai_fraud_types
-            elif ml_fraud_types:
-                fraud_type = ml_fraud_types[0] if isinstance(ml_fraud_types, list) else ml_fraud_types
+            fraud_type_label = None
+            fraud_explanations = []
+            
+            if ai_recommendation == 'REJECT':
+                # Only show fraud types for REJECT recommendations
+                ai_fraud_types = ai_analysis.get('fraud_types', []) if ai_analysis else []
+                ml_fraud_types = ml_analysis.get('fraud_types', [])
 
-            # Format fraud type for display (remove underscores and title case)
-            fraud_type_label = fraud_type.replace('_', ' ').title() if fraud_type else None
+                # Extract the primary fraud type (should be a single-element list)
+                if ai_fraud_types:
+                    fraud_type = ai_fraud_types[0] if isinstance(ai_fraud_types, list) else ai_fraud_types
+                elif ml_fraud_types:
+                    fraud_type = ml_fraud_types[0] if isinstance(ml_fraud_types, list) else ml_fraud_types
 
-            # For fraud explanations, prefer AI but include ML reasons if AI doesn't have structured explanations
-            fraud_explanations = ai_analysis.get('fraud_explanations', []) if ai_analysis else []
-            # If no AI explanations but we have a fraud type and reasons, build explanations from ML
-            if not fraud_explanations and fraud_type:
-                ml_fraud_reasons = ml_analysis.get('fraud_reasons', [])
+                # Format fraud type for display (remove underscores and title case)
+                fraud_type_label = fraud_type.replace('_', ' ').title() if fraud_type else None
+
+                # For fraud explanations, prefer AI but include ML reasons if AI doesn't have structured explanations
+                fraud_explanations = ai_analysis.get('fraud_explanations', []) if ai_analysis else []
+                # If no AI explanations but we have a fraud type and reasons, build explanations from ML
+                if not fraud_explanations and fraud_type:
+                    ml_fraud_reasons = ml_analysis.get('fraud_reasons', [])
+                    fraud_explanations = [{
+                        'type': fraud_type,
+                        'reasons': ml_fraud_reasons if ml_fraud_reasons else [f"Detected as {fraud_type_label} by ML analysis."]
+                    }]
+            elif ai_recommendation == 'ESCALATE':
+                # For ESCALATE, show "Escalated" and "No Fraud Found"
+                fraud_type = 'ESCALATED'
+                fraud_type_label = 'Escalated'
                 fraud_explanations = [{
-                    'type': fraud_type,
-                    'reasons': ml_fraud_reasons if ml_fraud_reasons else [f"Detected as {fraud_type_label} by ML analysis."]
+                    'type': 'ESCALATED',
+                    'reasons': ['No fraud detected. Document escalated for manual review.']
+                }]
+            elif ai_recommendation == 'APPROVE':
+                # For APPROVE, show "Approved" and "No Fraud Found"
+                fraud_type = 'APPROVED'
+                fraud_type_label = 'Approved'
+                fraud_explanations = [{
+                    'type': 'APPROVED',
+                    'reasons': ['No fraud detected. Document approved.']
                 }]
 
             # Build structured response
