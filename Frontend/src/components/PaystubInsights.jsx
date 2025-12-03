@@ -2,8 +2,8 @@ import { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { colors } from '../styles/colors';
 import {
-  BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+  BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, AreaChart, Area,
+  ComposedChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine
 } from 'recharts';
 import { FaUpload, FaCog } from 'react-icons/fa';
 
@@ -228,8 +228,19 @@ const PaystubInsights = () => {
     const grossPayValues = rows.map(r => parseFloat_(r['gross_pay'] || 0));
     const netPayValues = rows.map(r => parseFloat_(r['net_pay'] || 0));
 
-    const avgGrossPay = (grossPayValues.reduce((a, b) => a + b, 0) / grossPayValues.length).toFixed(2);
-    const avgNetPay = (netPayValues.reduce((a, b) => a + b, 0) / netPayValues.length).toFixed(2);
+    // Format currency values with K notation (e.g., $4.8K instead of $4765.67)
+    const formatCurrencyK = (value) => {
+      if (value >= 1000) {
+        return `$${(value / 1000).toFixed(1)}K`;
+      }
+      return `$${value.toFixed(0)}`;
+    };
+
+    const avgGrossPayRaw = grossPayValues.reduce((a, b) => a + b, 0) / grossPayValues.length;
+    const avgNetPayRaw = netPayValues.reduce((a, b) => a + b, 0) / netPayValues.length;
+    
+    const avgGrossPay = formatCurrencyK(avgGrossPayRaw);
+    const avgNetPay = formatCurrencyK(avgNetPayRaw);
     const maxGrossPay = Math.max(...grossPayValues).toFixed(2);
     const minGrossPay = Math.min(...grossPayValues).toFixed(2);
 
@@ -305,6 +316,15 @@ const PaystubInsights = () => {
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
+      // (E) Additional KPIs for Fraud Type
+      // 1. Medium-Risk Cases Count
+      // Number of paystubs with fraud risk score between 50-75% (moderate cases)
+      const mediumRiskCasesCount = riskScoresPercent.filter(score => score >= 50 && score < 75).length;
+
+      // 2. High-Risk Cases Count
+      // Number of paystubs with fraud risk score >= 75% (severe cases)
+      const highRiskCasesCount = riskScoresPercent.filter(score => score >= 75).length;
+
       fraudTypeSpecificData = {
         avgRiskComparison: {
           selectedFraudType: filteredAvgRisk,
@@ -313,7 +333,11 @@ const PaystubInsights = () => {
         },
         severityBreakdown,
         monthlyTrend: monthlyTrendData,
-        topEmployersForFraudType
+        topEmployersForFraudType,
+        kpis: {
+          mediumRiskCasesCount: mediumRiskCasesCount,
+          highRiskCasesCount: highRiskCasesCount
+        }
       };
     }
 
@@ -333,6 +357,7 @@ const PaystubInsights = () => {
       fraudTypeData,
       fraudTypeSpecificData,
       isFraudTypeFiltered,
+      isSingleEmployerView,
       summary: {
         totalPaystubs,
         avgFraudRisk,
@@ -663,11 +688,11 @@ const PaystubInsights = () => {
             <div style={styles.kpiLabel}>Avg Fraud Risk</div>
           </div>
           <div style={styles.kpiCard}>
-            <div style={styles.kpiValue}>${displayData.summary.avgGrossPay}</div>
+            <div style={styles.kpiValue}>{displayData.summary.avgGrossPay}</div>
             <div style={styles.kpiLabel}>Avg Gross Pay</div>
           </div>
           <div style={styles.kpiCard}>
-            <div style={styles.kpiValue}>${displayData.summary.avgNetPay}</div>
+            <div style={styles.kpiValue}>{displayData.summary.avgNetPay}</div>
             <div style={styles.kpiLabel}>Avg Net Pay</div>
           </div>
           <div style={styles.kpiCard}>
@@ -759,18 +784,20 @@ const PaystubInsights = () => {
                 </ResponsiveContainer>
               </div>
 
-              {/* Risk by Employer - moved up to separate pie charts */}
+              {/* Risk by Employer - Converted to Area Chart with Data Points */}
+              {/* Hide this chart when filtering by a single employer - it becomes useless */}
+              {!displayData.isSingleEmployerView && (
               <div style={styles.chartBox}>
                 <h3 style={styles.chartTitle}>Risk by Employer (Top 10)</h3>
                 <ResponsiveContainer width="100%" height={350}>
-                  <BarChart
+                  <AreaChart
                     data={displayData.riskByEmployerData}
                     margin={{ top: 20, right: 30, left: 20, bottom: 80 }}
                   >
                     <defs>
-                      <linearGradient id="employerGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={primary} stopOpacity={1} />
-                        <stop offset="100%" stopColor={primary} stopOpacity={0.6} />
+                      <linearGradient id="employerAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={primary} stopOpacity={0.8} />
+                        <stop offset="100%" stopColor={primary} stopOpacity={0.1} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.3} />
@@ -789,93 +816,224 @@ const PaystubInsights = () => {
                       label={{ value: 'Risk %', angle: -90, position: 'insideLeft', fill: colors.foreground }}
                     />
                     <Tooltip content={<CustomTooltip />} />
-                    <Legend 
-                      wrapperStyle={{ color: colors.foreground }}
-                      iconType="square"
-                    />
-                    <Bar 
-                      dataKey="avgRisk" 
-                      fill="url(#employerGradient)" 
+                    <Area
+                      type="monotone"
+                      dataKey="avgRisk"
+                      stroke={primary}
+                      strokeWidth={3}
+                      fill="url(#employerAreaGradient)"
                       name="Avg Risk %"
-                      radius={[8, 8, 0, 0]}
                     />
-                  </BarChart>
+                    <Line
+                      type="monotone"
+                      dataKey="avgRisk"
+                      stroke={primary}
+                      strokeWidth={3}
+                      dot={{ fill: primary, r: 6, strokeWidth: 2, stroke: colors.card }}
+                      activeDot={{ r: 8, strokeWidth: 2, stroke: colors.card }}
+                    />
+                  </AreaChart>
                 </ResponsiveContainer>
               </div>
+              )}
 
-              {/* Risk Level Distribution */}
+              {/* Risk Level Distribution - Converted to Heatmap */}
               <div style={styles.chartBox}>
                 <h3 style={styles.chartTitle}>Risk Level Distribution</h3>
-                <ResponsiveContainer width="100%" height={320}>
-                  <PieChart>
-                    <Pie
-                      data={displayData.riskLevelData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                      outerRadius={100}
-                      innerRadius={40}
-                      fill="#8884d8"
-                      dataKey="value"
-                      stroke={colors.card}
-                      strokeWidth={2}
-                    >
-                      {displayData.riskLevelData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip content={<CustomTooltip />} />
-                    <Legend 
-                      wrapperStyle={{ color: colors.foreground }}
-                      iconType="circle"
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
+                <div style={{ padding: '1rem', minHeight: '280px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                  <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: displayData.riskLevelData.length === 3 ? 'repeat(3, 1fr)' : `repeat(${displayData.riskLevelData.length}, 1fr)`,
+                    gap: '1rem',
+                    flex: 1,
+                    alignItems: 'stretch'
+                  }}>
+                    {displayData.riskLevelData.map((entry, index) => {
+                      const total = displayData.riskLevelData.reduce((sum, item) => sum + item.value, 0);
+                      const percentage = total > 0 ? ((entry.value / total) * 100).toFixed(1) : 0;
+                      
+                      // Use even opacity for all cards (0.6 for bright, vibrant appearance)
+                      // MEDIUM already uses colors.status.warning (#f59e0b - yellow)
+                      const cardColor = entry.color;
+                      
+                      return (
+                        <div
+                          key={`heatmap-cell-${index}`}
+                          style={{
+                            backgroundColor: cardColor,
+                            opacity: 0.6,
+                            padding: '1.25rem',
+                            borderRadius: '8px',
+                            border: `2px solid ${cardColor}`,
+                            textAlign: 'center',
+                            transition: 'transform 0.2s, box-shadow 0.2s',
+                            cursor: 'pointer',
+                            boxShadow: `0 4px 12px ${cardColor}60`,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'center',
+                            minHeight: '180px'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.transform = 'scale(1.05)';
+                            e.currentTarget.style.boxShadow = `0 8px 20px ${cardColor}60`;
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.transform = 'scale(1)';
+                            e.currentTarget.style.boxShadow = `0 4px 12px ${cardColor}40`;
+                          }}
+                        >
+                          <div style={{ fontSize: '2rem', fontWeight: 'bold', color: colors.foreground, marginBottom: '0.75rem' }}>
+                            {entry.value}
+                          </div>
+                          <div style={{ fontSize: '0.95rem', color: colors.foreground, marginBottom: '0.5rem', fontWeight: '600' }}>
+                            {entry.name}
+                          </div>
+                          <div style={{ fontSize: '0.9rem', color: colors.mutedForeground }}>
+                            {percentage}%
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {displayData.riskLevelData.length > 0 && (
+                    <div style={{ 
+                      marginTop: '1rem', 
+                      padding: '0.75rem 1rem', 
+                      backgroundColor: colors.secondary, 
+                      borderRadius: '8px',
+                      border: `1px solid ${colors.border}`
+                    }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center',
+                        fontSize: '0.9rem',
+                        color: colors.foreground
+                      }}>
+                        <span>Total Paystubs:</span>
+                        <span style={{ fontWeight: 'bold', color: primary }}>
+                          {displayData.riskLevelData.reduce((sum, item) => sum + item.value, 0)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* Top High-Risk Employees - moved up to separate pie charts */}
+              {/* Top High-Risk Employees - Bullet Chart + Horizontal Ranking */}
               <div style={styles.chartBox}>
                 <h3 style={styles.chartTitle}>Top High-Risk Employees (≥50%)</h3>
                 {displayData.topHighRiskEmployees && displayData.topHighRiskEmployees.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={350}>
-                    <BarChart
-                      data={displayData.topHighRiskEmployees}
-                      margin={{ top: 20, right: 30, left: 20, bottom: 80 }}
+                  <ResponsiveContainer width="100%" height={Math.max(400, displayData.topHighRiskEmployees.length * 35)}>
+                    <ComposedChart
+                      data={displayData.topHighRiskEmployees.map(emp => ({
+                        ...emp,
+                        lowZone: 50,      // 0-50% zone
+                        mediumZone: 25,   // 50-75% zone (25% width)
+                        highZone: 25      // 75-100% zone (25% width)
+                      }))}
+                      layout="vertical"
+                      margin={{ top: 20, right: 30, left: 120, bottom: 20 }}
                     >
                     <defs>
-                      <linearGradient id="employeeGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#FF6B6B" stopOpacity={1} />
-                        <stop offset="100%" stopColor="#FF6B6B" stopOpacity={0.6} />
+                      <linearGradient id="bulletGradient" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0%" stopColor={primary} stopOpacity={0.9} />
+                        <stop offset="100%" stopColor={primary} stopOpacity={0.7} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.3} />
-                    <XAxis
+                    <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.2} horizontal={false} />
+                    <XAxis 
+                      type="number"
+                      domain={[0, 100]}
+                      tick={{ fill: colors.foreground, fontSize: 11 }}
+                      stroke={colors.border}
+                      label={{ value: 'Risk %', position: 'insideBottom', offset: -5, fill: colors.foreground }}
+                    />
+                    <YAxis 
+                      type="category"
                       dataKey="name"
-                      angle={-45}
-                      textAnchor="end"
-                      height={100}
-                      interval={0}
+                      width={110}
                       tick={{ fill: colors.foreground, fontSize: 11 }}
                       stroke={colors.border}
                     />
-                    <YAxis 
-                      tick={{ fill: colors.foreground, fontSize: 12 }}
-                      stroke={colors.border}
-                      label={{ value: 'Risk %', angle: -90, position: 'insideLeft', fill: colors.foreground }}
+                    <Tooltip 
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0].payload;
+                          return (
+                            <div style={{
+                              backgroundColor: colors.card,
+                              border: `1px solid ${colors.border}`,
+                              borderRadius: '8px',
+                              padding: '12px',
+                              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
+                            }}>
+                              <p style={{ margin: '0 0 8px 0', fontWeight: '600', color: colors.foreground }}>
+                                {data.name}
+                              </p>
+                              <p style={{ margin: '4px 0', color: primary }}>
+                                <span style={{ fontWeight: '600' }}>Risk:</span> {data.avgRisk.toFixed(1)}%
+                              </p>
+                              <p style={{ margin: '4px 0', color: colors.mutedForeground, fontSize: '0.85rem' }}>
+                                {data.avgRisk >= 75 ? '🔴 High Risk' : data.avgRisk >= 50 ? '🟡 Medium Risk' : '🟢 Low Risk'}
+                              </p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
                     />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Legend 
-                      wrapperStyle={{ color: colors.foreground }}
-                      iconType="square"
+                    {/* Background zones for bullet chart effect */}
+                    <Bar 
+                      dataKey="lowZone" 
+                      stackId="zones"
+                      fill={colors.status.success || '#4CAF50'}
+                      fillOpacity={0.15}
+                      name="Low Risk Zone (0-50%)"
+                      isAnimationActive={false}
                     />
                     <Bar 
-                      dataKey="avgRisk" 
-                      fill="url(#employeeGradient)" 
-                      name="Avg Risk %"
-                      radius={[8, 8, 0, 0]}
+                      dataKey="mediumZone" 
+                      stackId="zones"
+                      fill={colors.status.warning || '#FFA726'}
+                      fillOpacity={0.2}
+                      name="Medium Risk Zone (50-75%)"
+                      isAnimationActive={false}
                     />
-                  </BarChart>
+                    <Bar 
+                      dataKey="highZone" 
+                      stackId="zones"
+                      fill={primary}
+                      fillOpacity={0.15}
+                      name="High Risk Zone (75-100%)"
+                      isAnimationActive={false}
+                    />
+                    {/* Primary bar showing actual risk */}
+                    <Bar 
+                      dataKey="avgRisk" 
+                      fill="url(#bulletGradient)"
+                      name="Risk %"
+                      radius={[0, 4, 4, 0]}
+                      stroke={primary}
+                      strokeWidth={2}
+                    />
+                    {/* Threshold reference lines */}
+                    <ReferenceLine 
+                      x={50} 
+                      stroke={colors.status.warning || '#FFA726'} 
+                      strokeWidth={1.5}
+                      strokeDasharray="4 4"
+                      label={{ value: "50%", position: "top", fill: colors.status.warning || '#FFA726', fontSize: 10 }}
+                    />
+                    <ReferenceLine 
+                      x={75} 
+                      stroke={primary} 
+                      strokeWidth={1.5}
+                      strokeDasharray="4 4"
+                      label={{ value: "75%", position: "top", fill: primary, fontSize: 10 }}
+                    />
+                  </ComposedChart>
                 </ResponsiveContainer>
                 ) : (
                   <div style={{
@@ -894,36 +1052,83 @@ const PaystubInsights = () => {
                 )}
               </div>
 
-              {/* Fraud Type Distribution */}
+              {/* Fraud Type Distribution - Converted to Horizontal Bar Chart */}
               {displayData.fraudTypeData && displayData.fraudTypeData.length > 0 && (
                 <div style={styles.chartBox}>
                   <h3 style={styles.chartTitle}>Fraud Type Distribution</h3>
-                  <ResponsiveContainer width="100%" height={320}>
-                    <PieChart>
-                      <Pie
-                        data={displayData.fraudTypeData}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={({ name, percent }) => percent > 0.05 ? `${name}: ${(percent * 100).toFixed(0)}%` : ''}
-                        outerRadius={100}
-                        innerRadius={40}
-                        fill="#8884d8"
-                        dataKey="value"
-                        stroke={colors.card}
-                        strokeWidth={2}
+                  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', minHeight: '320px' }}>
+                    <ResponsiveContainer width="100%" height={Math.max(320, displayData.fraudTypeData.length * 55)}>
+                      <BarChart 
+                        data={displayData.fraudTypeData} 
+                        layout="vertical"
+                        margin={{ top: 10, right: 40, left: 120, bottom: 10 }}
                       >
-                        {displayData.fraudTypeData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip content={<CustomTooltip />} />
-                      <Legend 
-                        wrapperStyle={{ color: colors.foreground }}
-                        iconType="circle"
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
+                        <defs>
+                          {displayData.fraudTypeData.map((entry, index) => (
+                            <linearGradient key={`fraudGradient-${index}`} id={`fraudGradient-${index}`} x1="0" y1="0" x2="1" y2="0">
+                              <stop offset="0%" stopColor={COLORS[index % COLORS.length]} stopOpacity={1} />
+                              <stop offset="100%" stopColor={COLORS[index % COLORS.length]} stopOpacity={0.7} />
+                            </linearGradient>
+                          ))}
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.3} horizontal={true} vertical={false} />
+                        <XAxis 
+                          type="number"
+                          tick={{ fill: colors.foreground, fontSize: 12 }}
+                          stroke={colors.border}
+                          label={{ value: 'Count', position: 'insideBottom', offset: -5, fill: colors.foreground }}
+                        />
+                        <YAxis 
+                          type="category"
+                          dataKey="name"
+                          tick={{ fill: colors.foreground, fontSize: 12 }}
+                          stroke={colors.border}
+                          width={115}
+                        />
+                        <Tooltip 
+                          content={({ active, payload }) => {
+                            if (active && payload && payload.length) {
+                              const data = payload[0].payload;
+                              const total = displayData.fraudTypeData.reduce((sum, item) => sum + item.value, 0);
+                              const percentage = total > 0 ? ((data.value / total) * 100).toFixed(1) : 0;
+                              return (
+                                <div style={{
+                                  backgroundColor: colors.card,
+                                  border: `1px solid ${colors.border}`,
+                                  borderRadius: '6px',
+                                  padding: '10px',
+                                  boxShadow: `0 4px 12px ${colors.background}80`
+                                }}>
+                                  <p style={{ margin: '0 0 5px 0', fontWeight: 'bold', color: colors.foreground }}>
+                                    {data.name}
+                                  </p>
+                                  <p style={{ margin: '0', color: colors.foreground }}>
+                                    Count: <span style={{ fontWeight: 'bold', color: primary }}>{data.value}</span>
+                                  </p>
+                                  <p style={{ margin: '5px 0 0 0', color: colors.mutedForeground }}>
+                                    Percentage: {percentage}%
+                                  </p>
+                                </div>
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+                        <Bar 
+                          dataKey="value" 
+                          radius={[0, 8, 8, 0]}
+                          name="Count"
+                        >
+                          {displayData.fraudTypeData.map((entry, index) => (
+                            <Cell 
+                              key={`cell-${index}`} 
+                              fill={`url(#fraudGradient-${index})`}
+                            />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
               )}
             </>
@@ -932,15 +1137,17 @@ const PaystubInsights = () => {
           {/* Show fraud-type-specific charts when fraud type filter is active */}
           {displayData.isFraudTypeFiltered && displayData.fraudTypeSpecificData && (
             <>
-              {/* (A) Avg Risk Comparison Card */}
+              {/* 2x2 Matrix: Average Risk Comparison + KPIs */}
               <div style={styles.chartBox}>
                 <h3 style={styles.chartTitle}>Average Risk Comparison</h3>
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+                  gridTemplateColumns: 'repeat(2, 1fr)',
+                  gridTemplateRows: 'repeat(2, 1fr)',
                   gap: '1.5rem',
                   marginTop: '1rem'
                 }}>
+                  {/* Top Left: Selected Fraud Type Average Risk */}
                   <div style={{
                     backgroundColor: colors.secondary,
                     padding: '1.5rem',
@@ -970,6 +1177,8 @@ const PaystubInsights = () => {
                       Average Risk
                     </div>
                   </div>
+
+                  {/* Top Right: All Paystubs Average Risk */}
                   <div style={{
                     backgroundColor: colors.secondary,
                     padding: '1.5rem',
@@ -999,6 +1208,72 @@ const PaystubInsights = () => {
                       Average Risk
                     </div>
                   </div>
+
+                  {/* Bottom Left: Medium-Risk Cases */}
+                  {displayData.fraudTypeSpecificData.kpis && (
+                    <div style={{
+                      backgroundColor: colors.secondary,
+                      padding: '1.5rem',
+                      borderRadius: '0.75rem',
+                      border: `1px solid ${colors.border}`,
+                      textAlign: 'center'
+                    }}>
+                      <div style={{
+                        fontSize: '0.875rem',
+                        color: colors.mutedForeground,
+                        marginBottom: '0.5rem'
+                      }}>
+                        Medium-Risk Cases
+                      </div>
+                      <div style={{
+                        fontSize: '2rem',
+                        fontWeight: 'bold',
+                        color: colors.status.warning || '#FFA726',
+                        marginBottom: '0.25rem'
+                      }}>
+                        {displayData.fraudTypeSpecificData.kpis.mediumRiskCasesCount || 0}
+                      </div>
+                      <div style={{
+                        fontSize: '0.75rem',
+                        color: colors.mutedForeground
+                      }}>
+                        Risk 50-75%
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Bottom Right: High-Risk Cases */}
+                  {displayData.fraudTypeSpecificData.kpis && (
+                    <div style={{
+                      backgroundColor: colors.secondary,
+                      padding: '1.5rem',
+                      borderRadius: '0.75rem',
+                      border: `1px solid ${colors.border}`,
+                      textAlign: 'center'
+                    }}>
+                      <div style={{
+                        fontSize: '0.875rem',
+                        color: colors.mutedForeground,
+                        marginBottom: '0.5rem'
+                      }}>
+                        High-Risk Cases
+                      </div>
+                      <div style={{
+                        fontSize: '2rem',
+                        fontWeight: 'bold',
+                        color: primary,
+                        marginBottom: '0.25rem'
+                      }}>
+                        {displayData.fraudTypeSpecificData.kpis.highRiskCasesCount || 0}
+                      </div>
+                      <div style={{
+                        fontSize: '0.75rem',
+                        color: colors.mutedForeground
+                      }}>
+                        Risk ≥ 75%
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1119,109 +1394,6 @@ const PaystubInsights = () => {
             </>
           )}
 
-          {/* Risk by Employer - Always shown (both filtered and unfiltered) */}
-          <div style={styles.chartBox}>
-            <h3 style={styles.chartTitle}>Risk by Employer (Top 10)</h3>
-            <ResponsiveContainer width="100%" height={350}>
-              <BarChart
-                data={displayData.riskByEmployerData}
-                margin={{ top: 20, right: 30, left: 20, bottom: 80 }}
-              >
-                <defs>
-                  <linearGradient id="employerGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={primary} stopOpacity={1} />
-                    <stop offset="100%" stopColor={primary} stopOpacity={0.6} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.3} />
-                <XAxis
-                  dataKey="name"
-                  angle={-45}
-                  textAnchor="end"
-                  height={100}
-                  interval={0}
-                  tick={{ fill: colors.foreground, fontSize: 11 }}
-                  stroke={colors.border}
-                />
-                <YAxis 
-                  tick={{ fill: colors.foreground, fontSize: 12 }}
-                  stroke={colors.border}
-                  label={{ value: 'Risk %', angle: -90, position: 'insideLeft', fill: colors.foreground }}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend 
-                  wrapperStyle={{ color: colors.foreground }}
-                  iconType="square"
-                />
-                <Bar 
-                  dataKey="avgRisk" 
-                  fill="url(#employerGradient)" 
-                  name="Avg Risk %"
-                  radius={[8, 8, 0, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Top High-Risk Employees - Always shown (both filtered and unfiltered) */}
-          <div style={styles.chartBox}>
-            <h3 style={styles.chartTitle}>Top High-Risk Employees (≥50%)</h3>
-            {displayData.topHighRiskEmployees && displayData.topHighRiskEmployees.length > 0 ? (
-              <ResponsiveContainer width="100%" height={350}>
-                <BarChart
-                  data={displayData.topHighRiskEmployees}
-                  margin={{ top: 20, right: 30, left: 20, bottom: 80 }}
-                >
-                <defs>
-                  <linearGradient id="employeeGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#FF6B6B" stopOpacity={1} />
-                    <stop offset="100%" stopColor="#FF6B6B" stopOpacity={0.6} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.3} />
-                <XAxis
-                  dataKey="name"
-                  angle={-45}
-                  textAnchor="end"
-                  height={100}
-                  interval={0}
-                  tick={{ fill: colors.foreground, fontSize: 11 }}
-                  stroke={colors.border}
-                />
-                <YAxis 
-                  tick={{ fill: colors.foreground, fontSize: 12 }}
-                  stroke={colors.border}
-                  label={{ value: 'Risk %', angle: -90, position: 'insideLeft', fill: colors.foreground }}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend 
-                  wrapperStyle={{ color: colors.foreground }}
-                  iconType="square"
-                />
-                <Bar 
-                  dataKey="avgRisk" 
-                  fill="url(#employeeGradient)" 
-                  name="Avg Risk %"
-                  radius={[8, 8, 0, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-            ) : (
-              <div style={{
-                padding: '3rem',
-                textAlign: 'center',
-                color: colors.mutedForeground,
-                backgroundColor: colors.secondary,
-                borderRadius: '8px',
-                border: `1px solid ${colors.border}`
-              }}>
-                <p>No employees found with risk score ≥ 50%</p>
-                <p style={{ fontSize: '0.875rem', marginTop: '0.5rem' }}>
-                  Try adjusting filters or upload data with higher risk scores
-                </p>
-              </div>
-            )}
-          </div>
         </div>
       )}
     </div>

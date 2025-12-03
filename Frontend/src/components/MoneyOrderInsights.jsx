@@ -72,15 +72,19 @@ const MoneyOrderInsights = () => {
     // Check if we're in single issuer view
     const isSingleIssuerView = selectedIssuer && selectedIssuer !== '' && selectedIssuer !== 'All Issuers';
 
-    // 1. Fraud Risk Distribution (0-25%, 25-50%, 50-75%, 75-100%)
+    // 1. Fraud Severity Breakdown (High >=75%, Medium 50-75%, Low <50%)
     const riskScores = rows.map(r => parseFloat_(r['RiskScore'] || r['fraud_risk_score'] || 0));
     const riskScoresPercent = riskScores.map(s => s * 100);
-    const riskDistribution = [
-      { range: '0-25%', count: riskScoresPercent.filter(s => s < 25).length },
-      { range: '25-50%', count: riskScoresPercent.filter(s => s >= 25 && s < 50).length },
-      { range: '50-75%', count: riskScoresPercent.filter(s => s >= 50 && s < 75).length },
-      { range: '75-100%', count: riskScoresPercent.filter(s => s >= 75).length },
-    ];
+    const severityCounts = {
+      'HIGH': riskScoresPercent.filter(s => s >= 75).length,
+      'MEDIUM': riskScoresPercent.filter(s => s >= 50 && s < 75).length,
+      'LOW': riskScoresPercent.filter(s => s < 50).length
+    };
+    const fraudSeverityData = [
+      { name: 'HIGH (>=75%)', value: severityCounts['HIGH'], color: '#e53935' },
+      { name: 'MEDIUM (50-75%)', value: severityCounts['MEDIUM'], color: '#f4b400' },
+      { name: 'LOW (<50%)', value: severityCounts['LOW'], color: '#34a853' }
+    ].filter(item => item.value > 0);
 
     // 2. AI Recommendation Distribution (APPROVE/REJECT/ESCALATE)
     const recommendations = rows.map(r => (r['Decision'] || r['ai_recommendation'] || 'UNKNOWN').toUpperCase());
@@ -90,28 +94,6 @@ const MoneyOrderInsights = () => {
       { name: 'ESCALATE', value: recommendations.filter(d => d === 'ESCALATE').length },
     ].filter(item => item.value > 0);
 
-    // 3. Risk Level Category Distribution
-    const riskLevelCounts = {
-      'HIGH': 0,
-      'MEDIUM': 0,
-      'LOW': 0
-    };
-
-    riskScoresPercent.forEach(score => {
-      if (score >= 70) {
-        riskLevelCounts['HIGH']++;
-      } else if (score >= 35) {
-        riskLevelCounts['MEDIUM']++;
-      } else {
-        riskLevelCounts['LOW']++;
-      }
-    });
-
-    const riskLevelData = [
-      { name: 'HIGH (70%+)', value: riskLevelCounts['HIGH'], color: colors.accent.red },
-      { name: 'MEDIUM (35-70%)', value: riskLevelCounts['MEDIUM'], color: colors.status.warning },
-      { name: 'LOW (<35%)', value: riskLevelCounts['LOW'], color: colors.status.success }
-    ].filter(item => item.value > 0);
 
     // 4. Risk by Issuer (Average risk score per issuer)
     const issuerRisks = {};
@@ -328,11 +310,10 @@ const MoneyOrderInsights = () => {
     const escalateCount = recommendations.filter(d => d === 'ESCALATE').length;
 
     return {
-      riskDistribution,
+      fraudSeverityData,
       recommendationData: recommendationData.length > 0 ? recommendationData : [
         { name: 'No Data', value: rows.length }
       ],
-      riskLevelData,
       riskByIssuerData,
       topFraudulentIssuers,
       topHighRiskPurchasers,
@@ -594,6 +575,31 @@ const MoneyOrderInsights = () => {
     backgroundColor: colors.secondary,
     borderRadius: '0.75rem',
     border: `1px solid ${colors.border}`,
+  };
+
+  const chartsContainerStyle = {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, 1fr)',
+    gap: '20px',
+    marginTop: '2rem'
+  };
+
+  const chartBoxStyle = {
+    backgroundColor: colors.card,
+    padding: '24px',
+    borderRadius: '12px',
+    border: `1px solid ${colors.border}`,
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+    transition: 'all 0.3s ease',
+  };
+
+  const chartTitleStyle = {
+    fontSize: '18px',
+    fontWeight: '600',
+    color: colors.foreground,
+    marginBottom: '20px',
+    paddingBottom: '12px',
+    borderBottom: `2px solid ${colors.border}`,
   };
 
   const metricsGridStyle = {
@@ -1042,292 +1048,257 @@ const MoneyOrderInsights = () => {
             </div>
           </div>
 
-          {/* Risk Score Distribution */}
-          <div style={chartContainerStyle}>
-            <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>
-              Risk Score Distribution by Range
-            </h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={csvData.riskDistribution}>
-                <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                <XAxis dataKey="range" stroke={colors.mutedForeground} />
-                <YAxis stroke={colors.mutedForeground} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: colors.card,
-                    border: `1px solid ${colors.border}`,
-                    color: colors.foreground
-                  }}
-                />
-                <Bar dataKey="count" fill={primary} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* AI Recommendation Breakdown */}
-          <div style={chartContainerStyle}>
-            <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>
-              AI Decision Breakdown (APPROVE/REJECT/ESCALATE)
-            </h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={csvData.recommendationData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, value }) => `${name}: ${value}`}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {csvData.recommendationData.map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: colors.card,
-                    border: `1px solid ${colors.border}`,
-                    color: colors.foreground
-                  }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Risk Level Category Distribution */}
-          <div style={chartContainerStyle}>
-            <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>
-              Transaction Distribution by Risk Level
-            </h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <AreaChart data={csvData.riskLevelData}>
-                <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                <XAxis dataKey="name" stroke={colors.mutedForeground} />
-                <YAxis stroke={colors.mutedForeground} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: colors.card,
-                    border: `1px solid ${colors.border}`,
-                    color: colors.foreground
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="value"
-                  stroke={colors.accent.red}
-                  fill={colors.accent.red}
-                  fillOpacity={0.6}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* SECTION 3: Issuer Insights */}
-          {/* Show issuer comparison charts only when NO specific issuer is selected (All Issuers) */}
-          {/* Hide these charts when a single issuer is selected */}
-          {(!issuerFilter || issuerFilter === '' || issuerFilter === 'All Issuers') && (
-            <>
-              {/* Risk by Issuer */}
-              {csvData.riskByIssuerData && csvData.riskByIssuerData.length > 0 && (
-                <div style={chartContainerStyle}>
-                  <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>
-                    Risk Level by Issuer
-                  </h3>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={csvData.riskByIssuerData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                      <XAxis dataKey="name" stroke={colors.mutedForeground} />
-                      <YAxis stroke={colors.mutedForeground} />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: colors.card,
-                          border: `1px solid ${colors.border}`,
-                          color: colors.foreground
-                        }}
-                      />
-                      <Legend />
-                      <Bar dataKey="avgRisk" fill={colors.status.warning} name="Avg Risk Score (%)" />
-                      <Bar dataKey="count" fill={colors.status.success} name="Money Order Count" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-
-              {/* Top Fraudulent Issuers (% High-Risk MOs >75%) */}
-              {csvData.topFraudulentIssuers && csvData.topFraudulentIssuers.length > 0 && (
-                <div style={chartContainerStyle}>
-                  <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>Top Fraudulent Issuers (% High-Risk MOs &gt;75%)</h3>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={csvData.topFraudulentIssuers} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                      <XAxis 
-                        type="number" 
-                        stroke={colors.mutedForeground}
-                        label={{ value: 'High-Risk Percentage (%)', position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fill: colors.foreground } }}
-                      />
-                      <YAxis 
-                        dataKey="name" 
-                        type="category" 
-                        stroke={colors.mutedForeground} 
-                        width={180}
-                        tick={{ fill: colors.foreground, fontSize: 12 }}
-                      />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: colors.card,
-                          border: `1px solid ${colors.border}`,
-                          color: colors.foreground
-                        }}
-                        formatter={(value, name) => {
-                          if (name === 'highRiskPercent') return [`${value}%`, 'High-Risk %'];
-                          if (name === 'highRiskCount') return [value, 'High-Risk Count'];
-                          if (name === 'totalCount') return [value, 'Total MOs'];
-                          return [value, name];
-                        }}
-                        labelFormatter={(label) => `Issuer: ${label}`}
-                      />
-                      <Bar dataKey="highRiskPercent" fill={primary} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Show issuer-specific charts when a single issuer is selected */}
-          {csvData.isSingleIssuerView && (
-            <>
-              {/* Chart A: Top Risky Purchasers (Selected Issuer) */}
-              {csvData.topRiskyPurchasersForIssuer && csvData.topRiskyPurchasersForIssuer.length > 0 && (
-                <div style={chartContainerStyle}>
-                  <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>
-                    Top Risky Purchasers ({csvData.selectedIssuerName})
-                  </h3>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={csvData.topRiskyPurchasersForIssuer} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                      <XAxis 
-                        type="number" 
-                        stroke={colors.mutedForeground}
-                        label={{ value: 'High-Risk Money Orders', position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fill: colors.foreground } }}
-                      />
-                      <YAxis 
-                        dataKey="name" 
-                        type="category" 
-                        stroke={colors.mutedForeground} 
-                        width={180}
-                        tick={{ fill: colors.foreground, fontSize: 12 }}
-                      />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: colors.card,
-                          border: `1px solid ${colors.border}`,
-                          color: colors.foreground
-                        }}
-                        formatter={(value, name) => {
-                          if (name === 'highRiskCount') return [`${value} high-risk MOs`, 'High-Risk Count'];
-                          if (name === 'totalCount') return [value, 'Total MOs'];
-                          return [value, name];
-                        }}
-                        labelFormatter={(label) => `Purchaser: ${label}`}
-                      />
-                      <Bar dataKey="highRiskCount" fill={primary} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-
-            </>
-          )}
-
-          {/* SECTION 4: Behavior Insights */}
-          {/* Top High-Risk Purchasers - Hide when single issuer is selected (duplicate of issuer-specific chart) */}
-          {!csvData.isSingleIssuerView && csvData.topHighRiskPurchasers && csvData.topHighRiskPurchasers.length > 0 && (
-            <div style={chartContainerStyle}>
-              <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>Top High-Risk Purchasers</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={csvData.topHighRiskPurchasers} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                  <XAxis 
-                    type="number" 
-                    stroke={colors.mutedForeground}
-                    label={{ value: 'Average Risk Score (%)', position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fill: colors.foreground } }}
-                  />
-                  <YAxis 
-                    dataKey="name" 
-                    type="category" 
-                    stroke={colors.mutedForeground} 
-                    width={180}
-                    tick={{ fill: colors.foreground, fontSize: 12 }}
-                  />
+          {/* Charts Section - 3 rows x 2 columns grid */}
+          <div style={chartsContainerStyle}>
+            {/* Row 1: Fraud Severity Breakdown & AI Recommendation Breakdown */}
+            <div style={chartBoxStyle}>
+              <h3 style={chartTitleStyle}>Fraud Severity Breakdown</h3>
+              <ResponsiveContainer width="100%" height={320}>
+                <PieChart>
+                  <Pie
+                    data={csvData.fraudSeverityData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                    outerRadius={100}
+                    innerRadius={40}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {csvData.fraudSeverityData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
                   <Tooltip
                     contentStyle={{
                       backgroundColor: colors.card,
                       border: `1px solid ${colors.border}`,
                       color: colors.foreground
                     }}
-                    formatter={(value, name) => {
-                      if (name === 'avgRisk') return [`${value}%`, 'Avg Risk'];
-                      if (name === 'count') return [value, 'Money Orders'];
-                      return [value, name];
-                    }}
-                    labelFormatter={(label) => `Purchaser: ${label}`}
                   />
-                  <Bar dataKey="avgRisk" fill={primary} />
-                </BarChart>
+                  <Legend />
+                </PieChart>
               </ResponsiveContainer>
             </div>
-          )}
 
-          {/* Top High-Risk Payees */}
-          {csvData.topHighRiskPayees && csvData.topHighRiskPayees.length > 0 && (
-            <div style={chartContainerStyle}>
-              <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>Top High-Risk Payees</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={csvData.topHighRiskPayees} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                  <XAxis 
-                    type="number" 
-                    stroke={colors.mutedForeground}
-                    label={{ value: 'High-Risk Count', position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fill: colors.foreground } }}
-                  />
-                  <YAxis 
-                    dataKey="name" 
-                    type="category" 
-                    stroke={colors.mutedForeground} 
-                    width={180}
-                    tick={{ fill: colors.foreground, fontSize: 12 }}
-                  />
+            <div style={chartBoxStyle}>
+              <h3 style={chartTitleStyle}>AI Decision Breakdown</h3>
+              <ResponsiveContainer width="100%" height={320}>
+                <PieChart>
+                  <Pie
+                    data={csvData.recommendationData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, value }) => `${name}: ${value}`}
+                    outerRadius={100}
+                    innerRadius={40}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {csvData.recommendationData.map((_, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
                   <Tooltip
                     contentStyle={{
                       backgroundColor: colors.card,
                       border: `1px solid ${colors.border}`,
                       color: colors.foreground
                     }}
-                    formatter={(value, name) => {
-                      if (name === 'highRiskCount') return [value, 'High-Risk Count'];
-                      if (name === 'count') return [value, 'Total MOs'];
-                      if (name === 'avgRisk') return [`${value}%`, 'Avg Risk'];
-                      return [value, name];
-                    }}
-                    labelFormatter={(label) => `Payee: ${label}`}
                   />
-                  <Bar dataKey="highRiskCount" fill={primary} />
-                </BarChart>
+                  <Legend />
+                </PieChart>
               </ResponsiveContainer>
             </div>
-          )}
 
-          {/* SECTION 5: Trend Insights */}
-          {/* Fraud Trend Over Time - Shows all issuers when no filter, or specific issuer when filtered */}
+            {/* Row 2: Risk by Issuer / Top Risky Purchasers */}
+            {/* Show issuer comparison charts only when NO specific issuer is selected */}
+            {(!issuerFilter || issuerFilter === '' || issuerFilter === 'All Issuers') && csvData.riskByIssuerData && csvData.riskByIssuerData.length > 0 && (
+              <div style={chartBoxStyle}>
+                <h3 style={chartTitleStyle}>Risk Level by Issuer</h3>
+                <ResponsiveContainer width="100%" height={320}>
+                  <BarChart data={csvData.riskByIssuerData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+                    <XAxis dataKey="name" stroke={colors.mutedForeground} />
+                    <YAxis stroke={colors.mutedForeground} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: colors.card,
+                        border: `1px solid ${colors.border}`,
+                        color: colors.foreground
+                      }}
+                    />
+                    <Legend />
+                    <Bar dataKey="avgRisk" fill={colors.status.warning} name="Avg Risk Score (%)" />
+                    <Bar dataKey="count" fill={colors.status.success} name="Money Order Count" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+
+            {/* Show issuer-specific chart when a single issuer is selected */}
+            {csvData.isSingleIssuerView && csvData.topRiskyPurchasersForIssuer && csvData.topRiskyPurchasersForIssuer.length > 0 && (
+              <div style={chartBoxStyle}>
+                <h3 style={chartTitleStyle}>Top Risky Purchasers ({csvData.selectedIssuerName})</h3>
+                <ResponsiveContainer width="100%" height={320}>
+                  <BarChart data={csvData.topRiskyPurchasersForIssuer} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+                    <XAxis 
+                      type="number" 
+                      stroke={colors.mutedForeground}
+                      label={{ value: 'High-Risk Money Orders', position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fill: colors.foreground } }}
+                    />
+                    <YAxis 
+                      dataKey="name" 
+                      type="category" 
+                      stroke={colors.mutedForeground} 
+                      width={180}
+                      tick={{ fill: colors.foreground, fontSize: 12 }}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: colors.card,
+                        border: `1px solid ${colors.border}`,
+                        color: colors.foreground
+                      }}
+                      formatter={(value, name) => {
+                        if (name === 'highRiskCount') return [`${value} high-risk MOs`, 'High-Risk Count'];
+                        if (name === 'totalCount') return [value, 'Total MOs'];
+                        return [value, name];
+                      }}
+                      labelFormatter={(label) => `Purchaser: ${label}`}
+                    />
+                    <Bar dataKey="highRiskCount" fill={primary} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+
+            {/* Row 3: Top Fraudulent Issuers / Top High-Risk Purchasers & Top High-Risk Payees */}
+            {(!issuerFilter || issuerFilter === '' || issuerFilter === 'All Issuers') && csvData.topFraudulentIssuers && csvData.topFraudulentIssuers.length > 0 && (
+              <div style={chartBoxStyle}>
+                <h3 style={chartTitleStyle}>Top Fraudulent Issuers (% High-Risk MOs &gt;75%)</h3>
+                <ResponsiveContainer width="100%" height={320}>
+                  <BarChart data={csvData.topFraudulentIssuers} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+                    <XAxis 
+                      type="number" 
+                      stroke={colors.mutedForeground}
+                      label={{ value: 'High-Risk Percentage (%)', position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fill: colors.foreground } }}
+                    />
+                    <YAxis 
+                      dataKey="name" 
+                      type="category" 
+                      stroke={colors.mutedForeground} 
+                      width={180}
+                      tick={{ fill: colors.foreground, fontSize: 12 }}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: colors.card,
+                        border: `1px solid ${colors.border}`,
+                        color: colors.foreground
+                      }}
+                      formatter={(value, name) => {
+                        if (name === 'highRiskPercent') return [`${value}%`, 'High-Risk %'];
+                        if (name === 'highRiskCount') return [value, 'High-Risk Count'];
+                        if (name === 'totalCount') return [value, 'Total MOs'];
+                        return [value, name];
+                      }}
+                      labelFormatter={(label) => `Issuer: ${label}`}
+                    />
+                    <Bar dataKey="highRiskPercent" fill={primary} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+
+            {!csvData.isSingleIssuerView && csvData.topHighRiskPurchasers && csvData.topHighRiskPurchasers.length > 0 && (
+              <div style={chartBoxStyle}>
+                <h3 style={chartTitleStyle}>Top High-Risk Purchasers</h3>
+                <ResponsiveContainer width="100%" height={320}>
+                  <BarChart data={csvData.topHighRiskPurchasers} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+                    <XAxis 
+                      type="number" 
+                      stroke={colors.mutedForeground}
+                      label={{ value: 'Average Risk Score (%)', position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fill: colors.foreground } }}
+                    />
+                    <YAxis 
+                      dataKey="name" 
+                      type="category" 
+                      stroke={colors.mutedForeground} 
+                      width={180}
+                      tick={{ fill: colors.foreground, fontSize: 12 }}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: colors.card,
+                        border: `1px solid ${colors.border}`,
+                        color: colors.foreground
+                      }}
+                      formatter={(value, name) => {
+                        if (name === 'avgRisk') return [`${value}%`, 'Avg Risk'];
+                        if (name === 'count') return [value, 'Money Orders'];
+                        return [value, name];
+                      }}
+                      labelFormatter={(label) => `Purchaser: ${label}`}
+                    />
+                    <Bar dataKey="avgRisk" fill={primary} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+
+            {/* Row 3: Top High-Risk Payees */}
+            {csvData.topHighRiskPayees && csvData.topHighRiskPayees.length > 0 && (
+              <div style={chartBoxStyle}>
+                <h3 style={chartTitleStyle}>Top High-Risk Payees</h3>
+                <ResponsiveContainer width="100%" height={320}>
+                  <BarChart data={csvData.topHighRiskPayees} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+                    <XAxis 
+                      type="number" 
+                      stroke={colors.mutedForeground}
+                      label={{ value: 'High-Risk Count', position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fill: colors.foreground } }}
+                    />
+                    <YAxis 
+                      dataKey="name" 
+                      type="category" 
+                      stroke={colors.mutedForeground} 
+                      width={180}
+                      tick={{ fill: colors.foreground, fontSize: 12 }}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: colors.card,
+                        border: `1px solid ${colors.border}`,
+                        color: colors.foreground
+                      }}
+                      formatter={(value, name) => {
+                        if (name === 'highRiskCount') return [value, 'High-Risk Count'];
+                        if (name === 'count') return [value, 'Total MOs'];
+                        if (name === 'avgRisk') return [`${value}%`, 'Avg Risk'];
+                        return [value, name];
+                      }}
+                      labelFormatter={(label) => `Payee: ${label}`}
+                    />
+                    <Bar dataKey="highRiskCount" fill={primary} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+
+          {/* High-Risk Money Orders Over Time - Full Width */}
           {csvData.fraudTrendData && csvData.fraudTrendData.length > 0 && (
-            <div style={chartContainerStyle}>
-              <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>
+            <div style={chartBoxStyle}>
+              <h3 style={chartTitleStyle}>
                 High-Risk Money Orders Over Time{csvData.isSingleIssuerView && csvData.selectedIssuerName ? ` (${csvData.selectedIssuerName})` : ''}
               </h3>
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={320}>
                 <LineChart data={csvData.fraudTrendData}>
                   <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
                   <XAxis dataKey="date" stroke={colors.mutedForeground} />
