@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { colors } from '../styles/colors';
 import { FaChartLine, FaFileUpload } from 'react-icons/fa';
 import { useAuth } from '../context/AuthContext';
+import Breadcrumb from '../components/Breadcrumb';
 
 const TransactionTypePage = () => {
   const navigate = useNavigate();
@@ -254,6 +255,9 @@ const TransactionTypePage = () => {
           </button>
         )}
       </header>
+      
+      {/* Breadcrumb Navigation */}
+      <Breadcrumb />
       
       {/* Main Content */}
       <main style={mainContentStyle}>

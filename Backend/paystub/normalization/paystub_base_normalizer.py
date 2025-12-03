@@ -66,12 +66,15 @@ class PaystubBaseNormalizer(ABC):
                     continue
                 
                 # Apply normalization based on field type
-                if 'amount' in std_field or 'tax' in std_field or 'pay' in std_field or 'gross' in std_field or 'net' in std_field:
-                    normalized_value = self._normalize_amount(raw_value)
+                # IMPORTANT: Check date/period fields FIRST before amount fields
+                # because 'pay_period_start' contains 'pay' and would match amount condition
+                if 'date' in std_field or 'period' in std_field:
+                    normalized_value = self._normalize_date(raw_value)
                     if normalized_value is not None:
                         normalized_data[std_field] = normalized_value
-                elif 'date' in std_field or 'period' in std_field:
-                    normalized_value = self._normalize_date(raw_value)
+                elif 'amount' in std_field or 'tax' in std_field or std_field in ['gross_pay', 'net_pay'] or 'gross' in std_field or 'net' in std_field:
+                    # Only check for 'pay' in specific amount fields, not period fields
+                    normalized_value = self._normalize_amount(raw_value)
                     if normalized_value is not None:
                         normalized_data[std_field] = normalized_value
                 elif 'hours' in std_field or 'rate' in std_field:

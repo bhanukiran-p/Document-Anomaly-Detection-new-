@@ -11,10 +11,18 @@
     "net_pay",
     "tax_error",
     "text_quality",
-    "missing_fields_count"
+    "missing_fields_count",
+    "has_federal_tax",
+    "has_state_tax",
+    "has_social_security",
+    "has_medicare",
+    "total_tax_amount",
+    "tax_to_gross_ratio",
+    "net_to_gross_ratio",
+    "deduction_percentage"
   ],
-  "model_path": "paystub_risk_model_20251201_231307.pkl",
-  "scaler_path": "paystub_scaler_20251201_231307.pkl",
-  "trained_at": "20251201_231307",
-  "feature_count": 10
+  "model_path": "paystub_risk_model_20251202_185808.pkl",
+  "scaler_path": "paystub_scaler_20251202_185808.pkl",
+  "trained_at": "20251202_185808",
+  "feature_count": 18
 }

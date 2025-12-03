@@ -234,17 +234,65 @@ class RiskModelTrainer:
             missing_fields = sum([not has_company, not has_employee, not has_gross, not has_net, not has_date])
             text_quality = random.uniform(text_quality_min, 1.0)
             
-            # IMPROVED RISK SCORE FORMULA (can reach 100%)
+            # ===== GENERATE NEW FEATURES (TAXES, PROPORTIONS) =====
+            # Tax features - legitimate paystubs should have taxes
+            if target_max <= 30:
+                # Legitimate: Should have taxes (90% have federal, 80% state, 100% SS/Medicare)
+                has_federal_tax = random.random() > 0.10
+                has_state_tax = random.random() > 0.20
+                has_social_security = True  # Always present for W-2
+                has_medicare = True  # Always present for W-2
+                # Tax amounts: typically 15-30% of gross
+                tax_percentage = random.uniform(0.15, 0.30)
+            elif target_max <= 70:
+                # Suspicious: Some missing taxes
+                has_federal_tax = random.random() > 0.30  # 70% have federal
+                has_state_tax = random.random() > 0.40  # 60% have state
+                has_social_security = random.random() > 0.20  # 80% have SS
+                has_medicare = random.random() > 0.20  # 80% have Medicare
+                tax_percentage = random.uniform(0.05, 0.25)  # Lower tax percentage
+            else:
+                # Highly suspicious: Many missing taxes
+                has_federal_tax = random.random() > 0.60  # 40% have federal
+                has_state_tax = random.random() > 0.70  # 30% have state
+                has_social_security = random.random() > 0.50  # 50% have SS
+                has_medicare = random.random() > 0.50  # 50% have Medicare
+                tax_percentage = random.uniform(0.0, 0.15)  # Very low or zero taxes
+            
+            # Calculate tax amounts
+            total_tax_amount = gross * tax_percentage if gross > 0 else 0.0
+            if not has_federal_tax:
+                total_tax_amount *= 0.7  # Reduce if no federal
+            if not has_state_tax:
+                total_tax_amount *= 0.9  # Slight reduction
+            if not has_social_security:
+                total_tax_amount *= 0.85  # SS is ~6.2%
+            if not has_medicare:
+                total_tax_amount *= 0.985  # Medicare is ~1.45%
+            
+            total_tax_amount = min(total_tax_amount, 50000.0)  # Cap at $50k
+            tax_to_gross_ratio = (total_tax_amount / gross) if gross > 0 else 0.0
+            tax_to_gross_ratio = min(tax_to_gross_ratio, 1.0)
+            
+            # Proportion features
+            net_to_gross_ratio = (net / gross) if gross > 0 else 0.0
+            net_to_gross_ratio = min(net_to_gross_ratio, 1.0)
+            
+            deduction_amount = gross - net
+            deduction_percentage = (deduction_amount / gross) if gross > 0 else 0.0
+            deduction_percentage = min(deduction_percentage, 1.0)
+            
+            # ===== ENHANCED RISK SCORE FORMULA (incorporates all 18 features) =====
             risk_score = 0.0
             
-            # Missing fields: up to 35 points (increased from 25)
+            # Missing fields: up to 35 points
             risk_score += (missing_fields / 5) * 35
             
-            # Tax error: +30 points (increased from 20, critical issue)
+            # Tax error: +30 points (critical issue)
             if tax_error:
                 risk_score += 30
             
-            # Low text quality: up to 20 points (NEW)
+            # Low text quality: up to 20 points
             if text_quality < 0.5:
                 risk_score += 20
             elif text_quality < 0.7:
@@ -252,22 +300,42 @@ class RiskModelTrainer:
             elif text_quality < 0.8:
                 risk_score += 5
             
-            # Suspicious amount patterns: up to 15 points (NEW)
-            if gross > 0:
-                if gross > 50000:  # Very high salary (suspicious)
-                    risk_score += 8
-                if gross == net:  # No deductions at all (very suspicious)
+            # Zero withholding (ZERO_WITHHOLDING_SUSPICIOUS): up to 25 points
+            if gross > 1000:  # Only check if gross is meaningful
+                if not has_federal_tax and not has_state_tax and not has_social_security and not has_medicare:
+                    risk_score += 25  # No taxes at all (very suspicious)
+                elif total_tax_amount < gross * 0.02:  # Less than 2% taxes
                     risk_score += 15
-                elif gross > 0 and net > 0 and (gross - net) < gross * 0.1:  # Very low deductions
+                elif not has_social_security or not has_medicare:  # Missing mandatory taxes
+                    risk_score += 10
+            
+            # Unrealistic proportions (UNREALISTIC_PROPORTIONS): up to 20 points
+            if gross > 0:
+                if net_to_gross_ratio > 0.95:  # Net > 95% of gross
+                    risk_score += 20
+                elif net_to_gross_ratio > 0.90:  # Net > 90% of gross
+                    risk_score += 10
+                if tax_to_gross_ratio < 0.02 and gross > 1000:  # Tax < 2% of gross
+                    risk_score += 15
+                if deduction_percentage > 0.50:  # Deductions > 50% (unusual)
+                    risk_score += 10
+            
+            # Suspicious amount patterns: up to 15 points
+            if gross > 0:
+                if gross > 50000:  # Very high salary
+                    risk_score += 8
+                if gross == net:  # No deductions at all
+                    risk_score += 15
+                elif (gross - net) < gross * 0.1:  # Very low deductions
                     risk_score += 5
             
-            # Missing critical fields individually: up to 10 points (NEW)
+            # Missing critical fields individually: up to 10 points
             if not has_company:
                 risk_score += 5
             if not has_employee:
                 risk_score += 5
             
-            # Random variation: wider range for more diversity
+            # Random variation
             risk_score += random.uniform(-5, 5)
             
             # Cap at 100
@@ -281,17 +349,32 @@ class RiskModelTrainer:
             elif target_max <= 30 and risk_score > 35:
                 risk_score = random.uniform(0, 30)
             
+            # Build features dictionary with all 22 features
             features = {
+                # Basic presence flags (1-5)
                 'has_company': 1 if has_company else 0,
                 'has_employee': 1 if has_employee else 0,
                 'has_gross': 1 if has_gross else 0,
                 'has_net': 1 if has_net else 0,
                 'has_date': 1 if has_date else 0,
+                # Amounts (6-7)
                 'gross_pay': gross,
                 'net_pay': net,
+                # Errors and quality (8-10)
                 'tax_error': tax_error,
                 'text_quality': text_quality,
                 'missing_fields_count': missing_fields,
+                # Tax features (11-16)
+                'has_federal_tax': 1 if has_federal_tax else 0,
+                'has_state_tax': 1 if has_state_tax else 0,
+                'has_social_security': 1 if has_social_security else 0,
+                'has_medicare': 1 if has_medicare else 0,
+                'total_tax_amount': total_tax_amount,
+                'tax_to_gross_ratio': tax_to_gross_ratio,
+                # Proportion features (17-18)
+                'net_to_gross_ratio': net_to_gross_ratio,
+                'deduction_percentage': deduction_percentage,
+                # Target
                 'risk_score': risk_score
             }
             
@@ -345,8 +428,17 @@ class RiskModelTrainer:
             ]
         elif document_type == 'paystub':
             feature_cols = [
+                # Basic presence flags (1-5)
                 'has_company', 'has_employee', 'has_gross', 'has_net', 'has_date',
-                'gross_pay', 'net_pay', 'tax_error', 'text_quality', 'missing_fields_count'
+                # Amounts (6-7)
+                'gross_pay', 'net_pay',
+                # Errors and quality (8-10)
+                'tax_error', 'text_quality', 'missing_fields_count',
+                # Tax features (11-16)
+                'has_federal_tax', 'has_state_tax', 'has_social_security', 'has_medicare',
+                'total_tax_amount', 'tax_to_gross_ratio',
+                # Proportion features (17-18)
+                'net_to_gross_ratio', 'deduction_percentage'
             ]
         else:
             feature_cols = [col for col in df.columns if col != 'risk_score']

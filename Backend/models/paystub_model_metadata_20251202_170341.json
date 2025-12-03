@@ -12,6 +12,10 @@
     "tax_error",
     "text_quality",
     "missing_fields_count",
+    "ytd_gross",
+    "ytd_net",
+    "ytd_gross_ratio",
+    "ytd_net_ratio",
     "has_federal_tax",
     "has_state_tax",
     "has_social_security",
@@ -21,8 +25,8 @@
     "net_to_gross_ratio",
     "deduction_percentage"
   ],
-  "model_path": "paystub_risk_model_20251202_185808.pkl",
-  "scaler_path": "paystub_scaler_20251202_185808.pkl",
-  "trained_at": "20251202_185808",
-  "feature_count": 18
+  "model_path": "paystub_risk_model_20251202_170341.pkl",
+  "scaler_path": "paystub_scaler_20251202_170341.pkl",
+  "trained_at": "20251202_170341",
+  "feature_count": 22
 }
