@@ -128,8 +128,8 @@ const RealTimeAnalysis = () => {
     fraudProbabilityMin: '',
     fraudProbabilityMax: '',
     category: '',
-    hourOfDayStart: '',
-    hourOfDayEnd: '',
+    yearStart: '',
+    yearEnd: '',
     fraudOnly: false,
     legitimateOnly: false,
   });
@@ -442,14 +442,11 @@ const RealTimeAnalysis = () => {
       }
     }
     
-    // Validate hour fields (must be between 0 and 23)
-    if (filterName === 'hourOfDayStart' || filterName === 'hourOfDayEnd') {
-      const numValue = parseInt(value);
-      if (!isNaN(numValue)) {
-        // Clamp between 0 and 23
-        processedValue = Math.max(0, Math.min(23, numValue)).toString();
-      } else if (value === '') {
-        processedValue = value; // Allow empty
+    // For year fields, allow any input while typing (validate on blur)
+    if (filterName === 'yearStart' || filterName === 'yearEnd') {
+      // Allow empty or numeric input
+      if (value === '' || /^\d+$/.test(value)) {
+        processedValue = value;
       } else {
         return; // Invalid input, don't update
       }
@@ -468,8 +465,8 @@ const RealTimeAnalysis = () => {
       fraudProbabilityMin: '',
       fraudProbabilityMax: '',
       category: '',
-      hourOfDayStart: '',
-      hourOfDayEnd: '',
+      yearStart: '',
+      yearEnd: '',
       fraudOnly: false,
       legitimateOnly: false,
     });
@@ -503,15 +500,15 @@ const RealTimeAnalysis = () => {
       );
     }
 
-    // Hour of day filter
-    if (filters.hourOfDayStart !== '' || filters.hourOfDayEnd !== '') {
+    // Year filter
+    if (filters.yearStart !== '' || filters.yearEnd !== '') {
       filtered = filtered.filter(t => {
         if (!t.timestamp) return true;
         const date = new Date(t.timestamp);
-        const hour = date.getHours();
-        const start = filters.hourOfDayStart !== '' ? parseInt(filters.hourOfDayStart) : 0;
-        const end = filters.hourOfDayEnd !== '' ? parseInt(filters.hourOfDayEnd) : 23;
-        return hour >= start && hour <= end;
+        const year = date.getFullYear();
+        const start = filters.yearStart !== '' ? parseInt(filters.yearStart) : 1900;
+        const end = filters.yearEnd !== '' ? parseInt(filters.yearEnd) : 2100;
+        return year >= start && year <= end;
       });
     }
 
@@ -574,8 +571,8 @@ const RealTimeAnalysis = () => {
         fraud_probability_min: filters.fraudProbabilityMin ? parseFloat(filters.fraudProbabilityMin) : null,
         fraud_probability_max: filters.fraudProbabilityMax ? parseFloat(filters.fraudProbabilityMax) : null,
         category: filters.category || null,
-        hour_of_day_start: filters.hourOfDayStart ? parseInt(filters.hourOfDayStart) : null,
-        hour_of_day_end: filters.hourOfDayEnd ? parseInt(filters.hourOfDayEnd) : null,
+        year_start: filters.yearStart ? parseInt(filters.yearStart) : null,
+        year_end: filters.yearEnd ? parseInt(filters.yearEnd) : null,
         fraud_only: filters.fraudOnly || false,
         legitimate_only: filters.legitimateOnly || false,
       };
@@ -2043,37 +2040,75 @@ const RealTimeAnalysis = () => {
                   </div>
                   <div>
                     <label style={styles.label}>
-                      Start Hour (0-23)
+                      Start Year
                       <span style={{ fontSize: '0.75rem', color: colors.mutedForeground, marginLeft: '0.5rem' }}>
-                        (supports midnight wrap, e.g., 22 to 06)
+                        (1900-2100)
                       </span>
                     </label>
                     <input
                       type="number"
-                      min="0"
-                      max="23"
-                      value={filters.hourOfDayStart}
-                      onChange={(e) => handleFilterChange('hourOfDayStart', e.target.value)}
-                      placeholder="0"
-                      style={styles.input}
+                      min="1900"
+                      max="2100"
+                      value={filters.yearStart}
+                      onChange={(e) => handleFilterChange('yearStart', e.target.value)}
+                      onBlur={(e) => {
+                        const val = parseInt(e.target.value);
+                        if (!isNaN(val)) {
+                          const clamped = Math.max(1900, Math.min(2100, val));
+                          if (clamped !== val) {
+                            handleFilterChange('yearStart', clamped.toString());
+                          }
+                        }
+                      }}
+                      placeholder="1900"
+                      style={{
+                        ...styles.input,
+                        borderColor: filters.yearStart && (parseInt(filters.yearStart) < 1900 || parseInt(filters.yearStart) > 2100)
+                          ? '#ef4444'
+                          : styles.input.borderColor
+                      }}
                     />
+                    {filters.yearStart && (parseInt(filters.yearStart) < 1900 || parseInt(filters.yearStart) > 2100) && (
+                      <div style={{ fontSize: '0.75rem', color: '#ef4444', marginTop: '0.25rem' }}>
+                        Must be between 1900 and 2100
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label style={styles.label}>
-                      End Hour (0-23)
+                      End Year
                       <span style={{ fontSize: '0.75rem', color: colors.mutedForeground, marginLeft: '0.5rem' }}>
-                        (supports midnight wrap, e.g., 22 to 06)
+                        (1900-2100)
                       </span>
                     </label>
                     <input
                       type="number"
-                      min="0"
-                      max="23"
-                      value={filters.hourOfDayEnd}
-                      onChange={(e) => handleFilterChange('hourOfDayEnd', e.target.value)}
-                      placeholder="23"
-                      style={styles.input}
+                      min="1900"
+                      max="2100"
+                      value={filters.yearEnd}
+                      onChange={(e) => handleFilterChange('yearEnd', e.target.value)}
+                      onBlur={(e) => {
+                        const val = parseInt(e.target.value);
+                        if (!isNaN(val)) {
+                          const clamped = Math.max(1900, Math.min(2100, val));
+                          if (clamped !== val) {
+                            handleFilterChange('yearEnd', clamped.toString());
+                          }
+                        }
+                      }}
+                      placeholder="2100"
+                      style={{
+                        ...styles.input,
+                        borderColor: filters.yearEnd && (parseInt(filters.yearEnd) < 1900 || parseInt(filters.yearEnd) > 2100)
+                          ? '#ef4444'
+                          : styles.input.borderColor
+                      }}
                     />
+                    {filters.yearEnd && (parseInt(filters.yearEnd) < 1900 || parseInt(filters.yearEnd) > 2100) && (
+                      <div style={{ fontSize: '0.75rem', color: '#ef4444', marginTop: '0.25rem' }}>
+                        Must be between 1900 and 2100
+                      </div>
+                    )}
                   </div>
                 </div>
                 
