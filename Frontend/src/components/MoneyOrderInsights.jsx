@@ -72,15 +72,19 @@ const MoneyOrderInsights = () => {
     // Check if we're in single issuer view
     const isSingleIssuerView = selectedIssuer && selectedIssuer !== '' && selectedIssuer !== 'All Issuers';
 
-    // 1. Fraud Risk Distribution (0-25%, 25-50%, 50-75%, 75-100%)
+    // 1. Fraud Severity Breakdown (High >=75%, Medium 50-75%, Low <50%)
     const riskScores = rows.map(r => parseFloat_(r['RiskScore'] || r['fraud_risk_score'] || 0));
     const riskScoresPercent = riskScores.map(s => s * 100);
-    const riskDistribution = [
-      { range: '0-25%', count: riskScoresPercent.filter(s => s < 25).length },
-      { range: '25-50%', count: riskScoresPercent.filter(s => s >= 25 && s < 50).length },
-      { range: '50-75%', count: riskScoresPercent.filter(s => s >= 50 && s < 75).length },
-      { range: '75-100%', count: riskScoresPercent.filter(s => s >= 75).length },
-    ];
+    const severityCounts = {
+      'HIGH': riskScoresPercent.filter(s => s >= 75).length,
+      'MEDIUM': riskScoresPercent.filter(s => s >= 50 && s < 75).length,
+      'LOW': riskScoresPercent.filter(s => s < 50).length
+    };
+    const fraudSeverityData = [
+      { name: 'HIGH (>=75%)', value: severityCounts['HIGH'], color: '#e53935' },
+      { name: 'MEDIUM (50-75%)', value: severityCounts['MEDIUM'], color: '#f4b400' },
+      { name: 'LOW (<50%)', value: severityCounts['LOW'], color: '#34a853' }
+    ].filter(item => item.value > 0);
 
     // 2. AI Recommendation Distribution (APPROVE/REJECT/ESCALATE)
     const recommendations = rows.map(r => (r['Decision'] || r['ai_recommendation'] || 'UNKNOWN').toUpperCase());
@@ -90,28 +94,6 @@ const MoneyOrderInsights = () => {
       { name: 'ESCALATE', value: recommendations.filter(d => d === 'ESCALATE').length },
     ].filter(item => item.value > 0);
 
-    // 3. Risk Level Category Distribution
-    const riskLevelCounts = {
-      'HIGH': 0,
-      'MEDIUM': 0,
-      'LOW': 0
-    };
-
-    riskScoresPercent.forEach(score => {
-      if (score >= 70) {
-        riskLevelCounts['HIGH']++;
-      } else if (score >= 35) {
-        riskLevelCounts['MEDIUM']++;
-      } else {
-        riskLevelCounts['LOW']++;
-      }
-    });
-
-    const riskLevelData = [
-      { name: 'HIGH (70%+)', value: riskLevelCounts['HIGH'], color: colors.accent.red },
-      { name: 'MEDIUM (35-70%)', value: riskLevelCounts['MEDIUM'], color: colors.status.warning },
-      { name: 'LOW (<35%)', value: riskLevelCounts['LOW'], color: colors.status.success }
-    ].filter(item => item.value > 0);
 
     // 4. Risk by Issuer (Average risk score per issuer)
     const issuerRisks = {};
@@ -328,11 +310,10 @@ const MoneyOrderInsights = () => {
     const escalateCount = recommendations.filter(d => d === 'ESCALATE').length;
 
     return {
-      riskDistribution,
+      fraudSeverityData,
       recommendationData: recommendationData.length > 0 ? recommendationData : [
         { name: 'No Data', value: rows.length }
       ],
-      riskLevelData,
       riskByIssuerData,
       topFraudulentIssuers,
       topHighRiskPurchasers,
@@ -1069,14 +1050,26 @@ const MoneyOrderInsights = () => {
 
           {/* Charts Section - 3 rows x 2 columns grid */}
           <div style={chartsContainerStyle}>
-            {/* Row 1: Risk Score Distribution & AI Recommendation Breakdown */}
+            {/* Row 1: Fraud Severity Breakdown & AI Recommendation Breakdown */}
             <div style={chartBoxStyle}>
-              <h3 style={chartTitleStyle}>Risk Score Distribution by Range</h3>
+              <h3 style={chartTitleStyle}>Fraud Severity Breakdown</h3>
               <ResponsiveContainer width="100%" height={320}>
-                <BarChart data={csvData.riskDistribution}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                  <XAxis dataKey="range" stroke={colors.mutedForeground} />
-                  <YAxis stroke={colors.mutedForeground} />
+                <PieChart>
+                  <Pie
+                    data={csvData.fraudSeverityData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                    outerRadius={100}
+                    innerRadius={40}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {csvData.fraudSeverityData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
                   <Tooltip
                     contentStyle={{
                       backgroundColor: colors.card,
@@ -1084,8 +1077,8 @@ const MoneyOrderInsights = () => {
                       color: colors.foreground
                     }}
                   />
-                  <Bar dataKey="count" fill={primary} />
-                </BarChart>
+                  <Legend />
+                </PieChart>
               </ResponsiveContainer>
             </div>
 
@@ -1120,32 +1113,7 @@ const MoneyOrderInsights = () => {
               </ResponsiveContainer>
             </div>
 
-            {/* Row 2: Transaction Distribution by Risk Level & Risk by Issuer / Top Risky Purchasers */}
-            <div style={chartBoxStyle}>
-              <h3 style={chartTitleStyle}>Transaction Distribution by Risk Level</h3>
-              <ResponsiveContainer width="100%" height={320}>
-                <AreaChart data={csvData.riskLevelData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                  <XAxis dataKey="name" stroke={colors.mutedForeground} />
-                  <YAxis stroke={colors.mutedForeground} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: colors.card,
-                      border: `1px solid ${colors.border}`,
-                      color: colors.foreground
-                    }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="value"
-                    stroke={colors.accent.red}
-                    fill={colors.accent.red}
-                    fillOpacity={0.6}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-
+            {/* Row 2: Risk by Issuer / Top Risky Purchasers */}
             {/* Show issuer comparison charts only when NO specific issuer is selected */}
             {(!issuerFilter || issuerFilter === '' || issuerFilter === 'All Issuers') && csvData.riskByIssuerData && csvData.riskByIssuerData.length > 0 && (
               <div style={chartBoxStyle}>
@@ -1284,7 +1252,7 @@ const MoneyOrderInsights = () => {
               </div>
             )}
 
-            {/* Row 4: Top High-Risk Payees & Fraud Trend Over Time */}
+            {/* Row 3: Top High-Risk Payees */}
             {csvData.topHighRiskPayees && csvData.topHighRiskPayees.length > 0 && (
               <div style={chartBoxStyle}>
                 <h3 style={chartTitleStyle}>Top High-Risk Payees</h3>
@@ -1322,42 +1290,43 @@ const MoneyOrderInsights = () => {
                 </ResponsiveContainer>
               </div>
             )}
-
-            {csvData.fraudTrendData && csvData.fraudTrendData.length > 0 && (
-              <div style={chartBoxStyle}>
-                <h3 style={chartTitleStyle}>
-                  High-Risk Money Orders Over Time{csvData.isSingleIssuerView && csvData.selectedIssuerName ? ` (${csvData.selectedIssuerName})` : ''}
-                </h3>
-                <ResponsiveContainer width="100%" height={320}>
-                  <LineChart data={csvData.fraudTrendData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                    <XAxis dataKey="date" stroke={colors.mutedForeground} />
-                    <YAxis
-                      yAxisId="left"
-                      stroke={colors.mutedForeground}
-                      label={{ value: 'Avg Risk Score (%)', angle: -90, position: 'insideLeft', style: { fill: colors.foreground } }}
-                    />
-                    <YAxis
-                      yAxisId="right"
-                      orientation="right"
-                      stroke={colors.mutedForeground}
-                      label={{ value: 'High-Risk Count', angle: 90, position: 'insideRight', style: { fill: colors.foreground } }}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: colors.card,
-                        border: `1px solid ${colors.border}`,
-                        color: colors.foreground
-                      }}
-                    />
-                    <Legend />
-                    <Line yAxisId="left" type="monotone" dataKey="avgRisk" stroke={primary} strokeWidth={2} name="Avg Risk Score %" />
-                    <Line yAxisId="right" type="monotone" dataKey="highRiskCount" stroke="#ef4444" strokeWidth={2} name="High-Risk Count" />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            )}
           </div>
+
+          {/* High-Risk Money Orders Over Time - Full Width */}
+          {csvData.fraudTrendData && csvData.fraudTrendData.length > 0 && (
+            <div style={chartBoxStyle}>
+              <h3 style={chartTitleStyle}>
+                High-Risk Money Orders Over Time{csvData.isSingleIssuerView && csvData.selectedIssuerName ? ` (${csvData.selectedIssuerName})` : ''}
+              </h3>
+              <ResponsiveContainer width="100%" height={320}>
+                <LineChart data={csvData.fraudTrendData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+                  <XAxis dataKey="date" stroke={colors.mutedForeground} />
+                  <YAxis
+                    yAxisId="left"
+                    stroke={colors.mutedForeground}
+                    label={{ value: 'Avg Risk Score (%)', angle: -90, position: 'insideLeft', style: { fill: colors.foreground } }}
+                  />
+                  <YAxis
+                    yAxisId="right"
+                    orientation="right"
+                    stroke={colors.mutedForeground}
+                    label={{ value: 'High-Risk Count', angle: 90, position: 'insideRight', style: { fill: colors.foreground } }}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: colors.card,
+                      border: `1px solid ${colors.border}`,
+                      color: colors.foreground
+                    }}
+                  />
+                  <Legend />
+                  <Line yAxisId="left" type="monotone" dataKey="avgRisk" stroke={primary} strokeWidth={2} name="Avg Risk Score %" />
+                  <Line yAxisId="right" type="monotone" dataKey="highRiskCount" stroke="#ef4444" strokeWidth={2} name="High-Risk Count" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
 
         </div>
       )}
