@@ -36,8 +36,8 @@ def generate_insights(analysis_result: Dict[str, Any], filters: Dict[str, Any] =
             - fraud_probability_min: Minimum fraud probability
             - fraud_probability_max: Maximum fraud probability
             - category: Category filter (substring match)
-            - hour_of_day_start: Start hour (0-23)
-            - hour_of_day_end: End hour (0-23)
+            - year_start: Start year (e.g., 2020)
+            - year_end: End year (e.g., 2025)
             - fraud_only: Boolean, show only fraud transactions
             - legitimate_only: Boolean, show only legitimate transactions
 
@@ -908,30 +908,23 @@ def _apply_filters(df: pd.DataFrame, filters: Dict[str, Any]) -> pd.DataFrame:
                 filtered_df['category'].astype(str).str.lower().str.contains(category_filter, na=False)
             ]
     
-    # Hour of day filter (handles wrapping around midnight)
+    # Year filter
     if 'timestamp' in filtered_df.columns:
         filtered_df['timestamp'] = pd.to_datetime(filtered_df['timestamp'], errors='coerce')
-        
-        hour_start = filters.get('hour_of_day_start')
-        hour_end = filters.get('hour_of_day_end')
-        
-        if hour_start is not None or hour_end is not None:
-            filtered_df['hour'] = filtered_df['timestamp'].dt.hour
-            start = int(hour_start) if hour_start is not None else 0
-            end = int(hour_end) if hour_end is not None else 23
-            
-            # Handle wrapping around midnight (e.g., 22 to 06)
-            if start > end:
-                # Range wraps around midnight (e.g., 22 to 06 means 22, 23, 0, 1, 2, 3, 4, 5, 6)
-                filtered_df = filtered_df[
-                    (filtered_df['hour'] >= start) | (filtered_df['hour'] <= end)
-                ]
-            else:
-                # Normal range (e.g., 9 to 17)
-                filtered_df = filtered_df[
-                    (filtered_df['hour'] >= start) & (filtered_df['hour'] <= end)
-                ]
-            filtered_df = filtered_df.drop(columns=['hour'])
+
+        year_start = filters.get('year_start')
+        year_end = filters.get('year_end')
+
+        if year_start is not None or year_end is not None:
+            filtered_df['year'] = filtered_df['timestamp'].dt.year
+            start = int(year_start) if year_start is not None else 1900
+            end = int(year_end) if year_end is not None else 2100
+
+            # Filter by year range
+            filtered_df = filtered_df[
+                (filtered_df['year'] >= start) & (filtered_df['year'] <= end)
+            ]
+            filtered_df = filtered_df.drop(columns=['year'])
     
     # Fraud/Legitimate only filters
     if filters.get('fraud_only'):
