@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
 import { colors } from '../styles/colors';
 import {
@@ -10,6 +11,7 @@ import CheckInsights from './CheckInsights';
 import MoneyOrderInsights from './MoneyOrderInsights';
 
 const AllDocumentsInsights = () => {
+  const navigate = useNavigate();
   const [csvData, setCsvData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -557,34 +559,9 @@ const AllDocumentsInsights = () => {
         </div>
       );
     } else if (normalizedDocumentType === 'paystub') {
-      return (
-        <div style={containerStyle}>
-          <button
-            style={backButtonStyle}
-            onMouseEnter={(e) => {
-              e.target.style.backgroundColor = colors.muted;
-              e.target.style.borderColor = primary;
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.backgroundColor = 'transparent';
-              e.target.style.borderColor = colors.border;
-            }}
-            onClick={() => {
-              setDocumentTypeFilter(null);
-              setCsvData(null);
-              setError(null);
-            }}
-          >
-            ← Back to Unified Dashboard
-          </button>
-          <h2 style={{ color: colors.foreground, marginBottom: '1.5rem' }}>
-            Paystub Insights
-          </h2>
-          <div style={{ padding: '2rem', textAlign: 'center', color: colors.mutedForeground }}>
-            Paystub Insights dashboard coming soon...
-          </div>
-        </div>
-      );
+      // Redirect to paystub insights page (similar to how money order and check work)
+      navigate('/paystub-insights');
+      return null;
     } else if (normalizedDocumentType === 'bank_statement') {
       return (
         <div style={containerStyle}>
