@@ -210,7 +210,7 @@ const PaystubAnalysis = () => {
           onMouseEnter={(e) => activeTab === 'analyze' || (e.target.style.backgroundColor = colors.muted)}
           onMouseLeave={(e) => activeTab === 'analyze' || (e.target.style.backgroundColor = colors.secondary)}
         >
-          Single Paystub Analysis
+          Analysis
         </button>
         <button
           onClick={() => setActiveTab('insights')}

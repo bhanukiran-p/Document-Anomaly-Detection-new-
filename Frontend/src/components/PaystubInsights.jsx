@@ -383,13 +383,23 @@ const PaystubInsights = () => {
       {/* Input Mode Selector */}
       <div style={styles.modeSelector}>
         <button
-          style={{...styles.modeButton, ...(inputMode === 'upload' ? styles.modeButtonActive : {})}}
+          style={{
+            ...styles.modeButton,
+            backgroundColor: inputMode === 'upload' ? primary : colors.secondary,
+            color: inputMode === 'upload' ? colors.primaryForeground : colors.foreground,
+            fontWeight: inputMode === 'upload' ? '600' : '500',
+          }}
           onClick={() => setInputMode('upload')}
         >
           <FaUpload /> CSV Upload
         </button>
         <button
-          style={{...styles.modeButton, ...(inputMode === 'api' ? styles.modeButtonActive : {})}}
+          style={{
+            ...styles.modeButton,
+            backgroundColor: inputMode === 'api' ? primary : colors.secondary,
+            color: inputMode === 'api' ? colors.primaryForeground : colors.foreground,
+            fontWeight: inputMode === 'api' ? '600' : '500',
+          }}
           onClick={() => {
             setInputMode('api');
             fetchPaystubsFromAPI();
@@ -758,25 +768,21 @@ const styles = {
   },
   modeSelector: {
     display: 'flex',
-    gap: '10px',
-    marginBottom: '20px'
+    gap: '0.5rem',
+    marginBottom: '1.5rem'
   },
   modeButton: {
-    padding: '10px 20px',
+    flex: 1,
+    padding: '0.75rem',
+    borderRadius: '0.5rem',
     border: `1px solid ${colors.border}`,
-    backgroundColor: colors.card,
-    borderRadius: '4px',
     cursor: 'pointer',
-    fontSize: '14px',
+    transition: 'all 0.3s',
     display: 'flex',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: '8px',
-    transition: 'all 0.3s'
-  },
-  modeButtonActive: {
-    backgroundColor: colors.accent.red,
-    color: 'white',
-    borderColor: colors.accent.red
+    fontSize: '14px'
   },
   dropzone: {
     border: `2px dashed ${colors.border}`,
