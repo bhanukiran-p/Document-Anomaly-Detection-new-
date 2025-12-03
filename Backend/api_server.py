@@ -387,21 +387,26 @@ def analyze_paystub():
             ai_analysis = details.get('ai_analysis', {})
             employee_info = details.get('employee_info', {})
 
-            # Prefer AI fraud types/explanations, fallback to ML
-            # Always include ML fraud types even if AI doesn't have them (e.g., repeat offenders)
+            # Prefer AI fraud type/explanations, fallback to ML (single fraud type only)
             ai_fraud_types = ai_analysis.get('fraud_types', []) if ai_analysis else []
             ml_fraud_types = ml_analysis.get('fraud_types', [])
-            fraud_types = ai_fraud_types if ai_fraud_types else ml_fraud_types
+
+            # Extract the primary fraud type (should be a single-element list)
+            fraud_type = None
+            if ai_fraud_types:
+                fraud_type = ai_fraud_types[0] if isinstance(ai_fraud_types, list) else ai_fraud_types
+            elif ml_fraud_types:
+                fraud_type = ml_fraud_types[0] if isinstance(ml_fraud_types, list) else ml_fraud_types
 
             # For fraud explanations, prefer AI but include ML reasons if AI doesn't have structured explanations
             fraud_explanations = ai_analysis.get('fraud_explanations', []) if ai_analysis else []
-            # If no AI explanations but we have ML fraud types and reasons, build explanations from ML
-            if not fraud_explanations and ml_fraud_types:
+            # If no AI explanations but we have a fraud type and reasons, build explanations from ML
+            if not fraud_explanations and fraud_type:
                 ml_fraud_reasons = ml_analysis.get('fraud_reasons', [])
                 fraud_explanations = [{
                     'type': fraud_type,
                     'reasons': ml_fraud_reasons if ml_fraud_reasons else [f"Detected as {fraud_type.replace('_', ' ').title()} by ML analysis."]
-                } for fraud_type in ml_fraud_types[:1]]  # Use first fraud type for primary card
+                }]
 
             # Build structured response
             response_data = {
@@ -409,7 +414,7 @@ def analyze_paystub():
                 'fraud_risk_score': ml_analysis.get('fraud_risk_score', 0.0),
                 'risk_level': ml_analysis.get('risk_level', 'UNKNOWN'),
                 'model_confidence': ml_analysis.get('model_confidence', 0.0),
-                'fraud_types': fraud_types if isinstance(fraud_types, list) else [],
+                'fraud_type': fraud_type,  # Single fraud type
                 'fraud_explanations': fraud_explanations if isinstance(fraud_explanations, list) else [],
                 'ai_recommendation': ai_analysis.get('recommendation', 'UNKNOWN'),
                 'ai_confidence': ai_analysis.get('confidence_score', 0.0),

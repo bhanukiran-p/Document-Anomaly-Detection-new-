@@ -605,15 +605,18 @@ class DocumentStorage:
             # Extract fraud types and explanations (prefer AI, fallback to ML)
             fraud_types = ai_analysis.get('fraud_types') if ai_analysis else ml_analysis.get('fraud_types', [])
             fraud_explanations = ai_analysis.get('fraud_explanations', []) if ai_analysis else []
-            
-            # Ensure fraud_types is a list
+
+            # Ensure fraud_types is a list, then extract first element as primary fraud type
             if not isinstance(fraud_types, list):
                 fraud_types = [fraud_types] if fraud_types else []
-            
+
+            # Store only the primary (first) fraud type as a string
+            primary_fraud_type = fraud_types[0] if fraud_types else None
+
             # Ensure fraud_explanations is a list of dicts
             if not isinstance(fraud_explanations, list):
                 fraud_explanations = []
-            
+
             # Prepare paystub data
             paystub_data = {
                 'paystub_id': str(uuid.uuid4()),
@@ -649,8 +652,8 @@ class DocumentStorage:
                 # Anomaly data
                 'anomaly_count': len(analysis_data.get('anomalies', [])),
                 'top_anomalies': json.dumps(analysis_data.get('anomalies', [])[:5]),
-                # Fraud types and explanations
-                'fraud_types': json.dumps(fraud_types),
+                # Fraud types - store as single string (primary fraud type only)
+                'fraud_types': self._safe_string(primary_fraud_type),
                 'fraud_explanations': json.dumps(fraud_explanations)
             }
 
