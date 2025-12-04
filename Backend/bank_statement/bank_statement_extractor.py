@@ -276,6 +276,14 @@ class BankStatementExtractor:
             logger.warning("Bank name not detected - skipping normalization")
             return extracted_data
 
+        # Check if bank is in database (case-insensitive)
+        try:
+            from .utils.bank_list_loader import is_supported_bank
+            bank_is_supported = is_supported_bank(bank_name)
+        except ImportError:
+            # Fallback: check against normalizer factory
+            bank_is_supported = BankStatementNormalizerFactory.is_supported_bank(bank_name)
+
         normalizer = BankStatementNormalizerFactory.get_normalizer(bank_name)
 
         if normalizer:
@@ -283,8 +291,8 @@ class BankStatementExtractor:
             normalized_obj = normalizer.normalize(extracted_data)
             normalized_data = normalized_obj.to_dict()
 
-            # Add validation flags
-            normalized_data['is_supported_bank'] = normalized_obj.is_supported_bank()
+            # Add validation flags (use database check for is_supported_bank)
+            normalized_data['is_supported_bank'] = bank_is_supported  # Use database check
             normalized_data['is_valid'] = normalized_obj.is_valid()
             normalized_data['completeness_score'] = normalized_obj.get_completeness_score()
             normalized_data['critical_missing_fields'] = normalized_obj.get_critical_missing_fields()
@@ -292,19 +300,27 @@ class BankStatementExtractor:
             logger.info(f"Normalization complete - Completeness: {normalized_data['completeness_score']}")
             return normalized_data
         else:
-            logger.warning(f"No normalizer found for bank: {bank_name}")
-            # Mark as unsupported bank
-            extracted_data['is_supported_bank'] = False
-            extracted_data['bank_name'] = bank_name
+            # No specific normalizer, but bank might still be in database
+            # Use generic normalization (Chase normalizer as template for common fields)
+            logger.info(f"No specific normalizer for bank: {bank_name}, using generic normalization")
             
-            # Convert account_holder_names array to account_holder_name string (even for unsupported banks)
-            if not extracted_data.get('account_holder_name') and extracted_data.get('account_holder_names'):
-                account_holder_names = extracted_data.get('account_holder_names', [])
-                if isinstance(account_holder_names, list) and len(account_holder_names) > 0:
-                    extracted_data['account_holder_name'] = account_holder_names[0]
-                    logger.info(f"Converted account_holder_names to account_holder_name: {extracted_data['account_holder_name']}")
+            # Use Chase normalizer as template (it handles common fields)
+            from .normalization.chase import ChaseNormalizer
+            generic_normalizer = ChaseNormalizer()
+            # Override bank name
+            generic_normalizer.bank_name = bank_name
             
-            return extracted_data
+            normalized_obj = generic_normalizer.normalize(extracted_data)
+            normalized_data = normalized_obj.to_dict()
+            
+            # Use database check for is_supported_bank (not normalizer's check)
+            normalized_data['is_supported_bank'] = bank_is_supported
+            normalized_data['is_valid'] = normalized_obj.is_valid()
+            normalized_data['completeness_score'] = normalized_obj.get_completeness_score()
+            normalized_data['critical_missing_fields'] = normalized_obj.get_critical_missing_fields()
+            
+            logger.info(f"Generic normalization complete - Completeness: {normalized_data['completeness_score']}")
+            return normalized_data
 
     def _collect_validation_issues(self, data: Dict) -> List[str]:
         """
@@ -464,7 +480,16 @@ class BankStatementExtractor:
 
         # From validation
         if not data.get('is_supported_bank', True):
-            anomalies.append(f"Unsupported bank: {data.get('bank_name')}")
+            # Only mark as unsupported if not in database (case-insensitive check)
+            try:
+                from .utils.bank_list_loader import is_supported_bank
+                bank_name = data.get('bank_name')
+                if bank_name and not is_supported_bank(bank_name):
+                    anomalies.append(f"Unsupported bank: {bank_name}")
+            except ImportError:
+                # Fallback: use is_supported_bank flag
+                if not data.get('is_supported_bank', False):
+                    anomalies.append(f"Unsupported bank: {data.get('bank_name')}")
 
         critical_missing = data.get('critical_missing_fields', [])
         if critical_missing:

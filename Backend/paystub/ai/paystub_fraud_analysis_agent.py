@@ -154,10 +154,10 @@ class PaystubFraudAnalysisAgent:
         if escalate_count > 0:
             fraud_risk_score = ml_analysis.get('fraud_risk_score', 0.0) if ml_analysis else 0.0
             fraud_risk_percent = fraud_risk_score * 100
-            logger.info(
-                f"REPEAT OFFENDER DETECTED: {employee_name} has escalate_count={escalate_count} "
+                logger.info(
+                    f"REPEAT OFFENDER DETECTED: {employee_name} has escalate_count={escalate_count} "
                 f"and fraud_risk_score={fraud_risk_percent:.1f}%. Proceeding to LLM for decision."
-            )
+                )
             # Don't auto-reject, let the LLM make the decision based on risk score
 
         # Proceed to LLM for decision

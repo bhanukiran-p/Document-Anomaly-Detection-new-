@@ -123,7 +123,7 @@ RECOMMENDATION_GUIDELINES = """
 
 ### ESCALATION CONDITIONS (For New Customers)
 **IMPORTANT: New customers with high risk should be ESCALATED, not REJECTED**
-- Unsupported Bank (not Bank of America, Chase, etc.) → ESCALATE (for new customers)
+- Unsupported Bank (bank not in database) → ESCALATE (for new customers, needs verification)
 - Missing Critical Fields → ESCALATE (for new customers, needs manual review)
 - Future-Dated Statement → ESCALATE (for new customers)
 - Balance Inconsistency → ESCALATE (for new customers, needs verification)

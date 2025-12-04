@@ -99,14 +99,22 @@ class NormalizedBankStatement:
 
     def is_supported_bank(self) -> bool:
         """
-        Check if bank is supported (Bank of America, Chase, Wells Fargo, etc.)
+        Check if bank is supported (fetches from database, case-insensitive)
         """
-        supported_banks = [
-            'Bank of America', 'Chase', 'Wells Fargo', 'Citibank',
-            'U.S. Bank', 'PNC Bank', 'TD Bank', 'Capital One',
-            'BANK OF AMERICA', 'CHASE', 'WELLS FARGO', 'CITIBANK'
-        ]
-        return self.bank_name in supported_banks if self.bank_name else False
+        if not self.bank_name:
+            return False
+        
+        try:
+            from ..utils.bank_list_loader import is_supported_bank
+            return is_supported_bank(self.bank_name)
+        except ImportError:
+            # Fallback if utils module not available
+            supported_banks = {
+                'bank of america', 'chase', 'wells fargo', 'citibank',
+                'u.s. bank', 'pnc bank', 'td bank', 'capital one',
+                'jpmorgan chase bank', 'td bank usa', 'capital one bank'
+            }
+            return self.bank_name.lower().strip() in supported_banks
 
     def get_transaction_count(self) -> int:
         """Get number of transactions"""

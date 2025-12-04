@@ -413,6 +413,288 @@ class RiskModelTrainer:
         
         return df
     
+    def generate_dummy_bank_statement_data(self, n_samples=2000, document_type='bank_statement') -> pd.DataFrame:
+        """
+        Generate dummy bank statement data for training with 35 features
+        
+        Args:
+            n_samples: Number of training samples to generate
+            document_type: Document type identifier
+            
+        Returns:
+            DataFrame with 35 features and risk scores
+        """
+        print(f"Generating {n_samples} dummy bank statement samples...")
+        
+        supported_banks = [
+            'Bank of America', 'Chase', 'Wells Fargo', 'Citibank',
+            'U.S. Bank', 'PNC Bank', 'TD Bank', 'Capital One'
+        ]
+        
+        data = []
+        
+        for i in range(n_samples):
+            # Determine target risk range (0-100)
+            risk_category = random.choice(['low', 'medium', 'high', 'critical'])
+            if risk_category == 'low':
+                target_min, target_max = 0, 30
+            elif risk_category == 'medium':
+                target_min, target_max = 31, 60
+            elif risk_category == 'high':
+                target_min, target_max = 61, 85
+            else:  # critical
+                target_min, target_max = 86, 100
+            
+            # Generate features based on risk level
+            if target_max <= 30:
+                # Legitimate: All fields present, good quality
+                bank_valid = 1.0  # Supported bank
+                account_present = 1.0
+                account_holder_present = 1.0
+                account_type_present = 1.0
+                period_start_present = 1.0
+                period_end_present = 1.0
+                statement_date_present = 1.0
+                future_period = 0.0
+                negative_ending_balance = 0.0
+                balance_consistency = 1.0
+                currency_present = 1.0
+                suspicious_transaction_pattern = 0.0
+                duplicate_transactions = 0.0
+                unusual_timing = random.uniform(0.0, 0.1)  # Low weekend transactions
+                critical_missing_count = random.randint(0, 1)
+                field_quality = random.uniform(0.8, 1.0)
+                text_quality = random.uniform(0.8, 1.0)
+            elif target_max <= 60:
+                # Medium risk: Some fields missing, some issues
+                bank_valid = random.choice([1.0, 0.0])  # 50% unsupported
+                account_present = random.choice([1.0, 0.0])  # 50% missing
+                account_holder_present = random.choice([1.0, 0.0])  # 50% missing
+                account_type_present = random.choice([1.0, 0.0])
+                period_start_present = random.choice([1.0, 0.0])
+                period_end_present = random.choice([1.0, 0.0])
+                statement_date_present = random.choice([1.0, 0.0])
+                future_period = random.choice([0.0, 1.0])  # 50% future
+                negative_ending_balance = random.choice([0.0, 1.0])  # 50% negative
+                balance_consistency = random.uniform(0.3, 0.7)
+                currency_present = random.choice([1.0, 0.0])
+                suspicious_transaction_pattern = random.choice([0.0, 1.0])
+                duplicate_transactions = random.choice([0.0, 1.0])
+                unusual_timing = random.uniform(0.1, 0.3)
+                critical_missing_count = random.randint(2, 4)
+                field_quality = random.uniform(0.5, 0.8)
+                text_quality = random.uniform(0.5, 0.8)
+            elif target_max <= 85:
+                # High risk: Many fields missing, many issues
+                bank_valid = random.choice([1.0, 0.0, 0.0])  # 67% unsupported
+                account_present = random.choice([1.0, 0.0, 0.0])  # 67% missing
+                account_holder_present = random.choice([1.0, 0.0, 0.0])  # 67% missing
+                account_type_present = random.choice([1.0, 0.0, 0.0])
+                period_start_present = random.choice([1.0, 0.0, 0.0])
+                period_end_present = random.choice([1.0, 0.0, 0.0])
+                statement_date_present = random.choice([1.0, 0.0, 0.0])
+                future_period = random.choice([0.0, 1.0, 1.0])  # 67% future
+                negative_ending_balance = random.choice([0.0, 1.0, 1.0])  # 67% negative
+                balance_consistency = random.uniform(0.0, 0.5)
+                currency_present = random.choice([1.0, 0.0, 0.0])
+                suspicious_transaction_pattern = random.choice([0.0, 1.0, 1.0])
+                duplicate_transactions = random.choice([0.0, 1.0, 1.0])
+                unusual_timing = random.uniform(0.3, 0.6)
+                critical_missing_count = random.randint(4, 6)
+                field_quality = random.uniform(0.3, 0.6)
+                text_quality = random.uniform(0.3, 0.6)
+            else:
+                # Critical risk: Most fields missing, severe issues
+                bank_valid = 0.0  # Unsupported
+                account_present = random.choice([1.0, 0.0, 0.0, 0.0])  # 75% missing
+                account_holder_present = 0.0  # Missing
+                account_type_present = random.choice([1.0, 0.0, 0.0, 0.0])
+                period_start_present = random.choice([1.0, 0.0, 0.0, 0.0])
+                period_end_present = random.choice([1.0, 0.0, 0.0, 0.0])
+                statement_date_present = random.choice([1.0, 0.0, 0.0, 0.0])
+                future_period = 1.0  # Future
+                negative_ending_balance = random.choice([0.0, 1.0, 1.0, 1.0])  # 75% negative
+                balance_consistency = random.uniform(0.0, 0.3)
+                currency_present = random.choice([1.0, 0.0, 0.0, 0.0])
+                suspicious_transaction_pattern = 1.0
+                duplicate_transactions = random.choice([0.0, 1.0, 1.0, 1.0])
+                unusual_timing = random.uniform(0.5, 1.0)
+                critical_missing_count = random.randint(5, 7)
+                field_quality = random.uniform(0.0, 0.4)
+                text_quality = random.uniform(0.0, 0.4)
+            
+            # Generate numeric features
+            beginning_balance = random.uniform(0, 1000000) if account_present else 0.0
+            ending_balance = random.uniform(-5000, 1000000) if account_present else 0.0
+            if negative_ending_balance == 1.0:
+                ending_balance = random.uniform(-10000, -100)
+            
+            total_credits = random.uniform(0, 500000) if account_present else 0.0
+            total_debits = random.uniform(0, 500000) if account_present else 0.0
+            
+            # Balance consistency calculation
+            if balance_consistency < 0.5:
+                # Make balance inconsistent
+                expected_ending = beginning_balance + total_credits - total_debits
+                ending_balance = expected_ending + random.uniform(-1000, 1000) * (1 - balance_consistency)
+            
+            period_age_days = random.uniform(0, 365) if period_end_present else 0.0
+            transaction_count = random.randint(0, 1000) if account_present else 0
+            avg_transaction_amount = random.uniform(0, 50000) if transaction_count > 0 else 0.0
+            max_transaction_amount = random.uniform(0, 100000) if transaction_count > 0 else 0.0
+            balance_change = ending_balance - beginning_balance
+            
+            # Transaction pattern features
+            large_transaction_count = random.randint(0, 50) if transaction_count > 0 else 0
+            if suspicious_transaction_pattern == 1.0:
+                large_transaction_count = random.randint(10, 50)
+            
+            round_number_transactions = random.randint(0, 100) if transaction_count > 0 else 0
+            date_format_valid = 1.0 if period_start_present else 0.0
+            period_length_days = random.uniform(0, 365) if (period_start_present and period_end_present) else 0.0
+            transaction_date_consistency = random.uniform(0.5, 1.0) if transaction_count > 0 else 0.5
+            account_number_format_valid = 1.0 if account_present else 0.0
+            name_format_valid = 1.0 if account_holder_present else 0.0
+            balance_volatility = random.uniform(0.0, 10.0) if beginning_balance > 0 else 0.0
+            credit_debit_ratio = (total_credits / total_debits) if total_debits > 0 else (total_credits if total_credits > 0 else 0.0)
+            credit_debit_ratio = min(credit_debit_ratio, 100.0)
+            
+            # Calculate risk score based on features
+            risk_score = 0.0
+            
+            # Missing critical fields: up to 40 points
+            risk_score += (critical_missing_count / 7) * 40
+            
+            # Unsupported bank: +30 points
+            if bank_valid == 0.0:
+                risk_score += 30
+            
+            # Missing account holder: +25 points
+            if account_holder_present == 0.0:
+                risk_score += 25
+            
+            # Missing account number: +20 points
+            if account_present == 0.0:
+                risk_score += 20
+            
+            # Future period: +25 points
+            if future_period == 1.0:
+                risk_score += 25
+            
+            # Negative balance: +20 points
+            if negative_ending_balance == 1.0:
+                risk_score += 20
+            
+            # Balance inconsistency: up to 30 points
+            if balance_consistency < 0.5:
+                risk_score += (1 - balance_consistency) * 30
+            
+            # Suspicious transaction patterns: up to 20 points
+            if suspicious_transaction_pattern == 1.0:
+                risk_score += 20
+            
+            # Duplicate transactions: +15 points
+            if duplicate_transactions == 1.0:
+                risk_score += 15
+            
+            # Low field quality: up to 15 points
+            if field_quality < 0.5:
+                risk_score += (1 - field_quality) * 15
+            
+            # Low text quality: up to 10 points
+            if text_quality < 0.5:
+                risk_score += (1 - text_quality) * 10
+            
+            # Unusual timing: up to 10 points
+            if unusual_timing > 0.3:
+                risk_score += unusual_timing * 10
+            
+            # No transactions: +10 points
+            if transaction_count == 0:
+                risk_score += 10
+            
+            # Add noise
+            risk_score += random.uniform(-5, 5)
+            risk_score = max(0, min(100, risk_score))
+            
+            # Adjust to target range if needed
+            if target_min >= 71 and risk_score < 60:
+                risk_score = random.uniform(71, 100)
+            elif target_min >= 31 and risk_score < 25:
+                risk_score = random.uniform(31, 70)
+            elif target_max <= 30 and risk_score > 35:
+                risk_score = random.uniform(0, 30)
+            
+            # Build features dictionary with all 35 features (matching bank_statement_feature_extractor.py)
+            features = {
+                # Basic features (1-20)
+                'bank_validity': bank_valid,
+                'account_number_present': account_present,
+                'account_holder_present': account_holder_present,
+                'account_type_present': account_type_present,
+                'beginning_balance': min(abs(beginning_balance), 1000000.0),
+                'ending_balance': min(abs(ending_balance), 1000000.0),
+                'total_credits': min(abs(total_credits), 1000000.0),
+                'total_debits': min(abs(total_debits), 1000000.0),
+                'period_start_present': period_start_present,
+                'period_end_present': period_end_present,
+                'statement_date_present': statement_date_present,
+                'future_period': future_period,
+                'period_age_days': min(period_age_days, 365.0),
+                'transaction_count': min(transaction_count, 1000.0),
+                'avg_transaction_amount': min(abs(avg_transaction_amount), 50000.0),
+                'max_transaction_amount': min(abs(max_transaction_amount), 100000.0),
+                'balance_change': min(abs(balance_change), 1000000.0),
+                'negative_ending_balance': negative_ending_balance,
+                'balance_consistency': balance_consistency,
+                'currency_present': currency_present,
+                # Advanced features (21-35)
+                'suspicious_transaction_pattern': suspicious_transaction_pattern,
+                'large_transaction_count': min(large_transaction_count, 50.0),
+                'round_number_transactions': min(round_number_transactions, 100.0),
+                'date_format_valid': date_format_valid,
+                'period_length_days': min(period_length_days, 365.0),
+                'critical_missing_count': float(critical_missing_count),
+                'field_quality': field_quality,
+                'transaction_date_consistency': transaction_date_consistency,
+                'duplicate_transactions': duplicate_transactions,
+                'unusual_timing': unusual_timing,
+                'account_number_format_valid': account_number_format_valid,
+                'name_format_valid': name_format_valid,
+                'balance_volatility': min(balance_volatility, 10.0),
+                'credit_debit_ratio': min(credit_debit_ratio, 100.0),
+                'text_quality': text_quality,
+                # Target
+                'risk_score': risk_score
+            }
+            
+            data.append(features)
+        
+        df = pd.DataFrame(data)
+        print(f"Generated {len(df)} samples")
+        print(f"Risk score distribution: min={df['risk_score'].min():.1f}, max={df['risk_score'].max():.1f}, mean={df['risk_score'].mean():.1f}")
+        
+        # Print detailed distribution
+        legitimate = len(df[(df['risk_score'] >= 0) & (df['risk_score'] <= 30)])
+        slightly_suspicious = len(df[(df['risk_score'] > 30) & (df['risk_score'] <= 60)])
+        highly_suspicious = len(df[(df['risk_score'] > 60) & (df['risk_score'] <= 85)])
+        critical = len(df[df['risk_score'] > 85])
+        
+        print(f"\nRisk Score Distribution:")
+        print(f"  Legitimate (0-30%): {legitimate} samples ({legitimate/len(df)*100:.1f}%)")
+        print(f"  Slightly Suspicious (31-60%): {slightly_suspicious} samples ({slightly_suspicious/len(df)*100:.1f}%)")
+        print(f"  Highly Suspicious (61-85%): {highly_suspicious} samples ({highly_suspicious/len(df)*100:.1f}%)")
+        print(f"  Critical (86-100%): {critical} samples ({critical/len(df)*100:.1f}%)")
+        
+        # Optionally save to CSV/Excel for review
+        save_training_data = os.getenv('SAVE_TRAINING_DATA', 'true').lower() == 'true'
+        if save_training_data:
+            csv_path = os.path.join(self.model_dir, f'{document_type}_training_data.csv')
+            df.to_csv(csv_path, index=False)
+            print(f"  Saved training data to: {csv_path}")
+        
+        return df
+    
     def prepare_features(self, df: pd.DataFrame, document_type: str) -> tuple:
         """
         Prepare features for training
@@ -439,6 +721,21 @@ class RiskModelTrainer:
                 'total_tax_amount', 'tax_to_gross_ratio',
                 # Proportion features (17-18)
                 'net_to_gross_ratio', 'deduction_percentage'
+            ]
+        elif document_type == 'bank_statement':
+            feature_cols = [
+                # Basic features (1-20)
+                'bank_validity', 'account_number_present', 'account_holder_present', 'account_type_present',
+                'beginning_balance', 'ending_balance', 'total_credits', 'total_debits',
+                'period_start_present', 'period_end_present', 'statement_date_present', 'future_period',
+                'period_age_days', 'transaction_count', 'avg_transaction_amount', 'max_transaction_amount',
+                'balance_change', 'negative_ending_balance', 'balance_consistency', 'currency_present',
+                # Advanced features (21-35)
+                'suspicious_transaction_pattern', 'large_transaction_count', 'round_number_transactions',
+                'date_format_valid', 'period_length_days', 'critical_missing_count', 'field_quality',
+                'transaction_date_consistency', 'duplicate_transactions', 'unusual_timing',
+                'account_number_format_valid', 'name_format_valid', 'balance_volatility',
+                'credit_debit_ratio', 'text_quality'
             ]
         else:
             feature_cols = [col for col in df.columns if col != 'risk_score']
@@ -576,6 +873,113 @@ class RiskModelTrainer:
         return model_path, scaler_path, metadata_path
 
 
+def train_bank_statement_models():
+    """Train both Random Forest and XGBoost models for bank statements (ensemble)"""
+    if not SKLEARN_AVAILABLE:
+        print("ERROR: scikit-learn is required for training. Install with: pip install scikit-learn")
+        return
+    
+    if not XGBOOST_AVAILABLE:
+        print("ERROR: xgboost is required for bank statement training. Install with: pip install xgboost")
+        return
+    
+    print("=" * 60)
+    print("Training BANK STATEMENT Models (RF + XGBoost Ensemble)")
+    print("=" * 60)
+    
+    # Generate dummy data
+    trainer = RiskModelTrainer(model_type='random_forest')
+    df = trainer.generate_dummy_bank_statement_data(n_samples=2000, document_type='bank_statement')
+    
+    # Prepare features
+    X, y = trainer.prepare_features(df, 'bank_statement')
+    
+    # Split data
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42
+    )
+    
+    # Scale features
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+    
+    # Train Random Forest
+    print("\n" + "=" * 60)
+    print("Training Random Forest Model")
+    print("=" * 60)
+    rf_trainer = RiskModelTrainer(model_type='random_forest')
+    rf_trainer.scaler = scaler
+    rf_trainer.feature_names = trainer.feature_names
+    rf_trainer.train_model(X_train_scaled, y_train, X_test_scaled, y_test)
+    rf_model = rf_trainer.model
+    
+    # Train XGBoost
+    print("\n" + "=" * 60)
+    print("Training XGBoost Model")
+    print("=" * 60)
+    xgb_model = xgb.XGBRegressor(
+        n_estimators=100,
+        max_depth=6,
+        learning_rate=0.1,
+        random_state=42,
+        n_jobs=-1
+    )
+    xgb_model.fit(X_train_scaled, y_train)
+    
+    # Evaluate XGBoost
+    xgb_pred = xgb_model.predict(X_test_scaled)
+    xgb_mse = mean_squared_error(y_test, xgb_pred)
+    xgb_r2 = r2_score(y_test, xgb_pred)
+    print(f"\nXGBoost Test Results:")
+    print(f"  MSE: {xgb_mse:.4f}")
+    print(f"  R²: {xgb_r2:.4f}")
+    
+    # Save models to bank_statement/ml/models directory
+    model_dir = 'bank_statement/ml/models'
+    os.makedirs(model_dir, exist_ok=True)
+    
+    import joblib
+    
+    # Save Random Forest
+    rf_path = os.path.join(model_dir, 'bank_statement_random_forest.pkl')
+    joblib.dump(rf_model, rf_path)
+    print(f"\nSaved Random Forest model to: {rf_path}")
+    
+    # Save XGBoost
+    xgb_path = os.path.join(model_dir, 'bank_statement_xgboost.pkl')
+    joblib.dump(xgb_model, xgb_path)
+    print(f"Saved XGBoost model to: {xgb_path}")
+    
+    # Save scaler
+    scaler_path = os.path.join(model_dir, 'bank_statement_feature_scaler.pkl')
+    joblib.dump(scaler, scaler_path)
+    print(f"Saved feature scaler to: {scaler_path}")
+    
+    # Save metadata
+    metadata = {
+        'document_type': 'bank_statement',
+        'model_type': 'ensemble',
+        'models': ['random_forest', 'xgboost'],
+        'feature_names': trainer.feature_names,
+        'feature_count': len(trainer.feature_names),
+        'trained_at': datetime.now().strftime("%Y%m%d_%H%M%S"),
+        'rf_mse': float(rf_trainer.mse) if hasattr(rf_trainer, 'mse') else None,
+        'rf_r2': float(rf_trainer.r2) if hasattr(rf_trainer, 'r2') else None,
+        'xgb_mse': float(xgb_mse),
+        'xgb_r2': float(xgb_r2)
+    }
+    
+    metadata_path = os.path.join(model_dir, 'bank_statement_model_metadata.json')
+    with open(metadata_path, 'w') as f:
+        json.dump(metadata, f, indent=2)
+    print(f"Saved metadata to: {metadata_path}")
+    
+    print("\n" + "=" * 60)
+    print("Bank Statement Model Training Complete!")
+    print("=" * 60)
+
+
 def train_all_models():
     """Train models for all document types"""
     if not SKLEARN_AVAILABLE:
@@ -614,6 +1018,9 @@ def train_all_models():
         
         # Save model
         trainer.save_model(doc_type)
+    
+    # Train bank statement models separately (requires ensemble)
+    train_bank_statement_models()
     
     print(f"\n{'=' * 60}")
     print("Training Complete!")

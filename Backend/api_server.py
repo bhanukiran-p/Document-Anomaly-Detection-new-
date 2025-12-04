@@ -783,12 +783,65 @@ def analyze_bank_statement():
                     if not recommendation:
                         logger.warning("Cannot update customer fraud status - AI recommendation missing")
 
-            return jsonify({
+            # Extract fraud types for response (similar to paystub)
+            ml_analysis = result.get('ml_analysis', {})
+            ai_analysis = result.get('ai_analysis', {})
+            
+            # Get AI recommendation first
+            ai_recommendation = ai_analysis.get('recommendation', 'UNKNOWN') if ai_analysis else 'UNKNOWN'
+            ai_recommendation = ai_recommendation.upper()
+            
+            # Only show fraud types if recommendation is REJECT
+            fraud_type = None
+            fraud_type_label = None
+            fraud_explanations = []
+            
+            if ai_recommendation == 'REJECT':
+                # Only show fraud types for REJECT recommendations (actual fraud detected)
+                ai_fraud_types = ai_analysis.get('fraud_types', []) if ai_analysis else []
+                ml_fraud_types = ml_analysis.get('fraud_types', [])
+
+                # Extract the primary fraud type (should be a single-element list)
+                if ai_fraud_types:
+                    fraud_type = ai_fraud_types[0] if isinstance(ai_fraud_types, list) else ai_fraud_types
+                elif ml_fraud_types:
+                    fraud_type = ml_fraud_types[0] if isinstance(ml_fraud_types, list) else ml_fraud_types
+
+                # Format fraud type for display (remove underscores and title case)
+                fraud_type_label = fraud_type.replace('_', ' ').title() if fraud_type else None
+
+                # For fraud explanations, prefer AI but include ML reasons if AI doesn't have structured explanations
+                fraud_explanations = ai_analysis.get('fraud_explanations', []) if ai_analysis else []
+                # If no AI explanations but we have a fraud type and reasons, build explanations from ML
+                if not fraud_explanations and fraud_type:
+                    ml_fraud_reasons = ml_analysis.get('fraud_reasons', [])
+                    fraud_explanations = [{
+                        'type': fraud_type,
+                        'reasons': ml_fraud_reasons if ml_fraud_reasons else [f"Detected as {fraud_type_label} by ML analysis."]
+                    }]
+            # For ESCALATE or APPROVE, fraud_type remains None (no fraud detected)
+
+            # Build structured response
+            response_data = {
                 'success': True,
-                'data': result,
+                'fraud_risk_score': ml_analysis.get('fraud_risk_score', 0.0),
+                'risk_level': ml_analysis.get('risk_level', 'UNKNOWN'),
+                'model_confidence': ml_analysis.get('model_confidence', 0.0),
+                'fraud_type': fraud_type,  # Single fraud type (machine format)
+                'fraud_type_label': fraud_type_label,  # Human-readable format
+                'fraud_explanations': fraud_explanations if isinstance(fraud_explanations, list) else [],
+                'fraud_types': [fraud_type] if fraud_type else [],  # List format for compatibility
+                'ai_recommendation': ai_analysis.get('recommendation', 'UNKNOWN'),
+                'ai_confidence': ai_analysis.get('confidence_score', 0.0),
+                'summary': ai_analysis.get('summary', ''),
+                'key_indicators': ai_analysis.get('key_indicators', []),
+                'customer_info': result.get('customer_info', {}),  # Include customer history
                 'document_id': document_id,
+                'data': result,  # Include full result for backward compatibility
                 'message': 'Bank statement analyzed and stored successfully'
-            })
+            }
+
+            return jsonify(response_data)
 
         except Exception as e:
             # Clean up on error
