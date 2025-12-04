@@ -81,7 +81,8 @@ class BankStatementCustomerStorage:
 
         try:
             # Query bank_statement_customers table - get ALL records for this customer
-            response = self.supabase.table('bank_statement_customers').select('*').eq('name', account_holder_name).order('created_at', asc=True).execute()
+            # Note: Supabase order() doesn't accept asc=True, use .order('column') for ascending
+            response = self.supabase.table('bank_statement_customers').select('*').eq('name', account_holder_name).order('created_at').execute()
 
             if response.data and len(response.data) > 0:
                 # Get the FIRST record (original) for customer_id and name
@@ -224,7 +225,7 @@ class BankStatementCustomerStorage:
                         'created_at': now,
                         'updated_at': now
                     }
-                    
+
                     self.supabase.table('bank_statement_customers').insert([new_customer]).execute()
                     logger.info(f"[CUSTOMER_INSERT] Created new row for existing customer: {account_holder_name} (customer_id={customer_id}, id will be auto-generated)")
                     return True

@@ -75,7 +75,7 @@ class BankStatementFeatureExtractor:
         ending_balance = self._extract_numeric_amount(extracted_data.get('ending_balance'))
         total_credits = self._extract_numeric_amount(extracted_data.get('total_credits'))
         total_debits = self._extract_numeric_amount(extracted_data.get('total_debits'))
-        
+
         # Get transactions first (needed for balance calculation)
         transactions = extracted_data.get('transactions', [])
         

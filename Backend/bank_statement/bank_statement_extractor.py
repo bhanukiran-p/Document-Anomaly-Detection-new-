@@ -118,7 +118,10 @@ class BankStatementExtractor:
 
         # Stage 4: ML Fraud Detection
         ml_analysis = self._run_ml_fraud_detection(normalized_data, raw_text)
-        logger.info(f"ML fraud analysis complete: {ml_analysis.get('risk_level')}")
+        # Validate ml_analysis is not None before accessing
+        if ml_analysis is None:
+            raise RuntimeError("ML fraud detection returned None. This should not happen - ML models are required.")
+        logger.info(f"ML fraud analysis complete: {ml_analysis.get('risk_level', 'UNKNOWN')}")
 
         # Stage 5: Customer History & Duplicate Detection (continue regardless)
         customer_info = self._get_customer_info(normalized_data)
@@ -420,18 +423,24 @@ class BankStatementExtractor:
                 "Please ensure ML detector is properly initialized."
             )
 
-        try:
-            ml_analysis = self.ml_detector.predict_fraud(data, raw_text)
-            return ml_analysis
-        except Exception as e:
-            logger.error(f"ML fraud detection failed: {e}", exc_info=True)
-            return {
-                'fraud_risk_score': 0.5,
-                'risk_level': 'UNKNOWN',
-                'model_confidence': 0.0,
-                'error': str(e),
-                'anomalies': []
-            }
+        # NO FALLBACK - if ML fails, raise error
+        ml_analysis = self.ml_detector.predict_fraud(data, raw_text)
+        
+        # Validate that ML returned a dict (not None)
+        if ml_analysis is None:
+            raise RuntimeError(
+                "ML fraud detection returned None. ML models must return a valid analysis dict. "
+                "Please check ML model initialization and prediction logic."
+            )
+        
+        if not isinstance(ml_analysis, dict):
+            raise RuntimeError(
+                f"ML fraud detection returned invalid type: {type(ml_analysis)}. "
+                f"Expected dict, got {type(ml_analysis)}. "
+                f"ML models must return a valid analysis dict."
+            )
+        
+        return ml_analysis
 
     def _get_customer_info(self, data: Dict) -> Dict:
         """Get customer history from database"""
