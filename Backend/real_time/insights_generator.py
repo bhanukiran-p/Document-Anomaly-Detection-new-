@@ -36,8 +36,8 @@ def generate_insights(analysis_result: Dict[str, Any], filters: Dict[str, Any] =
             - fraud_probability_min: Minimum fraud probability
             - fraud_probability_max: Maximum fraud probability
             - category: Category filter (substring match)
-            - year_start: Start year (e.g., 2020)
-            - year_end: End year (e.g., 2025)
+            - date_start: Start date (e.g., '2023-01-01')
+            - date_end: End date (e.g., '2023-03-31')
             - fraud_only: Boolean, show only fraud transactions
             - legitimate_only: Boolean, show only legitimate transactions
 
@@ -388,6 +388,9 @@ def _build_geo_scatter_plot(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
             'count': int(row['count']),
         })
 
+    # Sort geo_points by count in descending order (highest first)
+    geo_points.sort(key=lambda x: x['count'], reverse=True)
+
     details = [
         _detail('Hotspots tracked', str(len(geo_points))),
         _detail('Top hotspot', f"{geo_points[0]['city']} ({geo_points[0]['count']:,})"),
@@ -447,13 +450,13 @@ def _build_sankey_plot(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
     if not type_col or not merchant_col or not gender_col or 'is_fraud' not in df.columns:
         return None
 
-    sankey_df = df[[type_col, merchant_col, 'is_fraud', gender_col]].copy()
+    sankey_df = df[[gender_col, type_col, merchant_col, 'is_fraud']].copy()
     if sankey_df.empty:
         return None
 
+    sankey_df[gender_col] = sankey_df[gender_col].fillna('Unknown Gender')
     sankey_df[type_col] = sankey_df[type_col].fillna('Unknown Type')
     sankey_df[merchant_col] = sankey_df[merchant_col].fillna('Unknown Merchant')
-    sankey_df[gender_col] = sankey_df[gender_col].fillna('Unknown')
     sankey_df['status'] = sankey_df['is_fraud'].apply(lambda value: 'Fraud' if value == 1 else 'Legitimate')
 
     top_types = sankey_df[type_col].value_counts().head(6).index
@@ -479,64 +482,66 @@ def _build_sankey_plot(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
 
     links: List[Dict[str, Any]] = []
 
-    # Color palette for links
-    link_colors = [
-        '#10b981', '#3b82f6', '#8b5cf6', '#ec4899',
-        '#f59e0b', '#ef4444', '#06b6d4', '#14b8a6',
-        '#10b981', '#3b82f6', '#8b5cf6', '#ec4899'
-    ]
+    # Color palette for links - Gender-based colors
+    link_colors = {
+        'Male': '#3b82f6',      # Blue
+        'Female': '#ec4899',    # Pink
+        'M': '#3b82f6',         # Blue
+        'F': '#ec4899',         # Pink
+        'Unknown Gender': '#94a3b8',  # Gray
+        'default': '#10b981'    # Green
+    }
 
-    for _, row in sankey_df.groupby([type_col, merchant_col]).size().reset_index(name='value').iterrows():
-        source_label = node_name(row[type_col])
-        target_label = node_name(row[merchant_col])
-        source_idx = node_index[source_label]
+    # Flow: Gender -> Type -> Merchant -> Status
+    for _, row in sankey_df.groupby([gender_col, type_col]).size().reset_index(name='value').iterrows():
+        source_label = node_name(row[gender_col])
+        target_label = node_name(row[type_col])
+        color = link_colors.get(str(row[gender_col]), link_colors['default'])
         links.append({
             'source': source_label,
             'target': target_label,
             'value': int(row['value']),
-            'color': link_colors[source_idx % len(link_colors)]
+            'color': color
+        })
+
+    for _, row in sankey_df.groupby([type_col, merchant_col]).size().reset_index(name='value').iterrows():
+        source_label = node_name(row[type_col])
+        target_label = node_name(row[merchant_col])
+        links.append({
+            'source': source_label,
+            'target': target_label,
+            'value': int(row['value']),
+            'color': '#8b5cf6'  # Purple for middle flows
         })
 
     for _, row in sankey_df.groupby([merchant_col, 'status']).size().reset_index(name='value').iterrows():
         source_label = node_name(row[merchant_col])
         target_label = node_name(row['status'])
-        source_idx = node_index[source_label]
         links.append({
             'source': source_label,
             'target': target_label,
             'value': int(row['value']),
-            'color': link_colors[source_idx % len(link_colors)]
-        })
-
-    for _, row in sankey_df.groupby(['status', gender_col]).size().reset_index(name='value').iterrows():
-        source_label = node_name(row['status'])
-        target_label = node_name(row[gender_col])
-        source_idx = node_index[source_label]
-        links.append({
-            'source': source_label,
-            'target': target_label,
-            'value': int(row['value']),
-            'color': link_colors[source_idx % len(link_colors)]
+            'color': '#ef4444' if row['status'] == 'Fraud' else '#10b981'  # Red for fraud, green for legitimate
         })
 
     if not links:
         return None
 
     details = [
+        _detail('Gender nodes', str(len(set(sankey_df[gender_col])))),
         _detail('Type nodes', str(len(set(sankey_df[type_col])))),
         _detail('Merchant nodes', str(len(set(sankey_df[merchant_col])))),
-        _detail('Gender nodes', str(len(set(sankey_df[gender_col])))),
     ]
 
     return {
-        'title': 'Flow: Type ? Merchant ? Status ? Gender',
+        'title': 'Sankey Plot Flow Based on Gender',
         'type': 'sankey',
         'data': {
             'nodes': [{'name': label} for label in nodes],
             'links': links,
         },
         'details': details,
-        'description': 'Shows how risky traffic moves from transaction types through merchants to outcomes and genders.',
+        'description': 'Shows transaction flow from gender through transaction types and merchants to fraud status.',
     }
 
 
@@ -908,23 +913,28 @@ def _apply_filters(df: pd.DataFrame, filters: Dict[str, Any]) -> pd.DataFrame:
                 filtered_df['category'].astype(str).str.lower().str.contains(category_filter, na=False)
             ]
     
-    # Year filter
+    # Date filter
     if 'timestamp' in filtered_df.columns:
         filtered_df['timestamp'] = pd.to_datetime(filtered_df['timestamp'], errors='coerce')
 
-        year_start = filters.get('year_start')
-        year_end = filters.get('year_end')
+        date_start = filters.get('date_start')
+        date_end = filters.get('date_end')
 
-        if year_start is not None or year_end is not None:
-            filtered_df['year'] = filtered_df['timestamp'].dt.year
-            start = int(year_start) if year_start is not None else 1900
-            end = int(year_end) if year_end is not None else 2100
+        if date_start is not None or date_end is not None:
+            start_ts = pd.to_datetime(date_start, errors='coerce') if date_start else None
+            end_ts = pd.to_datetime(date_end, errors='coerce') if date_end else None
 
-            # Filter by year range
-            filtered_df = filtered_df[
-                (filtered_df['year'] >= start) & (filtered_df['year'] <= end)
-            ]
-            filtered_df = filtered_df.drop(columns=['year'])
+            mask = pd.Series(True, index=filtered_df.index)
+
+            if start_ts is not None and not pd.isna(start_ts):
+                start_boundary = start_ts.normalize()
+                mask &= filtered_df['timestamp'].isna() | (filtered_df['timestamp'] >= start_boundary)
+
+            if end_ts is not None and not pd.isna(end_ts):
+                end_boundary = end_ts.normalize() + pd.Timedelta(days=1)
+                mask &= filtered_df['timestamp'].isna() | (filtered_df['timestamp'] < end_boundary)
+
+            filtered_df = filtered_df[mask]
     
     # Fraud/Legitimate only filters
     if filters.get('fraud_only'):

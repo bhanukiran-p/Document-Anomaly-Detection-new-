@@ -60,16 +60,6 @@ const EChartsSankey = ({ data, title, height = 400 }) => {
   }).filter(Boolean);
 
   const option = {
-    title: {
-      text: title,
-      left: 'center',
-      top: 10,
-      textStyle: {
-        color: '#e2e8f0',
-        fontSize: 14,
-        fontWeight: 600
-      }
-    },
     tooltip: {
       trigger: 'item',
       backgroundColor: 'rgba(30, 41, 59, 0.95)',
@@ -95,7 +85,7 @@ const EChartsSankey = ({ data, title, height = 400 }) => {
         },
         left: '5%',
         right: '20%',
-        top: '15%',
+        top: '5%',
         bottom: '10%',
         nodeWidth: 20,
         nodeGap: 12
