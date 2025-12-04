@@ -652,8 +652,13 @@ const BankStatementAnalysis = () => {
                 const isNewCustomer = !customerInfo.customer_id;
                 const customerStatus = isNewCustomer ? 'New Customer' : 'Repeat Customer';
                 
-                // Show card if we have fraud types OR customer history OR fraud_type_label
-                // Also show if recommendation is REJECT (even if fraud_types is empty, we should show something)
+                // CRITICAL: Hide fraud type card for new customers (matches paystub behavior)
+                if (isNewCustomer) {
+                  return false;
+                }
+                
+                // Show card if we have fraud types OR customer history
+                // Only show for repeat customers (new customers are handled above)
                 const hasFraudType = fraudTypes.length > 0 || analysisData.fraud_type || analysisData.fraud_type_label;
                 return hasFraudType || escalateCount > 0 || fraudCount > 0 || aiRecommendation === 'REJECT';
               })() ? (
@@ -678,6 +683,7 @@ const BankStatementAnalysis = () => {
                                             analysisData.data?.ai_analysis?.fraud_explanations || [];
                   
                   // Get primary fraud type - prioritize fraud_type_label, then fraud_types, then fraud_explanations, then default
+                  // Note: This code only runs for repeat customers (new customers are filtered out above)
                   let primaryFraudType = null;
                   if (analysisData.fraud_type_label) {
                     // Use human-readable label from backend if available
@@ -693,47 +699,61 @@ const BankStatementAnalysis = () => {
                   } else if (escalateCount > 0 || fraudCount > 0) {
                     // For repeat customers, default to REPEAT_OFFENDER
                     primaryFraudType = 'REPEAT OFFENDER';
-                  } else {
-                    // Last resort: use BALANCE_CONSISTENCY_VIOLATION (common for bank statements)
-                    primaryFraudType = 'BALANCE CONSISTENCY VIOLATION';
                   }
+                  // Removed fallback for new customers - they shouldn't see fraud types
                   
-                  // HYBRID APPROACH: Combine document-level fraud explanations with REPEAT_OFFENDER info
+                  // PRIORITIZE DOCUMENT-SPECIFIC FRAUD EXPLANATIONS
+                  // Only show explanations that are SPECIFIC to the document's fraud type
                   let displayReasons = [];
                   
-                  // First, add document-level fraud explanations (exclude REPEAT_OFFENDER)
-                  const documentLevelExplanations = fraudExplanations.filter(exp => 
-                    exp.type !== 'REPEAT_OFFENDER'
-                  );
-                  if (documentLevelExplanations.length > 0) {
-                    documentLevelExplanations.forEach(exp => {
-                      if (exp.reasons && exp.reasons.length > 0) {
-                        displayReasons.push(...exp.reasons.slice(0, 2));
-                      }
+                  // Get fraud explanations for the PRIMARY fraud type only
+                  // These should be document-specific (e.g., balance inconsistencies, transaction patterns)
+                  if (fraudExplanations && fraudExplanations.length > 0) {
+                    // Find explanations matching the primary fraud type
+                    const primaryFraudTypeNormalized = primaryFraudType?.replace(/\s+/g, '_').toUpperCase();
+                    const matchingExplanations = fraudExplanations.filter(exp => {
+                      const expTypeNormalized = exp.type?.replace(/\s+/g, '_').toUpperCase();
+                      return expTypeNormalized === primaryFraudTypeNormalized;
                     });
+                    
+                    // Use matching explanations if found
+                    if (matchingExplanations.length > 0) {
+                      matchingExplanations.forEach(exp => {
+                        if (exp.reasons && Array.isArray(exp.reasons) && exp.reasons.length > 0) {
+                          // Only add document-specific reasons (exclude generic customer history)
+                          const documentSpecificReasons = exp.reasons.filter(reason => {
+                            const reasonLower = reason.toLowerCase();
+                            // Exclude generic customer history reasons
+                            return !reasonLower.includes('customer has') && 
+                                   !reasonLower.includes('previous escalation') &&
+                                   !reasonLower.includes('previous fraud') &&
+                                   !reasonLower.includes('customer status') &&
+                                   !reasonLower.includes('documented fraud history');
+                          });
+                          displayReasons.push(...documentSpecificReasons);
+                        }
+                      });
+                    } else {
+                      // If no matching explanations, use first explanation's reasons (but filter out generic ones)
+                      fraudExplanations.forEach(exp => {
+                        if (exp.reasons && Array.isArray(exp.reasons) && exp.reasons.length > 0) {
+                          const documentSpecificReasons = exp.reasons.filter(reason => {
+                            const reasonLower = reason.toLowerCase();
+                            return !reasonLower.includes('customer has') && 
+                                   !reasonLower.includes('previous escalation') &&
+                                   !reasonLower.includes('previous fraud') &&
+                                   !reasonLower.includes('customer status') &&
+                                   !reasonLower.includes('documented fraud history');
+                          });
+                          displayReasons.push(...documentSpecificReasons);
+                        }
+                      });
+                    }
                   }
                   
-                  // Then, add REPEAT_OFFENDER explanations (based on customer history)
-                  const repeatOffenderExplanations = fraudExplanations.filter(exp => 
-                    exp.type === 'REPEAT_OFFENDER'
-                  );
-                  if (repeatOffenderExplanations.length > 0) {
-                    repeatOffenderExplanations.forEach(exp => {
-                      if (exp.reasons && exp.reasons.length > 0) {
-                        displayReasons.push(...exp.reasons);
-                      }
-                    });
-                  }
-                  
-                  // Fallback: if no explanations, use customer history
+                  // If still no document-specific reasons, show a message indicating analysis is needed
                   if (displayReasons.length === 0) {
-                    if (escalateCount > 0) {
-                      displayReasons.push(`Customer has ${escalateCount} previous escalation${escalateCount !== 1 ? 's' : ''}`);
-                    }
-                    if (fraudCount > 0) {
-                      displayReasons.push(`Customer has ${fraudCount} previous fraud incident${fraudCount !== 1 ? 's' : ''}`);
-                    }
-                    displayReasons.push(`Customer status: ${customerStatus} with documented fraud history`);
+                    displayReasons.push(`Document analysis indicates ${primaryFraudType || 'fraud indicators'}. Review document details for specific issues.`);
                   }
                   
                   return (
@@ -772,6 +792,14 @@ const BankStatementAnalysis = () => {
               {/* Actionable Recommendations Card */}
               {(() => {
                 const aiRecommendation = (analysisData.ai_recommendation || aiAnalysis.recommendation || 'UNKNOWN').toUpperCase();
+                const customerInfo = analysisData.customer_info || analysisData.data?.customer_info || {};
+                const isNewCustomer = !customerInfo.customer_id;
+                
+                // CRITICAL: Hide actionable recommendations for new customers (matches paystub behavior)
+                if (isNewCustomer) {
+                  return false;
+                }
+                
                 return aiRecommendation !== 'APPROVE' && aiAnalysis.actionable_recommendations && aiAnalysis.actionable_recommendations.length > 0;
               })() && (
                 <div style={{

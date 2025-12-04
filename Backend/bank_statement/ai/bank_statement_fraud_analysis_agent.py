@@ -208,14 +208,11 @@ class BankStatementFraudAnalysisAgent:
 
             # Parse response
             ai_response = response.content
-            logger.info("Received LLM response")
+            logger.info(f"Received LLM response (length: {len(ai_response)} chars)")
 
-            # Try to parse as JSON
-            try:
-                result = json.loads(ai_response)
-            except json.JSONDecodeError:
-                # If not JSON, try to extract structured data from text
-                result = self._parse_text_response(ai_response)
+            # Try to parse as JSON - NO FALLBACK, error if invalid
+            # But try harder to extract JSON from common LLM response formats
+            result = self._parse_json_response(ai_response)
 
             # Validate and format result
             final_result = self._validate_and_format_result(result, ml_analysis, customer_info)
@@ -223,28 +220,37 @@ class BankStatementFraudAnalysisAgent:
             # CRITICAL: Post-LLM validation - Force ESCALATE for new customers regardless of LLM recommendation
             # New customers should ALWAYS ESCALATE (1-100% risk) per updated decision matrix
             is_new_customer = not customer_info.get('customer_id')
-            if is_new_customer and final_result.get('recommendation') in ['REJECT', 'APPROVE']:
+            if is_new_customer:
                 original_recommendation = final_result.get('recommendation')
-                logger.warning(
-                    f"LLM returned {original_recommendation} for new customer {account_holder_name}. "
-                    f"Overriding to ESCALATE per policy (new customers must always escalate regardless of risk score)."
-                )
+                if original_recommendation in ['REJECT', 'APPROVE']:
+                    logger.warning(
+                        f"LLM returned {original_recommendation} for new customer {account_holder_name}. "
+                        f"Overriding to ESCALATE per policy (new customers must always escalate regardless of risk score)."
+                    )
+                # Always use first-time escalation for new customers (removes fraud_types and actionable_recommendations)
                 final_result = self._create_first_time_escalation(account_holder_name, is_new_customer=True)
-                final_result['reasoning'].append(
-                    f"Original LLM recommendation was {original_recommendation}, but overridden to ESCALATE because this is a new customer. "
-                    f"New customers require manual review regardless of risk score (1-100%)."
-                )
+                if original_recommendation in ['REJECT', 'APPROVE']:
+                    final_result['reasoning'].append(
+                        f"Original LLM recommendation was {original_recommendation}, but overridden to ESCALATE because this is a new customer. "
+                        f"New customers require manual review regardless of risk score (1-100%)."
+                    )
 
             logger.info(f"AI recommendation: {final_result.get('recommendation')}")
             return final_result
 
         except Exception as e:
             logger.error(f"Error in AI fraud analysis: {e}", exc_info=True)
-            # Return safe fallback decision
-            return self._create_fallback_decision(ml_analysis)
+            # No fallback - raise error if LLM is not available
+            raise RuntimeError(
+                f"AI analysis failed: {str(e)}. "
+                f"Please check OpenAI API key and network connectivity. "
+                f"LLM analysis is required - no fallback available."
+            ) from e
 
     def _create_first_time_escalation(self, account_holder_name: str, is_new_customer: bool = False) -> Dict:
-        """Create escalation response for first-time or clean-history customers."""
+        """Create escalation response for first-time or clean-history customers.
+        For new customers, fraud_types and actionable_recommendations are excluded (empty lists).
+        """
         customer_state = "new customer" if is_new_customer else "customer with no prior escalations"
         summary_reason = (
             f"Automatic escalation: {account_holder_name} is a {customer_state} per account-holder-based fraud policy."
@@ -262,11 +268,14 @@ class BankStatementFraudAnalysisAgent:
                 'Customer escalation count: 0',
                 'Policy: first-time uploads require escalation'
             ],
-            'actionable_recommendations': [
+            # For new customers: exclude actionable_recommendations and fraud_types (empty lists)
+            'actionable_recommendations': [] if is_new_customer else [
                 'Route this bank statement to the manual review queue',
                 'Create a customer record if one does not exist',
                 'Monitor future uploads for this account holder to enforce repeat-offender rules'
-            ]
+            ],
+            'fraud_types': [],  # Always empty for new customers
+            'fraud_explanations': []  # Always empty for new customers
         }
 
     def _create_repeat_offender_rejection(self, account_holder_name: str, escalate_count: int) -> Dict:
@@ -289,7 +298,9 @@ class BankStatementFraudAnalysisAgent:
                 'Block this transaction immediately',
                 'Flag customer account for fraud investigation',
                 'Contact account holder to verify legitimacy of future transactions'
-            ]
+            ],
+            'fraud_types': [],  # Only LLM provides fraud_types - automatic rejections skip LLM
+            'fraud_explanations': []  # Only LLM provides fraud_explanations - automatic rejections skip LLM
         }
 
     def _create_fraud_history_rejection(self, account_holder_name: str, fraud_count: int) -> Dict:
@@ -312,7 +323,9 @@ class BankStatementFraudAnalysisAgent:
                 'Block this transaction immediately',
                 'Flag customer account for fraud investigation',
                 'Contact account holder to verify legitimacy of future transactions'
-            ]
+            ],
+            'fraud_types': [],  # Only LLM provides fraud_types - automatic rejections skip LLM
+            'fraud_explanations': []  # Only LLM provides fraud_explanations - automatic rejections skip LLM
         }
 
     def _create_duplicate_rejection(self, account_number: str, account_holder_name: str) -> Dict:
@@ -334,41 +347,98 @@ class BankStatementFraudAnalysisAgent:
                 'Block this transaction immediately',
                 'Flag customer account for review',
                 'Investigate potential fraud attempt'
-            ]
+            ],
+            'fraud_types': [],  # Only LLM provides fraud_types - automatic rejections skip LLM
+            'fraud_explanations': []  # Only LLM provides fraud_explanations - automatic rejections skip LLM
         }
 
-    def _parse_text_response(self, text_response: str) -> Dict:
-        """Parse text response if JSON parsing fails"""
-        # Simple heuristic parsing
-        result = {
-            'recommendation': 'ESCALATE',  # Default to safe option
-            'confidence_score': 0.7,
-            'summary': text_response[:200],
-            'reasoning': [],
-            'key_indicators': [],
-            'actionable_recommendations': []
-        }
-
-        # Try to extract recommendation
-        text_lower = text_response.lower()
-        if 'approve' in text_lower and 'reject' not in text_lower:
-            result['recommendation'] = 'APPROVE'
-        elif 'reject' in text_lower:
-            result['recommendation'] = 'REJECT'
-        else:
-            result['recommendation'] = 'ESCALATE'
-
-        # Extract reasoning (look for bullet points or numbered lists)
-        lines = text_response.split('\n')
-        for line in lines:
-            line = line.strip()
-            if line.startswith(('-', '*', '•')) or (len(line) > 2 and line[0].isdigit() and line[1] in '.):'):
-                result['reasoning'].append(line.lstrip('-*•0123456789.) '))
-
-        return result
+    def _parse_json_response(self, ai_response: str) -> Dict:
+        """
+        Parse JSON from LLM response, handling common formats.
+        Tries multiple strategies but raises error if JSON cannot be extracted.
+        NO FALLBACK - must return valid JSON or raise error.
+        
+        Args:
+            ai_response: Raw response from LLM
+            
+        Returns:
+            Parsed JSON dict
+            
+        Raises:
+            ValueError: If JSON cannot be parsed from response
+        """
+        import re
+        
+        if not ai_response or not ai_response.strip():
+            raise ValueError(
+                "LLM returned empty response. "
+                "LLM must return valid JSON format. "
+                "Please check OpenAI API key and network connectivity."
+            )
+        
+        # Strategy 1: Try direct JSON parse
+        try:
+            return json.loads(ai_response.strip())
+        except json.JSONDecodeError:
+            pass
+        
+        # Strategy 2: Extract JSON from markdown code blocks (```json ... ```)
+        json_block_pattern = r'```(?:json)?\s*(\{.*?\})\s*```'
+        matches = re.findall(json_block_pattern, ai_response, re.DOTALL)
+        if matches:
+            for match in matches:
+                try:
+                    return json.loads(match.strip())
+                except json.JSONDecodeError:
+                    continue
+        
+        # Strategy 3: Find JSON object in response (look for { ... })
+        # Try to find the first complete JSON object
+        brace_count = 0
+        start_idx = -1
+        for i, char in enumerate(ai_response):
+            if char == '{':
+                if start_idx == -1:
+                    start_idx = i
+                brace_count += 1
+            elif char == '}':
+                brace_count -= 1
+                if brace_count == 0 and start_idx != -1:
+                    # Found complete JSON object
+                    json_str = ai_response[start_idx:i+1]
+                    try:
+                        return json.loads(json_str.strip())
+                    except json.JSONDecodeError:
+                        # Try next JSON object
+                        start_idx = -1
+                        brace_count = 0
+                        continue
+        
+        # Strategy 4: Try to fix common JSON issues (trailing commas, etc.)
+        # Remove trailing commas before closing braces/brackets
+        cleaned = re.sub(r',\s*}', '}', ai_response)
+        cleaned = re.sub(r',\s*]', ']', cleaned)
+        try:
+            return json.loads(cleaned.strip())
+        except json.JSONDecodeError:
+            pass
+        
+        # All strategies failed - raise error with helpful message
+        response_preview = ai_response[:1000] if len(ai_response) > 1000 else ai_response
+        raise ValueError(
+            f"LLM returned invalid JSON response. "
+            f"LLM must return valid JSON format. "
+            f"Response length: {len(ai_response)} chars. "
+            f"Response preview: {response_preview}... "
+            f"Please check OpenAI API key and network connectivity. "
+            f"LLM analysis is required - no fallback available."
+        )
 
     def _validate_and_format_result(self, result: Dict, ml_analysis: Dict, customer_info: Dict) -> Dict:
         """Validate and format the AI result"""
+        # Check if this is a new customer
+        is_new_customer = not customer_info.get('customer_id')
+        
         # Ensure required fields exist
         validated = {
             'recommendation': result.get('recommendation', 'ESCALATE').upper(),
@@ -376,8 +446,25 @@ class BankStatementFraudAnalysisAgent:
             'summary': result.get('summary', 'AI fraud analysis completed'),
             'reasoning': result.get('reasoning', []),
             'key_indicators': result.get('key_indicators', []),
-            'actionable_recommendations': result.get('actionable_recommendations', [])
+            'actionable_recommendations': result.get('actionable_recommendations', []),
+            'fraud_types': result.get('fraud_types', []),
+            'fraud_explanations': result.get('fraud_explanations', [])
         }
+        
+        # For new customers: clear fraud_types and actionable_recommendations
+        # Only LLM provides these - no fallback to ML
+        if is_new_customer:
+            validated['fraud_types'] = []
+            validated['fraud_explanations'] = []
+            validated['actionable_recommendations'] = []
+            # Clean up reasoning to remove confusing messages about fraud history
+            validated['reasoning'] = [
+                reason for reason in validated['reasoning'] 
+                if 'fraud history' not in reason.lower() and 'documented fraud' not in reason.lower()
+            ]
+        
+        # For repeat customers: Only use what LLM returns - no fallback to ML
+        # If LLM doesn't provide fraud_types or actionable_recommendations, they remain empty
 
         # Validate recommendation value
         if validated['recommendation'] not in ['APPROVE', 'REJECT', 'ESCALATE']:
@@ -400,38 +487,4 @@ class BankStatementFraudAnalysisAgent:
 
         return validated
 
-    def _create_fallback_decision(self, ml_analysis: Dict) -> Dict:
-        """Create safe fallback decision if AI analysis fails"""
-        fraud_score = ml_analysis.get('fraud_risk_score', 0.5)
-        risk_level = ml_analysis.get('risk_level', 'MEDIUM')
-
-        # Conservative fallback logic
-        if fraud_score >= 0.7:
-            recommendation = 'REJECT'
-            summary = 'High fraud risk detected by ML models - automatic rejection'
-        elif fraud_score >= 0.3:
-            recommendation = 'ESCALATE'
-            summary = 'Moderate fraud risk - requires human review'
-        else:
-            recommendation = 'APPROVE'
-            summary = 'Low fraud risk detected'
-
-        return {
-            'recommendation': recommendation,
-            'confidence_score': 0.6,
-            'summary': summary,
-            'reasoning': [
-                'AI analysis unavailable - using ML-based fallback decision',
-                f'ML fraud score: {fraud_score:.2%}',
-                f'Risk level: {risk_level}'
-            ],
-            'key_indicators': ml_analysis.get('feature_importance', []),
-            'actionable_recommendations': [
-                'Review ML fraud indicators',
-                'Consider manual verification if needed'
-            ],
-            'ml_fraud_score': fraud_score,
-            'ml_risk_level': risk_level,
-            'fallback_mode': True
-        }
 

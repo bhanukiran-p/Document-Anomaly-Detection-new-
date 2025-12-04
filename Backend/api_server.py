@@ -786,40 +786,42 @@ def analyze_bank_statement():
             # Extract fraud types for response (similar to paystub)
             ml_analysis = result.get('ml_analysis', {})
             ai_analysis = result.get('ai_analysis', {})
+            customer_info = result.get('customer_info', {})
             
             # Get AI recommendation first
             ai_recommendation = ai_analysis.get('recommendation', 'UNKNOWN') if ai_analysis else 'UNKNOWN'
             ai_recommendation = ai_recommendation.upper()
             
-            # Only show fraud types if recommendation is REJECT
+            # Check if this is a new customer
+            is_new_customer = not customer_info.get('customer_id')
+            
+            # Fraud types logic:
+            # - For new customers: Never show fraud types (always empty)
+            # - For repeat customers: Show fraud types if recommendation is REJECT or ESCALATE (but not APPROVE)
             fraud_type = None
             fraud_type_label = None
             fraud_explanations = []
             
-            if ai_recommendation == 'REJECT':
-                # Only show fraud types for REJECT recommendations (actual fraud detected)
+            # Only extract fraud types for repeat customers (not new customers)
+            # Only use what LLM returns - no fallback to ML
+            if not is_new_customer and ai_recommendation in ['REJECT', 'ESCALATE']:
+                # Show fraud types for repeat customers with REJECT or ESCALATE recommendations
+                # Only use AI/LLM fraud_types - no fallback to ML
                 ai_fraud_types = ai_analysis.get('fraud_types', []) if ai_analysis else []
-                ml_fraud_types = ml_analysis.get('fraud_types', [])
 
-                # Extract the primary fraud type (should be a single-element list)
+                # Extract the primary fraud type (only from LLM response)
                 if ai_fraud_types:
                     fraud_type = ai_fraud_types[0] if isinstance(ai_fraud_types, list) else ai_fraud_types
-                elif ml_fraud_types:
-                    fraud_type = ml_fraud_types[0] if isinstance(ml_fraud_types, list) else ml_fraud_types
+                    # Format fraud type for display (remove underscores and title case)
+                    fraud_type_label = fraud_type.replace('_', ' ').title() if fraud_type else None
+                else:
+                    # LLM didn't provide fraud_types - leave as None (no fallback)
+                    fraud_type = None
+                    fraud_type_label = None
 
-                # Format fraud type for display (remove underscores and title case)
-                fraud_type_label = fraud_type.replace('_', ' ').title() if fraud_type else None
-
-                # For fraud explanations, prefer AI but include ML reasons if AI doesn't have structured explanations
+                # For fraud explanations, only use AI/LLM explanations - no fallback to ML
                 fraud_explanations = ai_analysis.get('fraud_explanations', []) if ai_analysis else []
-                # If no AI explanations but we have a fraud type and reasons, build explanations from ML
-                if not fraud_explanations and fraud_type:
-                    ml_fraud_reasons = ml_analysis.get('fraud_reasons', [])
-                    fraud_explanations = [{
-                        'type': fraud_type,
-                        'reasons': ml_fraud_reasons if ml_fraud_reasons else [f"Detected as {fraud_type_label} by ML analysis."]
-                    }]
-            # For ESCALATE or APPROVE, fraud_type remains None (no fraud detected)
+            # For new customers or APPROVE, fraud_type remains None (no fraud detected)
 
             # Build structured response
             response_data = {
