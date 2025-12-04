@@ -99,11 +99,15 @@ Return your analysis in the following JSON format (valid JSON only, no markdown)
 
 IMPORTANT FRAUD TYPE RULES:
 - For NEW customers: Always return empty arrays for fraud_types and fraud_explanations (even if ML detected fraud)
-- For REPEAT customers: Return fraud_types and fraud_explanations based on detected fraud patterns
-- Valid fraud types: BALANCE_CONSISTENCY_VIOLATION, FABRICATED_DOCUMENT, ALTERED_LEGITIMATE_DOCUMENT, SUSPICIOUS_TRANSACTION_PATTERNS, UNREALISTIC_FINANCIAL_PROPORTIONS
+- For REPEAT customers: **YOU MUST ALWAYS return fraud_types and fraud_explanations** if recommendation is REJECT or ESCALATE
+- **CRITICAL**: For REPEAT customers with REJECT or ESCALATE, you MUST identify at least ONE fraud type and provide SPECIFIC explanations
+- Valid fraud types: BALANCE_CONSISTENCY_VIOLATION, FABRICATED_DOCUMENT, ALTERED_LEGITIMATE_DOCUMENT, SUSPICIOUS_TRANSACTION_PATTERNS, UNREALISTIC_FINANCIAL_PROPORTIONS, DUPLICATE_STATEMENT, REPEAT_OFFENDER
 - Only include fraud_types if recommendation is REJECT or ESCALATE (not for APPROVE)
+- **If you cannot identify a specific fraud type, analyze the document data and ML risk factors to determine the most likely fraud type**
 
 **CRITICAL: FRAUD EXPLANATIONS MUST BE SPECIFIC TO THE DOCUMENT DATA**
+
+**MANDATORY FOR REPEAT CUSTOMERS**: If recommendation is REJECT or ESCALATE, you MUST provide fraud_types and fraud_explanations. Do NOT return empty arrays.
 
 For each fraud_type you identify, you MUST provide SPECIFIC explanations based on the ACTUAL document data:
 
@@ -160,19 +164,16 @@ Your actionable_recommendations MUST be SPECIFIC to the document's actual proble
 RECOMMENDATION_GUIDELINES = """
 ## MANDATORY DECISION TABLE FOR BANK STATEMENT FRAUD ANALYSIS
 
-**CRITICAL: Repeat offenders (escalate_count > 0) are auto-rejected BEFORE LLM processes the statement.**
+**CRITICAL: Repeat offenders (fraud_count > 0) are auto-rejected BEFORE LLM processes the statement.**
 **The LLM must strictly follow this decision table for all other cases. NO EXCEPTIONS.**
 
 ### DECISION MATRIX
-| Customer Type | Risk Score | Decision |
-|---|---|---|
-| New Customer | 1-100% | ESCALATE |
-| Clean History | < 30% | APPROVE |
-| Clean History | 30–85% | ESCALATE |
-| Clean History | > 85% | REJECT |
-| Fraud History | < 30% | APPROVE |
-| Fraud History | ≥ 30% | REJECT |
-| Repeat Offender (escalate_count > 0) | Any | REJECT (auto, before LLM) |
+If the customer is a new customer, and their risk score is between {1–100%}, the case should be escalated.
+If the customer has a clean history and a risk score {below 30%}, the decision is to approve.
+If the customer has a clean history but a risk score {above 85%}, the decision is to reject.
+If the customer has a fraud history and a risk score {below 30%}, the decision is still to approve.
+If the customer has a fraud history with a risk score of {30% or higher}, the decision is to reject.
+Finally, if the customer is a repeat offender (i.e., their fraud_count is {greater than 0}), the system should automatically reject the case before invoking the LLM.
 
 ### CUSTOMER CLASSIFICATION
 **New Customer:**
@@ -186,12 +187,14 @@ RECOMMENDATION_GUIDELINES = """
 - fraud_count > 0 AND escalate_count = 0
 
 **Repeat Offender:**
-- escalate_count > 0
+- fraud_count > 0 (has been REJECTED before)
 - ALWAYS REJECTED before LLM processes the statement
 - LLM is skipped entirely for these cases
 
+**Important:** Customers who were only ESCALATED (escalate_count > 0, fraud_count = 0) should go through LLM analysis to identify actual fraud types, not be auto-rejected as REPEAT_OFFENDER.
+
 ### AUTOMATIC REJECTION CONDITIONS (Regardless of ML Score)
-1. Repeat Offender (escalate_count > 0) → REJECT (auto, before LLM)
+1. Repeat Offender (fraud_count > 0) → REJECT (auto, before LLM)
 2. Duplicate Statement Detected → REJECT
 
 ### ESCALATION CONDITIONS (For New Customers)
@@ -208,11 +211,14 @@ RECOMMENDATION_GUIDELINES = """
 4. Balance Inconsistency → REJECT (if repeat customer)
 
 ### CRITICAL RULES (IN PRIORITY ORDER):
-1. **If escalate_count > 0 → MUST REJECT** (auto, before LLM - repeat offender policy)
+1. **If fraud_count > 0 → MUST REJECT** (auto, before LLM - repeat offender policy)
 2. **If customer is NEW → MUST ESCALATE** (regardless of risk score, 1-100%)
 3. If fraud_risk_score >= 30% AND customer has FRAUD HISTORY → MUST REJECT
 4. If fraud_risk_score > 85% AND customer has CLEAN HISTORY → MUST REJECT
-5. Repeat fraudsters should face stricter thresholds (REJECT at >= 30% risk)
+5. If fraud_risk_score >= 30% AND fraud_risk_score <= 85% AND customer has CLEAN HISTORY → ESCALATE (medium risk requires review)
+6. Repeat fraudsters should face stricter thresholds (REJECT at >= 30% risk)
+
+**IMPORTANT:** Customers with escalate_count > 0 but fraud_count = 0 (previously escalated but not rejected) should go through LLM analysis to identify actual fraud types based on document data, not be auto-rejected as REPEAT_OFFENDER.
 
 ### IMPORTANT NOTES
 - ML score determines the risk_score bucket only

@@ -137,18 +137,19 @@ class BankStatementFraudAnalysisAgent:
             return self._create_first_time_escalation("Unknown Account Holder", is_new_customer=True)
 
         customer_info = customer_info or {}
-        escalate_count = customer_info.get('escalate_count', 0) or 0
+        fraud_count = customer_info.get('fraud_count', 0) or 0
 
-        # Check for repeat offenders: if escalate_count > 0, auto-reject (like money orders)
-        # This means second and subsequent uploads by same customer always get REJECT
-        if escalate_count > 0:
+        # Check for repeat offenders: if fraud_count > 0, auto-reject with REPEAT_OFFENDER
+        # REPEAT_OFFENDER only applies to customers who have been REJECTED before (fraud_count > 0)
+        # Customers who were only ESCALATED (escalate_count > 0, fraud_count = 0) should go through LLM analysis
+        if fraud_count > 0:
             logger.warning(
-                f"REPEAT OFFENDER DETECTED: {account_holder_name} has escalate_count={escalate_count}. Auto-rejecting."
+                f"REPEAT OFFENDER DETECTED: {account_holder_name} has fraud_count={fraud_count}. Auto-rejecting."
             )
-            return self._create_repeat_offender_rejection(account_holder_name, escalate_count)
+            return self._create_repeat_offender_rejection(account_holder_name, fraud_count)
 
-        # If we reach here, account holder has no escalations logged → proceed to LLM for decision
-        logger.info(f"Customer {account_holder_name} has no escalations; proceeding to LLM analysis.")
+        # If we reach here, account holder has no fraud history → proceed to LLM for decision
+        logger.info(f"Customer {account_holder_name} has no fraud history; proceeding to LLM analysis.")
         return None
 
     def _llm_analysis(
@@ -173,10 +174,12 @@ class BankStatementFraudAnalysisAgent:
                     logger.info(f"Retrieved customer history for: {account_holder_name}")
 
             # MANDATORY REPEAT OFFENDER CHECK - BEFORE ANY LLM ANALYSIS
-            escalate_count = customer_info.get('escalate_count', 0)
-            if escalate_count > 0:
-                logger.warning(f"REPEAT OFFENDER DETECTED: {account_holder_name} has escalate_count={escalate_count}. Auto-rejecting.")
-                return self._create_repeat_offender_rejection(account_holder_name, escalate_count)
+            # REPEAT_OFFENDER only applies to customers who have been REJECTED before (fraud_count > 0)
+            # Customers who were only ESCALATED (escalate_count > 0, fraud_count = 0) should go through LLM analysis
+            fraud_count = customer_info.get('fraud_count', 0) or 0
+            if fraud_count > 0:
+                logger.warning(f"REPEAT OFFENDER DETECTED: {account_holder_name} has fraud_count={fraud_count}. Auto-rejecting.")
+                return self._create_repeat_offender_rejection(account_holder_name, fraud_count)
 
             # Check for duplicates
             account_number = extracted_data.get('account_number')
@@ -209,10 +212,16 @@ class BankStatementFraudAnalysisAgent:
             # Parse response
             ai_response = response.content
             logger.info(f"Received LLM response (length: {len(ai_response)} chars)")
+            logger.info(f"LLM raw response: {ai_response[:500]}...")  # Log first 500 chars for debugging
 
             # Try to parse as JSON - NO FALLBACK, error if invalid
             # But try harder to extract JSON from common LLM response formats
             result = self._parse_json_response(ai_response)
+            
+            # Log what LLM returned for fraud_types and fraud_explanations
+            logger.info(f"LLM returned fraud_types: {result.get('fraud_types', [])}")
+            logger.info(f"LLM returned fraud_explanations: {result.get('fraud_explanations', [])}")
+            logger.info(f"LLM returned actionable_recommendations: {result.get('actionable_recommendations', [])}")
 
             # Validate and format result
             final_result = self._validate_and_format_result(result, ml_analysis, customer_info)
@@ -278,29 +287,42 @@ class BankStatementFraudAnalysisAgent:
             'fraud_explanations': []  # Always empty for new customers
         }
 
-    def _create_repeat_offender_rejection(self, account_holder_name: str, escalate_count: int) -> Dict:
-        """Create rejection response for repeat offenders (escalate_count > 0)"""
+    def _create_repeat_offender_rejection(self, account_holder_name: str, fraud_count: int) -> Dict:
+        """Create rejection response for repeat offenders (fraud_count > 0)
+        
+        REPEAT_OFFENDER only applies to customers who have been REJECTED before.
+        Customers who were only ESCALATED should go through LLM analysis to identify actual fraud types.
+        """
         return {
             'recommendation': 'REJECT',
             'confidence_score': 1.0,
             'summary': f'Automatic rejection: {account_holder_name} is a flagged repeat offender',
             'reasoning': [
-                f'Account holder {account_holder_name} has escalate_count = {escalate_count}',
+                f'Account holder {account_holder_name} has fraud_count = {fraud_count}',
                 'Per account-holder-based fraud tracking policy: repeat offenders are automatically rejected',
-                'This account holder was previously escalated and is now subject to automatic rejection',
+                'This account holder was previously rejected and is now subject to automatic rejection',
                 'LLM analysis skipped - mandatory reject rule applies'
             ],
             'key_indicators': [
                 'Repeat offender detected',
-                f'Escalation count: {escalate_count}'
+                f'Fraud count: {fraud_count}'
             ],
             'actionable_recommendations': [
                 'Block this transaction immediately',
                 'Flag customer account for fraud investigation',
                 'Contact account holder to verify legitimacy of future transactions'
             ],
-            'fraud_types': [],  # Only LLM provides fraud_types - automatic rejections skip LLM
-            'fraud_explanations': []  # Only LLM provides fraud_explanations - automatic rejections skip LLM
+            'fraud_types': ['REPEAT_OFFENDER'],  # Set fraud type for repeat offenders
+            'fraud_explanations': [
+                {
+                    'type': 'REPEAT_OFFENDER',
+                    'reasons': [
+                        f'Account holder {account_holder_name} has been rejected {fraud_count} time(s) previously',
+                        'Per account-holder-based fraud tracking policy: customers with fraud history (previous rejections) are automatically rejected on subsequent submissions',
+                        'This account holder was previously flagged for fraud and is now subject to automatic rejection'
+                    ]
+                }
+            ]
         }
 
     def _create_fraud_history_rejection(self, account_holder_name: str, fraud_count: int) -> Dict:
@@ -348,8 +370,17 @@ class BankStatementFraudAnalysisAgent:
                 'Flag customer account for review',
                 'Investigate potential fraud attempt'
             ],
-            'fraud_types': [],  # Only LLM provides fraud_types - automatic rejections skip LLM
-            'fraud_explanations': []  # Only LLM provides fraud_explanations - automatic rejections skip LLM
+            'fraud_types': ['DUPLICATE_STATEMENT'],  # Set fraud type for duplicates
+            'fraud_explanations': [
+                {
+                    'type': 'DUPLICATE_STATEMENT',
+                    'reasons': [
+                        f'Bank statement for account {account_number} from {account_holder_name} was previously submitted and analyzed',
+                        'Duplicate statement submissions are automatically rejected per fraud policy',
+                        'This statement has already been processed - resubmission indicates potential fraud attempt'
+                    ]
+                }
+            ]
         }
 
     def _parse_json_response(self, ai_response: str) -> Dict:
@@ -463,8 +494,30 @@ class BankStatementFraudAnalysisAgent:
                 if 'fraud history' not in reason.lower() and 'documented fraud' not in reason.lower()
             ]
         
-        # For repeat customers: Only use what LLM returns - no fallback to ML
-        # If LLM doesn't provide fraud_types or actionable_recommendations, they remain empty
+        # For repeat customers: Validate that LLM provided fraud_types and fraud_explanations for REJECT/ESCALATE
+        is_repeat_customer = not is_new_customer
+        recommendation = validated.get('recommendation', 'UNKNOWN')
+        if is_repeat_customer and recommendation in ['REJECT', 'ESCALATE']:
+            # LLM MUST provide fraud_types and fraud_explanations for repeat customers with REJECT/ESCALATE
+            fraud_types = validated.get('fraud_types', [])
+            fraud_explanations = validated.get('fraud_explanations', [])
+            
+            logger.info(f"Validating LLM response for repeat customer with {recommendation} recommendation:")
+            logger.info(f"  - fraud_types provided: {len(fraud_types)} items - {fraud_types}")
+            logger.info(f"  - fraud_explanations provided: {len(fraud_explanations)} items - {fraud_explanations}")
+            
+            if not fraud_types or len(fraud_types) == 0:
+                logger.error(
+                    f"❌ LLM did not provide fraud_types for repeat customer with {recommendation} recommendation. "
+                    f"This is REQUIRED - LLM must identify fraud types for repeat customers. "
+                    f"Full result keys: {list(result.keys())}"
+                )
+            if not fraud_explanations or len(fraud_explanations) == 0:
+                logger.error(
+                    f"❌ LLM did not provide fraud_explanations for repeat customer with {recommendation} recommendation. "
+                    f"This is REQUIRED - LLM must provide fraud explanations for repeat customers. "
+                    f"Full result keys: {list(result.keys())}"
+                )
 
         # Validate recommendation value
         if validated['recommendation'] not in ['APPROVE', 'REJECT', 'ESCALATE']:

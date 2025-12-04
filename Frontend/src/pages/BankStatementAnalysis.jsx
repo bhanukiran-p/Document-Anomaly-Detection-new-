@@ -653,14 +653,21 @@ const BankStatementAnalysis = () => {
                 const customerStatus = isNewCustomer ? 'New Customer' : 'Repeat Customer';
                 
                 // CRITICAL: Hide fraud type card for new customers (matches paystub behavior)
-                if (isNewCustomer) {
+                // EXCEPTION: If recommendation is REJECT, it means this is a repeat customer (new customers always get ESCALATE)
+                // So show fraud types for REJECT even if customer_id is missing
+                if (isNewCustomer && aiRecommendation !== 'REJECT') {
                   return false;
                 }
                 
-                // Show card if we have fraud types OR customer history
-                // Only show for repeat customers (new customers are handled above)
-                const hasFraudType = fraudTypes.length > 0 || analysisData.fraud_type || analysisData.fraud_type_label;
-                return hasFraudType || escalateCount > 0 || fraudCount > 0 || aiRecommendation === 'REJECT';
+                // CRITICAL: Only show card if LLM provided fraud_types (NO FALLBACKS)
+                // Must have actual fraud_types from LLM (ai_analysis.fraud_types)
+                const hasLLMFraudTypes = (aiAnalysis.fraud_types && aiAnalysis.fraud_types.length > 0) ||
+                                        (analysisData.fraud_types && analysisData.fraud_types.length > 0) ||
+                                        (analysisData.fraud_type && analysisData.fraud_type !== null) ||
+                                        (analysisData.fraud_type_label && analysisData.fraud_type_label !== null);
+                
+                // Only show if LLM provided fraud types - no fallbacks based on customer history or recommendation
+                return hasLLMFraudTypes;
               })() ? (
                 (() => {
                   // Check multiple locations for fraud_types (backend returns at top level and in nested data)
@@ -682,79 +689,73 @@ const BankStatementAnalysis = () => {
                                             aiAnalysis.fraud_explanations ||
                                             analysisData.data?.ai_analysis?.fraud_explanations || [];
                   
-                  // Get primary fraud type - prioritize fraud_type_label, then fraud_types, then fraud_explanations, then default
-                  // Note: This code only runs for repeat customers (new customers are filtered out above)
+                  // Get primary fraud type - ONLY from LLM (NO FALLBACKS)
+                  // Must come from ai_analysis.fraud_types or fraud_type_label
                   let primaryFraudType = null;
                   if (analysisData.fraud_type_label) {
-                    // Use human-readable label from backend if available
+                    // Use human-readable label from backend (comes from LLM)
                     primaryFraudType = analysisData.fraud_type_label;
-                  } else if (fraudTypes.length > 0) {
-                    primaryFraudType = fraudTypes[0].replace(/_/g, ' ');
+                  } else if (aiAnalysis.fraud_types && aiAnalysis.fraud_types.length > 0) {
+                    // Use fraud_types from LLM (ai_analysis)
+                    primaryFraudType = aiAnalysis.fraud_types[0].replace(/_/g, ' ');
+                  } else if (analysisData.fraud_types && analysisData.fraud_types.length > 0) {
+                    // Use fraud_types from top level (comes from LLM)
+                    primaryFraudType = analysisData.fraud_types[0].replace(/_/g, ' ');
                   } else if (analysisData.fraud_type) {
-                    // Use singular fraud_type if available
+                    // Use singular fraud_type (comes from LLM)
                     primaryFraudType = analysisData.fraud_type.replace(/_/g, ' ');
                   } else if (fraudExplanations.length > 0 && fraudExplanations[0].type) {
-                    // Use fraud explanation type if available
+                    // Use fraud explanation type (comes from LLM)
                     primaryFraudType = fraudExplanations[0].type.replace(/_/g, ' ');
-                  } else if (escalateCount > 0 || fraudCount > 0) {
-                    // For repeat customers, default to REPEAT_OFFENDER
-                    primaryFraudType = 'REPEAT OFFENDER';
                   }
-                  // Removed fallback for new customers - they shouldn't see fraud types
+                  // NO FALLBACKS - if LLM didn't provide fraud type, primaryFraudType remains null
                   
-                  // PRIORITIZE DOCUMENT-SPECIFIC FRAUD EXPLANATIONS
-                  // Only show explanations that are SPECIFIC to the document's fraud type
+                  // ONLY use fraud explanations from LLM (NO FALLBACKS)
+                  // Must come from ai_analysis.fraud_explanations
                   let displayReasons = [];
                   
-                  // Get fraud explanations for the PRIMARY fraud type only
-                  // These should be document-specific (e.g., balance inconsistencies, transaction patterns)
-                  if (fraudExplanations && fraudExplanations.length > 0) {
+                  // Get fraud explanations ONLY from LLM (ai_analysis.fraud_explanations)
+                  const llmFraudExplanations = aiAnalysis.fraud_explanations || 
+                                               analysisData.fraud_explanations || 
+                                               analysisData.data?.fraud_explanations || 
+                                               analysisData.data?.ai_analysis?.fraud_explanations || [];
+                  
+                  if (llmFraudExplanations && llmFraudExplanations.length > 0) {
                     // Find explanations matching the primary fraud type
-                    const primaryFraudTypeNormalized = primaryFraudType?.replace(/\s+/g, '_').toUpperCase();
-                    const matchingExplanations = fraudExplanations.filter(exp => {
-                      const expTypeNormalized = exp.type?.replace(/\s+/g, '_').toUpperCase();
-                      return expTypeNormalized === primaryFraudTypeNormalized;
-                    });
-                    
-                    // Use matching explanations if found
-                    if (matchingExplanations.length > 0) {
-                      matchingExplanations.forEach(exp => {
-                        if (exp.reasons && Array.isArray(exp.reasons) && exp.reasons.length > 0) {
-                          // Only add document-specific reasons (exclude generic customer history)
-                          const documentSpecificReasons = exp.reasons.filter(reason => {
-                            const reasonLower = reason.toLowerCase();
-                            // Exclude generic customer history reasons
-                            return !reasonLower.includes('customer has') && 
-                                   !reasonLower.includes('previous escalation') &&
-                                   !reasonLower.includes('previous fraud') &&
-                                   !reasonLower.includes('customer status') &&
-                                   !reasonLower.includes('documented fraud history');
-                          });
-                          displayReasons.push(...documentSpecificReasons);
-                        }
+                    if (primaryFraudType) {
+                      const primaryFraudTypeNormalized = primaryFraudType.replace(/\s+/g, '_').toUpperCase();
+                      const matchingExplanations = llmFraudExplanations.filter(exp => {
+                        const expTypeNormalized = exp.type?.replace(/\s+/g, '_').toUpperCase();
+                        return expTypeNormalized === primaryFraudTypeNormalized;
                       });
+                      
+                      // Use matching explanations if found
+                      if (matchingExplanations.length > 0) {
+                        matchingExplanations.forEach(exp => {
+                          if (exp.reasons && Array.isArray(exp.reasons) && exp.reasons.length > 0) {
+                            displayReasons.push(...exp.reasons);
+                          }
+                        });
+                      } else {
+                        // If no matching explanations, use first explanation's reasons
+                        llmFraudExplanations.forEach(exp => {
+                          if (exp.reasons && Array.isArray(exp.reasons) && exp.reasons.length > 0) {
+                            displayReasons.push(...exp.reasons);
+                          }
+                        });
+                      }
                     } else {
-                      // If no matching explanations, use first explanation's reasons (but filter out generic ones)
-                      fraudExplanations.forEach(exp => {
+                      // No primary fraud type, use all explanations
+                      llmFraudExplanations.forEach(exp => {
                         if (exp.reasons && Array.isArray(exp.reasons) && exp.reasons.length > 0) {
-                          const documentSpecificReasons = exp.reasons.filter(reason => {
-                            const reasonLower = reason.toLowerCase();
-                            return !reasonLower.includes('customer has') && 
-                                   !reasonLower.includes('previous escalation') &&
-                                   !reasonLower.includes('previous fraud') &&
-                                   !reasonLower.includes('customer status') &&
-                                   !reasonLower.includes('documented fraud history');
-                          });
-                          displayReasons.push(...documentSpecificReasons);
+                          displayReasons.push(...exp.reasons);
                         }
                       });
                     }
                   }
                   
-                  // If still no document-specific reasons, show a message indicating analysis is needed
-                  if (displayReasons.length === 0) {
-                    displayReasons.push(`Document analysis indicates ${primaryFraudType || 'fraud indicators'}. Review document details for specific issues.`);
-                  }
+                  // NO FALLBACKS - if LLM didn't provide explanations, displayReasons remains empty
+                  // If empty, we'll still show the fraud type but no explanations
                   
                   return (
                     <div style={{
@@ -766,24 +767,28 @@ const BankStatementAnalysis = () => {
                       <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.75rem' }}>
                         FRAUD TYPE
                       </div>
-                      <div style={{
-                        fontSize: '1.5rem',
-                        fontWeight: 'bold',
-                        color: primary,
-                        marginBottom: '1rem',
-                      }}>
-                        {primaryFraudType}
-                      </div>
-                      <div style={{ color: colors.foreground }}>
-                        <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
-                          Why this fraud occurred:
+                      {primaryFraudType ? (
+                        <div style={{
+                          fontSize: '1.5rem',
+                          fontWeight: 'bold',
+                          color: primary,
+                          marginBottom: '1rem',
+                        }}>
+                          {primaryFraudType}
                         </div>
-                        <ul style={{ margin: 0, paddingLeft: '1.5rem', color: colors.foreground }}>
-                          {displayReasons.slice(0, 3).map((reason, index) => (
-                            <li key={index} style={{ marginBottom: '0.5rem', fontSize: '1rem' }}>{reason}</li>
-                          ))}
-                        </ul>
-                      </div>
+                      ) : null}
+                      {displayReasons.length > 0 ? (
+                        <div style={{ color: colors.foreground }}>
+                          <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
+                            Why this fraud occurred:
+                          </div>
+                          <ul style={{ margin: 0, paddingLeft: '1.5rem', color: colors.foreground }}>
+                            {displayReasons.slice(0, 3).map((reason, index) => (
+                              <li key={index} style={{ marginBottom: '0.5rem', fontSize: '1rem' }}>{reason}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })()
@@ -796,7 +801,9 @@ const BankStatementAnalysis = () => {
                 const isNewCustomer = !customerInfo.customer_id;
                 
                 // CRITICAL: Hide actionable recommendations for new customers (matches paystub behavior)
-                if (isNewCustomer) {
+                // EXCEPTION: If recommendation is REJECT, it means this is a repeat customer (new customers always get ESCALATE)
+                // So show recommendations for REJECT even if customer_id is missing
+                if (isNewCustomer && aiRecommendation !== 'REJECT') {
                   return false;
                 }
                 

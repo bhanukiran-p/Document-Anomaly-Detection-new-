@@ -434,15 +434,16 @@ class RiskModelTrainer:
         data = []
         
         for i in range(n_samples):
-            # Determine target risk range (0-100)
-            risk_category = random.choice(['low', 'medium', 'high', 'critical'])
-            if risk_category == 'low':
+            # Determine target risk range (0-100) with BALANCED distribution
+            # More legitimate samples (45%), fewer critical samples (12.5%)
+            category_rand = random.random()
+            if category_rand < 0.45:  # 45% legitimate (0-30%)
                 target_min, target_max = 0, 30
-            elif risk_category == 'medium':
+            elif category_rand < 0.70:  # 25% medium risk (31-60%)
                 target_min, target_max = 31, 60
-            elif risk_category == 'high':
+            elif category_rand < 0.875:  # 17.5% high risk (61-85%)
                 target_min, target_max = 61, 85
-            else:  # critical
+            else:  # 12.5% critical risk (86-100%)
                 target_min, target_max = 86, 100
             
             # Generate features based on risk level
@@ -573,6 +574,13 @@ class RiskModelTrainer:
             # Calculate risk score based on features
             risk_score = 0.0
             
+            # Balance volatility: REDUCED IMPACT - up to 12 points (10-12% of total)
+            # Normalize volatility (0-10 range) to contribution (0-12 points)
+            if balance_volatility > 0:
+                # Scale volatility to 0-12 points: volatility of 5.0+ contributes max 12 points
+                volatility_contribution = min((balance_volatility / 5.0) * 12, 12)
+                risk_score += volatility_contribution
+            
             # Missing critical fields: up to 40 points
             risk_score += (critical_missing_count / 7) * 40
             
@@ -596,9 +604,9 @@ class RiskModelTrainer:
             if negative_ending_balance == 1.0:
                 risk_score += 20
             
-            # Balance inconsistency: up to 30 points
+            # Balance inconsistency: REDUCED IMPACT - up to 12 points (10-12% of total)
             if balance_consistency < 0.5:
-                risk_score += (1 - balance_consistency) * 30
+                risk_score += (1 - balance_consistency) * 12
             
             # Suspicious transaction patterns: up to 20 points
             if suspicious_transaction_pattern == 1.0:
@@ -611,10 +619,10 @@ class RiskModelTrainer:
             elif duplicate_transactions >= 0.5:
                 risk_score += 8   # Single duplicate (reduced impact)
             
-            # Round number transactions - MEDIUM IMPACT: Reduced scoring
+            # Round number transactions - REDUCED IMPACT: ~5% of total score
             # Only add points if there are many round numbers (20+ in raw count, 10+ normalized)
             if round_number_transactions >= 10.0:  # Normalized threshold (20+ raw)
-                risk_score += min((round_number_transactions - 10.0) / 10.0 * 10, 10)  # Up to 10 points
+                risk_score += min((round_number_transactions - 10.0) / 10.0 * 5, 5)  # Up to 5 points (reduced from 10)
             
             # Low field quality: up to 15 points
             if field_quality < 0.5:
@@ -636,13 +644,24 @@ class RiskModelTrainer:
             risk_score += random.uniform(-5, 5)
             risk_score = max(0, min(100, risk_score))
             
-            # Adjust to target range if needed
-            if target_min >= 71 and risk_score < 60:
-                risk_score = random.uniform(71, 100)
-            elif target_min >= 31 and risk_score < 25:
-                risk_score = random.uniform(31, 70)
-            elif target_max <= 30 and risk_score > 35:
-                risk_score = random.uniform(0, 30)
+            # CRITICAL: Force risk score to match target category to ensure balanced distribution
+            # This ensures the training data has the distribution we want (45% legitimate, 12.5% critical)
+            if target_max <= 30:
+                # Legitimate: Force to 0-30% range
+                if risk_score > 30:
+                    risk_score = random.uniform(0, 30)
+            elif target_min >= 31 and target_max <= 60:
+                # Medium risk: Force to 31-60% range
+                if risk_score < 31 or risk_score > 60:
+                    risk_score = random.uniform(31, 60)
+            elif target_min >= 61 and target_max <= 85:
+                # High risk: Force to 61-85% range
+                if risk_score < 61 or risk_score > 85:
+                    risk_score = random.uniform(61, 85)
+            else:  # target_min >= 86
+                # Critical risk: Force to 86-100% range
+                if risk_score < 86:
+                    risk_score = random.uniform(86, 100)
             
             # Build features dictionary with all 35 features (matching bank_statement_feature_extractor.py)
             features = {
