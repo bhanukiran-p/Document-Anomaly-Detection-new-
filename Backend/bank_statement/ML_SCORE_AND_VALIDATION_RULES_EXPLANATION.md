@@ -266,3 +266,4 @@ def _apply_validation_rules(self, base_score: float, bank_statement_data: Dict, 
 - **Validation rules** can only **increase** the score, never decrease it
 - **Final score** is the higher of: ML score or ML score + validation penalties
 
+

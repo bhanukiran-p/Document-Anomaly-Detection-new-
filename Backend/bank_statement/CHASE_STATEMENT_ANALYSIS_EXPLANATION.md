@@ -225,3 +225,4 @@ The AI agent (OpenAI LLM) generates recommendations based on:
 
 The **84.9% risk score** is primarily due to the **balance inconsistency** ($2,066.86 difference between last transaction balance and stated ending balance). This is a critical fraud indicator that requires human verification, which is why the system **ESCALATED** (not rejected) for a new customer.
 
+

@@ -787,9 +787,16 @@ def store_money_order_analysis(user_id: str, file_name: str, analysis_data: Dict
 
 
 def store_bank_statement_analysis(user_id: str, file_name: str, analysis_data: Dict) -> Optional[str]:
-    """Store bank statement analysis to database"""
-    storage = DocumentStorage()
-    return storage.store_bank_statement(user_id, file_name, analysis_data)
+    """Store bank statement analysis to database using dedicated bank statement storage"""
+    try:
+        from bank_statement.database.bank_statement_storage import BankStatementStorage
+        storage = BankStatementStorage()
+        return storage.store_bank_statement(user_id, file_name, analysis_data)
+    except Exception as e:
+        logger.error(f"Error using dedicated bank statement storage: {e}, falling back to DocumentStorage")
+        # Fallback to old method if new storage fails
+        storage = DocumentStorage()
+        return storage.store_bank_statement(user_id, file_name, analysis_data)
 
 
 def store_paystub_analysis(user_id: str, file_name: str, analysis_data: Dict) -> Optional[str]:

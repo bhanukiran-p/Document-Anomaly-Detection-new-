@@ -272,3 +272,4 @@ assert is_supported_bank("Fake Bank Name") == False
 
 The bank statement analysis will now accept any bank in the `bank_dictionary` table, regardless of case!
 
+

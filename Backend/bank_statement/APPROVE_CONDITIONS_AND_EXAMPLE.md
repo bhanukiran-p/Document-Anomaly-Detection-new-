@@ -47,7 +47,7 @@
 
 | Customer Type | Risk Score | Decision |
 |--------------|------------|----------|
-| **New Customer** | **< 30%** | **APPROVE** ✅ |
+| **New Customer** | **1-100%** | **ESCALATE** ⚠️ (New customers always escalate) |
 | **Clean History** | **< 30%** | **APPROVE** ✅ |
 | **Fraud History** | **< 30%** | **APPROVE** ✅ |
 
@@ -335,4 +335,5 @@ Ensemble = (40% × 18.5%) + (60% × 22.3%)
 - Normal transaction patterns
 
 **Example statement above shows all features satisfied → 21% risk → APPROVE ✅**
+
 

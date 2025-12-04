@@ -160,9 +160,7 @@ If no automatic policy rule applies, the AI uses this decision table:
 
 | Customer Type | ML Risk Score | AI Decision |
 |--------------|---------------|-------------|
-| **New Customer** | < 30% | APPROVE |
-| **New Customer** | 30-95% | ESCALATE |
-| **New Customer** | ≥ 95% | ESCALATE |
+| **New Customer** | 1-100% | ESCALATE |
 | **Clean History** | < 30% | APPROVE |
 | **Clean History** | 30-85% | ESCALATE |
 | **Clean History** | > 85% | REJECT |
