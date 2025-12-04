@@ -156,19 +156,20 @@ class BankStatementStorage:
                 'total_debits': self._parse_amount(extracted.get('total_debits') or normalized.get('total_debits'))
             }
 
-            # Get AI recommendation
-            ai_recommendation = ai_analysis.get('recommendation', 'UNKNOWN') if ai_analysis else 'UNKNOWN'
+            # Get AI recommendation (LLM is required)
+            ai_recommendation = ai_analysis.get('recommendation', 'UNKNOWN')
             ai_recommendation = ai_recommendation.upper()
 
             # Only store fraud types if recommendation is REJECT
+            # Only use LLM fraud_types - no fallback to ML
             primary_fraud_type = None
             primary_fraud_type_label = None
             fraud_explanations = []
             
             if ai_recommendation == 'REJECT':
-                # Get fraud types from AI or ML analysis
-                fraud_types = ai_analysis.get('fraud_types', []) if ai_analysis else ml_analysis.get('fraud_types', [])
-                fraud_explanations = ai_analysis.get('fraud_explanations', []) if ai_analysis else []
+                # Get fraud types from LLM only - no fallback to ML
+                fraud_types = ai_analysis.get('fraud_types', [])
+                fraud_explanations = ai_analysis.get('fraud_explanations', [])
 
                 # Ensure fraud_types is a list
                 if not isinstance(fraud_types, list):
@@ -244,32 +245,59 @@ class BankStatementStorage:
                 'anomalies': json.dumps(anomalies_list) if anomalies_list else None,
                 'anomaly_count': len(anomalies_list),
                 'top_anomalies': json.dumps(anomalies_list[:5]) if anomalies_list else None,
-                # Fraud types
+                # Fraud types - store as human-readable label (primary fraud type only)
+                # Note: This column may not exist yet - will be added via migration
                 'fraud_types': self._safe_string(primary_fraud_type_label),
                 # Timestamps
                 'created_at': now.isoformat(),
-                'updated_at': now.isoformat(),
+                # Note: updated_at column doesn't exist in bank_statements table
                 'timestamp': now.isoformat()
             }
 
-            # Try to insert (handle customer_id being None)
+            # Try to insert (handle customer_id being None and fraud_types column)
             try:
+                # Prepare data for insert
+                statement_data_to_insert = statement_data.copy()
+                
+                # Remove customer_id if None
                 if customer_id is None:
-                    # Remove customer_id if None
-                    statement_data_to_insert = {k: v for k, v in statement_data.items() if k != 'customer_id'}
-                    self.supabase.table('bank_statements').insert([statement_data_to_insert]).execute()
-                    logger.info(f"Stored bank statement without customer_id: {statement_id}")
-                else:
-                    self.supabase.table('bank_statements').insert([statement_data]).execute()
-                    logger.info(f"Stored bank statement with customer_id {customer_id}: {statement_id}")
+                    statement_data_to_insert.pop('customer_id', None)
+                
+                # Try insert
+                self.supabase.table('bank_statements').insert([statement_data_to_insert]).execute()
+                logger.info(f"Stored bank statement: {statement_id}")
+                
             except Exception as insert_error:
                 error_str = str(insert_error).lower()
-                # If insert fails due to customer_id constraint, try without it
-                if 'customer_id' in error_str and ('not null' in error_str or 'null value' in error_str):
+                error_msg = str(insert_error)
+                
+                # Handle missing columns (fraud_types, updated_at, etc.)
+                missing_columns = []
+                if 'fraud_types' in error_msg and ('not found' in error_str or 'column' in error_str):
+                    missing_columns.append('fraud_types')
+                if 'updated_at' in error_msg and ('not found' in error_str or 'column' in error_str):
+                    missing_columns.append('updated_at')
+                
+                if missing_columns:
+                    logger.warning(f"Missing columns detected: {missing_columns}, retrying without them: {insert_error}")
+                    for col in missing_columns:
+                        statement_data_to_insert.pop(col, None)
+                    try:
+                        self.supabase.table('bank_statements').insert([statement_data_to_insert]).execute()
+                        logger.info(f"Stored bank statement without columns {missing_columns}: {statement_id}")
+                    except Exception as retry_error:
+                        logger.error(f"Retry insert also failed: {retry_error}")
+                        raise retry_error
+                # Handle customer_id constraint
+                elif 'customer_id' in error_str and ('not null' in error_str or 'null value' in error_str):
                     logger.warning(f"Insert failed due to customer_id constraint, retrying without it: {insert_error}")
-                    statement_data_to_insert = {k: v for k, v in statement_data.items() if k != 'customer_id'}
-                    self.supabase.table('bank_statements').insert([statement_data_to_insert]).execute()
-                    logger.info(f"Stored bank statement without customer_id (retry): {statement_id}")
+                    statement_data_to_insert.pop('customer_id', None)
+                    try:
+                        self.supabase.table('bank_statements').insert([statement_data_to_insert]).execute()
+                        logger.info(f"Stored bank statement without customer_id (retry): {statement_id}")
+                    except Exception as retry_error:
+                        logger.error(f"Retry insert also failed: {retry_error}")
+                        raise retry_error
                 else:
                     logger.error(f"Error inserting bank statement: {insert_error}", exc_info=True)
                     logger.error(f"Statement data keys: {list(statement_data.keys())}")

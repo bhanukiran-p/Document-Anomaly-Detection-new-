@@ -127,9 +127,9 @@ class BankStatementExtractor:
             logger.warning("Duplicate bank statement detected - will be included in issues")
             validation_issues.append("Duplicate bank statement submission detected")
 
-        # Stage 6: AI Fraud Analysis (always runs unless initialization failed)
+        # Stage 6: AI Fraud Analysis (LLM is required - will raise error if unavailable)
         ai_analysis = self._run_ai_analysis(normalized_data, ml_analysis, customer_info)
-        logger.info(f"AI analysis complete: {ai_analysis.get('recommendation') if ai_analysis else 'N/A'}")
+        logger.info(f"AI analysis complete: {ai_analysis.get('recommendation', 'UNKNOWN')}")
 
         # Stage 7: Generate Anomalies
         anomalies = self._generate_anomalies(normalized_data, ml_analysis, ai_analysis)
@@ -151,6 +151,7 @@ class BankStatementExtractor:
             normalized_data=normalized_data,
             ml_analysis=ml_analysis,
             ai_analysis=ai_analysis,
+            customer_info=customer_info,
             anomalies=anomalies,
             confidence_score=confidence_score,
             validation_issues=validation_issues,
@@ -440,32 +441,32 @@ class BankStatementExtractor:
             logger.error(f"Duplicate check failed: {e}")
             return False
 
-    def _run_ai_analysis(self, data: Dict, ml_analysis: Dict, customer_info: Dict) -> Optional[Dict]:
-        """Run AI fraud analysis"""
+    def _run_ai_analysis(self, data: Dict, ml_analysis: Dict, customer_info: Dict) -> Dict:
+        """Run AI fraud analysis - LLM is required, no fallback"""
         if not self.ai_agent:
-            logger.info("AI agent not available - skipping AI analysis")
-            return None
-
-        try:
-            # Try multiple sources for account holder name
-            account_holder_name = (
-                data.get('account_holder_name') or
-                data.get('account_holder') or
-                (data.get('account_holder_names', [])[0] if isinstance(data.get('account_holder_names'), list) and len(data.get('account_holder_names', [])) > 0 else None)
+            raise RuntimeError(
+                "AI agent (LLM) not available. "
+                "LLM analysis is required for bank statement fraud detection. "
+                "Please check OpenAI API key configuration."
             )
-            logger.info(f"Using account_holder_name for AI analysis: {account_holder_name}")
-            
-            ai_analysis = self.ai_agent.analyze_fraud(
-                extracted_data=data,
-                ml_analysis=ml_analysis,
-                account_holder_name=account_holder_name
-            )
-            return ai_analysis
-        except Exception as e:
-            logger.error(f"AI analysis failed: {e}", exc_info=True)
-            return None
 
-    def _generate_anomalies(self, data: Dict, ml_analysis: Dict, ai_analysis: Optional[Dict]) -> List[str]:
+        # Try multiple sources for account holder name
+        account_holder_name = (
+            data.get('account_holder_name') or
+            data.get('account_holder') or
+            (data.get('account_holder_names', [])[0] if isinstance(data.get('account_holder_names'), list) and len(data.get('account_holder_names', [])) > 0 else None)
+        )
+        logger.info(f"Using account_holder_name for AI analysis: {account_holder_name}")
+        
+        # LLM analysis is required - will raise error if it fails
+        ai_analysis = self.ai_agent.analyze_fraud(
+            extracted_data=data,
+            ml_analysis=ml_analysis,
+            account_holder_name=account_holder_name
+        )
+        return ai_analysis
+
+    def _generate_anomalies(self, data: Dict, ml_analysis: Dict, ai_analysis: Dict) -> List[str]:
         """Generate comprehensive anomaly list"""
         anomalies = []
 
@@ -473,10 +474,9 @@ class BankStatementExtractor:
         ml_anomalies = ml_analysis.get('anomalies', [])
         anomalies.extend(ml_anomalies)
 
-        # From AI analysis
-        if ai_analysis:
-            ai_factors = ai_analysis.get('key_indicators', [])
-            anomalies.extend(ai_factors)
+        # From AI analysis (LLM is required)
+        ai_factors = ai_analysis.get('key_indicators', [])
+        anomalies.extend(ai_factors)
 
         # From validation
         if not data.get('is_supported_bank', True):
@@ -528,7 +528,7 @@ class BankStatementExtractor:
 
         return anomalies
 
-    def _calculate_confidence(self, data: Dict, ml_analysis: Dict, ai_analysis: Optional[Dict]) -> float:
+    def _calculate_confidence(self, data: Dict, ml_analysis: Dict, ai_analysis: Dict) -> float:
         """Calculate overall confidence score"""
         scores = []
 
@@ -536,10 +536,9 @@ class BankStatementExtractor:
         ml_confidence = ml_analysis.get('model_confidence', 0.0)
         scores.append(ml_confidence)
 
-        # AI confidence
-        if ai_analysis:
-            ai_confidence = ai_analysis.get('confidence_score', 0.0)
-            scores.append(ai_confidence)
+        # AI confidence (LLM is required)
+        ai_confidence = ai_analysis.get('confidence_score', 0.0)
+        scores.append(ai_confidence)
 
         # Data completeness
         completeness = data.get('completeness_score', 0.0)
@@ -554,16 +553,16 @@ class BankStatementExtractor:
         self,
         validation_issues: List[str],
         ml_analysis: Dict,
-        ai_analysis: Optional[Dict],
+        ai_analysis: Dict,
         normalized_data: Dict
     ) -> str:
         """Determine final decision based on all collected information"""
         # Priority: AI recommendation > ML risk level > Validation issues
+        # LLM is required, so ai_analysis is always present
 
-        if ai_analysis:
-            ai_recommendation = ai_analysis.get('recommendation')
-            if ai_recommendation in ['APPROVE', 'REJECT', 'ESCALATE']:
-                return ai_recommendation
+        ai_recommendation = ai_analysis.get('recommendation')
+        if ai_recommendation in ['APPROVE', 'REJECT', 'ESCALATE']:
+            return ai_recommendation
 
         # Fallback to ML risk level
         risk_level = ml_analysis.get('risk_level', 'UNKNOWN')
@@ -584,7 +583,8 @@ class BankStatementExtractor:
         extracted_data: Dict,
         normalized_data: Dict,
         ml_analysis: Dict,
-        ai_analysis: Optional[Dict],
+        ai_analysis: Dict,
+        customer_info: Dict,
         anomalies: List[str],
         confidence_score: float,
         validation_issues: List[str],
@@ -611,10 +611,16 @@ class BankStatementExtractor:
             'extracted_data': extracted_data,
             'normalized_data': normalized_data,
             'ml_analysis': ml_analysis,
-            'ai_analysis': ai_analysis,
+            'ai_analysis': ai_analysis,  # LLM is required, so always present
+            'customer_info': customer_info or {},  # Include customer_info for frontend to determine new vs repeat
+            'fraud_risk_score': ml_analysis.get('fraud_risk_score', 0.0),
+            'risk_level': ml_analysis.get('risk_level', 'UNKNOWN'),
+            'model_confidence': ml_analysis.get('model_confidence', 0.0),
+            'ai_recommendation': ai_analysis.get('recommendation', 'UNKNOWN'),  # LLM is required
+            'ai_confidence': ai_analysis.get('confidence_score', 0.0),  # LLM is required
             'anomalies': anomalies,
-            'confidence_score': confidence_score,
             'validation_issues': validation_issues,
+            'confidence_score': confidence_score,
             'overall_decision': overall_decision,
             'duplicate_detected': duplicate_detected,
             'raw_text': raw_text,

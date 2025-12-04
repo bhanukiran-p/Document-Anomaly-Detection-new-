@@ -50,6 +50,15 @@ Total Debits: ${total_debits}
 Transaction Count: {transaction_count}
 Currency: {currency}
 
+**BALANCE VERIFICATION:**
+Expected Ending Balance = Beginning Balance + Total Credits - Total Debits
+Expected: ${beginning_balance} + ${total_credits} - ${total_debits} = ${calculated_ending_balance}
+Reported Ending Balance: ${ending_balance}
+Balance Match: {balance_match_status}
+
+**TRANSACTION SAMPLES (for pattern analysis):**
+{transaction_samples}
+
 ## ML FRAUD ANALYSIS
 Fraud Risk Score: {fraud_risk_score} ({risk_level})
 Model Confidence: {model_confidence}
@@ -69,15 +78,82 @@ Last Recommendation: {last_recommendation}
 ## TASK
 Based on the above information and the decision guidelines below, provide your fraud analysis.
 
-Return your analysis in the following JSON format:
+**CRITICAL: You MUST return ONLY valid JSON. Do not include markdown code blocks, explanations, or any text outside the JSON object.**
+
+Return your analysis in the following JSON format (valid JSON only, no markdown):
 {{
   "recommendation": "APPROVE | REJECT | ESCALATE",
   "confidence_score": 0.0-1.0,
   "summary": "Brief summary of your decision",
   "reasoning": ["reason 1", "reason 2", ...],
   "key_indicators": ["indicator 1", "indicator 2", ...],
-  "actionable_recommendations": ["action 1", "action 2", ...]
+  "actionable_recommendations": ["action 1", "action 2", ...],
+  "fraud_types": ["FRAUD_TYPE_1", "FRAUD_TYPE_2", ...],
+  "fraud_explanations": [
+    {{
+      "type": "FRAUD_TYPE_1",
+      "reasons": ["reason 1", "reason 2"]
+    }}
+  ]
 }}
+
+IMPORTANT FRAUD TYPE RULES:
+- For NEW customers: Always return empty arrays for fraud_types and fraud_explanations (even if ML detected fraud)
+- For REPEAT customers: Return fraud_types and fraud_explanations based on detected fraud patterns
+- Valid fraud types: BALANCE_CONSISTENCY_VIOLATION, FABRICATED_DOCUMENT, ALTERED_LEGITIMATE_DOCUMENT, SUSPICIOUS_TRANSACTION_PATTERNS, UNREALISTIC_FINANCIAL_PROPORTIONS
+- Only include fraud_types if recommendation is REJECT or ESCALATE (not for APPROVE)
+
+**CRITICAL: FRAUD EXPLANATIONS MUST BE SPECIFIC TO THE DOCUMENT DATA**
+
+For each fraud_type you identify, you MUST provide SPECIFIC explanations based on the ACTUAL document data:
+
+- **BALANCE_CONSISTENCY_VIOLATION**: Explain the SPECIFIC balance inconsistency found
+  - Example: "Ending balance ($12,384.50) does not match calculated balance. Expected: Beginning ($8,542.75) + Credits ($15,230.00) - Debits ($11,388.25) = $12,384.50, but statement shows $12,384.50"
+  - Example: "Transaction totals don't reconcile: Sum of individual transactions ($26,618.25) doesn't match reported total credits ($15,230.00) + total debits ($11,388.25)"
+  - DO NOT use generic reasons like "Customer has previous escalation" - these are NOT related to balance consistency
+
+- **FABRICATED_DOCUMENT**: Explain SPECIFIC fabrication indicators
+  - Example: "Bank name format doesn't match known patterns for {{bank_name}}"
+  - Example: "Account number format invalid: {{account_number}} doesn't match {{bank_name}} account number standards"
+  - Example: "Missing critical security features: No watermark, incorrect font, or missing bank logo"
+
+- **ALTERED_LEGITIMATE_DOCUMENT**: Explain SPECIFIC alterations detected
+  - Example: "Balance amounts show signs of tampering: Font inconsistencies detected in ending balance field"
+  - Example: "Transaction dates appear altered: Date format inconsistencies detected"
+
+- **SUSPICIOUS_TRANSACTION_PATTERNS**: Explain SPECIFIC suspicious patterns
+  - Example: "Unusual transaction pattern: {{X}} transactions of exactly ${{amount}} within {{timeframe}}"
+  - Example: "Round-number transactions: {{count}} transactions are exact round numbers (e.g., $1,000.00, $5,000.00)"
+  - Example: "Rapid balance changes: Balance increased by ${{amount}} ({{percentage}}%) in {{days}} days"
+
+- **UNREALISTIC_FINANCIAL_PROPORTIONS**: Explain SPECIFIC unrealistic proportions
+  - Example: "Unrealistic credit/debit ratio: Credits ($15,230.00) are {{X}} times debits ($11,388.25), which is unusual for this account type"
+  - Example: "Unrealistic transaction frequency: {{transaction_count}} transactions in {{days}} days averages {{avg}} per day, which is unusually high"
+
+**CRITICAL: ACTIONABLE RECOMMENDATIONS MUST BE SPECIFIC TO THE DOCUMENT ISSUES**
+
+Your actionable_recommendations MUST be SPECIFIC to the document's actual problems, NOT generic:
+
+- GOOD examples (specific to document):
+  - "Verify transaction reconciliation - ending balance ($12,384.50) doesn't match calculated balance ($12,384.50). Check for missing or duplicate transactions."
+  - "Contact {{bank_name}} to verify account number {{account_number}} format matches their standards"
+  - "Request original statement from account holder - document shows signs of alteration in balance fields"
+  - "Review transaction pattern - {{X}} round-number transactions detected, verify legitimacy with account holder"
+
+- BAD examples (too generic):
+  - "Block this transaction immediately" (not specific to document issues)
+  - "Flag customer account for fraud investigation" (not actionable for this document)
+  - "Contact account holder" (doesn't explain what to verify)
+
+**ANALYSIS REQUIREMENTS:**
+1. Calculate expected ending balance: Beginning Balance + Total Credits - Total Debits
+2. Compare calculated balance with reported Ending Balance
+3. Analyze transaction patterns (frequency, amounts, round numbers)
+4. Verify account number format matches bank standards
+5. Check for missing critical fields
+6. Identify SPECIFIC inconsistencies, not generic customer history
+
+**REMINDER: Return ONLY the JSON object. No markdown formatting, no code blocks, no explanations before or after the JSON.**
 """
 
 # Decision guidelines based on customer type and ML scores
@@ -187,9 +263,31 @@ def format_analysis_template(bank_statement_data: dict, ml_analysis: dict, custo
     total_credits_val = get_amount_value(total_credits)
     total_debits_val = get_amount_value(total_debits)
 
-    # Transaction count
+    # Calculate expected ending balance
+    calculated_ending_balance_val = beginning_balance_val + total_credits_val - total_debits_val
+    balance_match = abs(calculated_ending_balance_val - ending_balance_val) < 0.01  # Allow small rounding differences
+    balance_match_status = "MATCH" if balance_match else f"MISMATCH (Expected: ${calculated_ending_balance_val:,.2f}, Reported: ${ending_balance_val:,.2f})"
+
+    # Transaction count and samples
     transactions = bank_statement_data.get('transactions', [])
     transaction_count = len(transactions) if transactions else 0
+    
+    # Get transaction samples for pattern analysis (up to 10 transactions)
+    transaction_samples = []
+    if transactions:
+        for i, txn in enumerate(transactions[:10], 1):
+            txn_date = txn.get('date', 'N/A')
+            txn_desc = txn.get('description', 'N/A')
+            txn_amount = txn.get('amount', {})
+            txn_amount_val = get_amount_value(txn_amount)
+            txn_type = txn.get('type', 'N/A')
+            transaction_samples.append(f"{i}. Date: {txn_date} | Type: {txn_type} | Amount: ${txn_amount_val:,.2f} | Description: {txn_desc}")
+        if len(transactions) > 10:
+            transaction_samples.append(f"... and {len(transactions) - 10} more transactions")
+    else:
+        transaction_samples.append("No transaction details available")
+    
+    transaction_samples_str = '\n'.join(transaction_samples)
 
     # Extract ML analysis
     fraud_risk_score = ml_analysis.get('fraud_risk_score', 0.0)
@@ -230,8 +328,11 @@ def format_analysis_template(bank_statement_data: dict, ml_analysis: dict, custo
         ending_balance=f"{ending_balance_val:,.2f}",
         total_credits=f"{total_credits_val:,.2f}",
         total_debits=f"{total_debits_val:,.2f}",
+        calculated_ending_balance=f"{calculated_ending_balance_val:,.2f}",
+        balance_match_status=balance_match_status,
         transaction_count=transaction_count,
         currency=currency,
+        transaction_samples=transaction_samples_str,
         fraud_risk_score=f"{fraud_risk_score:.2%}",
         risk_level=risk_level,
         model_confidence=f"{model_confidence:.2%}",
