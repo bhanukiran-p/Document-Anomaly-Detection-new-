@@ -13,6 +13,8 @@ from werkzeug.utils import secure_filename
 import importlib.util
 import re
 import fitz
+import uuid
+from datetime import datetime
 from google.cloud import vision
 from auth import login_user, register_user
 from database.supabase_client import get_supabase, check_connection as check_supabase_connection
@@ -1481,6 +1483,24 @@ def analyze_real_time_transactions():
                     'message': 'AI analysis unavailable'
                 }
 
+            # Step 6: Save analyzed transactions to database
+            from database.analyzed_transactions_db import save_analyzed_transactions
+
+            batch_id = str(uuid.uuid4())
+            analysis_id = f"analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+            db_save_success, db_error = save_analyzed_transactions(
+                transactions=fraud_result.get('transactions', []),
+                batch_id=batch_id,
+                analysis_id=analysis_id,
+                model_type='transaction_fraud_model'
+            )
+
+            if db_save_success:
+                logger.info(f"Successfully saved {len(fraud_result.get('transactions', []))} transactions to database (batch: {batch_id})")
+            else:
+                logger.warning(f"Failed to save transactions to database: {db_error}")
+
             # Clean up temp file
             if os.path.exists(filepath):
                 os.remove(filepath)
@@ -1490,8 +1510,12 @@ def analyze_real_time_transactions():
                 'success': True,
                 'csv_info': csv_result,
                 'fraud_detection': fraud_result,
+                'transactions': fraud_result.get('transactions', []),  # Add transactions for CSV download
                 'insights': insights_result,
                 'agent_analysis': agent_analysis.get('agent_analysis') if agent_analysis and agent_analysis.get('success') else None,
+                'batch_id': batch_id if db_save_success else None,
+                'analysis_id': analysis_id if db_save_success else None,
+                'database_status': 'saved' if db_save_success else 'failed',  # Add database status
                 'message': 'Real-time transaction analysis completed successfully'
             }
 
@@ -1629,30 +1653,94 @@ def regenerate_plots_with_filters():
         
         transactions = data['transactions']
         filters = data.get('filters', {})
-        
-        # Create a mock analysis result structure
+
+        logger.info(f"Regenerate plots endpoint called with {len(transactions)} transactions")
+        logger.info(f"Filters received: {filters}")
+
+        # Apply filters to transactions
+        filtered_transactions = transactions
+
+        # Amount filters
+        if 'amount_min' in filters:
+            before = len(filtered_transactions)
+            filtered_transactions = [t for t in filtered_transactions if t.get('amount', 0) >= filters['amount_min']]
+            logger.info(f"Amount min filter ({filters['amount_min']}): {before} → {len(filtered_transactions)}")
+        if 'amount_max' in filters:
+            before = len(filtered_transactions)
+            filtered_transactions = [t for t in filtered_transactions if t.get('amount', 0) <= filters['amount_max']]
+            logger.info(f"Amount max filter ({filters['amount_max']}): {before} → {len(filtered_transactions)}")
+
+        # Fraud probability filters
+        if 'fraud_probability_min' in filters:
+            before = len(filtered_transactions)
+            filtered_transactions = [t for t in filtered_transactions if t.get('fraud_probability', 0) >= filters['fraud_probability_min']]
+            logger.info(f"Fraud prob min filter ({filters['fraud_probability_min']}): {before} → {len(filtered_transactions)}")
+        if 'fraud_probability_max' in filters:
+            before = len(filtered_transactions)
+            filtered_transactions = [t for t in filtered_transactions if t.get('fraud_probability', 0) <= filters['fraud_probability_max']]
+            logger.info(f"Fraud prob max filter ({filters['fraud_probability_max']}): {before} → {len(filtered_transactions)}")
+
+        # Category filter
+        if 'category' in filters and filters['category']:
+            before = len(filtered_transactions)
+            filtered_transactions = [t for t in filtered_transactions if filters['category'].lower() in str(t.get('category', '')).lower()]
+            logger.info(f"Category filter ({filters['category']}): {before} → {len(filtered_transactions)}")
+
+        # Date filters
+        from datetime import datetime
+        if 'date_start' in filters and filters['date_start']:
+            try:
+                before = len(filtered_transactions)
+                start_date = datetime.fromisoformat(filters['date_start'])
+                filtered_transactions = [t for t in filtered_transactions if t.get('timestamp') and datetime.fromisoformat(t['timestamp'].replace('Z', '+00:00')) >= start_date]
+                logger.info(f"Date start filter ({filters['date_start']}): {before} → {len(filtered_transactions)}")
+            except Exception as e:
+                logger.error(f"Date start filter error: {e}")
+
+        if 'date_end' in filters and filters['date_end']:
+            try:
+                before = len(filtered_transactions)
+                end_date = datetime.fromisoformat(filters['date_end'])
+                filtered_transactions = [t for t in filtered_transactions if t.get('timestamp') and datetime.fromisoformat(t['timestamp'].replace('Z', '+00:00')) <= end_date]
+                logger.info(f"Date end filter ({filters['date_end']}): {before} → {len(filtered_transactions)}")
+            except Exception as e:
+                logger.error(f"Date end filter error: {e}")
+
+        # Fraud/Legitimate only filters
+        if filters.get('fraud_only'):
+            before = len(filtered_transactions)
+            filtered_transactions = [t for t in filtered_transactions if t.get('is_fraud') == 1]
+            logger.info(f"Fraud only filter: {before} → {len(filtered_transactions)}")
+        if filters.get('legitimate_only'):
+            before = len(filtered_transactions)
+            filtered_transactions = [t for t in filtered_transactions if t.get('is_fraud') == 0]
+            logger.info(f"Legitimate only filter: {before} → {len(filtered_transactions)}")
+
+        logger.info(f"FINAL: Filtered transactions from {len(transactions)} to {len(filtered_transactions)}")
+
+        # Create a mock analysis result structure with filtered transactions
         fraud_result = {
             'success': True,
-            'transactions': transactions,
-            'fraud_count': sum(1 for t in transactions if t.get('is_fraud') == 1),
-            'legitimate_count': sum(1 for t in transactions if t.get('is_fraud') == 0),
+            'transactions': filtered_transactions,
+            'fraud_count': sum(1 for t in filtered_transactions if t.get('is_fraud') == 1),
+            'legitimate_count': sum(1 for t in filtered_transactions if t.get('is_fraud') == 0),
             'fraud_percentage': 0,
             'legitimate_percentage': 0,
-            'total_fraud_amount': sum(t.get('amount', 0) for t in transactions if t.get('is_fraud') == 1),
-            'total_legitimate_amount': sum(t.get('amount', 0) for t in transactions if t.get('is_fraud') == 0),
-            'total_amount': sum(t.get('amount', 0) for t in transactions),
-            'average_fraud_probability': sum(t.get('fraud_probability', 0) for t in transactions) / len(transactions) if transactions else 0,
+            'total_fraud_amount': sum(t.get('amount', 0) for t in filtered_transactions if t.get('is_fraud') == 1),
+            'total_legitimate_amount': sum(t.get('amount', 0) for t in filtered_transactions if t.get('is_fraud') == 0),
+            'total_amount': sum(t.get('amount', 0) for t in filtered_transactions),
+            'average_fraud_probability': sum(t.get('fraud_probability', 0) for t in filtered_transactions) / len(filtered_transactions) if filtered_transactions else 0,
             'model_type': 'filtered'
         }
+
+        if len(filtered_transactions) > 0:
+            fraud_result['fraud_percentage'] = (fraud_result['fraud_count'] / len(filtered_transactions)) * 100
+            fraud_result['legitimate_percentage'] = (fraud_result['legitimate_count'] / len(filtered_transactions)) * 100
         
-        if len(transactions) > 0:
-            fraud_result['fraud_percentage'] = (fraud_result['fraud_count'] / len(transactions)) * 100
-            fraud_result['legitimate_percentage'] = (fraud_result['legitimate_count'] / len(transactions)) * 100
-        
-        # Generate insights with filters
+        # Generate insights with filtered transactions
         from real_time.insights_generator import generate_insights
-        logger.info(f"Regenerating plots with {len(transactions)} transactions and filters: {filters}")
-        insights_result = generate_insights(fraud_result, filters=filters)
+        logger.info(f"Regenerating plots with {len(filtered_transactions)} filtered transactions (from {len(transactions)} total)")
+        insights_result = generate_insights(fraud_result)
         
         if not insights_result.get('success'):
             logger.error(f"Failed to generate insights: {insights_result.get('error')}")
@@ -1731,5 +1819,5 @@ if __name__ == '__main__':
     print(f"  - GET  /api/paystubs/insights")
     print("=" * 60)
 
-    app.run(debug=True, host='0.0.0.0', port=5001)
+    app.run(debug=False, host='0.0.0.0', port=5001, use_reloader=False)
 

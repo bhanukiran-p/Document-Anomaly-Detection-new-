@@ -558,33 +558,37 @@ const EChartsGeo = ({ data, title, height = 400 }) => {
     );
   }
 
-  // Calculate symbol sizes ahead of time to avoid issues in formatter
+  // Calculate symbol sizes and colors ahead of time
   const counts = geoData.map(p => (p.value && p.value[2]) || 0).filter(c => c > 0);
   const maxCount = counts.length > 0 ? Math.max(...counts) : 1;
+  const minCount = counts.length > 0 ? Math.min(...counts) : 0;
+
+  // Function to get color based on transaction count
+  const getColorByCount = (count) => {
+    const normalized = maxCount > minCount ? (count - minCount) / (maxCount - minCount) : 0.5;
+
+    if (normalized > 0.75) return '#dc2626'; // High: Dark red
+    if (normalized > 0.5) return '#ef4444';  // Medium-high: Red
+    if (normalized > 0.25) return '#f97316'; // Medium: Orange
+    return '#fb923c';                         // Low: Light orange
+  };
 
   const option = {
-    title: {
-      text: title,
-      left: 'center',
-      top: 10,
-      textStyle: {
-        color: '#e2e8f0',
-        fontSize: 14,
-        fontWeight: 600
-      }
-    },
     tooltip: {
       trigger: 'item',
       formatter: (params) => {
         try {
-          if (!params || !params.value) return '';
+          // Only show tooltip for scatter series, not geo map
+          if (!params || params.componentType !== 'series') return '';
+          if (!params.value || !Array.isArray(params.value)) return '';
+
           const value = params.value;
-          if (Array.isArray(value) && value.length >= 3) {
+          if (value.length >= 3) {
             const name = params.name || 'Unknown';
             const count = value[2] || 0;
             return `<strong>${name}</strong><br/>Transactions: ${count}`;
           }
-          return params.name || 'Unknown';
+          return '';
         } catch (e) {
           console.error('Tooltip formatter error:', e);
           return '';
@@ -599,31 +603,35 @@ const EChartsGeo = ({ data, title, height = 400 }) => {
     geo: {
       map: mapName,
       roam: true,
-      zoom: 1.2,
+      zoom: 1.3,
+      center: [0, 20],
       label: {
         show: false
       },
       itemStyle: {
-        areaColor: '#020617',
+        areaColor: '#0a0f1e',
         borderColor: '#1e293b',
-        borderWidth: 0.6
+        borderWidth: 0.8
       },
       emphasis: {
         disabled: true,
         itemStyle: {
-          areaColor: '#1e293b'
+          areaColor: '#0a0f1e'
         },
         label: {
           show: false
         }
       },
       select: {
-        disabled: true
+        disabled: true,
+        itemStyle: {
+          areaColor: '#0a0f1e'
+        }
       },
-      top: '15%',
-      bottom: '10%',
-      silent: true,
-      regions: []
+      selectedMode: false,
+      top: '5%',
+      bottom: '8%',
+      silent: true
     },
     series: [
       {
@@ -634,32 +642,72 @@ const EChartsGeo = ({ data, title, height = 400 }) => {
         symbolSize: function(val) {
           try {
             if (!val || !Array.isArray(val) || val.length < 3) {
-              return 15;
+              return 12;
             }
             const currentCount = val[2] || 0;
-            if (maxCount === 0) return 15;
-            return Math.max(15, Math.min(40, 15 + (currentCount / maxCount) * 25));
+            if (maxCount === 0) return 12;
+
+            // More pronounced size differences
+            const normalized = (currentCount - minCount) / (maxCount - minCount || 1);
+            return Math.max(12, Math.min(50, 12 + normalized * 38));
           } catch (e) {
             console.error('symbolSize error:', e);
-            return 15;
+            return 12;
           }
         },
         itemStyle: {
-          color: '#f97316',
-          opacity: 0.9,
-          shadowBlur: 5,
-          shadowColor: 'rgba(248, 113, 113, 0.5)'
+          color: function(params) {
+            try {
+              if (!params || !params.value || !Array.isArray(params.value)) {
+                return '#fb923c';
+              }
+              const count = params.value[2] || 0;
+              return getColorByCount(count);
+            } catch (e) {
+              console.error('Color error:', e);
+              return '#fb923c';
+            }
+          },
+          opacity: 0.85,
+          shadowBlur: 8,
+          shadowColor: 'rgba(220, 38, 38, 0.4)',
+          borderColor: 'rgba(255, 255, 255, 0.3)',
+          borderWidth: 1
         },
         emphasis: {
-          scale: true
-        },
-        tooltip: {
-          trigger: 'item'
+          scale: 1.3,
+          itemStyle: {
+            opacity: 1,
+            shadowBlur: 15,
+            shadowColor: 'rgba(220, 38, 38, 0.8)',
+            borderColor: '#fff',
+            borderWidth: 2
+          }
         }
       }
     ],
     visualMap: {
-      show: false
+      show: true,
+      min: minCount,
+      max: maxCount,
+      text: ['High', 'Low'],
+      realtime: false,
+      calculable: false,
+      inRange: {
+        color: ['#fb923c', '#f97316', '#ef4444', '#dc2626']
+      },
+      textStyle: {
+        color: '#94a3b8',
+        fontSize: 11
+      },
+      orient: 'horizontal',
+      left: 'center',
+      bottom: '2%',
+      itemWidth: 20,
+      itemHeight: 10,
+      formatter: function(value) {
+        return Math.round(value);
+      }
     }
   };
 
@@ -669,6 +717,15 @@ const EChartsGeo = ({ data, title, height = 400 }) => {
     maxCount,
     sampleData: geoData[0]
   });
+
+  const onEvents = {
+    // Prevent errors from geo component interactions
+    click: (params) => {
+      if (params.componentType === 'series') {
+        console.log('Clicked scatter point:', params.name);
+      }
+    }
+  };
 
   return (
     <div
@@ -683,6 +740,7 @@ const EChartsGeo = ({ data, title, height = 400 }) => {
           locale: 'en',
           useDirtyRect: false
         }}
+        onEvents={onEvents}
         notMerge={true}
         lazyUpdate={true}
       />

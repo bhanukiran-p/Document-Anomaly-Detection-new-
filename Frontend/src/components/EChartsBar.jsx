@@ -5,17 +5,10 @@ const EChartsBar = ({ data, title, height = 400 }) => {
   // Calculate dynamic height based on number of bars
   const calculatedHeight = Math.max(400, data.length * 50);
 
+  // Reverse data so highest values appear at the top (descending order)
+  const reversedData = [...data].reverse();
+
   const option = {
-    title: {
-      text: title,
-      left: 'center',
-      top: 10,
-      textStyle: {
-        color: '#e2e8f0',
-        fontSize: 14,
-        fontWeight: 600
-      }
-    },
     tooltip: {
       trigger: 'axis',
       axisPointer: {
@@ -30,7 +23,7 @@ const EChartsBar = ({ data, title, height = 400 }) => {
     grid: {
       left: '20%',
       right: '10%',
-      top: '15%',
+      top: '5%',
       bottom: '10%',
       containLabel: true
     },
@@ -53,7 +46,7 @@ const EChartsBar = ({ data, title, height = 400 }) => {
     },
     yAxis: {
       type: 'category',
-      data: data.map(item => item.label),
+      data: reversedData.map(item => item.label),
       axisLine: {
         lineStyle: {
           color: '#475569'
@@ -71,7 +64,7 @@ const EChartsBar = ({ data, title, height = 400 }) => {
     series: [
       {
         type: 'bar',
-        data: data.map(item => ({
+        data: reversedData.map(item => ({
           value: item.value,
           itemStyle: {
             color: {
