@@ -220,12 +220,19 @@ const RealTimeAnalysis = () => {
   const reasonCountMap = useMemo(() => {
     const map = {};
     fraudReasonBreakdown.forEach((pattern) => {
-      const key = pattern.label || pattern.type;
-      if (!key) return;
-      map[key] = pattern.count;
+      const rawKey = pattern.label || pattern.type;
+      if (!rawKey) return;
+      const formattedKey = formatFraudReason(rawKey);
+      map[formattedKey] = (map[formattedKey] || 0) + (pattern.count || 0);
     });
     return map;
   }, [fraudReasonBreakdown]);
+
+  const fraudReasonChips = useMemo(() => {
+    const unique = new Set(STANDARD_FRAUD_REASONS);
+    Object.keys(reasonCountMap).forEach((reason) => unique.add(reason));
+    return Array.from(unique);
+  }, [reasonCountMap]);
 
   const renderPlotVisualization = (plot, options = {}) => {
     const height = options.height || 450;
@@ -1768,8 +1775,8 @@ const RealTimeAnalysis = () => {
 
           <div style={styles.reasonLegend}>
             <div style={styles.reasonLegendTitle}>Standard Fraud Patterns</div>
-            <div style={styles.reasonLegendGrid}>
-              {STANDARD_FRAUD_REASONS.map((reason) => {
+              <div style={styles.reasonLegendGrid}>
+                {fraudReasonChips.map((reason) => {
                 const count = reasonCountMap[reason] || 0;
                 const isActive = count > 0;
                 return (

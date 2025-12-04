@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 MODEL_DIR = 'real_time/models'
 FRAUD_TYPE_MODEL_PATH = os.path.join(MODEL_DIR, 'fraud_type_classifier.pkl')
 FRAUD_TYPE_ENCODER_PATH = os.path.join(MODEL_DIR, 'fraud_type_encoder.pkl')
+FRAUD_TYPE_FEATURES_PATH = os.path.join(MODEL_DIR, 'fraud_type_features.pkl')
 
 class FraudTypeClassifier:
     """ML-based fraud type classifier"""
@@ -106,20 +107,33 @@ class FraudTypeClassifier:
             fraud_df = df[df['is_fraud'] == 1].copy()
             fraud_features = features_df[df['is_fraud'] == 1].copy()
 
-            if len(fraud_df) < 10:
-                logger.warning("Not enough fraud samples to train fraud type classifier")
-                return 0.0, "Insufficient training data"
+            logger.info(f"Training data: {len(fraud_df)} fraud samples, {len(df) - len(fraud_df)} legitimate samples")
+
+            if len(fraud_df) < 5:
+                error_msg = f"Not enough fraud samples to train fraud type classifier (need at least 5, got {len(fraud_df)})"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
 
             # Get fraud reasons (must exist in training data)
             if 'fraud_reason' not in fraud_df.columns and 'fraud_type' not in fraud_df.columns:
-                logger.error("No fraud reason labels found in training data")
-                return 0.0, "No fraud reason labels"
+                error_msg = "No fraud reason labels found in training data"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
 
             y = fraud_df['fraud_reason'] if 'fraud_reason' in fraud_df.columns else fraud_df['fraud_type']
+
+            # Check for unique fraud types
+            unique_types = y.unique()
+            if len(unique_types) < 2:
+                error_msg = f"Need at least 2 distinct fraud types for classification (got {len(unique_types)})"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
 
             # Prepare features
             X = self._prepare_features(fraud_df, fraud_features)
             self.feature_columns = X.columns.tolist()
+
+            logger.info(f"Prepared {len(self.feature_columns)} features: {self.feature_columns[:10]}...")
 
             # Encode labels
             self.label_encoder = LabelEncoder()
@@ -130,11 +144,19 @@ class FraudTypeClassifier:
 
             # Split data
             if len(X) >= 30:
-                X_train, X_test, y_train, y_test = train_test_split(
-                    X, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded
-                )
+                try:
+                    X_train, X_test, y_train, y_test = train_test_split(
+                        X, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded
+                    )
+                except ValueError:
+                    # Stratify failed due to imbalanced classes, train without stratification
+                    logger.warning("Stratified split failed, using simple split")
+                    X_train, X_test, y_train, y_test = train_test_split(
+                        X, y_encoded, test_size=0.2, random_state=42
+                    )
             else:
                 # Use all data for training if sample size is small
+                logger.warning(f"Small dataset ({len(X)} samples), using all data for both training and testing")
                 X_train, y_train = X, y_encoded
                 X_test, y_test = X, y_encoded
 
@@ -142,13 +164,14 @@ class FraudTypeClassifier:
             self.model = RandomForestClassifier(
                 n_estimators=100,
                 max_depth=10,
-                min_samples_split=5,
-                min_samples_leaf=2,
+                min_samples_split=max(2, min(5, len(X_train) // 10)),
+                min_samples_leaf=max(1, min(2, len(X_train) // 20)),
                 random_state=42,
                 class_weight='balanced',
                 n_jobs=-1
             )
 
+            logger.info("Fitting Random Forest classifier...")
             self.model.fit(X_train, y_train)
 
             # Evaluate
@@ -162,16 +185,22 @@ class FraudTypeClassifier:
                 zero_division=0
             )
 
-            logger.info(f"Fraud type classifier trained - Train accuracy: {train_accuracy:.3f}, Test accuracy: {test_accuracy:.3f}")
+            logger.info(f"Fraud type classifier trained successfully!")
+            logger.info(f"Train accuracy: {train_accuracy:.3f}, Test accuracy: {test_accuracy:.3f}")
 
             # Save model
             self.save_model()
+            logger.info("Model saved to disk")
 
             return test_accuracy, report
 
         except Exception as e:
             logger.error(f"Failed to train fraud type classifier: {e}", exc_info=True)
-            return 0.0, str(e)
+            # Reset state on failure
+            self.model = None
+            self.label_encoder = None
+            self.feature_columns = None
+            raise
 
     def predict(self, df: pd.DataFrame, features_df: pd.DataFrame) -> List[str]:
         """
@@ -186,11 +215,16 @@ class FraudTypeClassifier:
         """
         try:
             if self.model is None or self.label_encoder is None:
-                logger.warning("Fraud type classifier not trained, using default")
+                logger.warning("Fraud type classifier not trained, model or encoder is None")
                 return ['Unknown fraud type'] * len(df)
 
             # Prepare features
             X = self._prepare_features(df, features_df)
+
+            # Check if feature_columns is set
+            if self.feature_columns is None:
+                logger.error("Feature columns not set in classifier, cannot predict")
+                return ['Prediction error'] * len(df)
 
             # Ensure all required features are present
             for col in self.feature_columns:
@@ -198,6 +232,11 @@ class FraudTypeClassifier:
                     X[col] = 0
 
             X = X[self.feature_columns]
+
+            # Validate feature count
+            if X.shape[1] != self.model.n_features_in_:
+                logger.error(f"Feature mismatch: expected {self.model.n_features_in_} features, got {X.shape[1]}")
+                return ['Prediction error'] * len(df)
 
             # Predict
             predictions_encoded = self.model.predict(X)
@@ -257,6 +296,7 @@ class FraudTypeClassifier:
             os.makedirs(MODEL_DIR, exist_ok=True)
             joblib.dump(self.model, FRAUD_TYPE_MODEL_PATH)
             joblib.dump(self.label_encoder, FRAUD_TYPE_ENCODER_PATH)
+            joblib.dump(self.feature_columns, FRAUD_TYPE_FEATURES_PATH)
             logger.info(f"Fraud type classifier saved to {FRAUD_TYPE_MODEL_PATH}")
         except Exception as e:
             logger.error(f"Failed to save fraud type classifier: {e}")
@@ -268,20 +308,23 @@ class FraudTypeClassifier:
                 self.model = joblib.load(FRAUD_TYPE_MODEL_PATH)
                 self.label_encoder = joblib.load(FRAUD_TYPE_ENCODER_PATH)
 
-                # Get feature columns from model
-                if hasattr(self.model, 'n_features_in_'):
-                    # Reconstruct feature columns (they should be in order)
-                    # This is a limitation - we need to store feature names separately
-                    logger.info("Fraud type classifier loaded successfully")
+                # Load feature columns if available
+                if os.path.exists(FRAUD_TYPE_FEATURES_PATH):
+                    self.feature_columns = joblib.load(FRAUD_TYPE_FEATURES_PATH)
+                    logger.info(f"Fraud type classifier loaded successfully with {len(self.feature_columns)} features")
                     return True
                 else:
-                    logger.warning("Loaded model missing feature information")
+                    logger.warning("Feature columns file not found, classifier may not work properly")
+                    self.feature_columns = None
                     return False
             else:
                 logger.info("No saved fraud type classifier found")
                 return False
         except Exception as e:
             logger.error(f"Failed to load fraud type classifier: {e}")
+            self.model = None
+            self.label_encoder = None
+            self.feature_columns = None
             return False
 
 

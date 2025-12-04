@@ -282,7 +282,7 @@ class FraudDetectionService:
                                     ml_risk_score = min(ml_risk_score, 1.0)
                                     logger.info(f"ML risk score calculated: {ml_risk_score}")
                                     findings['suspicious_indicators'].append(
-                                        f"[ML Model] Ensemble fraud probability: {ml_risk_score:.1%}"
+                                        f"[Detection Model] Ensemble fraud probability: {ml_risk_score:.1%}"
                                     )
                             else:
                                 logger.warning(f"'is_fraud_probability' column not found in predictions. Available columns: {ml_predictions.columns.tolist()}")
