@@ -3,9 +3,34 @@ import { useDropzone } from 'react-dropzone';
 import { colors } from '../styles/colors';
 import {
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Sector
 } from 'recharts';
 import { FaUpload, FaCog } from 'react-icons/fa';
+
+// Custom Tooltip Component
+const CustomTooltip = ({ active, payload, label }) => {
+  if (active && payload && payload.length) {
+    return (
+      <div style={{
+        backgroundColor: colors.card,
+        border: `1px solid ${colors.border}`,
+        borderRadius: '8px',
+        padding: '12px',
+        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
+      }}>
+        <p style={{ margin: '0 0 8px 0', fontWeight: '600', color: colors.foreground }}>
+          {label}
+        </p>
+        {payload.map((entry, index) => (
+          <p key={index} style={{ margin: '4px 0', color: entry.color }}>
+            <span style={{ fontWeight: '600' }}>{entry.name || entry.dataKey}:</span> {typeof entry.value === 'number' ? entry.value.toFixed(1) : entry.value}
+          </p>
+        ))}
+      </div>
+    );
+  }
+  return null;
+};
 
 const CheckInsights = () => {
   const [csvData, setCsvData] = useState(null);
@@ -21,6 +46,8 @@ const CheckInsights = () => {
   const [bankFilter, setBankFilter] = useState(null);
   const [availableBanks, setAvailableBanks] = useState([]);
   const [allChecksData, setAllChecksData] = useState([]);
+  const [activePieIndex, setActivePieIndex] = useState(null);
+  const [activeBarIndex, setActiveBarIndex] = useState(null);
 
   const parseCSV = (text) => {
     const lines = text.trim().split('\n');
@@ -898,51 +925,232 @@ const CheckInsights = () => {
             <div style={chartBoxStyle}>
               <h3 style={chartTitleStyle}>Risk Score Distribution by Range</h3>
               <ResponsiveContainer width="100%" height={320}>
-                <BarChart data={csvData.riskDistribution}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                  <XAxis dataKey="range" stroke={colors.mutedForeground} />
-                  <YAxis stroke={colors.mutedForeground} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: colors.card,
-                      border: `1px solid ${colors.border}`,
-                      color: colors.foreground
-                    }}
+                <BarChart 
+                  data={csvData.riskDistribution} 
+                  margin={{ top: 10, right: 20, left: 10, bottom: 10 }}
+                  onMouseLeave={() => setActiveBarIndex(null)}
+                >
+                  <defs>
+                    <linearGradient id="riskGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={primary} stopOpacity={1} />
+                      <stop offset="100%" stopColor={primary} stopOpacity={0.7} />
+                    </linearGradient>
+                    <linearGradient id="riskGradientHover" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={primary} stopOpacity={1} />
+                      <stop offset="100%" stopColor={primary} stopOpacity={0.9} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.3} />
+                  <XAxis 
+                    dataKey="range" 
+                    tick={{ fill: colors.foreground, fontSize: 12 }}
+                    stroke={colors.border}
                   />
-                  <Bar dataKey="count" fill={primary} />
+                  <YAxis 
+                    tick={{ fill: colors.foreground, fontSize: 12 }}
+                    stroke={colors.border}
+                  />
+                  <Tooltip 
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0];
+                        return (
+                          <div style={{
+                            backgroundColor: colors.card,
+                            border: `1px solid ${colors.border}`,
+                            borderRadius: '8px',
+                            padding: '12px',
+                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
+                          }}>
+                            <p style={{ margin: '0 0 8px 0', fontWeight: '600', color: colors.foreground }}>
+                              {data.payload.range}
+                            </p>
+                            <p style={{ margin: '4px 0', color: primary }}>
+                              <span style={{ fontWeight: '600' }}>Count:</span> {data.value}
+                            </p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                    cursor={{ fill: 'transparent' }}
+                  />
+                  <Bar 
+                    dataKey="count" 
+                    fill="url(#riskGradient)"
+                    radius={[8, 8, 0, 0]}
+                  >
+                    {csvData.riskDistribution.map((entry, index) => {
+                      const isActive = activeBarIndex === index;
+                      return (
+                        <Cell 
+                          key={`cell-${index}`}
+                          fill={isActive ? "url(#riskGradientHover)" : "url(#riskGradient)"}
+                          onMouseEnter={() => setActiveBarIndex(index)}
+                          onMouseLeave={() => setActiveBarIndex(null)}
+                          style={{
+                            cursor: 'pointer',
+                            transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                            filter: isActive ? 'brightness(1.1)' : 'brightness(1)'
+                          }}
+                        />
+                      );
+                    })}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
 
             <div style={chartBoxStyle}>
               <h3 style={chartTitleStyle}>AI Decision Breakdown</h3>
-              <ResponsiveContainer width="100%" height={320}>
-                <PieChart>
-                  <Pie
-                    data={csvData.recommendationData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, value }) => `${name}: ${value}`}
-                    outerRadius={100}
-                    innerRadius={40}
-                    fill="#8884d8"
-                    dataKey="value"
+              {/* Centered Donut Chart */}
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '320px' }}>
+                <ResponsiveContainer width="100%" height={320}>
+                  <PieChart
+                    onMouseLeave={() => setActivePieIndex(null)}
                   >
-                    {csvData.recommendationData.map((_, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: colors.card,
-                      border: `1px solid ${colors.border}`,
-                      color: colors.foreground
-                    }}
-                  />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
+                    <Pie
+                      data={csvData.recommendationData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={false}
+                      outerRadius={120}
+                      innerRadius={60}
+                      fill="#8884d8"
+                      dataKey="value"
+                      stroke={colors.card}
+                      strokeWidth={3}
+                      startAngle={90}
+                      endAngle={-270}
+                      activeIndex={activePieIndex}
+                      activeShape={(props) => {
+                        const {
+                          cx, cy, innerRadius, outerRadius, startAngle, endAngle,
+                          fill
+                        } = props;
+                        return (
+                          <g>
+                            <Sector
+                              cx={cx}
+                              cy={cy}
+                              innerRadius={innerRadius - 5}
+                              outerRadius={outerRadius + 20}
+                              startAngle={startAngle}
+                              endAngle={endAngle}
+                              fill={fill}
+                              stroke={colors.card}
+                              strokeWidth={3}
+                            />
+                          </g>
+                        );
+                      }}
+                      onMouseEnter={(_, index) => setActivePieIndex(index)}
+                      onMouseLeave={() => setActivePieIndex(null)}
+                    >
+                      {csvData.recommendationData.map((entry, index) => {
+                        const colorMap = {
+                          'APPROVE': colors.status.success || '#4CAF50',
+                          'REJECT': primary,
+                          'ESCALATE': colors.status.warning || '#FFA726'
+                        };
+                        const baseColor = colorMap[entry.name] || COLORS[index % COLORS.length];
+                        const isActive = activePieIndex === index;
+                        
+                        return (
+                          <Cell 
+                            key={`cell-${index}`} 
+                            fill={baseColor}
+                            style={{
+                              filter: isActive ? 'brightness(1.2)' : 'brightness(1)',
+                              transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                              cursor: 'pointer'
+                            }}
+                          />
+                        );
+                      })}
+                    </Pie>
+                    <Tooltip 
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0];
+                          const total = csvData.recommendationData.reduce((sum, item) => sum + item.value, 0);
+                          const percentage = total > 0 ? ((data.payload.value / total) * 100).toFixed(2) : 0;
+                          return (
+                            <div style={{
+                              backgroundColor: colors.card,
+                              border: `1px solid ${colors.border}`,
+                              borderRadius: '8px',
+                              padding: '12px',
+                              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
+                            }}>
+                              <p style={{ margin: '0 0 8px 0', fontWeight: '600', color: colors.foreground }}>
+                                {data.name}
+                              </p>
+                              <p style={{ margin: '4px 0', color: data.color }}>
+                                <span style={{ fontWeight: '600' }}>Count:</span> {data.payload.value}
+                              </p>
+                              <p style={{ margin: '4px 0', color: data.color }}>
+                                <span style={{ fontWeight: '600' }}>Percentage:</span> {percentage}%
+                              </p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              
+              {/* Legend below the chart */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'center',
+                gap: '2rem',
+                marginTop: '1.5rem',
+                padding: '1rem',
+                flexWrap: 'wrap'
+              }}>
+                {csvData.recommendationData.map((entry, index) => {
+                  const colorMap = {
+                    'APPROVE': colors.status.success || '#4CAF50',
+                    'REJECT': primary,
+                    'ESCALATE': colors.status.warning || '#FFA726'
+                  };
+                  const total = csvData.recommendationData.reduce((sum, item) => sum + item.value, 0);
+                  const percentage = total > 0 ? ((entry.value / total) * 100).toFixed(2) : 0;
+                  
+                  return (
+                    <div
+                      key={`legend-${index}`}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.75rem'
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: '16px',
+                          height: '16px',
+                          borderRadius: '50%',
+                          backgroundColor: colorMap[entry.name] || primary,
+                          flexShrink: 0,
+                          border: `2px solid ${colors.card}`
+                        }}
+                      />
+                      <span style={{
+                        color: colors.foreground,
+                        fontSize: '14px',
+                        fontWeight: '500'
+                      }}>
+                        {entry.name}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Row 2: Risk by Bank & Top High-Risk Payers */}
