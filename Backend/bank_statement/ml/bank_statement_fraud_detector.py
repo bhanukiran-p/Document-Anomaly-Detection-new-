@@ -220,7 +220,7 @@ class BankStatementFraudDetector:
         negative_balance = features[17]  # Feature 18: negative_ending_balance
         balance_consistency = features[18]  # Feature 19: balance_consistency
         critical_missing = features[25]  # Feature 26: critical_missing_count
-        duplicate_txns = features[28]  # Feature 29: duplicate_transactions
+        duplicate_txns = features[28]  # Feature 29: duplicate_transactions (now 0.0, 0.5, or 1.0)
 
         # Unsupported bank
         if bank_valid == 0.0:
@@ -257,10 +257,15 @@ class BankStatementFraudDetector:
             base_score += 0.40
             risk_factors.append(f"{int(critical_missing)} critical fields missing")
 
-        # Duplicate transactions
-        if duplicate_txns == 1.0:
-            base_score += 0.30
-            risk_factors.append("Duplicate transactions detected")
+        # Duplicate transactions - MEDIUM impact (reduced from 0.30 to 0.15)
+        # Single duplicate (0.5) adds 0.10, multiple duplicates (1.0) adds 0.15
+        if duplicate_txns >= 0.5:
+            if duplicate_txns >= 1.0:
+                base_score += 0.15  # Multiple duplicates
+                risk_factors.append("Multiple duplicate transactions detected")
+            else:
+                base_score += 0.10  # Single duplicate (reduced impact)
+                risk_factors.append("Duplicate transaction detected")
 
         # Balance checks
         ending_balance = features[5]  # Feature 6: ending_balance
@@ -401,7 +406,7 @@ class BankStatementFraudDetector:
         negative_ending_balance = feature_dict.get('negative_ending_balance', 0.0) == 1.0
         balance_consistency = feature_dict.get('balance_consistency', 1.0)
         suspicious_transaction_pattern = feature_dict.get('suspicious_transaction_pattern', 0.0) == 1.0
-        duplicate_transactions = feature_dict.get('duplicate_transactions', 0.0) == 1.0
+        duplicate_transactions = feature_dict.get('duplicate_transactions', 0.0) >= 0.5  # Now can be 0.5 (single) or 1.0 (multiple)
         unusual_timing = feature_dict.get('unusual_timing', 0.0)
         critical_missing_count = int(feature_dict.get('critical_missing_count', 0.0))
         field_quality = feature_dict.get('field_quality', 1.0)
@@ -481,17 +486,21 @@ class BankStatementFraudDetector:
                 fraud_reasons.append(
                     "Detected suspicious transaction patterns (many small transactions, unusual frequency)."
                 )
-        if duplicate_transactions:
+        # Duplicate transactions - MEDIUM impact (reduced threshold)
+        # Only flag if duplicates are combined with other suspicious patterns
+        if duplicate_transactions and (round_number_transactions > 15 or balance_volatility > 0.5 or credit_debit_ratio > 1.5):
             if SUSPICIOUS_TRANSACTION_PATTERNS not in fraud_types:
                 fraud_types.append(SUSPICIOUS_TRANSACTION_PATTERNS)
                 fraud_reasons.append(
-                    "Duplicate transactions detected, which is unusual for legitimate bank statements."
+                    "Duplicate transactions detected in combination with other suspicious patterns."
                 )
-        if round_number_transactions > 10:
+        # Round number transactions - MEDIUM impact (increased threshold from 10 to 20)
+        # Only flag if there are many round numbers (20+) or combined with other patterns
+        if round_number_transactions > 20 or (round_number_transactions > 15 and (duplicate_transactions or balance_volatility > 0.5)):
             if SUSPICIOUS_TRANSACTION_PATTERNS not in fraud_types:
                 fraud_types.append(SUSPICIOUS_TRANSACTION_PATTERNS)
                 fraud_reasons.append(
-                    f"Unusually high number of round-number transactions ({round_number_transactions}), which may indicate fabricated transactions."
+                    f"High number of round-number transactions ({round_number_transactions}) detected, which may indicate fabricated transactions."
                 )
         if unusual_timing > 0.3:
             if SUSPICIOUS_TRANSACTION_PATTERNS not in fraud_types:

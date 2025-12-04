@@ -479,7 +479,10 @@ class RiskModelTrainer:
                 balance_consistency = random.uniform(0.3, 0.7)
                 currency_present = random.choice([1.0, 0.0])
                 suspicious_transaction_pattern = random.choice([0.0, 1.0])
-                duplicate_transactions = random.choice([0.0, 1.0])
+                # Duplicate transactions - MEDIUM IMPACT: Three levels (0.0, 0.5, 1.0)
+                # 0.0 = no duplicates, 0.5 = single duplicate, 1.0 = multiple duplicates
+                duplicate_choice = random.choice([0.0, 0.5, 1.0])
+                duplicate_transactions = duplicate_choice
                 unusual_timing = random.uniform(0.1, 0.3)
                 critical_missing_count = random.randint(2, 4)
                 field_quality = random.uniform(0.5, 0.8)
@@ -498,7 +501,9 @@ class RiskModelTrainer:
                 balance_consistency = random.uniform(0.0, 0.5)
                 currency_present = random.choice([1.0, 0.0, 0.0])
                 suspicious_transaction_pattern = random.choice([0.0, 1.0, 1.0])
-                duplicate_transactions = random.choice([0.0, 1.0, 1.0])
+                # Duplicate transactions - MEDIUM IMPACT: Three levels (0.0, 0.5, 1.0)
+                duplicate_choice = random.choice([0.0, 0.5, 0.5, 1.0, 1.0])  # More likely to have duplicates
+                duplicate_transactions = duplicate_choice
                 unusual_timing = random.uniform(0.3, 0.6)
                 critical_missing_count = random.randint(4, 6)
                 field_quality = random.uniform(0.3, 0.6)
@@ -517,7 +522,9 @@ class RiskModelTrainer:
                 balance_consistency = random.uniform(0.0, 0.3)
                 currency_present = random.choice([1.0, 0.0, 0.0, 0.0])
                 suspicious_transaction_pattern = 1.0
-                duplicate_transactions = random.choice([0.0, 1.0, 1.0, 1.0])
+                # Duplicate transactions - MEDIUM IMPACT: Three levels (0.0, 0.5, 1.0)
+                duplicate_choice = random.choice([0.5, 1.0, 1.0, 1.0])  # Critical risk likely has duplicates
+                duplicate_transactions = duplicate_choice
                 unusual_timing = random.uniform(0.5, 1.0)
                 critical_missing_count = random.randint(5, 7)
                 field_quality = random.uniform(0.0, 0.4)
@@ -549,7 +556,11 @@ class RiskModelTrainer:
             if suspicious_transaction_pattern == 1.0:
                 large_transaction_count = random.randint(10, 50)
             
-            round_number_transactions = random.randint(0, 100) if transaction_count > 0 else 0
+            # Round number transactions - MEDIUM IMPACT: Generate raw count, will be normalized/2 in feature extractor
+            # Generate raw count (0-100), but training will use normalized values (0-50)
+            round_number_transactions_raw = random.randint(0, 100) if transaction_count > 0 else 0
+            # Normalize by dividing by 2 to match updated feature extractor logic
+            round_number_transactions = round_number_transactions_raw / 2.0
             date_format_valid = 1.0 if period_start_present else 0.0
             period_length_days = random.uniform(0, 365) if (period_start_present and period_end_present) else 0.0
             transaction_date_consistency = random.uniform(0.5, 1.0) if transaction_count > 0 else 0.5
@@ -593,9 +604,17 @@ class RiskModelTrainer:
             if suspicious_transaction_pattern == 1.0:
                 risk_score += 20
             
-            # Duplicate transactions: +15 points
-            if duplicate_transactions == 1.0:
-                risk_score += 15
+            # Duplicate transactions - MEDIUM IMPACT: Reduced scoring
+            # Single duplicate (0.5): +8 points, Multiple duplicates (1.0): +12 points
+            if duplicate_transactions >= 1.0:
+                risk_score += 12  # Multiple duplicates
+            elif duplicate_transactions >= 0.5:
+                risk_score += 8   # Single duplicate (reduced impact)
+            
+            # Round number transactions - MEDIUM IMPACT: Reduced scoring
+            # Only add points if there are many round numbers (20+ in raw count, 10+ normalized)
+            if round_number_transactions >= 10.0:  # Normalized threshold (20+ raw)
+                risk_score += min((round_number_transactions - 10.0) / 10.0 * 10, 10)  # Up to 10 points
             
             # Low field quality: up to 15 points
             if field_quality < 0.5:
@@ -651,7 +670,7 @@ class RiskModelTrainer:
                 # Advanced features (21-35)
                 'suspicious_transaction_pattern': suspicious_transaction_pattern,
                 'large_transaction_count': min(large_transaction_count, 50.0),
-                'round_number_transactions': min(round_number_transactions, 100.0),
+                'round_number_transactions': min(round_number_transactions, 50.0),  # Normalized (0-50 range)
                 'date_format_valid': date_format_valid,
                 'period_length_days': min(period_length_days, 365.0),
                 'critical_missing_count': float(critical_missing_count),
