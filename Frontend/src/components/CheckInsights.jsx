@@ -1160,8 +1160,21 @@ const CheckInsights = () => {
                 <h3 style={chartTitleStyle}>Risk Level by Bank</h3>
                 <ResponsiveContainer width="100%" height={320}>
                   <ComposedChart 
-                    data={csvData.riskByBankData}
-                    margin={{ top: 10, right: 30, left: 10, bottom: 80 }}
+                    data={csvData.riskByBankData.map(bank => ({
+                      ...bank,
+                      displayName: (() => {
+                        const name = bank.name.toUpperCase();
+                        if (name.includes('BANK OF AMERICA') || name.includes('BOFA')) return 'BOFA';
+                        if (name.includes('CHASE') || name.includes('JPM')) return 'JPMC';
+                        if (name.includes('WELLS FARGO') || name.includes('WELLS')) return 'WF';
+                        if (name.includes('CITIBANK') || name.includes('CITI')) return 'CITI';
+                        if (name.includes('US BANK')) return 'USB';
+                        if (name.includes('ALLY')) return 'ALLY';
+                        // Return shortened version if name is too long
+                        return bank.name.length > 10 ? bank.name.substring(0, 10) + '...' : bank.name;
+                      })()
+                    }))}
+                    margin={{ top: 10, right: 30, left: 10, bottom: 60 }}
                     onMouseLeave={() => setActiveBankBarIndex({ bankIndex: null, series: null })}
                   >
                     <defs>
@@ -1176,9 +1189,13 @@ const CheckInsights = () => {
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.3} />
                     <XAxis 
-                      dataKey="name" 
-                      tick={{ fill: colors.foreground, fontSize: 12 }}
+                      dataKey="displayName" 
+                      tick={{ fill: colors.foreground, fontSize: 11 }}
                       stroke={colors.border}
+                      angle={-45}
+                      textAnchor="end"
+                      height={80}
+                      interval={0}
                     />
                     <YAxis 
                       yAxisId="left"
