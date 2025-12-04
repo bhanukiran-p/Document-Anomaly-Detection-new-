@@ -4,6 +4,7 @@ import { analyzeBankStatement } from '../services/api';
 import { colors } from '../styles/colors';
 import { FaExclamationTriangle, FaUniversity, FaCog } from 'react-icons/fa';
 import * as pdfjsLib from 'pdfjs-dist';
+import BankStatementInsights from '../components/BankStatementInsights.jsx';
 
 const buildBankStatementSections = (data) => ({
   'Account Information': [
@@ -102,6 +103,7 @@ const BankStatementAnalysis = () => {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState('analyze');
 
   useEffect(() => {
     pdfjsLib.GlobalWorkerOptions.workerSrc = `${process.env.PUBLIC_URL}/pdf.worker.min.js`;
@@ -439,6 +441,19 @@ const BankStatementAnalysis = () => {
   const anomalies = analysisData?.anomalies || [];
   const criticalFactors = analysisData ? buildBankCriticalFactors(analysisData, anomalies) : [];
 
+  const tabStyle = (isActive) => ({
+    padding: '0.75rem 1.5rem',
+    borderRadius: '0.5rem 0.5rem 0 0',
+    backgroundColor: isActive ? colors.card : colors.secondary,
+    color: isActive ? primary : colors.mutedForeground,
+    border: `1px solid ${colors.border}`,
+    borderBottom: isActive ? `2px solid ${primary}` : `1px solid ${colors.border}`,
+    cursor: 'pointer',
+    fontWeight: isActive ? '600' : '500',
+    transition: 'all 0.3s',
+    marginRight: '0.5rem',
+  });
+
   return (
     <div style={containerStyle}>
       <div style={headerStyle}>
@@ -448,6 +463,28 @@ const BankStatementAnalysis = () => {
         <p>Extract and analyze bank statement details with transaction history</p>
       </div>
 
+      {/* Tabs */}
+      <div style={{ display: 'flex', marginBottom: '0', borderBottom: `1px solid ${colors.border}` }}>
+        <button
+          onClick={() => setActiveTab('analyze')}
+          style={tabStyle(activeTab === 'analyze')}
+          onMouseEnter={(e) => activeTab === 'analyze' || (e.target.style.backgroundColor = colors.muted)}
+          onMouseLeave={(e) => activeTab === 'analyze' || (e.target.style.backgroundColor = colors.secondary)}
+        >
+          Analysis
+        </button>
+        <button
+          onClick={() => setActiveTab('insights')}
+          style={tabStyle(activeTab === 'insights')}
+          onMouseEnter={(e) => activeTab === 'insights' || (e.target.style.backgroundColor = colors.muted)}
+          onMouseLeave={(e) => activeTab === 'insights' || (e.target.style.backgroundColor = colors.secondary)}
+        >
+          Insights
+        </button>
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === 'analyze' && (
       <div style={gridStyle}>
         {/* Upload Section */}
         <div style={cardStyle}>
@@ -856,6 +893,12 @@ const BankStatementAnalysis = () => {
           )}
         </div>
       </div>
+      )}
+
+      {/* Insights Tab */}
+      {activeTab === 'insights' && (
+        <BankStatementInsights />
+      )}
     </div>
   );
 };
