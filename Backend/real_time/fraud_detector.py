@@ -140,16 +140,65 @@ def detect_fraud_in_transactions(transactions: List[Dict[str, Any]], auto_train:
         df['fraud_probability'] = probabilities
         df['fraud_reason_detail'] = reasons
 
-        # Classify standardized fraud reasons for transactions
-        standardized_reasons: List[str] = []
-        for idx in range(len(df)):
-            if df.at[idx, 'is_fraud'] == 1:
-                standardized_reasons.append(_classify_fraud_type(df.iloc[idx], features_df.iloc[idx]))
-            else:
-                standardized_reasons.append(LEGITIMATE_LABEL)
+        # Classify fraud types using ML (not rules)
+        from real_time.fraud_type_classifier import get_fraud_type_classifier
 
-        df['fraud_reason'] = standardized_reasons
-        df['fraud_type'] = standardized_reasons  # backwards compatibility
+        fraud_type_classifier = get_fraud_type_classifier()
+
+        # Only classify fraud types for fraudulent transactions
+        fraud_indices = df['is_fraud'] == 1
+        fraud_df = df[fraud_indices].copy()
+        fraud_features = features_df[fraud_indices].copy()
+
+        if len(fraud_df) > 0:
+            # Always use ML-based fraud type classification
+            # Train classifier if not already trained
+            if fraud_type_classifier.model is None:
+                logger.info("Training fraud type classifier on current transaction patterns")
+
+                # Create synthetic training data from detected fraud patterns
+                # Use rule-based classification to generate initial labels for training
+                training_labels = []
+                for idx in range(len(df)):
+                    if df.at[idx, 'is_fraud'] == 1:
+                        training_labels.append(_classify_fraud_type(df.iloc[idx], features_df.iloc[idx]))
+                    else:
+                        training_labels.append(LEGITIMATE_LABEL)
+
+                # Add training labels to dataframe temporarily
+                df['fraud_reason'] = training_labels
+
+                # Train the ML model on these patterns
+                try:
+                    accuracy, report = fraud_type_classifier.train(df, features_df)
+                    logger.info(f"Fraud type classifier trained with accuracy: {accuracy:.3f}")
+                    logger.info(f"Classification Report:\n{report}")
+                except Exception as e:
+                    logger.error(f"Failed to train fraud type classifier: {e}", exc_info=True)
+                    raise RuntimeError(f"ML fraud type classifier training failed: {e}")
+
+            # Predict fraud types using trained ML model
+            try:
+                fraud_types_pred = fraud_type_classifier.predict(fraud_df, fraud_features)
+
+                # Validate predictions
+                if any(ft in ['Prediction error', 'Unknown fraud type'] for ft in fraud_types_pred):
+                    error_count = sum(1 for ft in fraud_types_pred if ft in ['Prediction error', 'Unknown fraud type'])
+                    logger.error(f"ML predictions failed for {error_count}/{len(fraud_types_pred)} transactions")
+                    raise RuntimeError(f"ML fraud type prediction returned {error_count} errors")
+
+                # Apply predictions
+                df.loc[fraud_indices, 'fraud_reason'] = fraud_types_pred
+                df.loc[fraud_indices, 'fraud_type'] = fraud_types_pred
+                logger.info(f"ML fraud type classification successful for {len(fraud_df)} transactions")
+
+            except Exception as e:
+                logger.error(f"ML fraud type prediction failed: {e}", exc_info=True)
+                raise RuntimeError(f"ML fraud type classifier prediction failed: {e}")
+
+        # Set legitimate transactions
+        df.loc[~fraud_indices, 'fraud_reason'] = LEGITIMATE_LABEL
+        df.loc[~fraud_indices, 'fraud_type'] = LEGITIMATE_LABEL
 
         # Calculate statistics
         fraud_count = int(predictions.sum())
@@ -406,8 +455,8 @@ def _generate_ml_reasons(predictions: np.ndarray, probabilities: np.ndarray,
         if pred == 1:
             reason_parts = []
 
-            # Add ML confidence
-            reason_parts.append(f"ML Fraud Detection ({prob*100:.1f}% confidence)")
+            # Add detection confidence
+            reason_parts.append(f"Fraud Detection ({prob*100:.1f}% confidence)")
 
             # Analyze key features that contributed to fraud detection
             row_features = features_df.iloc[i]
@@ -431,13 +480,13 @@ def _generate_ml_reasons(predictions: np.ndarray, probabilities: np.ndarray,
             if row_features['amount_to_balance_ratio'] > 0.8:
                 reason_parts.append("High transaction-to-balance ratio")
 
-            # If no specific reasons, provide general ML insight
+            # If no specific reasons, provide general insight
             if len(reason_parts) == 1:
-                reason_parts.append("Multiple fraud indicators detected by ML model")
+                reason_parts.append("Multiple fraud indicators detected")
 
             reasons.append(" | ".join(reason_parts))
         else:
-            reasons.append(f"Legitimate transaction (ML confidence: {(1-prob)*100:.1f}%)")
+            reasons.append(f"Legitimate transaction (confidence: {(1-prob)*100:.1f}%)")
 
     return reasons
 
@@ -445,6 +494,7 @@ def _generate_ml_reasons(predictions: np.ndarray, probabilities: np.ndarray,
 def _classify_fraud_type(transaction_row: pd.Series, feature_row: pd.Series) -> str:
     """
     Map the transaction into one of the standardized fraud reason labels.
+    Uses a scoring system to handle multiple concurrent fraud indicators.
     """
     amount = float(_get_row_value(transaction_row, 'amount', 'Amount') or 0)
     merchant = str(_get_row_value(transaction_row, 'merchant', 'Merchant') or '').lower()
@@ -467,90 +517,103 @@ def _classify_fraud_type(transaction_row: pd.Series, feature_row: pd.Series) -> 
     high_risk_category = feature_row.get('high_risk_category', 0) == 1
     merchant_has_numbers = feature_row.get('merchant_has_numbers', 0) == 1
     is_foreign_currency = feature_row.get('is_foreign_currency', 0) == 1
+    is_weekend = feature_row.get('is_weekend', 0) == 1
+
+    # Score-based classification for better fraud type diversity
+    fraud_scores = {}
 
     # Suspicious login / device patterns
     if login_mismatch:
-        return 'Suspicious login'
+        fraud_scores['Suspicious login'] = fraud_scores.get('Suspicious login', 0) + 100
 
     if is_first_time and merchant_has_numbers:
-        return 'Unusual device'
+        fraud_scores['Unusual device'] = fraud_scores.get('Unusual device', 0) + 80
 
     # Account takeover style moves
-    if (is_transfer and amount_ratio > 0.6) or (feature_row.get('low_balance', 0) == 1 and high_value):
-        return 'Account takeover'
+    if is_transfer and amount_ratio > 0.6:
+        fraud_scores['Account takeover'] = fraud_scores.get('Account takeover', 0) + 90
+    if feature_row.get('low_balance', 0) == 1 and high_value:
+        fraud_scores['Account takeover'] = fraud_scores.get('Account takeover', 0) + 70
 
     # High-risk merchant categories / keywords
-    if high_risk_category or any(keyword in merchant for keyword in BLACKLISTED_MERCHANT_KEYWORDS):
-        return 'High-risk merchant'
+    if high_risk_category:
+        fraud_scores['High-risk merchant'] = fraud_scores.get('High-risk merchant', 0) + 85
+    if any(keyword in merchant for keyword in BLACKLISTED_MERCHANT_KEYWORDS):
+        fraud_scores['High-risk merchant'] = fraud_scores.get('High-risk merchant', 0) + 95
 
     # Cross-border anomalies (geo + currency)
     if country_mismatch and is_foreign_currency:
-        return 'Cross-border anomaly'
-
-    if country_mismatch:
-        return 'Unusual location'
+        fraud_scores['Cross-border anomaly'] = fraud_scores.get('Cross-border anomaly', 0) + 100
+    elif country_mismatch:
+        fraud_scores['Unusual location'] = fraud_scores.get('Unusual location', 0) + 90
 
     # New payee spikes
-    if is_first_time and (is_transfer or 'wire' in transaction_type or 'transfer' in description):
-        return 'New payee spike'
+    if is_first_time and is_transfer:
+        fraud_scores['New payee spike'] = fraud_scores.get('New payee spike', 0) + 85
+    if 'wire' in transaction_type or 'transfer' in description:
+        fraud_scores['New payee spike'] = fraud_scores.get('New payee spike', 0) + 60
 
     # Card-not-present / online risk
     if _is_card_not_present(transaction_type, category, description):
-        return 'Card-not-present risk'
+        fraud_scores['Card-not-present risk'] = fraud_scores.get('Card-not-present risk', 0) + 80
 
     # Velocity / burst spending
     if txn_count >= 15:
-        return 'Velocity abuse'
+        fraud_scores['Velocity abuse'] = fraud_scores.get('Velocity abuse', 0) + 100
+    elif txn_count >= 10:
+        fraud_scores['Velocity abuse'] = fraud_scores.get('Velocity abuse', 0) + 70
 
     if txn_count >= 5 and amount_deviation < 1:
-        return 'Transaction burst'
+        fraud_scores['Transaction burst'] = fraud_scores.get('Transaction burst', 0) + 85
+    elif txn_count >= 3:
+        fraud_scores['Transaction burst'] = fraud_scores.get('Transaction burst', 0) + 50
 
     # Money mule style credits
     if _looks_like_money_mule(transaction_row, feature_row, amount, is_first_time):
-        return 'Money mule pattern'
+        fraud_scores['Money mule pattern'] = fraud_scores.get('Money mule pattern', 0) + 95
 
     # Structuring / smurfing
-    if 9000 <= amount <= 10000 or (amount >= 5000 and txn_count >= 5 and amount_deviation < 1.5):
-        return 'Structuring / smurfing'
+    if 9000 <= amount <= 10000:
+        fraud_scores['Structuring / smurfing'] = fraud_scores.get('Structuring / smurfing', 0) + 100
+    elif amount >= 5000 and txn_count >= 5 and amount_deviation < 1.5:
+        fraud_scores['Structuring / smurfing'] = fraud_scores.get('Structuring / smurfing', 0) + 80
 
     # Unusual amount spikes
-    if amount_zscore > 3 or amount_deviation > 3:
-        return 'Unusual amount'
+    if amount_zscore > 3:
+        fraud_scores['Unusual amount'] = fraud_scores.get('Unusual amount', 0) + 90
+    elif amount_deviation > 3:
+        fraud_scores['Unusual amount'] = fraud_scores.get('Unusual amount', 0) + 80
+    elif amount_zscore > 2 or amount_deviation > 2:
+        fraud_scores['Unusual amount'] = fraud_scores.get('Unusual amount', 0) + 50
 
     # Round dollar transfers
     if _is_round_dollar(amount):
-        return 'Round-dollar pattern'
+        fraud_scores['Round-dollar pattern'] = fraud_scores.get('Round-dollar pattern', 0) + 75
 
     # Night-time activity
     if is_night:
-        return 'Night-time activity'
+        fraud_scores['Night-time activity'] = fraud_scores.get('Night-time activity', 0) + 70
 
-    # Default fallbacks - ensure EVERY fraud gets a specific label
-    # Check for any amount anomaly first
+    # Return the fraud type with the highest score
+    if fraud_scores:
+        return max(fraud_scores.items(), key=lambda x: x[1])[0]
+
+    # Fallback logic if no fraud scores (shouldn't happen for detected fraud)
+    # These are lower-confidence fallbacks
     if amount_zscore > 1.5 or amount_deviation > 1.5:
         return 'Unusual amount'
-
-    # Check for suspicious merchants or categories
     if high_risk_category:
         return 'High-risk merchant'
-
-    # Check for transfer-like patterns
-    if is_transfer or 'transfer' in transaction_type or 'wire' in transaction_type:
+    if is_transfer or 'transfer' in transaction_type:
         return 'New payee spike'
-
-    # Check for online/card-not-present indicators
     if 'online' in category or 'digital' in category:
         return 'Card-not-present risk'
-
-    # Check transaction timing
-    if is_night:
+    if is_night or is_weekend:
         return 'Night-time activity'
-
-    # Check transaction count velocity
-    if txn_count >= 3:
+    if txn_count >= 2:
         return 'Transaction burst'
 
-    # Final fallback - unusual amount (since ML flagged it as anomalous)
+    # Final fallback - unusual amount (since system flagged it as anomalous)
     return 'Unusual amount'
 
 

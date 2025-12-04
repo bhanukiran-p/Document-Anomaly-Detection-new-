@@ -220,15 +220,27 @@ const RealTimeAnalysis = () => {
   const reasonCountMap = useMemo(() => {
     const map = {};
     fraudReasonBreakdown.forEach((pattern) => {
-      const key = pattern.label || pattern.type;
-      if (!key) return;
-      map[key] = pattern.count;
+      const rawKey = pattern.label || pattern.type;
+      if (!rawKey) return;
+      const formattedKey = formatFraudReason(rawKey);
+      map[formattedKey] = (map[formattedKey] || 0) + (pattern.count || 0);
     });
     return map;
   }, [fraudReasonBreakdown]);
 
+  const fraudReasonChips = useMemo(() => {
+    const unique = new Set(STANDARD_FRAUD_REASONS);
+    Object.keys(reasonCountMap).forEach((reason) => unique.add(reason));
+    return Array.from(unique);
+  }, [reasonCountMap]);
+
   const renderPlotVisualization = (plot, options = {}) => {
     const height = options.height || 450;
+    const renderFallback = (message) => (
+      <div style={styles.missingPlot}>
+        {message || 'No visualization data available'}
+      </div>
+    );
 
     // Debug: Log plot structure
     console.log('Rendering plot:', {
@@ -244,25 +256,39 @@ const RealTimeAnalysis = () => {
 
     switch (plot.type) {
       case 'donut': {
-        const data = plot.data || [];
+        const data = Array.isArray(plot.data) ? plot.data.filter(Boolean) : [];
+        if (data.length === 0) {
+          return renderFallback('No distribution data available');
+        }
         console.log('🔥 DONUT DATA:', data);
-        // Use ECharts for better visuals and performance
         return <EChartsDonut data={data} title={plot.title} height={height} />;
       }
       case 'line_trend': {
-        const data = plot.data || [];
+        const data = Array.isArray(plot.data) ? plot.data.filter(Boolean) : [];
+        if (data.length === 0) {
+          return renderFallback('No trend data available');
+        }
         console.log('🔥 LINE DATA:', data);
         return <EChartsLine data={data} title={plot.title} height={height} />;
       }
       case 'heatmap': {
-        const xLabels = plot.xLabels || [];
-        const yLabels = plot.yLabels || [];
-        const dataPoints = plot.data || [];
+        const xLabels = Array.isArray(plot.xLabels) ? plot.xLabels : [];
+        const yLabels = Array.isArray(plot.yLabels) ? plot.yLabels : [];
+        const dataPoints = Array.isArray(plot.data) ? plot.data : [];
 
-        // Convert to matrix format for ECharts
-        const matrix = yLabels.map(yLabel =>
-          xLabels.map(xLabel => {
-            const cell = dataPoints.find(item => item.x === xLabel && item.y === yLabel);
+        if (
+          xLabels.length === 0 ||
+          yLabels.length === 0 ||
+          dataPoints.length === 0
+        ) {
+          return renderFallback('No correlation data available');
+        }
+
+        const matrix = yLabels.map((yLabel) =>
+          xLabels.map((xLabel) => {
+            const cell = dataPoints.find(
+              (item) => item.x === xLabel && item.y === yLabel
+            );
             return cell ? cell.value : 0;
           })
         );
@@ -272,28 +298,36 @@ const RealTimeAnalysis = () => {
         return <EChartsHeatmap data={{ matrix, labels: xLabels }} title={plot.title} height={height} />;
       }
       case 'geo_scatter': {
-        const data = plot.data || [];
+        const data = Array.isArray(plot.data) ? plot.data.filter(Boolean) : [];
+        if (data.length === 0) {
+          return renderFallback('No location data available');
+        }
         console.log('🔥 GEO DATA:', data);
         return <EChartsGeo data={data} title={plot.title} height={height} />;
       }
       case 'bar_reasons': {
-        const data = plot.data || [];
+        const data = Array.isArray(plot.data) ? plot.data.filter(Boolean) : [];
+        if (data.length === 0) {
+          return renderFallback('No breakdown data available');
+        }
         console.log('🔥 BAR DATA:', data);
         return <EChartsBar data={data} title={plot.title} height={height} />;
       }
       case 'sankey': {
+        if (
+          !plot.data ||
+          !Array.isArray(plot.data.nodes) ||
+          !Array.isArray(plot.data.links) ||
+          plot.data.nodes.length === 0 ||
+          plot.data.links.length === 0
+        ) {
+          return renderFallback('No flow data available');
+        }
         console.log('🔥 SANKEY DATA:', plot.data);
         return <EChartsSankey data={plot.data} title={plot.title} height={height} />;
       }
       default:
-        return (
-          <div style={styles.missingPlot}>
-            No visualization available for plot type: {plot.type || 'unknown'}
-            {plot.image && <div style={{ fontSize: '0.8rem', marginTop: '0.5rem', color: colors.mutedForeground }}>
-              (Legacy static plot detected but not supported in this view)
-            </div>}
-          </div>
-        );
+        return renderFallback(`No visualization available for plot type: ${plot.type || 'unknown'}`);
     }
   };
 
@@ -1550,19 +1584,19 @@ const RealTimeAnalysis = () => {
           <div style={styles.statsGrid}>
             <div style={styles.previewStatCard}>
               <div style={styles.previewStatLabel}>Total Rows</div>
-              <div style={styles.previewStatValue}>{csvPreview.totalRows.toLocaleString()}</div>
+              <div style={styles.previewStatValue}>{(csvPreview.totalRows || 0).toLocaleString()}</div>
             </div>
             <div style={styles.previewStatCard}>
               <div style={styles.previewStatLabel}>Total Columns</div>
-              <div style={styles.previewStatValue}>{csvPreview.totalColumns}</div>
+              <div style={styles.previewStatValue}>{csvPreview.totalColumns || 0}</div>
             </div>
             <div style={styles.previewStatCard}>
               <div style={styles.previewStatLabel}>Fraud Transactions</div>
-              <div style={{ ...styles.previewStatValue, color: '#ef4444' }}>{csvPreview.fraudCount.toLocaleString()}</div>
+              <div style={{ ...styles.previewStatValue, color: '#ef4444' }}>{(csvPreview.fraudCount || 0).toLocaleString()}</div>
             </div>
             <div style={styles.previewStatCard}>
               <div style={styles.previewStatLabel}>Date Range</div>
-              <div style={{ ...styles.previewStatValue, fontSize: '0.9rem' }}>{csvPreview.dateRange}</div>
+              <div style={{ ...styles.previewStatValue, fontSize: '0.9rem' }}>{csvPreview.dateRange || 'N/A'}</div>
             </div>
           </div>
 
@@ -1698,13 +1732,13 @@ const RealTimeAnalysis = () => {
             <div style={styles.statCard}>
               <div style={styles.statLabel}>Total Amount</div>
               <div style={{ ...styles.statValue, fontSize: '1.5rem' }}>
-                ${analysisResult.fraud_detection.total_amount.toLocaleString()}
+                ${(analysisResult.fraud_detection.total_amount || 0).toLocaleString()}
               </div>
             </div>
             <div style={styles.statCard}>
               <div style={styles.statLabel}>Fraud Amount</div>
               <div style={{ ...styles.statValue, ...styles.fraudStat, fontSize: '1.5rem' }}>
-                ${analysisResult.fraud_detection.total_fraud_amount.toLocaleString()}
+                ${(analysisResult.fraud_detection.total_fraud_amount || 0).toLocaleString()}
               </div>
             </div>
             <div style={styles.statCard}>
@@ -1741,8 +1775,8 @@ const RealTimeAnalysis = () => {
 
           <div style={styles.reasonLegend}>
             <div style={styles.reasonLegendTitle}>Standard Fraud Patterns</div>
-            <div style={styles.reasonLegendGrid}>
-              {STANDARD_FRAUD_REASONS.map((reason) => {
+              <div style={styles.reasonLegendGrid}>
+                {fraudReasonChips.map((reason) => {
                 const count = reasonCountMap[reason] || 0;
                 const isActive = count > 0;
                 return (
