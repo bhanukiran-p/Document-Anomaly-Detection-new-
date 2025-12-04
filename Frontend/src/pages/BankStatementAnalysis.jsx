@@ -639,24 +639,32 @@ const BankStatementAnalysis = () => {
                 }
                 
                 // Check if we have fraud types or customer info to display
+                // Check multiple locations for fraud_types (backend returns at top level and in nested data)
                 const fraudTypes = analysisData.fraud_types || 
                                   analysisData.data?.fraud_types || 
                                   mlAnalysis.fraud_types ||
-                                  analysisData.data?.ml_analysis?.fraud_types || [];
+                                  analysisData.data?.ml_analysis?.fraud_types || 
+                                  (analysisData.fraud_type ? [analysisData.fraud_type] : []) || // Also check singular fraud_type
+                                  [];
                 const customerInfo = analysisData.customer_info || analysisData.data?.customer_info || {};
                 const escalateCount = customerInfo.escalate_count || 0;
                 const fraudCount = customerInfo.fraud_count || 0;
                 const isNewCustomer = !customerInfo.customer_id;
                 const customerStatus = isNewCustomer ? 'New Customer' : 'Repeat Customer';
                 
-                // Show card if we have fraud types OR customer history
-                return fraudTypes.length > 0 || escalateCount > 0 || fraudCount > 0;
+                // Show card if we have fraud types OR customer history OR fraud_type_label
+                // Also show if recommendation is REJECT (even if fraud_types is empty, we should show something)
+                const hasFraudType = fraudTypes.length > 0 || analysisData.fraud_type || analysisData.fraud_type_label;
+                return hasFraudType || escalateCount > 0 || fraudCount > 0 || aiRecommendation === 'REJECT';
               })() ? (
                 (() => {
+                  // Check multiple locations for fraud_types (backend returns at top level and in nested data)
                   const fraudTypes = analysisData.fraud_types || 
                                     analysisData.data?.fraud_types || 
                                     mlAnalysis.fraud_types ||
-                                    analysisData.data?.ml_analysis?.fraud_types || [];
+                                    analysisData.data?.ml_analysis?.fraud_types || 
+                                    (analysisData.fraud_type ? [analysisData.fraud_type] : []) || // Also check singular fraud_type
+                                    [];
                   const customerInfo = analysisData.customer_info || analysisData.data?.customer_info || {};
                   const escalateCount = customerInfo.escalate_count || 0;
                   const fraudCount = customerInfo.fraud_count || 0;
@@ -669,19 +677,25 @@ const BankStatementAnalysis = () => {
                                             aiAnalysis.fraud_explanations ||
                                             analysisData.data?.ai_analysis?.fraud_explanations || [];
                   
-                  // Get primary fraud type - prioritize fraud_types, then fraud_explanations, then default
+                  // Get primary fraud type - prioritize fraud_type_label, then fraud_types, then fraud_explanations, then default
                   let primaryFraudType = null;
-                  if (fraudTypes.length > 0) {
+                  if (analysisData.fraud_type_label) {
+                    // Use human-readable label from backend if available
+                    primaryFraudType = analysisData.fraud_type_label;
+                  } else if (fraudTypes.length > 0) {
                     primaryFraudType = fraudTypes[0].replace(/_/g, ' ');
+                  } else if (analysisData.fraud_type) {
+                    // Use singular fraud_type if available
+                    primaryFraudType = analysisData.fraud_type.replace(/_/g, ' ');
                   } else if (fraudExplanations.length > 0 && fraudExplanations[0].type) {
                     // Use fraud explanation type if available
                     primaryFraudType = fraudExplanations[0].type.replace(/_/g, ' ');
                   } else if (escalateCount > 0 || fraudCount > 0) {
-                    // For repeat customers, default to FABRICATED_DOCUMENT
-                    primaryFraudType = 'FABRICATED DOCUMENT';
+                    // For repeat customers, default to REPEAT_OFFENDER
+                    primaryFraudType = 'REPEAT OFFENDER';
                   } else {
-                    // Last resort: use FABRICATED_DOCUMENT
-                    primaryFraudType = 'FABRICATED DOCUMENT';
+                    // Last resort: use BALANCE_CONSISTENCY_VIOLATION (common for bank statements)
+                    primaryFraudType = 'BALANCE CONSISTENCY VIOLATION';
                   }
                   
                   // HYBRID APPROACH: Combine document-level fraud explanations with REPEAT_OFFENDER info
