@@ -4,7 +4,7 @@ import { colors } from '../styles/colors';
 import {
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Sector,
-  ComposedChart
+  ComposedChart, ScatterChart, Scatter, ZAxis
 } from 'recharts';
 import { FaUpload, FaCog } from 'react-icons/fa';
 
@@ -145,7 +145,218 @@ const BankStatementInsights = () => {
         })()
       }));
 
-    // 4. Fraud Trend Over Time
+    // 4. Fraud Type Distribution (classify by actual fraud types)
+    const fraudTypeCount = {};
+    
+    // Track account holders for repeat offender detection
+    const accountHolderRiskCount = {};
+    
+    // Helper function to normalize fraud type name from database
+    const normalizeFraudType = (fraudType) => {
+      // Explicitly check for null/undefined/empty string
+      if (fraudType === null || fraudType === undefined || fraudType === '') {
+        return null;
+      }
+      const normalized = fraudType.toString().trim();
+      if (!normalized) return null;
+      
+      // Map database values to our standard names
+      const typeMap = {
+        'fabricated document': 'Fabricated Document',
+        'altered legitimate document': 'Altered Legitimate Document',
+        'suspicious transaction patterns': 'Suspicious Transaction Patterns',
+        'balance consistency violation': 'Balance Consistency Violation',
+        'unrealistic financial proportion': 'Unrealistic Financial Proportion',
+        'unrealistic financial proportion': 'Unrealistic Financial Proportion', // Handle both cases
+        'repeat offender': 'Repeat Offender'
+      };
+      return typeMap[normalized.toLowerCase()] || normalized;
+    };
+    
+    // Helper function to classify fraud type based on anomalies and data
+    const classifyFraudType = (row) => {
+      const anomalies = row['Top Anomalies'] || row['top_anomalies'] || row['Anomalies'] || row['anomalies'] || '';
+      const anomaliesStr = typeof anomalies === 'string' ? anomalies.toLowerCase() : 
+                          (Array.isArray(anomalies) ? anomalies.join(' ').toLowerCase() : 
+                          (typeof anomalies === 'object' ? JSON.stringify(anomalies).toLowerCase() : ''));
+      
+      const risk = parseFloat_(row['Fraud Risk Score (%)'] || row['fraud_risk_score'] || 0);
+      const confidence = parseFloat_(row['Model Confidence (%)'] || row['model_confidence'] || 0);
+      const accountHolder = (row['Account Holder'] || row['account_holder'] || '').toLowerCase().trim();
+      
+      // 1. Fabricated Document - Low confidence, missing critical fields, or document structure issues
+      if (confidence < 50 || 
+          anomaliesStr.includes('missing critical fields') ||
+          anomaliesStr.includes('document structure') ||
+          anomaliesStr.includes('invalid format') ||
+          anomaliesStr.includes('poor ocr') ||
+          (!row['Bank Name'] && !row['bank_name']) ||
+          (!row['Account Number'] && !row['account_number'])) {
+        return 'Fabricated Document';
+      }
+      
+      // 2. Altered Legitimate Document - Signs of tampering or modification
+      if (anomaliesStr.includes('altered') ||
+          anomaliesStr.includes('tampered') ||
+          anomaliesStr.includes('modified') ||
+          anomaliesStr.includes('inconsistent formatting') ||
+          anomaliesStr.includes('font mismatch') ||
+          anomaliesStr.includes('date mismatch') ||
+          anomaliesStr.includes('signature mismatch')) {
+        return 'Altered Legitimate Document';
+      }
+      
+      // 3. Suspicious Transaction Patterns - Unusual transaction activity
+      if (anomaliesStr.includes('suspicious transaction') ||
+          anomaliesStr.includes('unusual pattern') ||
+          anomaliesStr.includes('rapid transactions') ||
+          anomaliesStr.includes('round number') ||
+          anomaliesStr.includes('odd hours') ||
+          anomaliesStr.includes('transaction frequency') ||
+          anomaliesStr.includes('unusual amount')) {
+        return 'Suspicious Transaction Patterns';
+      }
+      
+      // 4. Balance Consistency Violation - Math doesn't add up
+      if (anomaliesStr.includes('balance inconsistent') ||
+          anomaliesStr.includes('balance mismatch') ||
+          anomaliesStr.includes('amount mismatch') ||
+          anomaliesStr.includes('math inconsistent') ||
+          anomaliesStr.includes('reconciliation') ||
+          anomaliesStr.includes('balance calculation')) {
+        return 'Balance Consistency Violation';
+      }
+      
+      // 5. Unrealistic Financial Proportion - Unrealistic amounts or proportions
+      if (anomaliesStr.includes('unrealistic') ||
+          anomaliesStr.includes('proportion') ||
+          anomaliesStr.includes('unusual amount') ||
+          anomaliesStr.includes('excessive') ||
+          anomaliesStr.includes('improbable') ||
+          risk > 70 && confidence > 70) {
+        return 'Unrealistic Financial Proportion';
+      }
+      
+      // Default: if high risk but doesn't match above, classify as Suspicious Transaction Patterns
+      if (risk >= 75) {
+        return 'Suspicious Transaction Patterns';
+      }
+      
+      // If no specific match, use risk-based classification as fallback
+      return 'Unrealistic Financial Proportion';
+    };
+    
+    // First pass: track account holders for repeat offender detection
+    rows.forEach(r => {
+      const accountHolder = (r['Account Holder'] || r['account_holder'] || '').toLowerCase().trim();
+      const risk = parseFloat_(r['Fraud Risk Score (%)'] || r['fraud_risk_score'] || 0);
+      if (accountHolder) {
+        if (!accountHolderRiskCount[accountHolder]) {
+          accountHolderRiskCount[accountHolder] = { count: 0, highRiskCount: 0 };
+        }
+        accountHolderRiskCount[accountHolder].count++;
+        if (risk >= 50) {
+          accountHolderRiskCount[accountHolder].highRiskCount++;
+        }
+      }
+    });
+    
+    // Second pass: classify all statements
+    // Priority: 1) Use database fraud_types if available, 2) Otherwise classify from anomalies
+    const repeatOffenderThreshold = 2; // 2+ high-risk statements
+    const genericFallbackTypes = ['Suspicious Transaction Patterns', 'Unrealistic Financial Proportion'];
+    
+    rows.forEach(r => {
+      const accountHolder = (r['Account Holder'] || r['account_holder'] || '').toLowerCase().trim();
+      const risk = parseFloat_(r['Fraud Risk Score (%)'] || r['fraud_risk_score'] || 0);
+      
+      // First priority: Use fraud_types from database if available
+      // Check all possible field names
+      const dbFraudType = r['fraud_types'] !== undefined ? r['fraud_types'] : 
+                         (r['Fraud Types'] !== undefined ? r['Fraud Types'] : 
+                         (r['fraud_type'] !== undefined ? r['fraud_type'] : 
+                         (r['Fraud Type'] !== undefined ? r['Fraud Type'] : null)));
+      
+      // If database fraud_type is explicitly NULL, undefined, empty string, or the string "null", skip classification
+      // This prevents NULL records from being incorrectly classified as "Unrealistic Financial Proportion"
+      if (dbFraudType === null || 
+          dbFraudType === undefined || 
+          dbFraudType === '' || 
+          (typeof dbFraudType === 'string' && dbFraudType.toLowerCase() === 'null')) {
+        // Skip NULL records - they shouldn't be classified
+        return;
+      }
+      
+      let fraudType = normalizeFraudType(dbFraudType);
+      
+      // If no database fraud type (but not NULL), classify from anomalies
+      if (!fraudType) {
+        fraudType = classifyFraudType(r);
+        
+        // Check if this classification was a generic fallback (no specific indicators)
+        const anomalies = r['Top Anomalies'] || r['top_anomalies'] || r['Anomalies'] || r['anomalies'] || '';
+        const anomaliesStr = typeof anomalies === 'string' ? anomalies.toLowerCase() : 
+                            (Array.isArray(anomalies) ? anomalies.join(' ').toLowerCase() : 
+                            (typeof anomalies === 'object' ? JSON.stringify(anomalies).toLowerCase() : ''));
+        
+        // Check if we have specific anomaly indicators
+        const hasSpecificIndicators = anomaliesStr.length > 0 && (
+          anomaliesStr.includes('missing') ||
+          anomaliesStr.includes('altered') ||
+          anomaliesStr.includes('tampered') ||
+          anomaliesStr.includes('suspicious transaction') ||
+          anomaliesStr.includes('balance inconsistent') ||
+          anomaliesStr.includes('balance mismatch') ||
+          anomaliesStr.includes('amount mismatch') ||
+          anomaliesStr.includes('math inconsistent') ||
+          anomaliesStr.includes('unrealistic') ||
+          anomaliesStr.includes('proportion') ||
+          anomaliesStr.includes('document structure') ||
+          anomaliesStr.includes('invalid format') ||
+          anomaliesStr.includes('poor ocr') ||
+          anomaliesStr.includes('inconsistent formatting') ||
+          anomaliesStr.includes('font mismatch') ||
+          anomaliesStr.includes('date mismatch') ||
+          anomaliesStr.includes('signature mismatch')
+        );
+        
+        // Only override with "Repeat Offender" if:
+        // 1. The account holder has 2+ high-risk statements AND
+        // 2. The current statement is also high-risk (≥50%) AND
+        // 3. The classification is a generic fallback (not a specific fraud type) OR no specific indicators found
+        if (accountHolder && accountHolderRiskCount[accountHolder]) {
+          const holderData = accountHolderRiskCount[accountHolder];
+          const isRepeatOffender = holderData.highRiskCount >= repeatOffenderThreshold && holderData.count >= repeatOffenderThreshold;
+          const isCurrentHighRisk = risk >= 50;
+          
+          // Only classify as Repeat Offender if:
+          // - It's a repeat offender pattern AND
+          // - Current statement is high-risk AND
+          // - (No specific indicators found OR it's already classified as a generic fallback)
+          if (isRepeatOffender && isCurrentHighRisk && (!hasSpecificIndicators || genericFallbackTypes.includes(fraudType))) {
+            fraudType = 'Repeat Offender';
+          }
+        }
+      }
+      
+      // Only count if we have a valid fraud type
+      if (fraudType) {
+        if (!fraudTypeCount[fraudType]) {
+          fraudTypeCount[fraudType] = 0;
+        }
+        fraudTypeCount[fraudType]++;
+      }
+    });
+
+    const fraudTypeData = Object.entries(fraudTypeCount)
+      .map(([name, count]) => ({
+        name: name.replace(/_/g, ' ').trim(),
+        value: count
+      }))
+      .filter(item => item.value > 0)
+      .sort((a, b) => b.value - a.value);
+
+    // 5. Fraud Trend Over Time
     const fraudOverTime = {};
     rows.forEach(r => {
       const dateStr = r['Timestamp'] || r['timestamp'] || r['Statement Period'] || '';
@@ -172,7 +383,7 @@ const BankStatementInsights = () => {
       .sort((a, b) => a.date.localeCompare(b.date))
       .slice(-30);
 
-    // 5. Summary Metrics
+    // 6. Summary Metrics
     const totalStatements = rows.length;
     const avgRiskScore = riskScores.length > 0 ? (riskScores.reduce((a, b) => a + b, 0) / riskScores.length).toFixed(1) : '0.0';
     const approveCount = recommendations.filter(d => d === 'APPROVE').length;
@@ -186,6 +397,7 @@ const BankStatementInsights = () => {
         { name: 'No Data', value: rows.length }
       ],
       riskByBankData,
+      fraudTypeData,
       fraudTrendData,
       metrics: {
         totalStatements,
@@ -333,24 +545,55 @@ const BankStatementInsights = () => {
 
     try {
       // Transform database records to format expected by processData
-      const rows = bankStatements.map(bs => ({
-        'fraud_risk_score': bs.fraud_risk_score || 0,
-        'Fraud Risk Score (%)': (bs.fraud_risk_score || 0) * 100,
-        'ai_recommendation': bs.ai_recommendation || 'UNKNOWN',
-        'AI Recommendation': bs.ai_recommendation || 'UNKNOWN',
-        'bank_name': bs.bank_name || 'Unknown',
-        'Bank Name': bs.bank_name || 'Unknown',
-        'account_holder': bs.account_holder || '',
-        'Account Holder': bs.account_holder || '',
-        'account_number': bs.account_number || '',
-        'Account Number': bs.account_number || '',
-        'statement_period': bs.statement_period || '',
-        'Statement Period': bs.statement_period || '',
-        'timestamp': bs.timestamp || bs.created_at || '',
-        'Timestamp': bs.timestamp || bs.created_at || '',
-        'model_confidence': bs.model_confidence || 0,
-        'Model Confidence (%)': (bs.model_confidence || 0) * 100,
-      }));
+      const rows = bankStatements.map(bs => {
+        // Parse top_anomalies if it's a JSONB field
+        let anomalies = '';
+        if (bs.top_anomalies) {
+          if (typeof bs.top_anomalies === 'string') {
+            try {
+              const parsed = JSON.parse(bs.top_anomalies);
+              anomalies = Array.isArray(parsed) ? parsed.map(a => 
+                typeof a === 'string' ? a : (a.message || a.type || JSON.stringify(a))
+              ).join(' | ') : bs.top_anomalies;
+            } catch {
+              anomalies = bs.top_anomalies;
+            }
+          } else if (Array.isArray(bs.top_anomalies)) {
+            anomalies = bs.top_anomalies.map(a => 
+              typeof a === 'string' ? a : (a.message || a.type || JSON.stringify(a))
+            ).join(' | ');
+          } else {
+            anomalies = JSON.stringify(bs.top_anomalies);
+          }
+        }
+        
+        return {
+          'fraud_risk_score': bs.fraud_risk_score || 0,
+          'Fraud Risk Score (%)': (bs.fraud_risk_score || 0) * 100,
+          'ai_recommendation': bs.ai_recommendation || 'UNKNOWN',
+          'AI Recommendation': bs.ai_recommendation || 'UNKNOWN',
+          'bank_name': bs.bank_name || 'Unknown',
+          'Bank Name': bs.bank_name || 'Unknown',
+          'account_holder': bs.account_holder || '',
+          'Account Holder': bs.account_holder || '',
+          'account_number': bs.account_number || '',
+          'Account Number': bs.account_number || '',
+          'statement_period': bs.statement_period || '',
+          'Statement Period': bs.statement_period || '',
+          'timestamp': bs.timestamp || bs.created_at || '',
+          'Timestamp': bs.timestamp || bs.created_at || '',
+          'model_confidence': bs.model_confidence || 0,
+          'Model Confidence (%)': (bs.model_confidence || 0) * 100,
+          'top_anomalies': anomalies,
+          'Top Anomalies': anomalies,
+          'anomalies': anomalies,
+          'Anomalies': anomalies,
+          'fraud_types': bs.fraud_types || bs.fraud_type || null,
+          'Fraud Types': bs.fraud_types || bs.fraud_type || null,
+          'fraud_type': bs.fraud_types || bs.fraud_type || null,
+          'Fraud Type': bs.fraud_types || bs.fraud_type || null,
+        };
+      });
 
       const processed = processData(rows);
       setCsvData(processed);
@@ -561,11 +804,26 @@ const BankStatementInsights = () => {
                 {totalRecords} records
               </div>
             </div>
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <button
+                onClick={() => fetchBankStatementsList(null, bankFilter)}
+                style={{
+                  padding: '0.75rem 1rem',
+                  borderRadius: '0.5rem',
+                  backgroundColor: !dateFilter ? primary : colors.secondary,
+                  color: !dateFilter ? colors.primaryForeground : colors.foreground,
+                  border: `1px solid ${colors.border}`,
+                  cursor: 'pointer',
+                  fontWeight: !dateFilter ? '600' : '500',
+                  transition: 'all 0.3s',
+                }}
+              >
+                All Time
+              </button>
               <button
                 onClick={() => fetchBankStatementsList('last_30', bankFilter)}
                 style={{
-                  padding: '0.75rem',
+                  padding: '0.75rem 1rem',
                   borderRadius: '0.5rem',
                   backgroundColor: dateFilter === 'last_30' ? primary : colors.secondary,
                   color: dateFilter === 'last_30' ? colors.primaryForeground : colors.foreground,
@@ -580,7 +838,7 @@ const BankStatementInsights = () => {
               <button
                 onClick={() => fetchBankStatementsList('last_60', bankFilter)}
                 style={{
-                  padding: '0.75rem',
+                  padding: '0.75rem 1rem',
                   borderRadius: '0.5rem',
                   backgroundColor: dateFilter === 'last_60' ? primary : colors.secondary,
                   color: dateFilter === 'last_60' ? colors.primaryForeground : colors.foreground,
@@ -595,7 +853,7 @@ const BankStatementInsights = () => {
               <button
                 onClick={() => fetchBankStatementsList('last_90', bankFilter)}
                 style={{
-                  padding: '0.75rem',
+                  padding: '0.75rem 1rem',
                   borderRadius: '0.5rem',
                   backgroundColor: dateFilter === 'last_90' ? primary : colors.secondary,
                   color: dateFilter === 'last_90' ? colors.primaryForeground : colors.foreground,
@@ -607,6 +865,46 @@ const BankStatementInsights = () => {
               >
                 Last 90
               </button>
+              <button
+                onClick={() => fetchBankStatementsList('older', bankFilter)}
+                style={{
+                  padding: '0.75rem 1rem',
+                  borderRadius: '0.5rem',
+                  backgroundColor: dateFilter === 'older' ? primary : colors.secondary,
+                  color: dateFilter === 'older' ? colors.primaryForeground : colors.foreground,
+                  border: `1px solid ${colors.border}`,
+                  cursor: 'pointer',
+                  fontWeight: dateFilter === 'older' ? '600' : '500',
+                  transition: 'all 0.3s',
+                }}
+              >
+                Older
+              </button>
+              {(dateFilter || bankFilter) && (
+                <button
+                  onClick={() => {
+                    setDateFilter(null);
+                    setBankFilter(null);
+                    setSearchQuery('');
+                    fetchBankStatementsList(null, null);
+                  }}
+                  style={{
+                    padding: '0.75rem 1rem',
+                    borderRadius: '0.5rem',
+                    backgroundColor: colors.accent.redLight || '#fee2e2',
+                    color: colors.accent.red || primary,
+                    border: `1px solid ${colors.border}`,
+                    cursor: 'pointer',
+                    fontWeight: '600',
+                    transition: 'all 0.3s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                  }}
+                >
+                  <span>Reset Filters</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -655,14 +953,6 @@ const BankStatementInsights = () => {
               </div>
               <div style={{ fontSize: '2rem', fontWeight: 'bold', color: primary }}>
                 {csvData.metrics.avgRiskScore}%
-              </div>
-            </div>
-            <div style={chartBoxStyle}>
-              <div style={{ fontSize: '0.875rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
-                High Risk Count
-              </div>
-              <div style={{ fontSize: '2rem', fontWeight: 'bold', color: primary }}>
-                {csvData.metrics.highRiskCount}
               </div>
             </div>
             <div style={chartBoxStyle}>
@@ -865,7 +1155,7 @@ const BankStatementInsights = () => {
             {!bankFilter && csvData.riskByBankData && csvData.riskByBankData.length > 0 && (
               <div style={chartBoxStyle}>
                 <h3 style={chartTitleStyle}>Risk Level by Bank</h3>
-                <ResponsiveContainer width="100%" height={320}>
+                <ResponsiveContainer width="100%" height={400}>
                   <ComposedChart 
                     data={csvData.riskByBankData}
                     margin={{ top: 10, right: 30, left: 10, bottom: 60 }}
@@ -971,31 +1261,247 @@ const BankStatementInsights = () => {
               </div>
             )}
 
-            {/* Fraud Trend Over Time */}
-            {csvData.fraudTrendData && csvData.fraudTrendData.length > 0 && (
+            {/* Fraud Type Distribution - Scatter Plot */}
+            {csvData.fraudTypeData && csvData.fraudTypeData.length > 0 && (
               <div style={chartBoxStyle}>
-                <h3 style={chartTitleStyle}>Fraud Trend Over Time</h3>
-                <ResponsiveContainer width="100%" height={320}>
-                  <LineChart data={csvData.fraudTrendData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                    <XAxis dataKey="date" stroke={colors.mutedForeground} />
-                    <YAxis yAxisId="left" stroke={colors.mutedForeground} />
-                    <YAxis yAxisId="right" orientation="right" stroke={colors.mutedForeground} />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: colors.card,
-                        border: `1px solid ${colors.border}`,
-                        color: colors.foreground
-                      }}
-                    />
-                    <Legend />
-                    <Line yAxisId="left" type="monotone" dataKey="avgRisk" stroke={primary} strokeWidth={2} name="Avg Risk Score %" />
-                    <Line yAxisId="right" type="monotone" dataKey="highRiskCount" stroke="#ef4444" strokeWidth={2} name="High-Risk Count" />
-                  </LineChart>
-                </ResponsiveContainer>
+                <h3 style={chartTitleStyle}>Fraud Type Distribution</h3>
+              {(() => {
+                const total = csvData.fraudTypeData.reduce((sum, item) => sum + item.value, 0);
+                const maxValue = Math.max(...csvData.fraudTypeData.map(e => e.value));
+                
+                // Colors that complement DAD color scheme (red/navy theme)
+                const COMPLEMENTARY_COLORS = [
+                  '#E53935', // Primary red (DAD)
+                  '#14B8A6', // Teal (complements red)
+                  '#F97316', // Orange/coral (warm complement)
+                  '#8B5CF6', // Purple (complements navy)
+                  '#06B6D4', // Cyan (bright complement)
+                  '#F59E0B', // Amber (warm accent)
+                  '#EC4899', // Pink (vibrant complement)
+                  '#10B981'  // Green (fresh complement)
+                ];
+                
+                // Prepare scatter plot data with complementary colors
+                const scatterData = csvData.fraudTypeData.map((entry, index) => {
+                  const percentage = total > 0 ? ((entry.value / total) * 100) : 0;
+                  return {
+                    name: entry.name,
+                    count: entry.value,
+                    percentage: parseFloat(percentage.toFixed(1)),
+                    originalPercentage: parseFloat(percentage.toFixed(1)), // Keep original for domain calculation
+                    size: entry.value, // For Z-axis (bubble size)
+                    color: COMPLEMENTARY_COLORS[index % COMPLEMENTARY_COLORS.length],
+                    index: index
+                  };
+                });
+                
+                // Add minimal jitter only to count axis to prevent overlapping points
+                const processedData = scatterData.map((entry, index) => {
+                  // Find other entries with same count and percentage
+                  const duplicates = scatterData.filter((e, i) => 
+                    i !== index && 
+                    e.count === entry.count && 
+                    Math.abs(e.percentage - entry.percentage) < 0.1
+                  );
+                  
+                  // Calculate jitter offset based on position among duplicates
+                  const duplicateIndex = scatterData.slice(0, index).filter((e) => 
+                    e.count === entry.count && 
+                    Math.abs(e.percentage - entry.percentage) < 0.1
+                  ).length;
+                  
+                  // Add small offset only to count axis to prevent overlap
+                  const jitterRadius = 2; // Small jitter for count axis only
+                  const angle = (duplicateIndex * (2 * Math.PI)) / (duplicates.length + 1);
+                  const jitterY = duplicateIndex > 0 ? Math.sin(angle) * jitterRadius : 0;
+                  
+                  return {
+                    ...entry,
+                    // Keep original percentage - no jitter on x-axis
+                    percentage: entry.originalPercentage,
+                    count: entry.count + jitterY // Only add jitter to count
+                  };
+                });
+                
+                // Use original percentages for domain calculation
+                const originalPercentages = scatterData.map(e => e.originalPercentage);
+                const minPercentage = Math.min(...originalPercentages);
+                const maxPercentage = Math.max(...originalPercentages);
+                
+                return (
+                  <>
+                    <ResponsiveContainer width="100%" height={400}>
+                      <ScatterChart
+                        margin={{ top: 20, right: 30, bottom: 20, left: 20 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.3} />
+                        <XAxis
+                          type="number"
+                          dataKey="percentage"
+                          name="Percentage"
+                          domain={[Math.max(0, minPercentage - 2), maxPercentage + 2]}
+                          tick={{ fill: colors.foreground, fontSize: 12 }}
+                          tickFormatter={(value) => `${value.toFixed(1)}%`}
+                          tickCount={8}
+                          allowDecimals={true}
+                          stroke={colors.border}
+                          label={{ value: 'Percentage (%)', position: 'insideBottom', offset: -5, fill: colors.foreground, fontSize: 12 }}
+                        />
+                        <YAxis
+                          type="number"
+                          dataKey="count"
+                          name="Count"
+                          domain={[0, 'dataMax + 5']}
+                          tick={{ fill: colors.foreground, fontSize: 12 }}
+                          stroke={colors.border}
+                          label={{ value: 'Count', angle: -90, position: 'insideLeft', fill: colors.foreground, fontSize: 12 }}
+                        />
+                        <ZAxis
+                          type="number"
+                          dataKey="size"
+                          range={[50, 300]}
+                          name="Size"
+                        />
+                        <Tooltip
+                          content={({ active, payload }) => {
+                            if (active && payload && payload.length) {
+                              const data = payload[0].payload;
+                              return (
+                                <div style={{
+                                  backgroundColor: colors.card,
+                                  border: `2px solid ${primary}`,
+                                  borderRadius: '8px',
+                                  padding: '12px',
+                                  boxShadow: `0 4px 20px rgba(0, 0, 0, 0.8)`,
+                                  color: colors.foreground
+                                }}>
+                                  <div style={{ fontWeight: 'bold', fontSize: '14px', marginBottom: '8px', borderBottom: `1px solid ${colors.border}`, paddingBottom: '4px' }}>
+                                    {data.name}
+                                  </div>
+                                  <div style={{ fontSize: '13px', marginTop: '4px' }}>
+                                    <span style={{ color: primary, fontWeight: 'bold' }}>Count:</span> {data.count}
+                                  </div>
+                                  <div style={{ fontSize: '13px', marginTop: '4px' }}>
+                                    <span style={{ color: primary, fontWeight: 'bold' }}>Percentage:</span> {data.originalPercentage.toFixed(1)}%
+                                  </div>
+                                </div>
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+                        <Scatter
+                          name="Fraud Types"
+                          data={processedData}
+                          fill={primary}
+                        >
+                          {processedData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Scatter>
+                      </ScatterChart>
+                    </ResponsiveContainer>
+                    
+                    {/* Custom Legend */}
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                      gap: '1rem',
+                      marginTop: '1rem',
+                      padding: '1rem',
+                      backgroundColor: colors.card,
+                      borderRadius: '8px',
+                      border: `1px solid ${colors.border}`
+                    }}>
+                      {scatterData.map((entry, index) => (
+                        <div
+                          key={`legend-${index}`}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            gap: '0.75rem',
+                            padding: '0.5rem',
+                            borderRadius: '6px',
+                            transition: 'all 0.2s ease',
+                            cursor: 'pointer'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = colors.secondary;
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = 'transparent';
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: '14px',
+                              height: '14px',
+                              borderRadius: '50%',
+                              backgroundColor: entry.color,
+                              border: `2px solid ${colors.border}`,
+                              flexShrink: 0,
+                              marginTop: '2px'
+                            }}
+                          />
+                          <div style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '0.25rem',
+                            flex: 1,
+                            minWidth: 0
+                          }}>
+                            <span style={{
+                              color: colors.foreground,
+                              fontSize: '13px',
+                              fontWeight: '600',
+                              lineHeight: '1.4',
+                              wordBreak: 'break-word'
+                            }}>
+                              {entry.name}
+                            </span>
+                            <span style={{
+                              color: colors.mutedForeground,
+                              fontSize: '11px',
+                              fontWeight: '500',
+                              lineHeight: '1.4'
+                            }}>
+                              {entry.count} cases ({entry.percentage.toFixed(1)}%)
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                );
+              })()}
               </div>
             )}
           </div>
+
+          {/* Fraud Trend Over Time - Full Width Below */}
+          {csvData.fraudTrendData && csvData.fraudTrendData.length > 0 && (
+            <div style={chartBoxStyle}>
+              <h3 style={chartTitleStyle}>Fraud Trend Over Time</h3>
+              <ResponsiveContainer width="100%" height={320}>
+                <LineChart data={csvData.fraudTrendData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+                  <XAxis dataKey="date" stroke={colors.mutedForeground} />
+                  <YAxis yAxisId="left" stroke={colors.mutedForeground} />
+                  <YAxis yAxisId="right" orientation="right" stroke={colors.mutedForeground} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: colors.card,
+                      border: `1px solid ${colors.border}`,
+                      color: colors.foreground
+                    }}
+                  />
+                  <Legend />
+                  <Line yAxisId="left" type="monotone" dataKey="avgRisk" stroke={primary} strokeWidth={2} name="Avg Risk Score %" />
+                  <Line yAxisId="right" type="monotone" dataKey="highRiskCount" stroke="#ef4444" strokeWidth={2} name="High-Risk Count" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </div>
       )}
     </div>
