@@ -3,7 +3,8 @@ import { useDropzone } from 'react-dropzone';
 import { colors } from '../styles/colors';
 import {
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Sector
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Sector,
+  ComposedChart
 } from 'recharts';
 import { FaUpload, FaCog } from 'react-icons/fa';
 
@@ -128,11 +129,10 @@ const CheckInsights = () => {
     const riskByBankData = Object.entries(bankRisks)
       .map(([name, data]) => ({
         name,
-        avgRisk: ((data.totalRisk / data.count) * 100).toFixed(1),
+        avgRisk: parseFloat(((data.totalRisk / data.count) * 100).toFixed(1)), // Convert to number for line chart
         count: data.count
       }))
-      .sort((a, b) => parseFloat(b.avgRisk) - parseFloat(a.avgRisk))
-      .slice(0, 10); // Top 10 banks
+      .sort((a, b) => b.avgRisk - a.avgRisk); // Sort by risk, but show all banks
 
     // 4. Top High-Risk Payers
     const payerRisks = {};
@@ -1154,25 +1154,17 @@ const CheckInsights = () => {
               </div>
             </div>
 
-            {/* Row 2: Risk by Bank & Top High-Risk Payers */}
+            {/* Row 2: Risk by Bank (Combined Bar + Line) & Top High-Risk Payers */}
             {!bankFilter && csvData.riskByBankData && csvData.riskByBankData.length > 0 && (
               <div style={chartBoxStyle}>
                 <h3 style={chartTitleStyle}>Risk Level by Bank</h3>
                 <ResponsiveContainer width="100%" height={320}>
-                  <BarChart 
+                  <ComposedChart 
                     data={csvData.riskByBankData}
-                    margin={{ top: 10, right: 20, left: 10, bottom: 10 }}
+                    margin={{ top: 10, right: 30, left: 10, bottom: 80 }}
                     onMouseLeave={() => setActiveBankBarIndex({ bankIndex: null, series: null })}
                   >
                     <defs>
-                      <linearGradient id="avgRiskGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={colors.status.warning || '#f59e0b'} stopOpacity={1} />
-                        <stop offset="100%" stopColor={colors.status.warning || '#f59e0b'} stopOpacity={0.7} />
-                      </linearGradient>
-                      <linearGradient id="avgRiskGradientHover" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={colors.status.warning || '#f59e0b'} stopOpacity={1} />
-                        <stop offset="100%" stopColor={colors.status.warning || '#f59e0b'} stopOpacity={0.9} />
-                      </linearGradient>
                       <linearGradient id="countGradient" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor={colors.status.success || '#10b981'} stopOpacity={1} />
                         <stop offset="100%" stopColor={colors.status.success || '#10b981'} stopOpacity={0.7} />
@@ -1189,8 +1181,18 @@ const CheckInsights = () => {
                       stroke={colors.border}
                     />
                     <YAxis 
+                      yAxisId="left"
                       tick={{ fill: colors.foreground, fontSize: 12 }}
                       stroke={colors.border}
+                      label={{ value: 'Check Count', angle: -90, position: 'insideLeft', fill: colors.foreground }}
+                    />
+                    <YAxis 
+                      yAxisId="right"
+                      orientation="right"
+                      domain={[0, 100]}
+                      tick={{ fill: colors.foreground, fontSize: 12 }}
+                      stroke={colors.border}
+                      label={{ value: 'Avg Risk Score (%)', angle: 90, position: 'insideRight', fill: colors.foreground }}
                     />
                     <Tooltip 
                       content={({ active, payload }) => {
@@ -1221,28 +1223,7 @@ const CheckInsights = () => {
                     />
                     <Legend />
                     <Bar 
-                      dataKey="avgRisk" 
-                      fill="url(#avgRiskGradient)"
-                      name="Avg Risk Score (%)"
-                    >
-                      {csvData.riskByBankData.map((entry, index) => {
-                        const isActive = activeBankBarIndex.bankIndex === index && activeBankBarIndex.series === 'avgRisk';
-                        return (
-                          <Cell 
-                            key={`avgRisk-cell-${index}`}
-                            fill={isActive ? "url(#avgRiskGradientHover)" : "url(#avgRiskGradient)"}
-                            onMouseEnter={() => setActiveBankBarIndex({ bankIndex: index, series: 'avgRisk' })}
-                            onMouseLeave={() => setActiveBankBarIndex({ bankIndex: null, series: null })}
-                            style={{
-                              cursor: 'pointer',
-                              transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                              filter: isActive ? 'brightness(1.1)' : 'brightness(1)'
-                            }}
-                          />
-                        );
-                      })}
-                    </Bar>
-                    <Bar 
+                      yAxisId="left"
                       dataKey="count" 
                       fill="url(#countGradient)"
                       name="Check Count"
@@ -1264,7 +1245,17 @@ const CheckInsights = () => {
                         );
                       })}
                     </Bar>
-                  </BarChart>
+                    <Line 
+                      yAxisId="right"
+                      type="monotone" 
+                      dataKey="avgRisk" 
+                      stroke={primary}
+                      strokeWidth={3}
+                      dot={{ fill: primary, r: 5 }}
+                      activeDot={{ r: 7 }}
+                      name="Avg Risk Score (%)"
+                    />
+                  </ComposedChart>
                 </ResponsiveContainer>
               </div>
             )}
