@@ -436,8 +436,6 @@ const BankStatementAnalysis = () => {
   const analysisData = results;
   const mlAnalysis = analysisData?.ml_analysis || {};
   const aiAnalysis = analysisData?.ai_analysis || {};
-  const anomalies = analysisData?.anomalies || [];
-  const criticalFactors = analysisData ? buildBankCriticalFactors(analysisData, anomalies) : [];
 
   return (
     <div style={containerStyle}>
@@ -632,188 +630,151 @@ const BankStatementAnalysis = () => {
                 );
               })()}
 
-              {anomalies.length > 0 && (
-                <div style={{
-                  ...infoCardStyle,
-                  backgroundColor: `${colors.status.warning}10`,
-                  borderLeft: `4px solid ${colors.status.warning}`
-                }}>
-                  <h4 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                      <line x1="12" y1="9" x2="12" y2="13"/>
-                      <line x1="12" y1="17" x2="12.01" y2="17"/>
-                    </svg>
-                    Detected Anomalies
-                  </h4>
-                  <ul style={{ color: colors.mutedForeground, paddingLeft: '1.5rem' }}>
-                    {anomalies.map((anomaly, idx) => (
-                      <li key={idx} style={{ marginBottom: '0.4rem' }}>
-                        {emphasizeAnomaly(anomaly)}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {criticalFactors.length > 0 && (
-                <div style={{
-                  ...infoCardStyle,
-                  backgroundColor: `${primary}10`,
-                  borderLeft: `4px solid ${primary}`
-                }}>
-                  <h4 style={{ color: colors.foreground, marginBottom: '0.75rem', fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="12" cy="12" r="10" />
-                      <line x1="12" y1="8" x2="12" y2="13" />
-                      <line x1="12" y1="16" x2="12.01" y2="16" />
-                    </svg>
-                    Key Missing / Risk Factors
-                  </h4>
-                  <ul style={{ color: colors.foreground, paddingLeft: '1.5rem', marginBottom: 0 }}>
-                    {criticalFactors.map((factor, idx) => (
-                      <li key={idx} style={{ marginBottom: '0.35rem' }}>
-                        <strong>{factor}</strong>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Analysis Details Section - Always Display */}
-              <div style={{
-                ...infoCardStyle,
-                backgroundColor: colors.card,
-                border: `1px solid ${colors.border}`,
-              }}>
-                <h4 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"/>
-                    <path d="M12 6v6l4 2"/>
-                  </svg>
-                  Analysis Details
-                </h4>
+              {/* Fraud Type Card - Primary Fraud Type with Customer History as Reasons */}
+              {(() => {
+                // Hide if recommendation is APPROVE
+                const aiRecommendation = (analysisData.ai_recommendation || aiAnalysis.recommendation || 'UNKNOWN').toUpperCase();
+                if (aiRecommendation === 'APPROVE') {
+                  return false;
+                }
                 
-                {aiAnalysis.summary ? (
-                  <div style={{ marginBottom: '1rem' }}>
-                    <strong style={{ color: colors.foreground }}>Summary:</strong>
-                    <p style={{ color: colors.mutedForeground, marginTop: '0.5rem' }}>{aiAnalysis.summary}</p>
-                  </div>
-                ) : (
-                  <p style={{ color: colors.mutedForeground, fontStyle: 'italic' }}>No summary available</p>
-                )}
-
-                {Array.isArray(aiAnalysis.reasoning) && aiAnalysis.reasoning.length > 0 ? (
-                  <div style={{ marginBottom: '1rem' }}>
-                    <strong style={{ color: colors.foreground }}>Reasoning:</strong>
-                    <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
-                      {aiAnalysis.reasoning.map((reason, idx) => (
-                        <li key={idx} style={{ marginBottom: '0.3rem' }}>{reason}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : aiAnalysis.reasoning ? (
-                  <div style={{ marginBottom: '1rem' }}>
-                    <strong style={{ color: colors.foreground }}>Reasoning:</strong>
-                    <p style={{ color: colors.mutedForeground, marginTop: '0.5rem', whiteSpace: 'pre-wrap' }}>{aiAnalysis.reasoning}</p>
-                  </div>
-                ) : null}
-
-                {Array.isArray(aiAnalysis.key_indicators) && aiAnalysis.key_indicators.length > 0 ? (
-                  <div style={{ marginBottom: '1rem' }}>
-                    <strong style={{ color: colors.foreground }}>Key Fraud Indicators:</strong>
-                    <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
-                      {aiAnalysis.key_indicators.map((indicator, idx) => (
-                        <li key={idx} style={{ marginBottom: '0.3rem' }}>{indicator}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : (
-                  <p style={{ color: colors.mutedForeground, fontStyle: 'italic' }}>No key indicators identified</p>
-                )}
-
-                {Array.isArray(aiAnalysis.actionable_recommendations) && aiAnalysis.actionable_recommendations.length > 0 && (
-                  <div>
-                    <strong style={{ color: colors.foreground }}>Actionable Recommendations:</strong>
-                    <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
-                      {aiAnalysis.actionable_recommendations.map((rec, idx) => (
-                        <li key={idx} style={{ marginBottom: '0.3rem' }}>{rec}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-
-              {/* Risk Analysis Section - Always Display */}
-              <div style={{
-                ...infoCardStyle,
-                backgroundColor: colors.card,
-                border: `1px solid ${colors.border}`,
-              }}>
-                <h4 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M3 3v18h18"/>
-                    <path d="M18 17V9"/>
-                    <path d="M13 17V5"/>
-                    <path d="M8 17v-3"/>
-                  </svg>
-                  Risk Analysis
-                </h4>
-
-                {mlAnalysis.risk_level ? (
-                  <div style={{ marginBottom: '1rem' }}>
-                    <strong style={{ color: colors.foreground }}>Risk Level:</strong>
-                    <span style={{
-                      marginLeft: '0.5rem',
-                      color: ['HIGH', 'CRITICAL'].includes(mlAnalysis.risk_level) ? primary : colors.status.success,
-                      fontWeight: 'bold'
+                // Check if we have fraud types or customer info to display
+                const fraudTypes = analysisData.fraud_types || 
+                                  analysisData.data?.fraud_types || 
+                                  mlAnalysis.fraud_types ||
+                                  analysisData.data?.ml_analysis?.fraud_types || [];
+                const customerInfo = analysisData.customer_info || analysisData.data?.customer_info || {};
+                const escalateCount = customerInfo.escalate_count || 0;
+                const fraudCount = customerInfo.fraud_count || 0;
+                const isNewCustomer = !customerInfo.customer_id;
+                const customerStatus = isNewCustomer ? 'New Customer' : 'Repeat Customer';
+                
+                // Show card if we have fraud types OR customer history
+                return fraudTypes.length > 0 || escalateCount > 0 || fraudCount > 0;
+              })() ? (
+                (() => {
+                  const fraudTypes = analysisData.fraud_types || 
+                                    analysisData.data?.fraud_types || 
+                                    mlAnalysis.fraud_types ||
+                                    analysisData.data?.ml_analysis?.fraud_types || [];
+                  const customerInfo = analysisData.customer_info || analysisData.data?.customer_info || {};
+                  const escalateCount = customerInfo.escalate_count || 0;
+                  const fraudCount = customerInfo.fraud_count || 0;
+                  const isNewCustomer = !customerInfo.customer_id;
+                  const customerStatus = isNewCustomer ? 'New Customer' : 'Repeat Customer';
+                  
+                  // Get fraud explanations from multiple possible locations
+                  const fraudExplanations = analysisData.fraud_explanations ||
+                                            analysisData.data?.fraud_explanations ||
+                                            aiAnalysis.fraud_explanations ||
+                                            analysisData.data?.ai_analysis?.fraud_explanations || [];
+                  
+                  // Get primary fraud type - prioritize fraud_types, then fraud_explanations, then default
+                  let primaryFraudType = null;
+                  if (fraudTypes.length > 0) {
+                    primaryFraudType = fraudTypes[0].replace(/_/g, ' ');
+                  } else if (fraudExplanations.length > 0 && fraudExplanations[0].type) {
+                    // Use fraud explanation type if available
+                    primaryFraudType = fraudExplanations[0].type.replace(/_/g, ' ');
+                  } else if (escalateCount > 0 || fraudCount > 0) {
+                    // For repeat customers, default to FABRICATED_DOCUMENT
+                    primaryFraudType = 'FABRICATED DOCUMENT';
+                  } else {
+                    // Last resort: use FABRICATED_DOCUMENT
+                    primaryFraudType = 'FABRICATED DOCUMENT';
+                  }
+                  
+                  // HYBRID APPROACH: Combine document-level fraud explanations with REPEAT_OFFENDER info
+                  let displayReasons = [];
+                  
+                  // First, add document-level fraud explanations (exclude REPEAT_OFFENDER)
+                  const documentLevelExplanations = fraudExplanations.filter(exp => 
+                    exp.type !== 'REPEAT_OFFENDER'
+                  );
+                  if (documentLevelExplanations.length > 0) {
+                    documentLevelExplanations.forEach(exp => {
+                      if (exp.reasons && exp.reasons.length > 0) {
+                        displayReasons.push(...exp.reasons.slice(0, 2));
+                      }
+                    });
+                  }
+                  
+                  // Then, add REPEAT_OFFENDER explanations (based on customer history)
+                  const repeatOffenderExplanations = fraudExplanations.filter(exp => 
+                    exp.type === 'REPEAT_OFFENDER'
+                  );
+                  if (repeatOffenderExplanations.length > 0) {
+                    repeatOffenderExplanations.forEach(exp => {
+                      if (exp.reasons && exp.reasons.length > 0) {
+                        displayReasons.push(...exp.reasons);
+                      }
+                    });
+                  }
+                  
+                  // Fallback: if no explanations, use customer history
+                  if (displayReasons.length === 0) {
+                    if (escalateCount > 0) {
+                      displayReasons.push(`Customer has ${escalateCount} previous escalation${escalateCount !== 1 ? 's' : ''}`);
+                    }
+                    if (fraudCount > 0) {
+                      displayReasons.push(`Customer has ${fraudCount} previous fraud incident${fraudCount !== 1 ? 's' : ''}`);
+                    }
+                    displayReasons.push(`Customer status: ${customerStatus} with documented fraud history`);
+                  }
+                  
+                  return (
+                    <div style={{
+                      ...resultCardStyle,
+                      marginBottom: '1.5rem',
+                      backgroundColor: `${primary}15`,
+                      borderLeft: `4px solid ${primary}`,
                     }}>
-                      {mlAnalysis.risk_level}
-                    </span>
-                  </div>
-                ) : (
-                  <p style={{ color: colors.mutedForeground, fontStyle: 'italic', marginBottom: '1rem' }}>Risk level not available</p>
-                )}
+                      <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.75rem' }}>
+                        FRAUD TYPE
+                      </div>
+                      <div style={{
+                        fontSize: '1.5rem',
+                        fontWeight: 'bold',
+                        color: primary,
+                        marginBottom: '1rem',
+                      }}>
+                        {primaryFraudType}
+                      </div>
+                      <div style={{ color: colors.foreground }}>
+                        <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
+                          Why this fraud occurred:
+                        </div>
+                        <ul style={{ margin: 0, paddingLeft: '1.5rem', color: colors.foreground }}>
+                          {displayReasons.slice(0, 3).map((reason, index) => (
+                            <li key={index} style={{ marginBottom: '0.5rem', fontSize: '1rem' }}>{reason}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  );
+                })()
+              ) : null}
 
-                {Array.isArray(mlAnalysis.feature_importance) && mlAnalysis.feature_importance.length > 0 ? (
-                  <div style={{ marginBottom: '1rem' }}>
-                    <strong style={{ color: colors.foreground }}>Top Risk Indicators:</strong>
-                    <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
-                      {mlAnalysis.feature_importance.slice(0, 5).map((item, idx) => {
-                        if (typeof item === 'string') {
-                          return <li key={idx} style={{ marginBottom: '0.3rem' }}>{item}</li>;
-                        } else if (item.feature && item.importance) {
-                          return (
-                            <li key={idx} style={{ marginBottom: '0.3rem' }}>
-                              {item.feature}: {(item.importance * 100).toFixed(1)}%
-                            </li>
-                          );
-                        }
-                        return null;
-                      })}
-                    </ul>
+              {/* Actionable Recommendations Card */}
+              {(() => {
+                const aiRecommendation = (analysisData.ai_recommendation || aiAnalysis.recommendation || 'UNKNOWN').toUpperCase();
+                return aiRecommendation !== 'APPROVE' && aiAnalysis.actionable_recommendations && aiAnalysis.actionable_recommendations.length > 0;
+              })() && (
+                <div style={{
+                  ...resultCardStyle,
+                  marginBottom: '1.5rem',
+                  borderLeft: `4px solid ${colors.status?.info || '#3b82f6'}`,
+                }}>
+                  <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '1rem' }}>
+                    Actionable Recommendations
                   </div>
-                ) : (
-                  <p style={{ color: colors.mutedForeground, fontStyle: 'italic', marginBottom: '1rem' }}>No risk indicators identified</p>
-                )}
-
-                {mlAnalysis.model_scores ? (
-                  <div style={{ fontSize: '0.85rem', color: colors.mutedForeground, marginTop: '1rem' }}>
-                    <strong style={{ color: colors.foreground }}>Analysis Scores:</strong>
-                    {mlAnalysis.model_scores.random_forest !== undefined && (
-                      <div style={{ marginTop: '0.5rem' }}>Random Forest: {(mlAnalysis.model_scores.random_forest * 100).toFixed(1)}%</div>
-                    )}
-                    {mlAnalysis.model_scores.xgboost !== undefined && (
-                      <div>XGBoost: {(mlAnalysis.model_scores.xgboost * 100).toFixed(1)}%</div>
-                    )}
-                    {mlAnalysis.model_scores.ensemble !== undefined && (
-                      <div>Ensemble: {(mlAnalysis.model_scores.ensemble * 100).toFixed(1)}%</div>
-                    )}
-                  </div>
-                ) : (
-                  <p style={{ color: colors.mutedForeground, fontStyle: 'italic', fontSize: '0.85rem' }}>Model scores not available</p>
-                )}
-              </div>
+                  <ul style={{ margin: 0, paddingLeft: '1.5rem', color: colors.foreground }}>
+                    {aiAnalysis.actionable_recommendations.map((rec, index) => (
+                      <li key={index} style={{ marginBottom: '0.5rem', fontSize: '1.1rem' }}>{rec}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               <div style={{
                 ...infoCardStyle,

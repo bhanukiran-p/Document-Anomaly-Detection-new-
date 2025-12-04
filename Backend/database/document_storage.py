@@ -489,6 +489,36 @@ class DocumentStorage:
             if not isinstance(transactions, list):
                 transactions = []
 
+            # Get AI recommendation first
+            ai_recommendation = ai_analysis.get('recommendation', 'UNKNOWN') if ai_analysis else 'UNKNOWN'
+            ai_recommendation = ai_recommendation.upper()
+
+            # Only store fraud types if recommendation is REJECT
+            # For ESCALATE or APPROVE, keep fraud_type as None (no fraud detected)
+            primary_fraud_type = None
+            primary_fraud_type_label = None
+            fraud_explanations = []
+            
+            if ai_recommendation == 'REJECT':
+                # Only store fraud types for REJECT recommendations (actual fraud detected)
+                fraud_types = ai_analysis.get('fraud_types', []) if ai_analysis else ml_analysis.get('fraud_types', [])
+                fraud_explanations = ai_analysis.get('fraud_explanations', []) if ai_analysis else []
+
+                # Ensure fraud_types is a list, then extract first element as primary fraud type
+                if not isinstance(fraud_types, list):
+                    fraud_types = [fraud_types] if fraud_types else []
+
+                # Store only the primary (first) fraud type as a string
+                primary_fraud_type = fraud_types[0] if fraud_types else None
+
+                # Format fraud type label for display (remove underscores and title case)
+                primary_fraud_type_label = primary_fraud_type.replace('_', ' ').title() if primary_fraud_type else None
+            # For ESCALATE or APPROVE, primary_fraud_type remains None (no fraud detected)
+
+            # Ensure fraud_explanations is a list of dicts
+            if not isinstance(fraud_explanations, list):
+                fraud_explanations = []
+
             # Prepare bank statement data
             statement_data = {
                 'statement_id': str(uuid.uuid4()),
@@ -530,6 +560,9 @@ class DocumentStorage:
                 'ai_confidence': self._parse_amount(ai_analysis.get('confidence_score')) if ai_analysis else None,
                 'anomaly_count': len(analysis_data.get('anomalies', [])),
                 'top_anomalies': json.dumps(analysis_data.get('anomalies', [])[:5]),
+                # Fraud types - store as human-readable label (primary fraud type only)
+                'fraud_types': self._safe_string(primary_fraud_type_label),
+                # Note: fraud_explanations column doesn't exist in bank_statements table
                 'timestamp': datetime.utcnow().isoformat(),
                 'created_at': datetime.utcnow().isoformat()  # Keep for backward compatibility
             }

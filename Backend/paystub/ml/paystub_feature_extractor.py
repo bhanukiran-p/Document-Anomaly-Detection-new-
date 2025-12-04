@@ -80,17 +80,17 @@ class PaystubFeatureExtractor:
 
         # ===== AMOUNTS (Features 6-7) =====
         # Feature 6: gross_pay (capped at $100k)
-        gross = self._extract_numeric_value(paystub_data.get('gross_pay', 0))
+            gross = self._extract_numeric_value(paystub_data.get('gross_pay', 0))
         features.append(min(gross, 100000.0))
 
         # Feature 7: net_pay (capped at $100k)
-        net = self._extract_numeric_value(paystub_data.get('net_pay', 0))
+            net = self._extract_numeric_value(paystub_data.get('net_pay', 0))
         features.append(min(net, 100000.0))
 
         # ===== ERRORS AND QUALITY (Features 8-10) =====
         # Feature 8: tax_error (1 if net >= gross, 0 otherwise)
-        tax_error = 1.0 if (gross > 0 and net >= gross) else 0.0
-        features.append(tax_error)
+            tax_error = 1.0 if (gross > 0 and net >= gross) else 0.0
+            features.append(tax_error)
 
         # Feature 9: text_quality (0.5-1.0 based on field completeness)
         critical_fields = ['company_name', 'employee_name', 'gross_pay', 'net_pay']

@@ -8,6 +8,16 @@ from datetime import datetime
 from typing import Dict, List, Optional
 import numpy as np
 
+# Import bank list loader for dynamic bank support
+try:
+    from ..utils.bank_list_loader import get_supported_bank_names, is_supported_bank
+    BANK_LIST_LOADER_AVAILABLE = True
+except ImportError:
+    # Fallback if utils module not available
+    BANK_LIST_LOADER_AVAILABLE = False
+    logger = __import__('logging').getLogger(__name__)
+    logger.warning("Bank list loader not available, using default bank list")
+
 
 class BankStatementFeatureExtractor:
     """
@@ -16,11 +26,28 @@ class BankStatementFeatureExtractor:
     """
 
     def __init__(self):
-        self.supported_banks = [
-            'Bank of America', 'Chase', 'Wells Fargo', 'Citibank',
-            'U.S. Bank', 'PNC Bank', 'TD Bank', 'Capital One',
-            'BANK OF AMERICA', 'CHASE', 'WELLS FARGO', 'CITIBANK'
-        ]
+        # Load supported banks from database (case-insensitive)
+        if BANK_LIST_LOADER_AVAILABLE:
+            try:
+                self.supported_banks = get_supported_bank_names()  # Set of lowercase bank names
+                self._use_database_banks = True
+            except Exception as e:
+                logger = __import__('logging').getLogger(__name__)
+                logger.warning(f"Failed to load banks from database: {e}, using default list")
+                self.supported_banks = {
+                    'bank of america', 'chase', 'wells fargo', 'citibank',
+                    'u.s. bank', 'pnc bank', 'td bank', 'capital one',
+                    'jpmorgan chase bank', 'td bank usa', 'capital one bank'
+                }
+                self._use_database_banks = False
+        else:
+            # Fallback to default list
+            self.supported_banks = {
+                'bank of america', 'chase', 'wells fargo', 'citibank',
+                'u.s. bank', 'pnc bank', 'td bank', 'capital one',
+                'jpmorgan chase bank', 'td bank usa', 'capital one bank'
+            }
+            self._use_database_banks = False
 
     def extract_features(self, extracted_data: Dict, raw_text: str = "") -> List[float]:
         """
@@ -59,8 +86,19 @@ class BankStatementFeatureExtractor:
 
         # === BASIC FEATURES (1-20) ===
 
-        # Feature 1: Bank validity (supported bank)
-        features.append(1.0 if bank_name in self.supported_banks else 0.0)
+        # Feature 1: Bank validity (supported bank) - Case-insensitive check
+        if bank_name:
+            bank_name_lower = bank_name.lower().strip()
+            # Check if bank is in supported list (case-insensitive)
+            if self._use_database_banks:
+                # Use set lookup (O(1) operation)
+                bank_valid = 1.0 if bank_name_lower in self.supported_banks else 0.0
+            else:
+                # Fallback: check against set
+                bank_valid = 1.0 if bank_name_lower in self.supported_banks else 0.0
+        else:
+            bank_valid = 0.0
+        features.append(bank_valid)
 
         # Feature 2: Account number present
         features.append(1.0 if account_number else 0.0)
