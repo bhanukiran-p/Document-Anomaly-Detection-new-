@@ -185,5 +185,24 @@ export const regeneratePlotsWithFilters = async (transactions, filters) => {
   }
 };
 
+// Retrain fraud detection model
+export const retrainFraudModel = async (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const response = await axios.post(`${API_BASE_URL}/real-time/retrain-model`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  } catch (error) {
+    const errorData = error.response?.data || { error: 'Failed to retrain model', message: error.message || 'Network error' };
+    console.error('Model retraining API error:', errorData);
+    throw errorData;
+  }
+};
+
 export default api;
 
