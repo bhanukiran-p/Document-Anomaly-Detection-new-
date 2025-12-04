@@ -1246,8 +1246,8 @@ const PaystubInsights = () => {
               </div>
 
               {/* Top High-Risk Employees - Bullet Chart + Horizontal Ranking */}
-              <div style={{...styles.chartBox, textAlign: 'center'}}>
-                <h3 style={{...styles.chartTitle, textAlign: 'center'}}>Top High-Risk Employees (≥50%)</h3>
+              <div style={styles.chartBox}>
+                <h3 style={styles.chartTitle}>Top High-Risk Employees (≥50%)</h3>
                 {displayData.topHighRiskEmployees && displayData.topHighRiskEmployees.length > 0 ? (
                   <ResponsiveContainer width="100%" height={Math.max(550, displayData.topHighRiskEmployees.length * 45)}>
                     <ComposedChart
@@ -1258,7 +1258,7 @@ const PaystubInsights = () => {
                         highZone: 25      // 75-100% zone (25% width)
                       }))}
                       layout="vertical"
-                      margin={{ top: 20, right: 30, left: 120, bottom: 20 }}
+                      margin={{ top: 20, right: 20, left: 40, bottom: 20 }}
                     >
                     <defs>
                       <linearGradient id="bulletGradient" x1="0" y1="0" x2="1" y2="0">
@@ -1277,7 +1277,7 @@ const PaystubInsights = () => {
                     <YAxis 
                       type="category"
                       dataKey="name"
-                      width={110}
+                      width={50}
                       tick={{ fill: colors.foreground, fontSize: 11 }}
                       stroke={colors.border}
                     />
