@@ -385,8 +385,13 @@ def _build_geo_scatter_plot(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
     for _, row in grouped.iterrows():
         city = str(row.get('normalized_city', 'Unknown City'))
         country = str(row.get('normalized_country', 'Unknown'))
-        # Only use real coordinates from known_cities_map (no synthetic fallback)
+        # Try exact city-country match first
         coords = _pseudo_coordinates(city, country, allow_fallback=False)
+
+        # If no match, try to find coordinates using just the city name with any country
+        if not coords:
+            coords = _find_city_coordinates_fuzzy(city)
+
         if not coords:
             # Skip cities without known coordinates to ensure stable map
             logger.debug("Skipping geo hotspot with unknown coordinates", extra={'city': city, 'country': country})
@@ -429,19 +434,31 @@ def _build_fraud_reason_bar_plot(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
     if fraud_df.empty:
         return None
 
+    # Count all fraud reasons after normalization
     counts = Counter()
     for reason in fraud_df['fraud_reason']:
-        counts[_normalize_fraud_reason(reason)] += 1
+        normalized = _normalize_fraud_reason(reason)
+        counts[normalized] += 1
 
-    data = [
-        {'label': label, 'value': int(counts[label])}
-        for label in STANDARD_FRAUD_REASONS
-        if counts.get(label)
-    ]
-    if not data:
+    # Get all fraud types sorted by count
+    all_fraud_types = counts.most_common()
+
+    if not all_fraud_types:
         return None
 
+    # Take top 5 (or all if less than 5)
+    top_n = min(5, len(all_fraud_types))
+    top_fraud_types = all_fraud_types[:top_n]
+
+    # Build data array
+    data = [
+        {'label': label, 'value': int(value)}
+        for label, value in top_fraud_types
+    ]
+
+    # Sort by value descending
     data.sort(key=lambda item: item['value'], reverse=True)
+
     total = sum(item['value'] for item in data)
     details = [
         _detail('Top reason', f"{data[0]['label']} ({data[0]['value']:,})"),
@@ -452,7 +469,7 @@ def _build_fraud_reason_bar_plot(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
     return {
         'title': 'Fraud Reasons Breakdown',
         'type': 'bar_reasons',
-        'data': data[:15],
+        'data': data,
         'details': details,
         'description': 'Standardized narratives: login abuse, velocity spikes, mule behavior, etc.',
     }
@@ -576,14 +593,51 @@ def _first_present_column(df: pd.DataFrame, candidates: Sequence[str]) -> Option
     return None
 
 
-def _pseudo_coordinates(city: str, country: str, allow_fallback: bool = True) -> Optional[Tuple[float, float]]:
-    '''
-    Derive deterministic pseudo coordinates so the UI can plot cities.
-    Uses a hash-based approach to generate consistent coordinates for the same city/country pair.
-    '''
-    # Common city coordinates mapping for better visual representation
-    # Using lowercase for case-insensitive matching
-    known_cities_map = {
+def _find_city_coordinates_fuzzy(city: str) -> Optional[Tuple[float, float]]:
+    """
+    Try to find coordinates for a city by searching through known cities,
+    ignoring the country. This helps with mismatched city-country pairs.
+
+    Args:
+        city: City name to search for
+
+    Returns:
+        Tuple of (latitude, longitude) if found, None otherwise
+    """
+    city_clean = (city or 'Unknown').strip().lower()
+
+    # City aliases for normalization
+    city_aliases = {
+        'new york city': 'new york',
+        'nyc': 'new york',
+        'san fran': 'san francisco',
+        'st louis': 'st. louis',
+        'saint louis': 'st. louis',
+        'washington dc': 'washington',
+        'washington d.c.': 'washington',
+        'la': 'los angeles'
+    }
+    city_clean = city_aliases.get(city_clean, city_clean)
+
+    # Build the known_cities_map inline to search it
+    # (We could also move this to a module-level constant for efficiency)
+    known_cities = _get_known_cities_map()
+
+    # Search for the city in any country
+    for (known_city, known_country), coords in known_cities.items():
+        if known_city == city_clean:
+            logger.debug(f"Found fuzzy match for city '{city}' -> '{known_city}, {known_country}'")
+            return coords
+
+    return None
+
+
+def _get_known_cities_map() -> dict:
+    """
+    Returns the known cities mapping.
+    Extracted as a separate function to avoid duplication.
+    """
+    return {
         # North America - USA
         ('new york', 'usa'): (40.7128, -74.0060),
         ('new york', 'united states'): (40.7128, -74.0060),
@@ -732,6 +786,15 @@ def _pseudo_coordinates(city: str, country: str, allow_fallback: bool = True) ->
         ('casablanca', 'morocco'): (33.5731, -7.5898),
     }
 
+
+def _pseudo_coordinates(city: str, country: str, allow_fallback: bool = True) -> Optional[Tuple[float, float]]:
+    '''
+    Derive deterministic pseudo coordinates so the UI can plot cities.
+    Uses a hash-based approach to generate consistent coordinates for the same city/country pair.
+    '''
+    # Get the known cities mapping
+    known_cities_map = _get_known_cities_map()
+
     # Normalize names to handle variations
     country_aliases = {
         'united states': 'usa',
@@ -806,14 +869,79 @@ def _normalize_fraud_reason(value: Any) -> str:
         return 'Unusual amount'  # Default for unknown fraud reasons
 
     text = str(value).strip()
+
+    # First try exact match with standard reasons (case-insensitive)
+    for reason in STANDARD_FRAUD_REASONS:
+        if reason.lower() == text.lower():
+            return reason
+
+    # Then try partial match for standard reasons
     for reason in STANDARD_FRAUD_REASONS:
         if reason.lower() in text.lower():
             return reason
 
+    # Check for legitimate label
     if text == LEGITIMATE_LABEL:
         return LEGITIMATE_LABEL
 
-    return 'Unusual amount'  # Default for unrecognized fraud reasons
+    # Map common variations to standard reasons (order matters - more specific first)
+    text_lower = text.lower()
+
+    # Suspicious login / IP mismatch variations
+    if 'ip' in text_lower or 'login' in text_lower or 'session' in text_lower:
+        return 'Suspicious login'
+
+    # Account takeover variations
+    if 'takeover' in text_lower or 'hijack' in text_lower or 'suspected' in text_lower:
+        return 'Account takeover'
+
+    # Location-based variations (check before more general patterns)
+    if 'location' in text_lower or 'geographical' in text_lower or 'geo' in text_lower or 'country' in text_lower or 'cross-border' in text_lower:
+        return 'Unusual location'
+
+    # Unusual device variations
+    if 'device' in text_lower or 'new device' in text_lower:
+        return 'Unusual device'
+
+    # Velocity/rapid transaction variations
+    if 'velocity' in text_lower or 'rapid' in text_lower or 'multiple' in text_lower or 'burst' in text_lower or 'spike' in text_lower:
+        return 'Velocity abuse'
+
+    # High-risk merchant / stolen card variations
+    if 'stolen' in text_lower or 'compromised' in text_lower or 'card' in text_lower or 'merchant' in text_lower or 'high-risk' in text_lower or 'fraud merchant' in text_lower or 'known fraud' in text_lower:
+        return 'High-risk merchant'
+
+    # Unusual amount variations
+    if 'amount' in text_lower or 'value' in text_lower or 'unusual' in text_lower:
+        return 'Unusual amount'
+
+    # New payee / wire transfer variations
+    if 'payee' in text_lower or 'wire' in text_lower or 'transfer' in text_lower or 'beneficiary' in text_lower:
+        return 'New payee spike'
+
+    # Card-not-present variations
+    if 'card-not-present' in text_lower or 'cnp' in text_lower or 'online' in text_lower or 'ecommerce' in text_lower or 'e-commerce' in text_lower:
+        return 'Card-not-present risk'
+
+    # Money mule variations
+    if 'mule' in text_lower or 'layering' in text_lower:
+        return 'Money mule pattern'
+
+    # Structuring / smurfing variations
+    if 'structuring' in text_lower or 'smurfing' in text_lower or 'structur' in text_lower:
+        return 'Structuring / smurfing'
+
+    # Round dollar variations
+    if 'round' in text_lower or 'dollar' in text_lower:
+        return 'Round-dollar pattern'
+
+    # Night-time activity variations
+    if 'night' in text_lower or 'late' in text_lower or 'timing' in text_lower or 'time' in text_lower:
+        return 'Night-time activity'
+
+    # If still no match, preserve the original label instead of defaulting
+    # This ensures we show actual fraud types from the data
+    return text
 
 
 def _analyze_fraud_patterns(df: pd.DataFrame) -> Dict[str, Any]:
@@ -946,7 +1074,7 @@ def _generate_recommendations(df: pd.DataFrame, analysis_result: Dict) -> List[s
     avg_prob = analysis_result.get('average_fraud_probability', 0)
     if avg_prob > 0.7:
         recommendations.append(
-            "[Model Insight] ML model shows high confidence (>0.70 average probability). Capture analyst feedback to keep calibration fresh."
+            "[Model Insight] Detection system shows high confidence (>0.70 average probability). Capture analyst feedback to keep calibration fresh."
         )
 
     return recommendations

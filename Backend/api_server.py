@@ -60,14 +60,14 @@ load_dotenv()
 
 # Check for critical environment variables
 if os.getenv('OPENAI_API_KEY'):
-    logger.info("✅ OPENAI_API_KEY found in environment")
+    logger.info(" OPENAI_API_KEY found in environment")
 else:
-    logger.error("❌ OPENAI_API_KEY NOT found in environment")
+    logger.error(" OPENAI_API_KEY NOT found in environment")
 
 if os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
-    logger.info(f"✅ Google Credentials path: {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}")
+    logger.info(f" Google Credentials path: {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}")
 else:
-    logger.warning("⚠️ GOOGLE_APPLICATION_CREDENTIALS not set")
+    logger.warning("GOOGLE_APPLICATION_CREDENTIALS not set")
 
 # Load the production extractor
 try:
