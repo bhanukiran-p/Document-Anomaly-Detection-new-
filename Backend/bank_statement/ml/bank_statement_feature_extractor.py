@@ -75,6 +75,47 @@ class BankStatementFeatureExtractor:
         ending_balance = self._extract_numeric_amount(extracted_data.get('ending_balance'))
         total_credits = self._extract_numeric_amount(extracted_data.get('total_credits'))
         total_debits = self._extract_numeric_amount(extracted_data.get('total_debits'))
+        
+        # ALWAYS calculate total_credits and total_debits from transactions to verify accuracy
+        # This ensures we use the most accurate values for balance consistency checking
+        calculated_credits = 0.0
+        calculated_debits = 0.0
+        
+        if transactions:
+            for txn in transactions:
+                if isinstance(txn, dict):
+                    amount = txn.get('amount', {})
+                    txn_value = self._extract_numeric_amount(amount)
+                    
+                    if txn_value > 0:
+                        calculated_credits += txn_value
+                    elif txn_value < 0:
+                        calculated_debits += abs(txn_value)
+        
+        # Use calculated values if:
+        # 1. Original values are missing/zero, OR
+        # 2. Calculated values produce a better balance match (more accurate)
+        if calculated_credits > 0 or calculated_debits > 0:
+            # Check which values produce better balance consistency
+            if beginning_balance is not None and ending_balance is not None:
+                # Calculate balance with Mindee values
+                mindee_expected = beginning_balance + total_credits - total_debits
+                mindee_diff = abs(ending_balance - mindee_expected)
+                
+                # Calculate balance with transaction-calculated values
+                calc_expected = beginning_balance + calculated_credits - calculated_debits
+                calc_diff = abs(ending_balance - calc_expected)
+                
+                # Use calculated values if they produce a better match (smaller difference)
+                if calc_diff < mindee_diff:
+                    total_credits = calculated_credits
+                    total_debits = calculated_debits
+            else:
+                # If balances are missing, use calculated values if original are zero
+                if total_credits == 0 and calculated_credits > 0:
+                    total_credits = calculated_credits
+                if total_debits == 0 and calculated_debits > 0:
+                    total_debits = calculated_debits
 
         # Date handling
         statement_period_start = self._get_field(extracted_data, 'statement_period_start_date')
@@ -175,8 +216,11 @@ class BankStatementFeatureExtractor:
         features.append(min(large_txn_count, 50.0))
 
         # Feature 23: Round number transactions (suspicious pattern)
+        # MEDIUM IMPACT: Normalize to reduce impact (divide by 2 to make it less influential)
         round_txn_count = self._count_round_number_transactions(transactions)
-        features.append(min(round_txn_count, 100.0))
+        # Normalize: divide by 2 to reduce impact, then cap at 50.0 (reduced from 100.0)
+        normalized_round_count = round_txn_count / 2.0
+        features.append(min(normalized_round_count, 50.0))
 
         # Feature 24: Date format validation
         features.append(self._validate_date_format(statement_period_start))
@@ -476,7 +520,14 @@ class BankStatementFeatureExtractor:
                 else:
                     seen.add(signature)
 
-        return 1.0 if duplicates > 0 else 0.0
+        # MEDIUM IMPACT: Only return 1.0 if multiple duplicates (2+), otherwise return 0.5 for single duplicate
+        # This reduces the impact of a single duplicate transaction
+        if duplicates >= 2:
+            return 1.0
+        elif duplicates == 1:
+            return 0.5  # Medium impact for single duplicate
+        else:
+            return 0.0
 
     def _detect_unusual_timing(self, transactions: List) -> float:
         """Detect transactions on weekends/holidays"""

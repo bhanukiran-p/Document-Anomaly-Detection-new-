@@ -352,8 +352,53 @@ class BankStatementExtractor:
         if isinstance(beginning, dict) and isinstance(ending, dict):
             beg_value = beginning.get('value', 0)
             end_value = ending.get('value', 0)
+            
+            # Get total_credits and total_debits from data
             total_credits = data.get('total_credits', {}).get('value', 0) if isinstance(data.get('total_credits'), dict) else 0
             total_debits = data.get('total_debits', {}).get('value', 0) if isinstance(data.get('total_debits'), dict) else 0
+            
+            # ALWAYS calculate total_credits and total_debits from transactions to verify accuracy
+            calculated_credits = 0.0
+            calculated_debits = 0.0
+            
+            if data.get('transactions'):
+                transactions = data.get('transactions', [])
+                
+                for txn in transactions:
+                    if isinstance(txn, dict):
+                        amount = txn.get('amount', {})
+                        if isinstance(amount, dict):
+                            txn_value = amount.get('value', 0.0)
+                        elif isinstance(amount, (int, float)):
+                            txn_value = float(amount)
+                        else:
+                            continue
+                        
+                        if txn_value > 0:
+                            calculated_credits += txn_value
+                        elif txn_value < 0:
+                            calculated_debits += abs(txn_value)
+            
+            # Use calculated values if they produce a better balance match
+            if calculated_credits > 0 or calculated_debits > 0:
+                # Calculate balance with Mindee values
+                mindee_expected = beg_value + total_credits - total_debits
+                mindee_diff = abs(end_value - mindee_expected)
+                
+                # Calculate balance with transaction-calculated values
+                calc_expected = beg_value + calculated_credits - calculated_debits
+                calc_diff = abs(end_value - calc_expected)
+                
+                # Use calculated values if they produce a better match (smaller difference)
+                if calc_diff < mindee_diff:
+                    total_credits = calculated_credits
+                    total_debits = calculated_debits
+            elif total_credits == 0 and calculated_credits > 0:
+                # Fallback: use calculated if original is zero
+                total_credits = calculated_credits
+            elif total_debits == 0 and calculated_debits > 0:
+                # Fallback: use calculated if original is zero
+                total_debits = calculated_debits
             
             # Check if balances are consistent
             expected_ending = beg_value + total_credits - total_debits
