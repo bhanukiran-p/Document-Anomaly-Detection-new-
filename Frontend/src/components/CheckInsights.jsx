@@ -160,28 +160,30 @@ const CheckInsights = () => {
       .sort((a, b) => parseFloat(b.avgRisk) - parseFloat(a.avgRisk))
       .slice(0, 10);
 
-    // 5. Top High-Risk Payees
-    const payeeRisks = {};
+    // 5. Payees with Highest Fraud Incidents (Count of REJECT/ESCALATE or high risk >= 75%)
+    const payeeFraudIncidents = {};
     rows.forEach(r => {
       const payee = r['PayeeName'] || r['payee_name'] || 'Unknown';
       if (payee && payee !== 'Unknown') {
-        if (!payeeRisks[payee]) {
-          payeeRisks[payee] = { count: 0, totalRisk: 0 };
-        }
+        const decision = (r['Decision'] || r['ai_recommendation'] || 'UNKNOWN').toUpperCase();
         const risk = parseFloat_(r['RiskScore'] || r['fraud_risk_score'] || 0) * 100;
-        payeeRisks[payee].count++;
-        payeeRisks[payee].totalRisk += risk;
+        const isFraudulent = decision === 'REJECT' || decision === 'ESCALATE' || risk >= 75;
+        
+        if (isFraudulent) {
+          if (!payeeFraudIncidents[payee]) {
+            payeeFraudIncidents[payee] = 0;
+          }
+          payeeFraudIncidents[payee]++;
+        }
       }
     });
-    const topHighRiskPayees = Object.entries(payeeRisks)
-      .map(([name, data]) => ({
-        name: name, // Keep full name, let chart handle display
-        fullName: name,
-        avgRisk: (data.totalRisk / data.count).toFixed(1),
-        count: data.count
+    const topFraudIncidentPayees = Object.entries(payeeFraudIncidents)
+      .map(([name, fraudCount]) => ({
+        name: name,
+        fraudCount: fraudCount
       }))
-      .filter(item => parseFloat(item.avgRisk) >= 50)
-      .sort((a, b) => parseFloat(b.avgRisk) - parseFloat(a.avgRisk))
+      .filter(item => item.fraudCount > 0)
+      .sort((a, b) => b.fraudCount - a.fraudCount)
       .slice(0, 10);
 
     // 6. Fraud Over Time (High-Risk Count and Avg Risk)
@@ -236,7 +238,7 @@ const CheckInsights = () => {
       ],
       riskByBankData,
       topHighRiskPayers,
-      topHighRiskPayees,
+      topFraudIncidentPayees, // Payees with highest fraud incidents
       fraudTrendData,
       metrics: {
         totalChecks,
@@ -1381,41 +1383,67 @@ const CheckInsights = () => {
               </div>
             )}
 
-            {/* Row 3: Top High-Risk Payees & Fraud Trend Over Time */}
-            {csvData.topHighRiskPayees && csvData.topHighRiskPayees.length > 0 && (
+            {/* Row 3: Payees with Highest Fraud Incidents (Bullet Chart) & Fraud Trend Over Time */}
+            {csvData.topFraudIncidentPayees && csvData.topFraudIncidentPayees.length > 0 && (
               <div style={chartBoxStyle}>
-                <h3 style={chartTitleStyle}>Top High-Risk Payees</h3>
-                <ResponsiveContainer width="100%" height={320}>
-                  <BarChart data={csvData.topHighRiskPayees} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                    <XAxis 
-                      type="number" 
-                      stroke={colors.mutedForeground}
-                      label={{ value: 'Average Risk Score (%)', position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fill: colors.foreground } }}
-                    />
-                    <YAxis 
-                      dataKey="name" 
-                      type="category" 
-                      stroke={colors.mutedForeground} 
-                      width={180}
-                      tick={{ fill: colors.foreground, fontSize: 12 }}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: colors.card,
-                        border: `1px solid ${colors.border}`,
-                        color: colors.foreground
-                      }}
-                      formatter={(value, name) => {
-                        if (name === 'avgRisk') return [`${value}%`, 'Avg Risk'];
-                        if (name === 'count') return [value, 'Checks'];
-                        return [value, name];
-                      }}
-                      labelFormatter={(label) => `Payee: ${label}`}
-                    />
-                    <Bar dataKey="avgRisk" fill={primary} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <h3 style={chartTitleStyle}>Payees with Highest Fraud Incidents</h3>
+                <div style={{ padding: '1rem' }}>
+                  {csvData.topFraudIncidentPayees.map((payee, index) => {
+                    const maxCount = Math.max(...csvData.topFraudIncidentPayees.map(p => p.fraudCount));
+                    const barWidth = (payee.fraudCount / maxCount) * 100;
+                    let barColor = '#FFB59E'; // Low Fraud Level - Pastel Faded Peach (<=20)
+                    if (payee.fraudCount >= 60) barColor = '#FF6B5A'; // High Fraud Level - Soft Coral-Red (>=60)
+                    else if (payee.fraudCount > 20) barColor = '#FF8A75'; // Medium Fraud Level - Faded Coral (>20 and <60)
+                    
+                    return (
+                      <div 
+                        key={`payee-bullet-${index}`}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          marginBottom: '1rem',
+                          gap: '1rem'
+                        }}
+                      >
+                        <div style={{
+                          minWidth: '180px',
+                          fontSize: '13px',
+                          fontWeight: '500',
+                          color: colors.foreground,
+                          textAlign: 'right'
+                        }}>
+                          {payee.name.length > 20 ? payee.name.substring(0, 20) + '...' : payee.name}
+                        </div>
+                        <div style={{
+                          flex: 1,
+                          position: 'relative',
+                          height: '24px',
+                          backgroundColor: colors.secondary,
+                          borderRadius: '4px',
+                          overflow: 'hidden',
+                          border: `1px solid ${colors.border}`
+                        }}>
+                          <div style={{
+                            width: `${barWidth}%`,
+                            height: '100%',
+                            backgroundColor: barColor,
+                            borderRadius: '4px',
+                            transition: 'width 0.3s ease'
+                          }} />
+                        </div>
+                        <div style={{
+                          minWidth: '40px',
+                          fontSize: '14px',
+                          fontWeight: '600',
+                          color: colors.foreground,
+                          textAlign: 'left'
+                        }}>
+                          {payee.fraudCount}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
