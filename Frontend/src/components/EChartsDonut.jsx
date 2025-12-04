@@ -2,6 +2,35 @@ import React from 'react';
 import ReactECharts from 'echarts-for-react';
 
 const EChartsDonut = ({ data, title, height = 220 }) => {
+  const safeData = Array.isArray(data)
+    ? data
+        .map((item) => {
+          if (!item) return null;
+          const value = Number(item.value);
+          const label = item.label || item.name;
+          if (!label || Number.isNaN(value)) return null;
+          return { label, value };
+        })
+        .filter(Boolean)
+    : [];
+
+  if (safeData.length === 0) {
+    return (
+      <div
+        style={{
+          height: `${height}px`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#94a3b8',
+          fontSize: '0.9rem'
+        }}
+      >
+        No distribution data available
+      </div>
+    );
+  }
+
   const option = {
     tooltip: {
       trigger: 'item',
@@ -58,7 +87,7 @@ const EChartsDonut = ({ data, title, height = 220 }) => {
             fontWeight: 'bold'
           }
         },
-        data: data.map((item) => ({
+        data: safeData.map((item) => ({
           value: item.value,
           name: item.label,
           itemStyle: {
