@@ -140,16 +140,43 @@ def detect_fraud_in_transactions(transactions: List[Dict[str, Any]], auto_train:
         df['fraud_probability'] = probabilities
         df['fraud_reason_detail'] = reasons
 
-        # Classify standardized fraud reasons for transactions
-        standardized_reasons: List[str] = []
-        for idx in range(len(df)):
-            if df.at[idx, 'is_fraud'] == 1:
-                standardized_reasons.append(_classify_fraud_type(df.iloc[idx], features_df.iloc[idx]))
-            else:
-                standardized_reasons.append(LEGITIMATE_LABEL)
+        # Classify fraud types using ML (not rules)
+        from real_time.fraud_type_classifier import get_fraud_type_classifier
 
-        df['fraud_reason'] = standardized_reasons
-        df['fraud_type'] = standardized_reasons  # backwards compatibility
+        fraud_type_classifier = get_fraud_type_classifier()
+
+        # Only classify fraud types for fraudulent transactions
+        fraud_indices = df['is_fraud'] == 1
+        fraud_df = df[fraud_indices].copy()
+        fraud_features = features_df[fraud_indices].copy()
+
+        if len(fraud_df) > 0:
+            # Train classifier if not already trained and we have labeled data
+            if fraud_type_classifier.model is None and 'fraud_reason' in df.columns:
+                logger.info("Training fraud type classifier on current labeled data")
+                accuracy, report = fraud_type_classifier.train(df, features_df)
+                logger.info(f"Fraud type classifier trained with accuracy: {accuracy:.3f}")
+
+            # Predict fraud types for fraudulent transactions
+            if fraud_type_classifier.model is not None:
+                fraud_types_pred = fraud_type_classifier.predict(fraud_df, fraud_features)
+                df.loc[fraud_indices, 'fraud_reason'] = fraud_types_pred
+                df.loc[fraud_indices, 'fraud_type'] = fraud_types_pred
+            else:
+                # Fallback to rule-based if no model trained yet
+                logger.warning("Fraud type classifier not trained, using rule-based classification")
+                standardized_reasons = []
+                for idx in range(len(df)):
+                    if df.at[idx, 'is_fraud'] == 1:
+                        standardized_reasons.append(_classify_fraud_type(df.iloc[idx], features_df.iloc[idx]))
+                    else:
+                        standardized_reasons.append(LEGITIMATE_LABEL)
+                df['fraud_reason'] = standardized_reasons
+                df['fraud_type'] = standardized_reasons
+
+        # Set legitimate transactions
+        df.loc[~fraud_indices, 'fraud_reason'] = LEGITIMATE_LABEL
+        df.loc[~fraud_indices, 'fraud_type'] = LEGITIMATE_LABEL
 
         # Calculate statistics
         fraud_count = int(predictions.sum())

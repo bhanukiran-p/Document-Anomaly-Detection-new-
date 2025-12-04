@@ -1712,18 +1712,107 @@ def regenerate_plots_with_filters():
         }), 500
 
 
+@app.route('/api/real-time/retrain-model', methods=['POST'])
+def retrain_fraud_model():
+    """
+    Retrain the fraud detection model on uploaded data
+    Useful when the current model's training data doesn't match your actual data distribution
+    """
+    try:
+        logger.info("Model retraining requested")
+
+        # Check if file is uploaded
+        if 'file' not in request.files:
+            return jsonify({
+                'success': False,
+                'error': 'No file provided',
+                'message': 'Please upload a CSV file with labeled fraud data'
+            }), 400
+
+        file = request.files['file']
+
+        if file.filename == '':
+            return jsonify({
+                'success': False,
+                'error': 'Empty filename',
+                'message': 'Please select a file to upload'
+            }), 400
+
+        # Read CSV
+        import pandas as pd
+        from real_time.model_trainer import auto_train_model
+
+        df = pd.read_csv(file)
+
+        # Verify required columns
+        if 'amount' not in df.columns:
+            return jsonify({
+                'success': False,
+                'error': 'Missing required column: amount'
+            }), 400
+
+        # Check if dataset has fraud labels
+        if 'is_fraud' not in df.columns:
+            return jsonify({
+                'success': False,
+                'error': 'Missing fraud labels',
+                'message': 'Dataset must have an "is_fraud" column with 0/1 labels'
+            }), 400
+
+        logger.info(f"Retraining model on {len(df)} transactions")
+
+        # Calculate current fraud distribution
+        fraud_count = df['is_fraud'].sum()
+        fraud_percentage = (fraud_count / len(df)) * 100
+
+        logger.info(f"Training data has {fraud_count} fraud cases ({fraud_percentage:.1f}%)")
+
+        # Train model
+        training_result = auto_train_model(df)
+
+        if not training_result.get('success'):
+            return jsonify({
+                'success': False,
+                'error': training_result.get('error'),
+                'message': 'Failed to retrain model'
+            }), 500
+
+        logger.info("Model retraining completed successfully")
+
+        return jsonify({
+            'success': True,
+            'message': 'Model retrained successfully',
+            'training_results': {
+                'samples': training_result.get('training_samples'),
+                'fraud_samples': training_result.get('fraud_samples'),
+                'legitimate_samples': training_result.get('legitimate_samples'),
+                'fraud_percentage': round(fraud_percentage, 2),
+                'metrics': training_result.get('metrics'),
+                'trained_at': training_result.get('trained_at')
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Model retraining failed: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to retrain fraud detection model'
+        }), 500
+
+
 @app.route('/custom.geo.json', methods=['GET'])
 def serve_geo_json():
     """Serve the custom geo JSON file for map visualizations"""
     try:
         # Path to the geo.json file in the frontend public folder
         frontend_public = Path(__file__).resolve().parent.parent / 'Frontend' / 'public' / 'custom.geo.json'
-        
+
         if not frontend_public.exists():
             return jsonify({
                 'error': 'Geo JSON file not found'
             }), 404
-        
+
         response = send_file(
             str(frontend_public),
             mimetype='application/json'
