@@ -413,15 +413,12 @@ class BankStatementExtractor:
         return issues
 
     def _run_ml_fraud_detection(self, data: Dict, raw_text: str) -> Dict:
-        """Run ML fraud detection"""
+        """Run ML fraud detection - ML detector is REQUIRED, no fallback"""
         if not self.ml_detector:
-            logger.warning("ML detector not available - using fallback")
-            return {
-                'fraud_risk_score': 0.5,
-                'risk_level': 'UNKNOWN',
-                'model_confidence': 0.0,
-                'anomalies': []
-            }
+            raise RuntimeError(
+                "ML detector is not available. Bank statement fraud detection requires ML models. "
+                "Please ensure ML detector is properly initialized."
+            )
 
         try:
             ml_analysis = self.ml_detector.predict_fraud(data, raw_text)

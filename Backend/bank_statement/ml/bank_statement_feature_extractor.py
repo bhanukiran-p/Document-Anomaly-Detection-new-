@@ -76,6 +76,9 @@ class BankStatementFeatureExtractor:
         total_credits = self._extract_numeric_amount(extracted_data.get('total_credits'))
         total_debits = self._extract_numeric_amount(extracted_data.get('total_debits'))
         
+        # Get transactions first (needed for balance calculation)
+        transactions = extracted_data.get('transactions', [])
+        
         # ALWAYS calculate total_credits and total_debits from transactions to verify accuracy
         # This ensures we use the most accurate values for balance consistency checking
         calculated_credits = 0.0
@@ -122,8 +125,7 @@ class BankStatementFeatureExtractor:
         statement_period_end = self._get_field(extracted_data, 'statement_period_end_date')
         statement_date = self._get_field(extracted_data, 'statement_date')
 
-        # Transactions
-        transactions = extracted_data.get('transactions', [])
+        # Transactions (already retrieved above for balance calculation)
 
         # === BASIC FEATURES (1-20) ===
 
