@@ -90,10 +90,7 @@ RECOMMENDATION_GUIDELINES = """
 ### DECISION MATRIX
 | Customer Type | Risk Score | Decision |
 |---|---|---|
-| New Customer | < 30% | APPROVE |
-| New Customer | 30–95% | ESCALATE |
-| New Customer | ≥ 95% | ESCALATE |
-| New Customer | 100% | ESCALATE (High risk but need human verification) |
+| New Customer | 1-100% | ESCALATE |
 | Clean History | < 30% | APPROVE |
 | Clean History | 30–85% | ESCALATE |
 | Clean History | > 85% | REJECT |
@@ -136,15 +133,16 @@ RECOMMENDATION_GUIDELINES = """
 
 ### CRITICAL RULES (IN PRIORITY ORDER):
 1. **If escalate_count > 0 → MUST REJECT** (auto, before LLM - repeat offender policy)
-2. If fraud_risk_score is 100.0% or >= 95% AND customer is NEW → MUST ESCALATE (not REJECT)
-3. If fraud_risk_score is 100.0% or >= 95% AND customer is REPEAT with fraud history → MUST REJECT
-4. **New customers with high risk should be escalated for human review, not auto-rejected**
+2. **If customer is NEW → MUST ESCALATE** (regardless of risk score, 1-100%)
+3. If fraud_risk_score >= 30% AND customer has FRAUD HISTORY → MUST REJECT
+4. If fraud_risk_score > 85% AND customer has CLEAN HISTORY → MUST REJECT
 5. Repeat fraudsters should face stricter thresholds (REJECT at >= 30% risk)
 
 ### IMPORTANT NOTES
 - ML score determines the risk_score bucket only
 - LLM must follow the decision table exactly - no special cases
-- **NEW customers should NEVER get REJECT on first upload - always ESCALATE for high risk**
+- **NEW customers should ALWAYS ESCALATE regardless of risk score (1-100%)**
+- **NEW customers should NEVER get REJECT or APPROVE - always ESCALATE**
 - No interpretation or override of the decision matrix is permitted
 """
 

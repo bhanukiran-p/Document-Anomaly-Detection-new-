@@ -539,3 +539,4 @@ Normalize Data → Standardized Schema → ML/AI Analysis
 - **Chase Normalizer**: `Backend/bank_statement/normalization/chase.py`
 - **Base Normalizer**: `Backend/bank_statement/normalization/bank_statement_base_normalizer.py`
 
+

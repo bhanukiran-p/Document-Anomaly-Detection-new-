@@ -220,18 +220,19 @@ class BankStatementFraudAnalysisAgent:
             # Validate and format result
             final_result = self._validate_and_format_result(result, ml_analysis, customer_info)
 
-            # CRITICAL: Post-LLM validation - Force ESCALATE for new customers if LLM returns REJECT
-            # This matches money order logic: new customers should NEVER get REJECT on first upload
+            # CRITICAL: Post-LLM validation - Force ESCALATE for new customers regardless of LLM recommendation
+            # New customers should ALWAYS ESCALATE (1-100% risk) per updated decision matrix
             is_new_customer = not customer_info.get('customer_id')
-            if is_new_customer and final_result.get('recommendation') == 'REJECT':
+            if is_new_customer and final_result.get('recommendation') in ['REJECT', 'APPROVE']:
+                original_recommendation = final_result.get('recommendation')
                 logger.warning(
-                    f"LLM returned REJECT for new customer {account_holder_name}. "
-                    f"Overriding to ESCALATE per policy (new customers must be escalated, not rejected)."
+                    f"LLM returned {original_recommendation} for new customer {account_holder_name}. "
+                    f"Overriding to ESCALATE per policy (new customers must always escalate regardless of risk score)."
                 )
                 final_result = self._create_first_time_escalation(account_holder_name, is_new_customer=True)
                 final_result['reasoning'].append(
-                    f"Original LLM recommendation was REJECT, but overridden to ESCALATE because this is a new customer. "
-                    f"New customers require manual review before rejection."
+                    f"Original LLM recommendation was {original_recommendation}, but overridden to ESCALATE because this is a new customer. "
+                    f"New customers require manual review regardless of risk score (1-100%)."
                 )
 
             logger.info(f"AI recommendation: {final_result.get('recommendation')}")

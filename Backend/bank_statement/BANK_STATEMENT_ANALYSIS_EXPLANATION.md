@@ -100,10 +100,7 @@ The AI uses a **decision matrix** based on:
 
 | Customer Type | Risk Score | Decision |
 |--------------|------------|----------|
-| **New Customer** | < 30% | APPROVE |
-| **New Customer** | 30-95% | **ESCALATE** |
-| **New Customer** | ≥ 95% | **ESCALATE** |
-| **New Customer** | 100% | **ESCALATE** |
+| **New Customer** | 1-100% | **ESCALATE** |
 | Clean History | < 30% | APPROVE |
 | Clean History | 30-85% | ESCALATE |
 | Clean History | > 85% | REJECT |
@@ -283,4 +280,5 @@ Actionable recommendations come from the **AI agent** (OpenAI LLM) based on:
 - **ESCALATE**: New customer policy (cannot reject first time)
 - **BALANCE_CONSISTENCY_VIOLATION**: Balance calculations don't match
 - **3 Recommendations**: AI suggests escalation, verification, and documentation
+
 
