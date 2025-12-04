@@ -278,6 +278,12 @@ const AllDocumentsInsights = () => {
       ? ((highRiskCount / totalDocuments) * 100).toFixed(1)
       : '0.0';
 
+    // Document type counts for summary metrics
+    const documentTypeCounts = {};
+    documentTypeData.forEach(item => {
+      documentTypeCounts[item.name] = item.value;
+    });
+
     return {
       fraudRateData,
       documentTypeData,
@@ -289,7 +295,8 @@ const AllDocumentsInsights = () => {
         totalDocuments,
         avgRiskScore,
         highRiskCount,
-        highRiskPercent
+        highRiskPercent,
+        documentTypeCounts
       }
     };
   };
@@ -951,6 +958,25 @@ const AllDocumentsInsights = () => {
               <div style={{ color: colors.mutedForeground }}>High Risk Documents %</div>
             </div>
           </div>
+          
+          {/* Document Type Counts */}
+          {csvData.metrics.documentTypeCounts && Object.keys(csvData.metrics.documentTypeCounts).length > 0 && (
+            <div style={{ marginTop: '2rem' }}>
+              <h3 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.2rem' }}>Documents by Type</h3>
+              <div style={metricsGridStyle}>
+                {Object.entries(csvData.metrics.documentTypeCounts).map(([type, count]) => (
+                  <div key={type} style={metricCardStyle}>
+                    <div style={{ fontSize: '1.75rem', fontWeight: 'bold', color: primary, marginBottom: '0.5rem' }}>
+                      {count}
+                    </div>
+                    <div style={{ color: colors.mutedForeground, fontSize: '0.9rem' }}>
+                      {type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, ' ')}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
