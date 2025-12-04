@@ -576,10 +576,15 @@ const EChartsGeo = ({ data, title, height = 400 }) => {
   const option = {
     tooltip: {
       trigger: 'item',
+      triggerOn: 'mousemove|click',
+      confine: true,
       formatter: (params) => {
         try {
-          // Only show tooltip for scatter series, not geo map
-          if (!params || params.componentType !== 'series') return '';
+          // Only show tooltip for scatter series data, not geo map
+          if (!params) return '';
+          if (params.componentType !== 'series') return '';
+          if (params.seriesType !== 'scatter') return '';
+          if (!params.data) return '';
           if (!params.value || !Array.isArray(params.value)) return '';
 
           const value = params.value;
@@ -721,8 +726,22 @@ const EChartsGeo = ({ data, title, height = 400 }) => {
   const onEvents = {
     // Prevent errors from geo component interactions
     click: (params) => {
-      if (params.componentType === 'series') {
-        console.log('Clicked scatter point:', params.name);
+      try {
+        if (params && params.componentType === 'series' && params.seriesType === 'scatter') {
+          console.log('Clicked scatter point:', params.name);
+        }
+      } catch (e) {
+        // Silently ignore click errors
+      }
+    },
+    mousemove: (params) => {
+      try {
+        // Only handle mousemove for scatter points, not geo regions
+        if (!params || params.componentType !== 'series' || params.seriesType !== 'scatter') {
+          return false; // Stop propagation for non-scatter elements
+        }
+      } catch (e) {
+        return false;
       }
     }
   };

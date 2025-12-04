@@ -367,9 +367,15 @@ def _build_geo_scatter_plot(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
     if subset.empty:
         subset = df
 
-    group_cols = [city_col]
+    # Normalize city and country names BEFORE grouping to combine duplicates
+    subset = subset.copy()
+    subset['normalized_city'] = subset[city_col].fillna('Unknown City').astype(str).str.strip().str.title()
     if country_col:
-        group_cols.append(country_col)
+        subset['normalized_country'] = subset[country_col].fillna('Unknown').astype(str).str.strip().str.title()
+        group_cols = ['normalized_city', 'normalized_country']
+    else:
+        subset['normalized_country'] = 'Unknown'
+        group_cols = ['normalized_city']
 
     grouped = subset.groupby(group_cols).size().reset_index(name='count').sort_values('count', ascending=False).head(50)
     if grouped.empty:
@@ -377,9 +383,15 @@ def _build_geo_scatter_plot(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
 
     geo_points = []
     for _, row in grouped.iterrows():
-        city = str(row.get(city_col) or 'Unknown City')
-        country = str(row.get(country_col) or 'Unknown') if country_col else 'Unknown'
-        lat, lng = _pseudo_coordinates(city, country)
+        city = str(row.get('normalized_city', 'Unknown City'))
+        country = str(row.get('normalized_country', 'Unknown'))
+        # Only use real coordinates from known_cities_map (no synthetic fallback)
+        coords = _pseudo_coordinates(city, country, allow_fallback=False)
+        if not coords:
+            # Skip cities without known coordinates to ensure stable map
+            logger.debug("Skipping geo hotspot with unknown coordinates", extra={'city': city, 'country': country})
+            continue
+        lat, lng = coords
         geo_points.append({
             'city': city,
             'country': country,
@@ -387,6 +399,10 @@ def _build_geo_scatter_plot(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
             'lng': lng,
             'count': int(row['count']),
         })
+
+    if not geo_points:
+        logger.warning("No geo hotspots with known coordinates")
+        return None
 
     # Sort geo_points by count in descending order (highest first)
     geo_points.sort(key=lambda x: x['count'], reverse=True)
@@ -401,7 +417,7 @@ def _build_geo_scatter_plot(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
         'type': 'geo_scatter',
         'data': geo_points,
         'details': details,
-        'description': 'Synthetic coordinates highlighting where risky transactions originate.',
+        'description': 'Real geographic coordinates showing where risky transactions originate.',
     }
 
 
@@ -546,13 +562,21 @@ def _build_sankey_plot(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
 
 
 def _first_present_column(df: pd.DataFrame, candidates: Sequence[str]) -> Optional[str]:
+    """
+    Return the first column present in the dataframe, matching candidates case-insensitively.
+    """
+    if df is None or df.empty:
+        return None
+
+    normalized = {col.lower(): col for col in df.columns}
     for candidate in candidates:
-        if candidate in df.columns:
-            return candidate
+        actual = normalized.get(candidate.lower())
+        if actual:
+            return actual
     return None
 
 
-def _pseudo_coordinates(city: str, country: str) -> Tuple[float, float]:
+def _pseudo_coordinates(city: str, country: str, allow_fallback: bool = True) -> Optional[Tuple[float, float]]:
     '''
     Derive deterministic pseudo coordinates so the UI can plot cities.
     Uses a hash-based approach to generate consistent coordinates for the same city/country pair.
@@ -581,6 +605,34 @@ def _pseudo_coordinates(city: str, country: str) -> Tuple[float, float]:
         ('atlanta', 'united states'): (33.7490, -84.3880),
         ('dallas', 'usa'): (32.7767, -96.7970),
         ('dallas', 'united states'): (32.7767, -96.7970),
+        ('phoenix', 'usa'): (33.4484, -112.0740),
+        ('phoenix', 'united states'): (33.4484, -112.0740),
+        ('philadelphia', 'usa'): (39.9526, -75.1652),
+        ('philadelphia', 'united states'): (39.9526, -75.1652),
+        ('san diego', 'usa'): (32.7157, -117.1611),
+        ('san diego', 'united states'): (32.7157, -117.1611),
+        ('san antonio', 'usa'): (29.4241, -98.4936),
+        ('san antonio', 'united states'): (29.4241, -98.4936),
+        ('austin', 'usa'): (30.2672, -97.7431),
+        ('austin', 'united states'): (30.2672, -97.7431),
+        ('jacksonville', 'usa'): (30.3322, -81.6557),
+        ('jacksonville', 'united states'): (30.3322, -81.6557),
+        ('columbus', 'usa'): (39.9612, -82.9988),
+        ('columbus', 'united states'): (39.9612, -82.9988),
+        ('indianapolis', 'usa'): (39.7684, -86.1581),
+        ('indianapolis', 'united states'): (39.7684, -86.1581),
+        ('san jose', 'usa'): (37.3382, -121.8863),
+        ('san jose', 'united states'): (37.3382, -121.8863),
+        ('denver', 'usa'): (39.7392, -104.9903),
+        ('denver', 'united states'): (39.7392, -104.9903),
+        ('las vegas', 'usa'): (36.1699, -115.1398),
+        ('las vegas', 'united states'): (36.1699, -115.1398),
+        ('charlotte', 'usa'): (35.2271, -80.8431),
+        ('charlotte', 'united states'): (35.2271, -80.8431),
+        ('washington', 'usa'): (38.9072, -77.0369),
+        ('washington', 'united states'): (38.9072, -77.0369),
+        ('st. louis', 'usa'): (38.6270, -90.1994),
+        ('st. louis', 'united states'): (38.6270, -90.1994),
 
         # North America - Canada
         ('toronto', 'canada'): (43.6532, -79.3832),
@@ -680,13 +732,44 @@ def _pseudo_coordinates(city: str, country: str) -> Tuple[float, float]:
         ('casablanca', 'morocco'): (33.5731, -7.5898),
     }
 
+    # Normalize names to handle variations
+    country_aliases = {
+        'united states': 'usa',
+        'united states of america': 'usa',
+        'us': 'usa',
+        'america': 'usa',
+        'united kingdom': 'uk',
+        'great britain': 'uk',
+        'britain': 'uk',
+        'united arab emirates': 'uae',
+        'czech republic': 'czechia',
+    }
+    city_aliases = {
+        'new york city': 'new york',
+        'nyc': 'new york',
+        'san fran': 'san francisco',
+        'st louis': 'st. louis',
+        'saint louis': 'st. louis',
+        'washington dc': 'washington',
+        'washington d.c.': 'washington',
+        'la': 'los angeles'
+    }
+
     # Check if we have known coordinates (case-insensitive)
     city_clean = (city or 'Unknown').strip().lower()
     country_clean = (country or 'Unknown').strip().lower()
+
+    # Apply country aliases for normalization
+    country_clean = country_aliases.get(country_clean, country_clean)
+    city_clean = city_aliases.get(city_clean, city_clean)
+
     key_tuple = (city_clean, country_clean)
 
     if key_tuple in known_cities_map:
         return known_cities_map[key_tuple]
+
+    if not allow_fallback:
+        return None
 
     # For unknown cities, generate pseudo coordinates with better distribution
     key = f"{city}|{country}".encode('utf-8')
