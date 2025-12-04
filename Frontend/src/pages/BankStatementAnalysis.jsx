@@ -106,7 +106,9 @@ const BankStatementAnalysis = () => {
   const [activeTab, setActiveTab] = useState('analyze');
 
   useEffect(() => {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `${process.env.PUBLIC_URL}/pdf.worker.min.js`;
+    // Configure PDF.js worker - use CDN to avoid 'import.meta' errors
+    // Using unpkg CDN which serves the worker file correctly
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.js`;
   }, []);
 
   const renderPdfPreview = async (fileObject) => {
@@ -334,6 +336,18 @@ const BankStatementAnalysis = () => {
   // Styles
   // Use primaryColor for new design system red
   const primary = colors.primaryColor || colors.accent?.red || '#E53935';
+
+  const tabStyle = (isActive) => ({
+    padding: '1rem 2rem',
+    borderRadius: '0.75rem 0.75rem 0 0',
+    backgroundColor: isActive ? primary : colors.secondary,
+    color: isActive ? colors.primaryForeground : colors.foreground,
+    border: `1px solid ${colors.border}`,
+    borderBottom: isActive ? 'none' : `1px solid ${colors.border}`,
+    cursor: 'pointer',
+    fontWeight: isActive ? '600' : '500',
+    transition: 'all 0.3s',
+  });
 
   const containerStyle = {
     maxWidth: '1400px',

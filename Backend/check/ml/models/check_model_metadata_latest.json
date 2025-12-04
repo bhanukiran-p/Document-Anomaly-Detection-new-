@@ -15,8 +15,8 @@
     "suspicious_chars",
     "missing_fields_count"
   ],
-  "model_path": "check_risk_model_20251203_174222.pkl",
-  "scaler_path": "check_scaler_20251203_174222.pkl",
-  "trained_at": "20251203_174222",
+  "model_path": "check_risk_model_20251204_162749.pkl",
+  "scaler_path": "check_scaler_20251204_162749.pkl",
+  "trained_at": "20251204_162749",
   "feature_count": 12
 }

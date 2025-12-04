@@ -351,7 +351,12 @@ class BankStatementFraudAnalysisAgent:
         }
 
     def _create_duplicate_rejection(self, account_number: str, account_holder_name: str) -> Dict:
-        """Create rejection response for duplicate bank statements"""
+        """Create rejection response for duplicate bank statements
+        
+        Note: Duplicate detection is automatic and happens before LLM analysis.
+        Duplicate submissions are treated as FABRICATED_DOCUMENT since resubmitting
+        the same statement is a form of document fraud.
+        """
         return {
             'recommendation': 'REJECT',
             'confidence_score': 1.0,
@@ -370,10 +375,10 @@ class BankStatementFraudAnalysisAgent:
                 'Flag customer account for review',
                 'Investigate potential fraud attempt'
             ],
-            'fraud_types': ['DUPLICATE_STATEMENT'],  # Set fraud type for duplicates
+            'fraud_types': ['FABRICATED_DOCUMENT'],  # Duplicate submission is a form of document fabrication
             'fraud_explanations': [
                 {
-                    'type': 'DUPLICATE_STATEMENT',
+                    'type': 'FABRICATED_DOCUMENT',
                     'reasons': [
                         f'Bank statement for account {account_number} from {account_holder_name} was previously submitted and analyzed',
                         'Duplicate statement submissions are automatically rejected per fraud policy',

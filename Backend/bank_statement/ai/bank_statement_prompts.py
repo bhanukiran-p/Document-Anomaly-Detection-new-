@@ -101,7 +101,7 @@ IMPORTANT FRAUD TYPE RULES:
 - For NEW customers: Always return empty arrays for fraud_types and fraud_explanations (even if ML detected fraud)
 - For REPEAT customers: **YOU MUST ALWAYS return fraud_types and fraud_explanations** if recommendation is REJECT or ESCALATE
 - **CRITICAL**: For REPEAT customers with REJECT or ESCALATE, you MUST identify at least ONE fraud type and provide SPECIFIC explanations
-- Valid fraud types: BALANCE_CONSISTENCY_VIOLATION, FABRICATED_DOCUMENT, ALTERED_LEGITIMATE_DOCUMENT, SUSPICIOUS_TRANSACTION_PATTERNS, UNREALISTIC_FINANCIAL_PROPORTIONS, DUPLICATE_STATEMENT, REPEAT_OFFENDER
+- Valid fraud types: BALANCE_CONSISTENCY_VIOLATION, FABRICATED_DOCUMENT, ALTERED_LEGITIMATE_DOCUMENT, SUSPICIOUS_TRANSACTION_PATTERNS, UNREALISTIC_FINANCIAL_PROPORTIONS, REPEAT_OFFENDER
 - Only include fraud_types if recommendation is REJECT or ESCALATE (not for APPROVE)
 - **If you cannot identify a specific fraud type, analyze the document data and ML risk factors to determine the most likely fraud type**
 
