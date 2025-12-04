@@ -190,16 +190,6 @@ const EChartsHeatmap = ({ data, title, height = 400 }) => {
   }
 
   const option = {
-    title: {
-      text: title,
-      left: 'center',
-      top: 10,
-      textStyle: {
-        color: '#e2e8f0',
-        fontSize: 14,
-        fontWeight: 600
-      }
-    },
     tooltip: {
       position: 'top',
       backgroundColor: 'rgba(30, 41, 59, 0.95)',
@@ -224,7 +214,7 @@ const EChartsHeatmap = ({ data, title, height = 400 }) => {
     grid: {
       left: '15%',
       right: '10%',
-      top: '15%',
+      top: '10%',
       bottom: '15%',
       containLabel: true
     },

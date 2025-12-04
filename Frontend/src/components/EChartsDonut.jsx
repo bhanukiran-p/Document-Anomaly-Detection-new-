@@ -3,16 +3,6 @@ import ReactECharts from 'echarts-for-react';
 
 const EChartsDonut = ({ data, title, height = 220 }) => {
   const option = {
-    title: {
-      text: title,
-      left: 'center',
-      top: 10,
-      textStyle: {
-        color: '#e2e8f0',
-        fontSize: 14,
-        fontWeight: 600
-      }
-    },
     tooltip: {
       trigger: 'item',
       formatter: '{b}: {c} ({d}%)',

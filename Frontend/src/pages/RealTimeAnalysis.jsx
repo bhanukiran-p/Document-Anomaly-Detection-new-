@@ -298,44 +298,65 @@ const RealTimeAnalysis = () => {
   };
 
   const handleDownloadCSV = () => {
-    if (!analysisResult?.transactions?.length) return;
+    console.log('Download CSV clicked');
+    console.log('Analysis result:', analysisResult);
+    console.log('Transactions:', analysisResult?.transactions);
+    console.log('Transactions length:', analysisResult?.transactions?.length);
 
-    const rows = analysisResult.transactions;
-    const headers = Object.keys(rows[0] || {});
+    if (!analysisResult?.transactions?.length) {
+      console.error('No transactions available for download');
+      setError('No transactions available for download');
+      return;
+    }
 
-    const escapeValue = (value) => {
-      if (value === null || value === undefined) return '';
-      if (typeof value === 'object') {
-        try {
-          return JSON.stringify(value);
-        } catch {
-          return String(value);
+    try {
+      const rows = analysisResult.transactions;
+      const headers = Object.keys(rows[0] || {});
+
+      console.log('Headers:', headers);
+      console.log('Total rows:', rows.length);
+
+      const escapeValue = (value) => {
+        if (value === null || value === undefined) return '';
+        if (typeof value === 'object') {
+          try {
+            return JSON.stringify(value);
+          } catch {
+            return String(value);
+          }
         }
-      }
-      return String(value);
-    };
+        return String(value);
+      };
 
-    const headerRow = headers.join(',');
-    const dataRows = rows.map((row) =>
-      headers
-        .map((key) => {
-          const rawValue = escapeValue(row[key]);
-          const safeValue = rawValue.replace(/"/g, '""');
-          return `"${safeValue}"`;
-        })
-        .join(',')
-    );
+      const headerRow = headers.join(',');
+      const dataRows = rows.map((row) =>
+        headers
+          .map((key) => {
+            const rawValue = escapeValue(row[key]);
+            const safeValue = rawValue.replace(/"/g, '""');
+            return `"${safeValue}"`;
+          })
+          .join(',')
+      );
 
-    const csvContent = [headerRow, ...dataRows].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `real_time_transactions_${Date.now()}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+      const csvContent = [headerRow, ...dataRows].join('\n');
+      console.log('CSV content length:', csvContent.length);
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `real_time_transactions_${Date.now()}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      console.log('CSV download initiated successfully');
+    } catch (err) {
+      console.error('Error generating CSV:', err);
+      setError(`Failed to download CSV: ${err.message}`);
+    }
   };
 
   
@@ -1676,7 +1697,7 @@ const RealTimeAnalysis = () => {
             </div>
             <div style={styles.statCard}>
               <div style={styles.statLabel}>Total Amount</div>
-              <div style={styles.statValue}>
+              <div style={{ ...styles.statValue, fontSize: '1.5rem' }}>
                 ${analysisResult.fraud_detection.total_amount.toLocaleString()}
               </div>
             </div>
@@ -1684,12 +1705,6 @@ const RealTimeAnalysis = () => {
               <div style={styles.statLabel}>Fraud Amount</div>
               <div style={{ ...styles.statValue, ...styles.fraudStat, fontSize: '1.5rem' }}>
                 ${analysisResult.fraud_detection.total_fraud_amount.toLocaleString()}
-              </div>
-            </div>
-            <div style={styles.statCard}>
-              <div style={styles.statLabel}>Model Type</div>
-              <div style={{ ...styles.statValue, fontSize: '1.2rem' }}>
-                {analysisResult.fraud_detection.model_type}
               </div>
             </div>
             <div style={styles.statCard}>

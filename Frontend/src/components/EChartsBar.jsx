@@ -9,16 +9,6 @@ const EChartsBar = ({ data, title, height = 400 }) => {
   const reversedData = [...data].reverse();
 
   const option = {
-    title: {
-      text: title,
-      left: 'center',
-      top: 10,
-      textStyle: {
-        color: '#e2e8f0',
-        fontSize: 14,
-        fontWeight: 600
-      }
-    },
     tooltip: {
       trigger: 'axis',
       axisPointer: {
@@ -33,7 +23,7 @@ const EChartsBar = ({ data, title, height = 400 }) => {
     grid: {
       left: '20%',
       right: '10%',
-      top: '15%',
+      top: '5%',
       bottom: '10%',
       containLabel: true
     },
