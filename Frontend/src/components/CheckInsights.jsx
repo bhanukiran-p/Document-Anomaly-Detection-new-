@@ -48,6 +48,7 @@ const CheckInsights = () => {
   const [allChecksData, setAllChecksData] = useState([]);
   const [activePieIndex, setActivePieIndex] = useState(null);
   const [activeBarIndex, setActiveBarIndex] = useState(null);
+  const [activeBankBarIndex, setActiveBankBarIndex] = useState({ bankIndex: null, series: null });
 
   const parseCSV = (text) => {
     const lines = text.trim().split('\n');
@@ -1158,20 +1159,111 @@ const CheckInsights = () => {
               <div style={chartBoxStyle}>
                 <h3 style={chartTitleStyle}>Risk Level by Bank</h3>
                 <ResponsiveContainer width="100%" height={320}>
-                  <BarChart data={csvData.riskByBankData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                    <XAxis dataKey="name" stroke={colors.mutedForeground} />
-                    <YAxis stroke={colors.mutedForeground} />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: colors.card,
-                        border: `1px solid ${colors.border}`,
-                        color: colors.foreground
+                  <BarChart 
+                    data={csvData.riskByBankData}
+                    margin={{ top: 10, right: 20, left: 10, bottom: 10 }}
+                    onMouseLeave={() => setActiveBankBarIndex({ bankIndex: null, series: null })}
+                  >
+                    <defs>
+                      <linearGradient id="avgRiskGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={colors.status.warning || '#f59e0b'} stopOpacity={1} />
+                        <stop offset="100%" stopColor={colors.status.warning || '#f59e0b'} stopOpacity={0.7} />
+                      </linearGradient>
+                      <linearGradient id="avgRiskGradientHover" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={colors.status.warning || '#f59e0b'} stopOpacity={1} />
+                        <stop offset="100%" stopColor={colors.status.warning || '#f59e0b'} stopOpacity={0.9} />
+                      </linearGradient>
+                      <linearGradient id="countGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={colors.status.success || '#10b981'} stopOpacity={1} />
+                        <stop offset="100%" stopColor={colors.status.success || '#10b981'} stopOpacity={0.7} />
+                      </linearGradient>
+                      <linearGradient id="countGradientHover" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={colors.status.success || '#10b981'} stopOpacity={1} />
+                        <stop offset="100%" stopColor={colors.status.success || '#10b981'} stopOpacity={0.9} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.3} />
+                    <XAxis 
+                      dataKey="name" 
+                      tick={{ fill: colors.foreground, fontSize: 12 }}
+                      stroke={colors.border}
+                    />
+                    <YAxis 
+                      tick={{ fill: colors.foreground, fontSize: 12 }}
+                      stroke={colors.border}
+                    />
+                    <Tooltip 
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0].payload;
+                          return (
+                            <div style={{
+                              backgroundColor: colors.card,
+                              border: `1px solid ${colors.border}`,
+                              borderRadius: '8px',
+                              padding: '12px',
+                              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
+                            }}>
+                              <p style={{ margin: '0 0 8px 0', fontWeight: '600', color: colors.foreground }}>
+                                {data.name}
+                              </p>
+                              {payload.map((entry, index) => (
+                                <p key={index} style={{ margin: '4px 0', color: entry.color }}>
+                                  <span style={{ fontWeight: '600' }}>{entry.name}:</span> {entry.name === 'Avg Risk Score (%)' ? `${entry.value}%` : entry.value}
+                                </p>
+                              ))}
+                            </div>
+                          );
+                        }
+                        return null;
                       }}
+                      cursor={{ fill: 'transparent' }}
                     />
                     <Legend />
-                    <Bar dataKey="avgRisk" fill={colors.status.warning} name="Avg Risk Score (%)" />
-                    <Bar dataKey="count" fill={colors.status.success} name="Check Count" />
+                    <Bar 
+                      dataKey="avgRisk" 
+                      fill="url(#avgRiskGradient)"
+                      name="Avg Risk Score (%)"
+                    >
+                      {csvData.riskByBankData.map((entry, index) => {
+                        const isActive = activeBankBarIndex.bankIndex === index && activeBankBarIndex.series === 'avgRisk';
+                        return (
+                          <Cell 
+                            key={`avgRisk-cell-${index}`}
+                            fill={isActive ? "url(#avgRiskGradientHover)" : "url(#avgRiskGradient)"}
+                            onMouseEnter={() => setActiveBankBarIndex({ bankIndex: index, series: 'avgRisk' })}
+                            onMouseLeave={() => setActiveBankBarIndex({ bankIndex: null, series: null })}
+                            style={{
+                              cursor: 'pointer',
+                              transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                              filter: isActive ? 'brightness(1.1)' : 'brightness(1)'
+                            }}
+                          />
+                        );
+                      })}
+                    </Bar>
+                    <Bar 
+                      dataKey="count" 
+                      fill="url(#countGradient)"
+                      name="Check Count"
+                    >
+                      {csvData.riskByBankData.map((entry, index) => {
+                        const isActive = activeBankBarIndex.bankIndex === index && activeBankBarIndex.series === 'count';
+                        return (
+                          <Cell 
+                            key={`count-cell-${index}`}
+                            fill={isActive ? "url(#countGradientHover)" : "url(#countGradient)"}
+                            onMouseEnter={() => setActiveBankBarIndex({ bankIndex: index, series: 'count' })}
+                            onMouseLeave={() => setActiveBankBarIndex({ bankIndex: null, series: null })}
+                            style={{
+                              cursor: 'pointer',
+                              transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                              filter: isActive ? 'brightness(1.1)' : 'brightness(1)'
+                            }}
+                          />
+                        );
+                      })}
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
