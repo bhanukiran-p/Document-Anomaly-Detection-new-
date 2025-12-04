@@ -836,6 +836,8 @@ def analyze_bank_statement():
                 'summary': ai_analysis.get('summary', ''),
                 'key_indicators': ai_analysis.get('key_indicators', []),
                 'customer_info': result.get('customer_info', {}),  # Include customer history
+                'ml_analysis': ml_analysis,  # Include full ML analysis for frontend access
+                'ai_analysis': ai_analysis,  # Include full AI analysis for frontend access
                 'document_id': document_id,
                 'data': result,  # Include full result for backward compatibility
                 'message': 'Bank statement analyzed and stored successfully'
