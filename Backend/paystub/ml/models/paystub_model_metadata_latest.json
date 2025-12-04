@@ -21,8 +21,8 @@
     "net_to_gross_ratio",
     "deduction_percentage"
   ],
-  "model_path": "paystub_risk_model_20251203_174223.pkl",
-  "scaler_path": "paystub_scaler_20251203_174223.pkl",
-  "trained_at": "20251203_174223",
+  "model_path": "paystub_risk_model_20251204_162749.pkl",
+  "scaler_path": "paystub_scaler_20251204_162749.pkl",
+  "trained_at": "20251204_162749",
   "feature_count": 18
 }

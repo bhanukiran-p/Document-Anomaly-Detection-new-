@@ -341,13 +341,10 @@ class RiskModelTrainer:
             # Cap at 100
             risk_score = max(0, min(100, risk_score))
             
-            # If target is high-risk but score is too low, boost it
-            if target_min >= 71 and risk_score < 60:
-                risk_score = random.uniform(71, 100)
-            elif target_min >= 31 and risk_score < 25:
-                risk_score = random.uniform(31, 70)
-            elif target_max <= 30 and risk_score > 35:
-                risk_score = random.uniform(0, 30)
+            # REMOVED: Score forcing logic that was artificially lowering legitimate sample scores
+            # This was causing the model to learn that even suspicious-looking legitimate samples
+            # should have low scores, leading to poor fraud detection on real paystubs.
+            # The risk score calculation above should be sufficient to generate appropriate scores.
             
             # Build features dictionary with all 22 features
             features = {
