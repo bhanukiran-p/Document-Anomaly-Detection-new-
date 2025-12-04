@@ -1147,6 +1147,124 @@ def search_money_orders():
         }), 500
 
 
+# Database query endpoints for bank statements
+@app.route('/api/bank-statements/list', methods=['GET'])
+def get_bank_statements_list():
+    """Fetch list of bank statements from database table with optional date filtering"""
+    try:
+        from datetime import datetime, timedelta
+        supabase = get_supabase()
+
+        # Fetch all records using pagination to bypass Supabase default limit of 1000
+        all_data = []
+        page_size = 1000
+        offset = 0
+        total_count = None
+        
+        while True:
+            # Get count only on first request
+            count_param = 'exact' if offset == 0 else None
+            response = supabase.table('bank_statements').select('*', count=count_param).order('created_at', desc=True).range(offset, offset + page_size - 1).execute()
+            page_data = response.data or []
+            if not page_data:
+                break
+            
+            # Get total count from first response
+            if total_count is None:
+                total_count = response.count if hasattr(response, 'count') else None
+            
+            all_data.extend(page_data)
+            
+            # Check if we got all records
+            if total_count and len(all_data) >= total_count:
+                break
+            if len(page_data) < page_size:
+                break
+            offset += page_size
+        
+        data = all_data
+        total_available = total_count if total_count is not None else len(data)
+
+        # Optional date filtering
+        date_filter = request.args.get('date_filter', default=None)  # 'last_30', 'last_60', 'last_90', 'older'
+
+        if date_filter:
+            now = datetime.utcnow()
+            filtered_data = []
+
+            for record in data:
+                created_at_str = record.get('created_at')
+                if not created_at_str:
+                    continue
+
+                # Parse created_at timestamp
+                try:
+                    # Handle ISO format timestamps with or without microseconds
+                    if 'T' in created_at_str:
+                        created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00').split('+')[0])
+                    else:
+                        created_at = datetime.fromisoformat(created_at_str)
+                except:
+                    continue
+
+                days_old = (now - created_at).days
+
+                if date_filter == 'last_30' and days_old <= 30:
+                    filtered_data.append(record)
+                elif date_filter == 'last_60' and days_old <= 60:
+                    filtered_data.append(record)
+                elif date_filter == 'last_90' and days_old <= 90:
+                    filtered_data.append(record)
+                elif date_filter == 'older' and days_old > 90:
+                    filtered_data.append(record)
+
+            data = filtered_data
+
+        return jsonify({
+            'success': True,
+            'data': data,
+            'count': len(data),
+            'total_records': total_available if not date_filter else None,
+            'date_filter': date_filter
+        })
+    except Exception as e:
+        logger.error(f"Failed to fetch bank statements list: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to fetch bank statements list'
+        }), 500
+
+
+@app.route('/api/bank-statements/search', methods=['GET'])
+def search_bank_statements():
+    """Search bank statements by account holder or bank name"""
+    try:
+        supabase = get_supabase()
+        query = request.args.get('q', default='', type=str)
+        limit = request.args.get('limit', default=20, type=int)
+        if not query:
+            return jsonify({
+                'success': False,
+                'error': 'Query parameter required',
+                'message': 'Please provide a search query'
+            }), 400
+        # Search in both account_holder and bank_name fields
+        response = supabase.table('bank_statements').select('*').or_(f'account_holder.ilike.%{query}%,bank_name.ilike.%{query}%').limit(limit).execute()
+        return jsonify({
+            'success': True,
+            'data': response.data or [],
+            'count': len(response.data or [])
+        })
+    except Exception as e:
+        logger.error(f"Failed to search bank statements: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to search bank statements'
+        }), 500
+
+
 @app.route('/api/documents/list', methods=['GET'])
 def get_documents_list():
     """Fetch list of all documents from v_documents_with_risk view with optional filtering"""
@@ -1903,6 +2021,8 @@ if __name__ == '__main__':
     print(f"  - GET  /api/money-orders/list")
     print(f"  - GET  /api/money-orders/search")
     print(f"  - GET  /api/money-orders/<money_order_id>")
+    print(f"  - GET  /api/bank-statements/list")
+    print(f"  - GET  /api/bank-statements/search")
     print(f"  - GET  /api/documents/list")
     print(f"  - GET  /api/documents/search")
     print(f"  - GET  /api/paystubs/insights")

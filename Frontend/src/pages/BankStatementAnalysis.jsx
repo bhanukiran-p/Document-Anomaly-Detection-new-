@@ -3,7 +3,8 @@ import { useDropzone } from 'react-dropzone';
 import { analyzeBankStatement } from '../services/api';
 import { colors } from '../styles/colors';
 import { FaExclamationTriangle, FaUniversity, FaCog } from 'react-icons/fa';
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.js';
+import * as pdfjsLib from 'pdfjs-dist';
+import BankStatementInsights from '../components/BankStatementInsights.jsx';
 
 const buildBankStatementSections = (data) => ({
   'Account Information': [
@@ -102,6 +103,7 @@ const BankStatementAnalysis = () => {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState('analyze');
 
   useEffect(() => {
     pdfjsLib.GlobalWorkerOptions.workerSrc = `${process.env.PUBLIC_URL}/pdf.worker.min.js`;
@@ -436,6 +438,8 @@ const BankStatementAnalysis = () => {
   const analysisData = results;
   const mlAnalysis = analysisData?.ml_analysis || {};
   const aiAnalysis = analysisData?.ai_analysis || {};
+  const anomalies = analysisData?.anomalies || [];
+  const criticalFactors = analysisData ? buildBankCriticalFactors(analysisData, anomalies) : [];
 
   return (
     <div style={containerStyle}>
@@ -446,6 +450,28 @@ const BankStatementAnalysis = () => {
         <p>Extract and analyze bank statement details with transaction history</p>
       </div>
 
+      {/* Tabs */}
+      <div style={{ display: 'flex', marginBottom: '0', borderBottom: `1px solid ${colors.border}` }}>
+        <button
+          onClick={() => setActiveTab('analyze')}
+          style={tabStyle(activeTab === 'analyze')}
+          onMouseEnter={(e) => activeTab === 'analyze' || (e.target.style.backgroundColor = colors.muted)}
+          onMouseLeave={(e) => activeTab === 'analyze' || (e.target.style.backgroundColor = colors.secondary)}
+        >
+          Analysis
+        </button>
+        <button
+          onClick={() => setActiveTab('insights')}
+          style={tabStyle(activeTab === 'insights')}
+          onMouseEnter={(e) => activeTab === 'insights' || (e.target.style.backgroundColor = colors.muted)}
+          onMouseLeave={(e) => activeTab === 'insights' || (e.target.style.backgroundColor = colors.secondary)}
+        >
+          Insights
+        </button>
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === 'analyze' && (
       <div style={gridStyle}>
         {/* Upload Section */}
         <div style={cardStyle}>
@@ -866,6 +892,12 @@ const BankStatementAnalysis = () => {
           )}
         </div>
       </div>
+      )}
+
+      {/* Insights Tab */}
+      {activeTab === 'insights' && (
+        <BankStatementInsights />
+      )}
     </div>
   );
 };
