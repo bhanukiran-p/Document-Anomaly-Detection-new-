@@ -68,27 +68,37 @@ class BankStatementFraudDetector:
                 self.rf_model = joblib.load(self.rf_model_path)
                 logger.info("Loaded Random Forest model for bank statements")
             else:
-                logger.warning("Random Forest model not found, using mock scoring")
+                logger.error(f"Random Forest model not found at {self.rf_model_path}")
                 self.rf_model = None
 
             if os.path.exists(self.xgb_model_path):
                 self.xgb_model = joblib.load(self.xgb_model_path)
                 logger.info("Loaded XGBoost model for bank statements")
             else:
-                logger.warning("XGBoost model not found, using mock scoring")
+                logger.error(f"XGBoost model not found at {self.xgb_model_path}")
                 self.xgb_model = None
 
             if os.path.exists(self.scaler_path):
                 self.scaler = joblib.load(self.scaler_path)
                 logger.info("Loaded feature scaler for bank statements")
             else:
-                logger.warning("Feature scaler not found")
+                logger.error(f"Feature scaler not found at {self.scaler_path}")
                 self.scaler = None
 
-            self.models_loaded = (self.rf_model is not None or self.xgb_model is not None)
+            # Both models are REQUIRED - no fallback
+            if self.rf_model is None or self.xgb_model is None:
+                missing_models = []
+                if self.rf_model is None:
+                    missing_models.append("Random Forest")
+                if self.xgb_model is None:
+                    missing_models.append("XGBoost")
+                logger.error(f"Required ML models are missing: {', '.join(missing_models)}")
+                self.models_loaded = False
+            else:
+                self.models_loaded = True
 
         except ImportError:
-            logger.warning("joblib not available, using mock scoring")
+            logger.error("joblib is required for ML models but not available. Install with: pip install joblib")
             self.rf_model = None
             self.xgb_model = None
             self.scaler = None
@@ -123,12 +133,16 @@ class BankStatementFraudDetector:
 
         logger.info(f"Extracted {len(features)} features for bank statement fraud detection")
 
-        # If models are loaded, use them
-        if self.models_loaded:
-            return self._predict_with_models(features, feature_names, bank_statement_data)
-        else:
-            # Use mock/heuristic scoring
-            return self._predict_mock(features, feature_names, bank_statement_data)
+        # Models are REQUIRED - no fallback
+        if not self.models_loaded:
+            raise RuntimeError(
+                "ML models are not loaded. Bank statement fraud detection requires trained models. "
+                f"Expected models at: {self.rf_model_path} and {self.xgb_model_path}. "
+                "Please ensure models are trained and available."
+            )
+        
+        # Use models - no fallback
+        return self._predict_with_models(features, feature_names, bank_statement_data)
 
     def _predict_with_models(self, features: List[float], feature_names: List[str], bank_statement_data: Dict) -> Dict:
         """Predict using trained models"""
@@ -201,120 +215,11 @@ class BankStatementFraudDetector:
             }
 
         except Exception as e:
-            logger.error(f"Error in model prediction: {e}")
-            return self._predict_mock(features, feature_names, bank_statement_data)
-
-    def _predict_mock(self, features: List[float], feature_names: List[str], bank_statement_data: Dict) -> Dict:
-        """Mock/heuristic-based fraud detection when models aren't available"""
-        logger.info("Using mock fraud detection for bank statements")
-
-        # Calculate base score from features
-        base_score = 0.0
-        risk_factors = []
-
-        # Critical checks
-        bank_valid = features[0]  # Feature 1: bank_validity
-        account_present = features[1]  # Feature 2: account_number_present
-        account_holder_present = features[2]  # Feature 3: account_holder_present
-        future_period = features[11]  # Feature 12: future_period
-        negative_balance = features[17]  # Feature 18: negative_ending_balance
-        balance_consistency = features[18]  # Feature 19: balance_consistency
-        critical_missing = features[25]  # Feature 26: critical_missing_count
-        duplicate_txns = features[28]  # Feature 29: duplicate_transactions (now 0.0, 0.5, or 1.0)
-
-        # Unsupported bank
-        if bank_valid == 0.0:
-            base_score += 0.50
-            risk_factors.append("Unsupported bank detected")
-
-        # Missing account number
-        if account_present == 0.0:
-            base_score += 0.30
-            risk_factors.append("Missing account number")
-
-        # Missing account holder
-        if account_holder_present == 0.0:
-            base_score += 0.30
-            risk_factors.append("Missing account holder name")
-
-        # Future period
-        if future_period == 1.0:
-            base_score += 0.40
-            risk_factors.append("Statement period is in the future")
-
-        # Negative balance
-        if negative_balance == 1.0:
-            base_score += 0.35
-            risk_factors.append("Negative ending balance detected")
-
-        # Balance inconsistency
-        if balance_consistency < 0.5:
-            base_score += 0.40
-            risk_factors.append("Balance inconsistency detected")
-
-        # Critical missing fields
-        if critical_missing >= 3:
-            base_score += 0.40
-            risk_factors.append(f"{int(critical_missing)} critical fields missing")
-
-        # Duplicate transactions - MEDIUM impact (reduced from 0.30 to 0.15)
-        # Single duplicate (0.5) adds 0.10, multiple duplicates (1.0) adds 0.15
-        if duplicate_txns >= 0.5:
-            if duplicate_txns >= 1.0:
-                base_score += 0.15  # Multiple duplicates
-                risk_factors.append("Multiple duplicate transactions detected")
-            else:
-                base_score += 0.10  # Single duplicate (reduced impact)
-                risk_factors.append("Duplicate transaction detected")
-
-        # Balance checks
-        ending_balance = features[5]  # Feature 6: ending_balance
-        if ending_balance < 0:
-            base_score += 0.25
-            risk_factors.append(f"Negative balance: ${ending_balance:,.2f}")
-
-        # Transaction count
-        txn_count = features[13]  # Feature 14: transaction_count
-        if txn_count == 0:
-            base_score += 0.30
-            risk_factors.append("No transactions found in statement")
-
-        # Cap score at 1.0
-        fraud_score = min(base_score, 1.0)
-
-        # Determine risk level
-        risk_level = self._determine_risk_level(fraud_score)
-
-        # Feature importance (mock)
-        feature_importance = self._get_feature_importance(features, feature_names)
-
-        return {
-            'fraud_risk_score': round(fraud_score, 4),
-            'risk_level': risk_level,
-            'model_confidence': 0.75,  # Mock confidence
-            'model_scores': {
-                'random_forest': round(fraud_score * 0.9, 4),
-                'xgboost': round(fraud_score * 1.1, 4),
-                'ensemble': round(fraud_score, 4),
-                'adjusted': round(fraud_score, 4)
-            },
-            'feature_importance': feature_importance[:10],  # Top 10
-            'anomalies': risk_factors
-        }
-        
-        # Classify fraud types
-        fraud_classification = self._classify_fraud_types(
-            features, feature_names, bank_statement_data, risk_factors
-        )
-        
-        result['fraud_types'] = fraud_classification.get('fraud_types', [])
-        result['fraud_reasons'] = fraud_classification.get('fraud_reasons', [])
-        
-        return result
-
-    # Validation rules removed - ML ensemble score is used directly without adjustments
-    # The models have been trained to account for all fraud indicators, so additional
-    # validation rules that add penalties are not needed.
+            logger.error(f"Error in model prediction: {e}", exc_info=True)
+            raise RuntimeError(
+                f"ML model prediction failed. Models are required for bank statement fraud detection. "
+                f"Error: {str(e)}"
+            ) from e
 
     def _determine_risk_level(self, score: float) -> str:
         """Determine risk level from score"""

@@ -28,7 +28,10 @@ class BankStatementCustomerStorage:
 
     def get_or_create_customer(self, account_holder_name: str) -> Optional[str]:
         """
-        Get existing customer or create new one with UUID
+        Get existing customer_id or generate new UUID (does NOT create database record)
+        The actual database record will be created by update_customer_fraud_status()
+        
+        This prevents duplicate records - only update_customer_fraud_status() creates records
 
         Args:
             account_holder_name: Name of the account holder
@@ -41,33 +44,21 @@ class BankStatementCustomerStorage:
 
         try:
             # Search for existing customer by name - get latest record (like paystubs do)
-            response = self.supabase.table('bank_statement_customers').select('*').eq('name', account_holder_name).order('created_at', desc=True).limit(1).execute()
+            response = self.supabase.table('bank_statement_customers').select('customer_id').eq('name', account_holder_name).order('created_at', desc=True).limit(1).execute()
 
             if response.data and len(response.data) > 0:
                 # Customer exists, return their ID from latest record
                 customer = response.data[0]
                 customer_id = customer.get('customer_id')
-                logger.info(f"Found existing bank statement customer: {customer_id}")
+                logger.info(f"Found existing bank statement customer_id: {customer_id} (no record created)")
                 return customer_id
             else:
-                # Create new customer with generated UUID
+                # Generate new UUID but DO NOT create database record
+                # The record will be created by update_customer_fraud_status()
                 from uuid import uuid4
-                from datetime import datetime
-
-                new_customer = {
-                    'customer_id': str(uuid4()),
-                    'name': account_holder_name,
-                    'has_fraud_history': False,
-                    'fraud_count': 0,
-                    'escalate_count': 0,
-                    'total_statements': 0,
-                    'created_at': datetime.utcnow().isoformat(),
-                    'updated_at': datetime.utcnow().isoformat()
-                }
-
-                self.supabase.table('bank_statement_customers').insert([new_customer]).execute()
-                logger.info(f"Created new bank statement customer: {new_customer['customer_id']}")
-                return new_customer['customer_id']
+                customer_id = str(uuid4())
+                logger.info(f"Generated new customer_id: {customer_id} (record will be created by update_customer_fraud_status)")
+                return customer_id
 
         except Exception as e:
             logger.error(f"Error in get_or_create_customer: {e}", exc_info=True)
@@ -76,7 +67,8 @@ class BankStatementCustomerStorage:
     def get_customer_history(self, account_holder_name: str) -> Dict:
         """
         Get customer history by account holder name
-        Returns the LATEST record for the customer (most recent upload)
+        Returns the FIRST record for the customer (original upload) to avoid duplicate record issues
+        Uses MAX() aggregation to get the actual counts across all records
 
         Args:
             account_holder_name: Name of the account holder
@@ -88,20 +80,32 @@ class BankStatementCustomerStorage:
             return {}
 
         try:
-            # Query bank_statement_customers table - get latest record (like paystubs do)
-            response = self.supabase.table('bank_statement_customers').select('*').eq('name', account_holder_name).order('created_at', desc=True).limit(1).execute()
+            # Query bank_statement_customers table - get ALL records for this customer
+            response = self.supabase.table('bank_statement_customers').select('*').eq('name', account_holder_name).order('created_at', asc=True).execute()
 
             if response.data and len(response.data) > 0:
-                customer = response.data[0]
+                # Get the FIRST record (original) for customer_id and name
+                first_record = response.data[0]
+                customer_id = first_record.get('customer_id')
+                
+                # Calculate MAX counts across ALL records (to handle duplicates correctly)
+                # This ensures we get the true counts even if there are duplicate records
+                max_fraud_count = max((r.get('fraud_count', 0) or 0) for r in response.data)
+                max_escalate_count = max((r.get('escalate_count', 0) or 0) for r in response.data)
+                max_total_statements = max((r.get('total_statements', 0) or 0) for r in response.data)
+                
+                # Get latest recommendation and analysis date from the MOST RECENT record
+                latest_record = max(response.data, key=lambda r: r.get('created_at', ''))
+                
                 return {
-                    'customer_id': customer.get('customer_id'),
-                    'name': customer.get('name'),
-                    'has_fraud_history': customer.get('has_fraud_history', False),
-                    'fraud_count': customer.get('fraud_count', 0),
-                    'escalate_count': customer.get('escalate_count', 0),
-                    'last_recommendation': customer.get('last_recommendation'),
-                    'last_analysis_date': customer.get('last_analysis_date'),
-                    'total_statements': customer.get('total_statements', 0)
+                    'customer_id': customer_id,
+                    'name': first_record.get('name'),
+                    'has_fraud_history': max_fraud_count > 0,
+                    'fraud_count': max_fraud_count,
+                    'escalate_count': max_escalate_count,
+                    'last_recommendation': latest_record.get('last_recommendation'),
+                    'last_analysis_date': latest_record.get('last_analysis_date'),
+                    'total_statements': max_total_statements
                 }
             else:
                 # New customer
