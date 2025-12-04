@@ -1280,35 +1280,102 @@ const CheckInsights = () => {
             {csvData.topHighRiskPayers && csvData.topHighRiskPayers.length > 0 && (
               <div style={chartBoxStyle}>
                 <h3 style={chartTitleStyle}>Top High-Risk Payers</h3>
-                <ResponsiveContainer width="100%" height={320}>
-                  <BarChart data={csvData.topHighRiskPayers} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+                <ResponsiveContainer width="100%" height={Math.max(320, csvData.topHighRiskPayers.length * 40)}>
+                  <BarChart 
+                    data={csvData.topHighRiskPayers} 
+                    layout="vertical" 
+                    margin={{ left: 120, right: 60, top: 10, bottom: 10 }}
+                  >
+                    <defs>
+                      <linearGradient id="heatGradientHigh" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0%" stopColor="#ef4444" stopOpacity={1} />
+                        <stop offset="100%" stopColor="#ef4444" stopOpacity={0.8} />
+                      </linearGradient>
+                      <linearGradient id="heatGradientMedium" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0%" stopColor="#f59e0b" stopOpacity={1} />
+                        <stop offset="100%" stopColor="#f59e0b" stopOpacity={0.8} />
+                      </linearGradient>
+                      <linearGradient id="heatGradientLow" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0%" stopColor="#eab308" stopOpacity={1} />
+                        <stop offset="100%" stopColor="#eab308" stopOpacity={0.8} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.3} horizontal={false} />
                     <XAxis 
                       type="number" 
-                      stroke={colors.mutedForeground}
-                      label={{ value: 'Average Risk Score (%)', position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fill: colors.foreground } }}
+                      domain={[0, 100]}
+                      tick={{ fill: colors.foreground, fontSize: 11 }}
+                      stroke={colors.border}
+                      label={{ value: 'Risk Score (%)', position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fill: colors.foreground } }}
                     />
                     <YAxis 
                       dataKey="name" 
                       type="category" 
-                      stroke={colors.mutedForeground} 
-                      width={180}
-                      tick={{ fill: colors.foreground, fontSize: 12 }}
+                      stroke={colors.border}
+                      width={110}
+                      tick={{ fill: colors.foreground, fontSize: 11 }}
                     />
                     <Tooltip
-                      contentStyle={{
-                        backgroundColor: colors.card,
-                        border: `1px solid ${colors.border}`,
-                        color: colors.foreground
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0].payload;
+                          return (
+                            <div style={{
+                              backgroundColor: colors.card,
+                              border: `1px solid ${colors.border}`,
+                              borderRadius: '8px',
+                              padding: '12px',
+                              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
+                            }}>
+                              <p style={{ margin: '0 0 8px 0', fontWeight: '600', color: colors.foreground }}>
+                                {data.name}
+                              </p>
+                              <p style={{ margin: '4px 0', color: primary }}>
+                                <span style={{ fontWeight: '600' }}>Avg Risk:</span> {data.avgRisk}%
+                              </p>
+                              <p style={{ margin: '4px 0', color: colors.mutedForeground }}>
+                                <span style={{ fontWeight: '600' }}>Checks:</span> {data.count}
+                              </p>
+                            </div>
+                          );
+                        }
+                        return null;
                       }}
-                      formatter={(value, name) => {
-                        if (name === 'avgRisk') return [`${value}%`, 'Avg Risk'];
-                        if (name === 'count') return [value, 'Checks'];
-                        return [value, name];
-                      }}
-                      labelFormatter={(label) => `Payer: ${label}`}
+                      cursor={{ fill: 'transparent' }}
                     />
-                    <Bar dataKey="avgRisk" fill={primary} />
+                    <Bar 
+                      dataKey="avgRisk" 
+                      barSize={12}
+                      radius={[0, 4, 4, 0]}
+                      label={({ value, x, y, width }) => {
+                        return (
+                          <text
+                            x={x + width + 5}
+                            y={y + 6}
+                            fill={colors.foreground}
+                            fontSize={12}
+                            fontWeight="600"
+                            textAnchor="start"
+                          >
+                            {parseFloat(value).toFixed(0)}%
+                          </text>
+                        );
+                      }}
+                    >
+                      {csvData.topHighRiskPayers.map((entry, index) => {
+                        const risk = parseFloat(entry.avgRisk);
+                        let gradientId = 'heatGradientLow';
+                        if (risk >= 75) gradientId = 'heatGradientHigh';
+                        else if (risk >= 50) gradientId = 'heatGradientMedium';
+                        
+                        return (
+                          <Cell 
+                            key={`heat-cell-${index}`}
+                            fill={`url(#${gradientId})`}
+                          />
+                        );
+                      })}
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
