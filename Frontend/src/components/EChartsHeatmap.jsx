@@ -1,158 +1,28 @@
-// import React from 'react';
-// import ReactECharts from 'echarts-for-react';
-
-// const EChartsHeatmap = ({ data, title, height = 400 }) => {
-//   const { matrix = [], labels = [] } = data || {};
-
-//   // Convert matrix to ECharts format
-//   const heatmapData = [];
-//   matrix.forEach((row, i) => {
-//     row.forEach((value, j) => {
-//       heatmapData.push([j, i, value || 0]);
-//     });
-//   });
-
-//   const option = {
-//     title: {
-//       text: title,
-//       left: 'center',
-//       top: 10,
-//       textStyle: {
-//         color: '#e2e8f0',
-//         fontSize: 14,
-//         fontWeight: 600
-//       }
-//     },
-//     tooltip: {
-//       position: 'top',
-//       formatter: (params) => {
-//         const xLabel = labels[params.value[0]] || params.value[0];
-//         const yLabel = labels[params.value[1]] || params.value[1];
-//         const value = params.value[2].toFixed(2);
-//         return `${xLabel} & ${yLabel}<br/>Correlation: ${value}`;
-//       },
-//       backgroundColor: 'rgba(30, 41, 59, 0.95)',
-//       borderColor: '#334155',
-//       textStyle: {
-//         color: '#e2e8f0'
-//       }
-//     },
-//     grid: {
-//       left: '15%',
-//       right: '10%',
-//       top: '15%',
-//       bottom: '15%',
-//       containLabel: true
-//     },
-//     xAxis: {
-//       type: 'category',
-//       data: labels,
-//       splitArea: {
-//         show: true
-//       },
-//       axisLabel: {
-//         rotate: 45,
-//         color: '#94a3b8',
-//         fontSize: 10
-//       }
-//     },
-//     yAxis: {
-//       type: 'category',
-//       data: labels,
-//       splitArea: {
-//         show: true
-//       },
-//       axisLabel: {
-//         color: '#94a3b8',
-//         fontSize: 10
-//       }
-//     },
-//     visualMap: {
-//       min: -1,
-//       max: 1,
-//       calculable: true,
-//       orient: 'horizontal',
-//       left: 'center',
-//       bottom: '5%',
-//       inRange: {
-//         color: ['#3b82f6', '#e2e8f0', '#ef4444']
-//       },
-//       textStyle: {
-//         color: '#94a3b8'
-//       }
-//     },
-//     series: [
-//       {
-//         type: 'heatmap',
-//         data: heatmapData,
-//         label: {
-//           show: true,
-//           formatter: (params) => params.value[2].toFixed(2),
-//           color: '#1e293b',
-//           fontSize: 10,
-//           fontWeight: 600
-//         },
-//         emphasis: {
-//           itemStyle: {
-//             shadowBlur: 10,
-//             shadowColor: 'rgba(0, 0, 0, 0.5)'
-//           }
-//         }
-//       }
-//     ],
-//     animation: true,
-//     animationDuration: 1000,
-//     animationEasing: 'cubicOut'
-//   };
-
-//   return (
-//     <ReactECharts
-//       option={option}
-//       style={{ height: `${height}px`, width: '100%' }}
-//       opts={{ renderer: 'canvas' }}
-//       notMerge={true}
-//       lazyUpdate={true}
-//     />
-//   );
-// };
-
-// export default EChartsHeatmap;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import React from 'react';
 import ReactECharts from 'echarts-for-react';
 
 const EChartsHeatmap = ({ data, title, height = 400 }) => {
-  const { matrix = [], labels = [] } = data || {};
+  const matrix = Array.isArray(data?.matrix) ? data.matrix : [];
+  const labels = Array.isArray(data?.labels) ? data.labels : [];
 
-  // If no data or inconsistent shapes, don't render ECharts at all
-  const hasValidMatrix =
-    Array.isArray(matrix) &&
-    matrix.length > 0 &&
-    Array.isArray(labels) &&
-    labels.length > 0;
-
-  if (!hasValidMatrix) {
+  if (
+    !matrix.length ||
+    !labels.length ||
+    !Array.isArray(matrix[0]) ||
+    matrix[0].length === 0
+  ) {
     return (
       <div
         style={{
-          height: `${height}px`,
+          height,
+          width: '100%',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           color: '#94a3b8',
+          background: 'rgba(15, 23, 42, 0.6)',
+          borderRadius: '0.75rem',
+          border: '1px solid rgba(148, 163, 184, 0.3)',
           fontSize: '0.9rem'
         }}
       >
@@ -161,81 +31,113 @@ const EChartsHeatmap = ({ data, title, height = 400 }) => {
     );
   }
 
-  // Convert matrix to ECharts format, but only if both axes have labels
-  const heatmapData = [];
-  matrix.forEach((row, i) => {
-    if (!Array.isArray(row)) return;
-    row.forEach((value, j) => {
-      if (i < labels.length && j < labels.length) {
-        heatmapData.push([j, i, value ?? 0]);
-      }
+  const size = Math.min(matrix.length, labels.length);
+
+  const normalizedLabels = labels.slice(0, size);
+
+  const normalizedMatrix = matrix.slice(0, size).map((row, i) => {
+    if (!Array.isArray(row)) {
+      return new Array(size).fill(0);
+    }
+    return row.slice(0, size).map((val, j) => {
+      const num = Number(val);
+      if (Number.isNaN(num)) return 0;
+      if (num > 1) return 1;
+      if (num < -1) return -1;
+      return num;
     });
   });
 
-  if (heatmapData.length === 0) {
-    return (
-      <div
-        style={{
-          height: `${height}px`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: '#94a3b8',
-          fontSize: '0.9rem'
-        }}
-      >
-        No correlation data available
-      </div>
-    );
-  }
+  const heatmapData = [];
+  normalizedMatrix.forEach((row, i) => {
+    row.forEach((value, j) => {
+      heatmapData.push([j, i, value]);
+    });
+  });
 
   const option = {
+    title: {
+      text: title || 'Correlation Heatmap',
+      left: 'center',
+      textStyle: {
+        color: '#e5e7eb',
+        fontSize: 14,
+        fontWeight: 500
+      }
+    },
     tooltip: {
       position: 'top',
-      backgroundColor: 'rgba(30, 41, 59, 0.95)',
-      borderColor: '#334155',
+      backgroundColor: 'rgba(15,23,42,0.95)',
+      borderColor: 'rgba(148,163,184,0.4)',
+      borderWidth: 1,
       textStyle: {
-        color: '#e2e8f0'
+        color: '#e5e7eb',
+        fontSize: 12
       },
       formatter: (params) => {
-        if (!params || !params.value || params.value.length < 3) {
+        try {
+          const [xIndex, yIndex, value] = Array.isArray(params.value)
+            ? params.value
+            : [params.data?.[0], params.data?.[1], params.data?.[2]];
+
+          const xLabel =
+            typeof xIndex === 'number' && normalizedLabels[xIndex] != null
+              ? normalizedLabels[xIndex]
+              : '';
+          const yLabel =
+            typeof yIndex === 'number' && normalizedLabels[yIndex] != null
+              ? normalizedLabels[yIndex]
+              : '';
+
+          const v =
+            typeof value === 'number' && !Number.isNaN(value)
+              ? value.toFixed(2)
+              : '0.00';
+
+          return `${yLabel} vs ${xLabel}<br/>Correlation: ${v}`;
+        } catch (e) {
           return '';
         }
-        const [xIdx, yIdx, rawVal] = params.value;
-        const xLabel = labels[xIdx] ?? xIdx;
-        const yLabel = labels[yIdx] ?? yIdx;
-        const value =
-          typeof rawVal === 'number' && !Number.isNaN(rawVal)
-            ? rawVal.toFixed(2)
-            : rawVal ?? '0.00';
-        return `${xLabel} & ${yLabel}<br/>Correlation: ${value}`;
       }
     },
     grid: {
       left: '15%',
       right: '10%',
       top: '10%',
-      bottom: '15%',
+      bottom: '20%',
       containLabel: true
     },
     xAxis: {
       type: 'category',
-      data: labels,
+      data: normalizedLabels,
       splitArea: { show: true },
+      axisLine: {
+        lineStyle: {
+          color: '#475569'
+        }
+      },
       axisLabel: {
         rotate: 45,
         color: '#94a3b8',
-        fontSize: 10
-      }
+        fontSize: 10,
+        interval: 0
+      },
+      boundaryGap: true
     },
     yAxis: {
       type: 'category',
-      data: labels,
+      data: normalizedLabels,
       splitArea: { show: true },
+      axisLine: {
+        lineStyle: {
+          color: '#475569'
+        }
+      },
       axisLabel: {
         color: '#94a3b8',
         fontSize: 10
-      }
+      },
+      boundaryGap: true
     },
     visualMap: {
       min: -1,
@@ -258,29 +160,38 @@ const EChartsHeatmap = ({ data, title, height = 400 }) => {
         label: {
           show: true,
           formatter: (params) => {
-            if (!params || !params.value || params.value.length < 3) {
+            try {
+              if (!params || !params.value || !Array.isArray(params.value)) {
+                return '';
+              }
+              const value = params.value[2];
+              if (typeof value !== 'number' || Number.isNaN(value)) {
+                return '';
+              }
+              return value.toFixed(2);
+            } catch (e) {
               return '';
             }
-            const v = params.value[2];
-            return typeof v === 'number' && !Number.isNaN(v)
-              ? v.toFixed(2)
-              : v ?? '';
           },
-          color: '#1e293b',
-          fontSize: 10,
-          fontWeight: 600
+          // Use white text for visibility on colored backgrounds
+          color: '#ffffff',
+          fontSize: 11,
+          fontWeight: 700,
+          textBorderColor: 'rgba(0, 0, 0, 0.8)',
+          textBorderWidth: 2
+        },
+        itemStyle: {
+          borderColor: 'rgba(0, 0, 0, 0.2)',
+          borderWidth: 1
         },
         emphasis: {
           itemStyle: {
             shadowBlur: 10,
-            shadowColor: 'rgba(0, 0, 0, 0.5)'
+            shadowColor: 'rgba(0, 0, 0, 0.4)'
           }
         }
       }
-    ],
-    animation: true,
-    animationDuration: 1000,
-    animationEasing: 'cubicOut'
+    ]
   };
 
   return (
