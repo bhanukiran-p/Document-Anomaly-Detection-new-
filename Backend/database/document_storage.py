@@ -70,6 +70,9 @@ class DocumentStorage:
             if not name:
                 return None
 
+            # Convert to UPPERCASE for consistent storage
+            name = name.upper()
+
             # Check if exists
             response = self.supabase.table('financial_institutions').select('institution_id').eq(
                 'name', name
@@ -520,6 +523,10 @@ class DocumentStorage:
                 fraud_explanations = []
 
             # Prepare bank statement data
+            # Convert bank_name to UPPERCASE for consistent storage
+            bank_name_raw = self._safe_string(extracted.get('bank_name'))
+            bank_name_upper = bank_name_raw.upper() if bank_name_raw else None
+
             statement_data = {
                 'statement_id': str(uuid.uuid4()),
                 'document_id': document_id,
@@ -531,7 +538,7 @@ class DocumentStorage:
                 'account_holder_city': None,
                 'account_holder_state': None,
                 'account_holder_zip': None,
-                'bank_name': self._safe_string(extracted.get('bank_name')),
+                'bank_name': bank_name_upper,
                 'institution_id': institution_id,
                 'bank_address': self._safe_string(extracted.get('bank_address')),
                 'bank_city': None,
@@ -740,6 +747,10 @@ class DocumentStorage:
             institution_id = self._get_or_create_institution(institution_data)
 
             # Prepare check data
+            # Convert bank_name to UPPERCASE for consistent storage
+            bank_name_raw = self._safe_string(extracted.get('bank_name'))
+            bank_name_upper = bank_name_raw.upper() if bank_name_raw else None
+
             check_data = {
                 'check_id': str(uuid.uuid4()),
                 'document_id': document_id,
@@ -749,7 +760,7 @@ class DocumentStorage:
                 'payer_name': self._safe_string(extracted.get('payer_name')),
                 'payer_address': self._safe_string(extracted.get('payer_address')),
                 'payee_name': self._safe_string(extracted.get('payee_name')),
-                'bank_name': self._safe_string(extracted.get('bank_name')),
+                'bank_name': bank_name_upper,
                 'institution_id': institution_id,
                 'account_number': self._safe_string(extracted.get('account_number')),
                 'routing_number': self._safe_string(extracted.get('routing_number')),

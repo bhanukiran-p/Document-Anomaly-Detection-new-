@@ -337,10 +337,8 @@ class CheckExtractor:
             issues.append("Missing signature - required for check validation")
             logger.warning("Signature not detected")
 
-        # 2. Unsupported bank
-        if not data.get('is_supported_bank', False):
-            bank_name = data.get('bank_name', 'Unknown')
-            issues.append(f"Unsupported bank: {bank_name}. Only Bank of America and Chase are accepted.")
+        # 2. Unsupported bank - removed as we now accept all banks from database
+        # Banks are validated against bank_dictionary table with case-insensitive matching
 
         # 3. Missing critical fields
         critical_missing = data.get('critical_missing_fields', [])
@@ -459,9 +457,8 @@ class CheckExtractor:
             ai_factors = ai_analysis.get('key_indicators', [])
             anomalies.extend(ai_factors)
 
-        # From validation
-        if not data.get('is_supported_bank', True):
-            anomalies.append(f"Unsupported bank: {data.get('bank_name')}")
+        # Bank validation is now done through database - no need to flag as anomaly
+        # All banks in bank_dictionary table are supported with case-insensitive matching
 
         critical_missing = data.get('critical_missing_fields', [])
         if critical_missing:
