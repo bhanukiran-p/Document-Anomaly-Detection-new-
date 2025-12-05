@@ -42,9 +42,7 @@ const BankStatementInsights = () => {
   const [loadingBankStatementsList, setLoadingBankStatementsList] = useState(false);
   const [selectedBankStatementId, setSelectedBankStatementId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [dateFilter, setDateFilter] = useState(null); // null, 'last_30', 'last_60', 'last_90', 'custom'
-  const [customDateRange, setCustomDateRange] = useState({ startDate: '', endDate: '' });
-  const [showCustomRange, setShowCustomRange] = useState(false);
+  const [dateFilter, setDateFilter] = useState(null); // null, 'last_30', 'last_60', 'last_90', 'older'
   const [totalRecords, setTotalRecords] = useState(0);
   const [bankFilter, setBankFilter] = useState(null);
   const [availableBanks, setAvailableBanks] = useState([]);
@@ -457,26 +455,15 @@ const BankStatementInsights = () => {
     multiple: false
   });
 
-  const fetchBankStatementsList = async (filter = null, bank = null, startDate = null, endDate = null) => {
+  const fetchBankStatementsList = async (filter = null, bank = null) => {
     setLoadingBankStatementsList(true);
     setError(null);
     setCsvData(null);
     try {
-      // Build URL with filters
-      let url = '/api/bank-statements/list';
-      const params = new URLSearchParams();
-      
-      if (filter && filter !== 'custom') {
-        params.append('date_filter', filter);
-      } else if (filter === 'custom' && startDate && endDate) {
-        params.append('start_date', startDate);
-        params.append('end_date', endDate);
-      }
-      
-      if (params.toString()) {
-        url += '?' + params.toString();
-      }
-      
+      // Use relative URL to leverage proxy in package.json
+      const url = filter
+        ? `/api/bank-statements/list?date_filter=${filter}`
+        : `/api/bank-statements/list`;
       const response = await fetch(url);
       const data = await response.json();
       if (data.success) {
@@ -879,109 +866,26 @@ const BankStatementInsights = () => {
                 Last 90
               </button>
               <button
-                onClick={() => setShowCustomRange(!showCustomRange)}
+                onClick={() => fetchBankStatementsList('older', bankFilter)}
                 style={{
                   padding: '0.75rem 1rem',
                   borderRadius: '0.5rem',
-                  backgroundColor: dateFilter === 'custom' ? primary : colors.secondary,
-                  color: dateFilter === 'custom' ? colors.primaryForeground : colors.foreground,
+                  backgroundColor: dateFilter === 'older' ? primary : colors.secondary,
+                  color: dateFilter === 'older' ? colors.primaryForeground : colors.foreground,
                   border: `1px solid ${colors.border}`,
                   cursor: 'pointer',
-                  fontWeight: dateFilter === 'custom' ? '600' : '500',
+                  fontWeight: dateFilter === 'older' ? '600' : '500',
                   transition: 'all 0.3s',
                 }}
               >
-                Custom Range
+                Older
               </button>
-              {showCustomRange && (
-                <div style={{
-                  display: 'flex',
-                  gap: '0.5rem',
-                  alignItems: 'center',
-                  padding: '0.5rem',
-                  backgroundColor: colors.card,
-                  borderRadius: '0.5rem',
-                  border: `1px solid ${colors.border}`,
-                }}>
-                  <input
-                    type="date"
-                    value={customDateRange.startDate}
-                    onChange={(e) => setCustomDateRange({ ...customDateRange, startDate: e.target.value })}
-                    style={{
-                      padding: '0.5rem',
-                      borderRadius: '0.375rem',
-                      border: `1px solid ${colors.border}`,
-                      fontSize: '14px',
-                      backgroundColor: colors.background,
-                      color: colors.foreground,
-                    }}
-                  />
-                  <span style={{ color: colors.mutedForeground }}>to</span>
-                  <input
-                    type="date"
-                    value={customDateRange.endDate}
-                    onChange={(e) => setCustomDateRange({ ...customDateRange, endDate: e.target.value })}
-                    style={{
-                      padding: '0.5rem',
-                      borderRadius: '0.375rem',
-                      border: `1px solid ${colors.border}`,
-                      fontSize: '14px',
-                      backgroundColor: colors.background,
-                      color: colors.foreground,
-                    }}
-                  />
-                  <button
-                    onClick={() => {
-                      if (customDateRange.startDate && customDateRange.endDate) {
-                        setDateFilter('custom');
-                        fetchBankStatementsList('custom', bankFilter, customDateRange.startDate, customDateRange.endDate);
-                      }
-                    }}
-                    style={{
-                      padding: '0.5rem 1rem',
-                      borderRadius: '0.375rem',
-                      backgroundColor: primary,
-                      color: colors.primaryForeground,
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontWeight: '600',
-                      fontSize: '14px',
-                    }}
-                  >
-                    Apply
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowCustomRange(false);
-                      setCustomDateRange({ startDate: '', endDate: '' });
-                      if (dateFilter === 'custom') {
-                        setDateFilter(null);
-                        fetchBankStatementsList(null, bankFilter);
-                      }
-                    }}
-                    style={{
-                      padding: '0.5rem 1rem',
-                      borderRadius: '0.375rem',
-                      backgroundColor: colors.secondary,
-                      color: colors.foreground,
-                      border: `1px solid ${colors.border}`,
-                      cursor: 'pointer',
-                      fontWeight: '500',
-                      fontSize: '14px',
-                    }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              )}
               {(dateFilter || bankFilter) && (
                 <button
                   onClick={() => {
                     setDateFilter(null);
                     setBankFilter(null);
                     setSearchQuery('');
-                    setShowCustomRange(false);
-                    setCustomDateRange({ startDate: '', endDate: '' });
                     fetchBankStatementsList(null, null);
                   }}
                   style={{
