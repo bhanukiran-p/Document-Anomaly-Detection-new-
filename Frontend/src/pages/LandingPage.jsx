@@ -33,7 +33,7 @@ const LandingPage = () => {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [openFaq, setOpenFaq] = useState(null);
-  
+
   // Use primaryColor for new design system red
   const primary = colors.primaryColor || colors.accent?.red || '#E53935';
 
@@ -75,7 +75,7 @@ const LandingPage = () => {
     alignItems: 'center',
     paddingRight: '1rem',
   };
-  
+
   const logoStyle = {
     display: 'flex',
     alignItems: 'center',
@@ -212,7 +212,7 @@ const LandingPage = () => {
     textAlign: 'center',
     color: colors.foreground,
   };
-  
+
   const sectionSubtitleStyle = {
     fontSize: '1.125rem',
     color: colors.mutedForeground,
@@ -221,7 +221,7 @@ const LandingPage = () => {
     maxWidth: '700px',
     margin: '0 auto 3rem',
   };
-  
+
   // Card Styles
   const cardsGridStyle = {
     display: 'grid',
@@ -230,7 +230,7 @@ const LandingPage = () => {
     maxWidth: '1400px',
     margin: '0 auto',
   };
-  
+
   const cardStyle = {
     backgroundColor: colors.card,
     borderRadius: '0.75rem',
@@ -246,14 +246,14 @@ const LandingPage = () => {
     color: primary,
     marginBottom: '1.5rem',
   };
-  
+
   const cardTitleStyle = {
     fontSize: '1.5rem',
     fontWeight: 'bold',
     marginBottom: '1rem',
     color: colors.foreground,
   };
-  
+
   const cardDescStyle = {
     color: colors.mutedForeground,
     lineHeight: '1.6',
@@ -491,8 +491,8 @@ const LandingPage = () => {
       animation: 'float 3s ease-in-out infinite',
       ...position,
     });
-  
-  return (
+
+    return (
       <div style={orbStyle}>
         <div style={circleContainerStyle}>
           <div style={circleStyle(0)} />
@@ -500,7 +500,7 @@ const LandingPage = () => {
           <div style={circleStyle(16)} />
           <div style={iconFloatStyle({ top: 0, left: '50%', transform: 'translate(-50%, -50%)' })}>
             <FaShieldAlt style={{ fontSize: '2rem', color: primary }} />
-        </div>
+          </div>
           <div style={iconFloatStyle({ bottom: 0, left: '50%', transform: 'translate(-50%, 50%)', animationDelay: '1s' })}>
             <FaLock style={{ fontSize: '2rem', color: primary }} />
           </div>
@@ -538,7 +538,7 @@ const LandingPage = () => {
           <div style={logoStyle} onClick={() => navigate('/')}>
             <img src="/New_FD.png" alt="DAD Logo" style={{ height: '80px', width: 'auto' }} />
           </div>
-          
+
           <div style={{ ...navLinksStyle, display: window.innerWidth >= 768 ? 'flex' : 'none' }}>
             <a style={navLinkStyle} onClick={() => smoothScrollTo('solutions')}>Solutions</a>
             <a style={navLinkStyle} onClick={() => smoothScrollTo('benefits')}>Benefits</a>
@@ -546,7 +546,7 @@ const LandingPage = () => {
             <a style={navLinkStyle} onClick={() => smoothScrollTo('pricing')}>Pricing</a>
             <a style={navLinkStyle} onClick={() => smoothScrollTo('faq')}>FAQ</a>
           </div>
-          
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <button
               style={{ ...secondaryButtonStyle, display: window.innerWidth >= 640 ? 'block' : 'none', padding: '0.625rem 1rem' }}
@@ -762,7 +762,7 @@ const LandingPage = () => {
 // Component Sections
 const SocialProofSection = ({ colors, primary, cardStyle }) => {
   const { ref, isVisible } = useScrollAnimation();
-  
+
   return (
     <section style={{ padding: '6rem 1.5rem', backgroundColor: `${colors.secondary}80` }} ref={ref}>
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
@@ -824,7 +824,7 @@ const SocialProofSection = ({ colors, primary, cardStyle }) => {
 
 const UseCasesSection = ({ id, colors, primary, useCases, sectionStyle, sectionTitleStyle, cardsGridStyle, cardStyle, cardIconStyle, cardTitleStyle, cardDescStyle }) => {
   const { ref, isVisible } = useScrollAnimation();
-  
+
   return (
     <section id={id} style={sectionStyle} ref={ref}>
       <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 1.5rem' }}>
@@ -859,7 +859,7 @@ const UseCasesSection = ({ id, colors, primary, useCases, sectionStyle, sectionT
                 transition: `all 0.5s ease-out ${index * 0.15}s`,
               }}
               onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'translateY(-8px)';
+                e.currentTarget.style.transform = 'translateY(-8px)';
                 e.currentTarget.style.borderColor = `${primary}80`;
                 e.currentTarget.style.boxShadow = `0 10px 40px ${primary}30`;
               }}
@@ -883,7 +883,7 @@ const UseCasesSection = ({ id, colors, primary, useCases, sectionStyle, sectionT
 
 const WhyUsSection = ({ colors, primary, advantages, sectionStyle, sectionTitleStyle, cardStyle, cardTitleStyle, cardDescStyle }) => {
   const { ref, isVisible } = useScrollAnimation();
-  
+
   return (
     <section style={sectionStyle} ref={ref}>
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
@@ -952,7 +952,7 @@ const WhyUsSection = ({ colors, primary, advantages, sectionStyle, sectionTitleS
 
 const BenefitsSection = ({ id, colors, primary, benefits, sectionStyle, sectionTitleStyle, cardsGridStyle, cardStyle, cardIconStyle, cardTitleStyle, cardDescStyle }) => {
   const { ref, isVisible } = useScrollAnimation();
-  
+
   return (
     <section id={id} style={sectionStyle} ref={ref}>
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
@@ -1001,7 +1001,7 @@ const BenefitsSection = ({ id, colors, primary, benefits, sectionStyle, sectionT
 
 const HowItWorksSection = ({ id, colors, primary, steps, sectionStyle, sectionTitleStyle, cardsGridStyle, cardStyle, cardIconStyle, cardTitleStyle, cardDescStyle }) => {
   const { ref, isVisible } = useScrollAnimation();
-  
+
   return (
     <section id={id} style={{ ...sectionStyle, backgroundColor: `${colors.secondary}50` }} ref={ref}>
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
@@ -1019,7 +1019,7 @@ const HowItWorksSection = ({ id, colors, primary, steps, sectionStyle, sectionTi
             </span>
           </h2>
         </div>
-        <div style={cardsGridStyle}>
+        <div style={{ ...cardsGridStyle, gridTemplateColumns: 'repeat(3, 1fr)', justifyContent: 'center' }}>
           {steps.map((step, index) => (
             <div
               key={index}
@@ -1065,7 +1065,7 @@ const HowItWorksSection = ({ id, colors, primary, steps, sectionStyle, sectionTi
 
 const PricingSection = ({ id, colors, primary, pricingPlans, sectionStyle, sectionTitleStyle, cardsGridStyle, cardStyle, cardTitleStyle, primaryButtonStyle, secondaryButtonStyle, navigate }) => {
   const { ref, isVisible } = useScrollAnimation();
-  
+
   return (
     <section id={id} style={{ ...sectionStyle, backgroundColor: `${colors.secondary}50` }} ref={ref}>
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
@@ -1170,7 +1170,7 @@ const PricingSection = ({ id, colors, primary, pricingPlans, sectionStyle, secti
 
 const TestimonialsSection = ({ colors, primary, testimonials, sectionStyle, sectionTitleStyle, cardsGridStyle, cardStyle, cardTitleStyle }) => {
   const { ref, isVisible } = useScrollAnimation();
-  
+
   return (
     <section style={sectionStyle} ref={ref}>
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
@@ -1227,7 +1227,7 @@ const TestimonialsSection = ({ colors, primary, testimonials, sectionStyle, sect
 
 const CTASection = ({ colors, primary, sectionStyle, sectionTitleStyle, cardStyle, primaryButtonStyle, secondaryButtonStyle, navigate }) => {
   const { ref, isVisible } = useScrollAnimation();
-  
+
   return (
     <section style={{ ...sectionStyle, backgroundColor: `${colors.secondary}50` }} ref={ref}>
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
@@ -1245,12 +1245,12 @@ const CTASection = ({ colors, primary, sectionStyle, sectionTitleStyle, cardStyl
             background: `linear-gradient(135deg, ${colors.card}, ${colors.card}80)`,
             borderColor: `${primary}4D`,
           }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'translateY(-8px)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
-          }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-8px)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+            }}
           >
             <h2 style={{ ...sectionTitleStyle, marginBottom: '1rem', fontSize: '2rem' }}>
               See DAD Detect Fraud in Real-Time
@@ -1259,7 +1259,7 @@ const CTASection = ({ colors, primary, sectionStyle, sectionTitleStyle, cardStyl
               Upload your own anonymized documents and watch DAD work. No credit card required.
             </p>
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-                <button
+              <button
                 style={primaryButtonStyle}
                 onClick={() => navigate('/register')}
                 onMouseEnter={(e) => {
@@ -1272,7 +1272,7 @@ const CTASection = ({ colors, primary, sectionStyle, sectionTitleStyle, cardStyl
                 }}
               >
                 Try DAD Free for 14 Days
-                </button>
+              </button>
               <button
                 style={secondaryButtonStyle}
                 onClick={() => navigate('/register')}
@@ -1286,7 +1286,7 @@ const CTASection = ({ colors, primary, sectionStyle, sectionTitleStyle, cardStyl
                 }}
               >
                 Book Your Demo
-                </button>
+              </button>
             </div>
             <p style={{ fontSize: '0.875rem', color: colors.mutedForeground }}>
               Schedule a personalized demo with our fraud detection experts
@@ -1300,7 +1300,7 @@ const CTASection = ({ colors, primary, sectionStyle, sectionTitleStyle, cardStyl
 
 const FAQSection = ({ id, colors, primary, faqs, sectionStyle, sectionTitleStyle, openFaq, setOpenFaq }) => {
   const { ref, isVisible } = useScrollAnimation();
-  
+
   return (
     <section id={id} style={sectionStyle} ref={ref}>
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
@@ -1369,11 +1369,11 @@ const FAQSection = ({ id, colors, primary, faqs, sectionStyle, sectionTitleStyle
                   }}>
                     {faq.answer}
                   </div>
-              )}
-            </div>
-          ))}
+                )}
+              </div>
+            ))}
+          </div>
         </div>
-    </div>
       </div>
     </section>
   );

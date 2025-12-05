@@ -1,4 +1,0 @@
-# API Configuration
-# For local development, use: http://localhost:5001/api
-# For remote server, use the server's IP or domain: http://your-server-ip:5001/api
-REACT_APP_API_URL=http://localhost:5001/api
