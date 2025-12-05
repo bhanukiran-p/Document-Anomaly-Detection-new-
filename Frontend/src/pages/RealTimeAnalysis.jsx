@@ -469,8 +469,8 @@ const RealTimeAnalysis = () => {
       // Parse header
       const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
 
-      // Parse rows (limit to first 10 for preview)
-      const rows = lines.slice(1, 11).map(line => {
+      // Parse ALL rows to calculate accurate date range
+      const allRows = lines.slice(1).map(line => {
         const values = line.split(',').map(v => v.trim().replace(/"/g, ''));
         const row = {};
         headers.forEach((header, index) => {
@@ -478,6 +478,9 @@ const RealTimeAnalysis = () => {
         });
         return row;
       });
+
+      // Parse rows (limit to first 10 for preview display)
+      const rows = allRows.slice(0, 10);
 
       // Calculate statistics
       const totalRows = lines.length - 1; // excluding header
@@ -499,17 +502,43 @@ const RealTimeAnalysis = () => {
         }
       });
 
-      // Detect date range
+      // Calculate date range from ALL rows
       let dateRange = 'N/A';
       const dateColumn = headers.find(h =>
         h.toLowerCase().includes('date') ||
-        h.toLowerCase().includes('time')
+        h.toLowerCase().includes('time') ||
+        h.toLowerCase() === 'timestamp'
       );
 
       if (dateColumn) {
-        const dates = rows.map(r => r[dateColumn]).filter(d => d);
+        const dates = allRows
+          .map(r => r[dateColumn])
+          .filter(d => d && d.trim())
+          .map(d => {
+            try {
+              return new Date(d);
+            } catch (e) {
+              return null;
+            }
+          })
+          .filter(d => d && !isNaN(d.getTime()))
+          .sort((a, b) => a - b);
+
         if (dates.length > 0) {
-          dateRange = `${dates[0]} to ${dates[dates.length - 1]}`;
+          const formatDate = (date) => {
+            return date.toLocaleString('en-US', {
+              year: 'numeric',
+              month: 'numeric',
+              day: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit',
+              hour12: false
+            });
+          };
+
+          const startDate = formatDate(dates[0]);
+          const endDate = formatDate(dates[dates.length - 1]);
+          dateRange = `${startDate} to ${endDate}`;
         }
       }
 
@@ -830,8 +859,39 @@ const RealTimeAnalysis = () => {
         console.log('Analysis result received:', {
           hasInsights: !!result.insights,
           plotsCount: result.insights?.plots?.length || 0,
-          firstPlot: result.insights?.plots?.[0]
+          firstPlot: result.insights?.plots?.[0],
+          dateRange: result.date_range
         });
+
+        // Update CSV preview with actual date range from backend
+        if (result.date_range && result.date_range.start && result.date_range.end) {
+          // Format the timestamps for better readability
+          const formatDate = (isoString) => {
+            try {
+              const date = new Date(isoString);
+              // Format: M/D/YYYY H:MM
+              return date.toLocaleString('en-US', {
+                year: 'numeric',
+                month: 'numeric',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: false
+              });
+            } catch (e) {
+              return isoString; // Fallback to original string if parsing fails
+            }
+          };
+
+          const formattedStart = formatDate(result.date_range.start);
+          const formattedEnd = formatDate(result.date_range.end);
+
+          setCsvPreview(prev => ({
+            ...prev,
+            dateRange: `${formattedStart} to ${formattedEnd}`
+          }));
+        }
+
         setAnalysisResult(result);
         setShowInsights(false);
 
