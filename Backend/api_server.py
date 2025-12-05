@@ -10,6 +10,7 @@ import sys
 import logging
 from logging.handlers import RotatingFileHandler
 from werkzeug.utils import secure_filename
+from pathlib import Path
 import importlib.util
 import re
 import fitz
@@ -64,10 +65,16 @@ if os.getenv('OPENAI_API_KEY'):
 else:
     logger.error(" OPENAI_API_KEY NOT found in environment")
 
-if os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
-    logger.info(f" Google Credentials path: {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}")
+# Check for GOOGLE_APPLICATION_CREDENTIALS but validate file exists
+google_app_creds = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+if google_app_creds:
+    if os.path.exists(google_app_creds):
+        logger.info(f" Google Credentials path (from env): {google_app_creds}")
+    else:
+        logger.warning(f" GOOGLE_APPLICATION_CREDENTIALS points to non-existent file: {google_app_creds}")
+        logger.info(" Will use default location in Backend folder instead")
 else:
-    logger.warning("GOOGLE_APPLICATION_CREDENTIALS not set")
+    logger.info(" GOOGLE_APPLICATION_CREDENTIALS not set, will use default location in Backend folder")
 
 # Load the production extractor
 try:
@@ -94,14 +101,28 @@ CORS(app)  # Enable CORS for React frontend
 # Configuration
 UPLOAD_FOLDER = 'temp_uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'pdf'}
-CREDENTIALS_PATH = os.getenv('GOOGLE_CREDENTIALS_PATH', 'google-credentials.json')
+
+# Get the directory where this script is located (Backend folder)
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Resolve credentials path - check environment variable first, then default to Backend folder
+CREDENTIALS_PATH_ENV = os.getenv('GOOGLE_CREDENTIALS_PATH')
+if CREDENTIALS_PATH_ENV and os.path.exists(CREDENTIALS_PATH_ENV):
+    CREDENTIALS_PATH = CREDENTIALS_PATH_ENV
+else:
+    # Default to Backend folder
+    CREDENTIALS_PATH = os.path.join(BACKEND_DIR, 'google-credentials.json')
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Initialize Vision API client once
 try:
-    vision_client = vision.ImageAnnotatorClient.from_service_account_file(CREDENTIALS_PATH)
-    logger.info(f"Successfully loaded Google Cloud Vision credentials from {CREDENTIALS_PATH}")
+    if os.path.exists(CREDENTIALS_PATH):
+        vision_client = vision.ImageAnnotatorClient.from_service_account_file(CREDENTIALS_PATH)
+        logger.info(f"Successfully loaded Google Cloud Vision credentials from {CREDENTIALS_PATH}")
+    else:
+        logger.warning(f"Google credentials file not found at: {CREDENTIALS_PATH}")
+        vision_client = None
 except Exception as e:
     logger.warning(f"Failed to load Vision API credentials: {e}")
     vision_client = None

@@ -14,7 +14,27 @@ import {
   FaChartBar,
   FaRobot,
   FaFilter,
-  FaTimes
+  FaTimes,
+  FaShieldAlt,
+  FaExclamationTriangle,
+  FaCheckCircle,
+  FaChartLine,
+  FaLock,
+  FaBan,
+  FaGlobeAmericas,
+  FaMobileAlt,
+  FaBolt,
+  FaFire,
+  FaStore,
+  FaDollarSign,
+  FaUserPlus,
+  FaPlane,
+  FaCreditCard,
+  FaExchangeAlt,
+  FaLayerGroup,
+  FaCalculator,
+  FaMoon,
+  FaClock
 } from 'react-icons/fa';
 import {
   ResponsiveContainer,
@@ -137,6 +157,35 @@ const RealTimeAnalysis = () => {
   });
   const [filterOptions, setFilterOptions] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
+
+  // Map fraud pattern types to Font Awesome icons
+  const getFraudPatternIcon = (patternType) => {
+    const iconMap = {
+      'Suspicious login': FaLock,
+      'Account takeover': FaBan,
+      'Unusual location': FaGlobeAmericas,
+      'Unusual device': FaMobileAlt,
+      'Velocity abuse': FaBolt,
+      'Transaction burst': FaFire,
+      'High-risk merchant': FaStore,
+      'Unusual amount': FaDollarSign,
+      'New payee spike': FaUserPlus,
+      'Cross-border anomaly': FaPlane,
+      'Card-not-present risk': FaCreditCard,
+      'Money mule pattern': FaExchangeAlt,
+      'Structuring / smurfing': FaLayerGroup,
+      'Round-dollar pattern': FaCalculator,
+      'Night-time activity': FaMoon,
+      'High Night-Time Fraud Activity': FaMoon,
+      'Elevated Weekend Fraud Activity': FaClock,
+      'High-Value Fraud Detected': FaDollarSign,
+      'CRITICAL: Extremely High Fraud Rate Detected': FaExclamationTriangle,
+      'HIGH RISK: Elevated Fraud Activity': FaExclamationTriangle,
+      'MODERATE RISK: Above-Normal Fraud Levels': FaExclamationTriangle,
+      'LOW RISK: Normal Fraud Levels': FaCheckCircle
+    };
+    return iconMap[patternType] || FaShieldAlt;
+  };
   const [filteredPlots, setFilteredPlots] = useState(null);
   const [regeneratingPlots, setRegeneratingPlots] = useState(false);
 
@@ -1899,24 +1948,19 @@ const RealTimeAnalysis = () => {
           {analysisResult?.database_status === 'saved' && (
             <div style={{
               marginTop: '1rem',
-              padding: '1rem',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              padding: '0.5rem 1rem',
               backgroundColor: '#d1fae5',
               border: '1px solid #6ee7b7',
-              borderRadius: '0.5rem',
+              borderRadius: '50px',
               color: '#065f46',
-              fontSize: '0.95rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem'
+              fontSize: '0.875rem',
+              fontWeight: '500'
             }}>
-              <span style={{ fontSize: '1.2rem' }}>✓</span>
-              <div>
-                <strong>Data saved to database</strong>
-                <div style={{ fontSize: '0.85rem', marginTop: '0.25rem', opacity: 0.8 }}>
-                  {analysisResult?.transactions?.length || 0} transactions stored in analyzed_real_time_trn table
-                  {analysisResult?.batch_id && <div style={{ marginTop: '0.25rem' }}>Batch ID: {analysisResult.batch_id.substring(0, 8)}...</div>}
-                </div>
-              </div>
+              <span style={{ fontSize: '1rem' }}>✓</span>
+              <span>Saved to analyzed_real_time_trn</span>
             </div>
           )}
 
@@ -1992,28 +2036,163 @@ const RealTimeAnalysis = () => {
                 </div>
               )}
 
-              {/* Recommendations - Condensed */}
-              {analysisResult.agent_analysis.recommendations?.length > 0 && (
+              {/* Fraud-Specific Prevention Recommendations */}
+              {analysisResult.agent_analysis.pattern_recommendations?.length > 0 && (
                 <div>
-                  <h4 style={{ color: colors.foreground, fontSize: '0.95rem', marginBottom: '0.75rem', fontWeight: '600' }}>
-                    Recommendations
+                  <h4 style={{ color: colors.foreground, fontSize: '1rem', marginBottom: '1rem', fontWeight: '600' }}>
+                    Fraud Prevention Recommendations
                   </h4>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    {analysisResult.agent_analysis.recommendations.slice(0, 7).map((rec, idx) => {
-                      // Remove markdown bold syntax and bullet points from start
-                      const cleanRec = rec.replace(/\*\*/g, '').replace(/^[-•]\s*/, '').trim();
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {analysisResult.agent_analysis.pattern_recommendations.slice(0, 3).map((rec, idx) => {
+                      const severityColors = {
+                        'CRITICAL': { bg: 'rgba(239, 68, 68, 0.15)', border: '#ef4444', text: '#fee2e2' },
+                        'HIGH': { bg: 'rgba(251, 146, 60, 0.15)', border: '#fb923c', text: '#fed7aa' },
+                        'MEDIUM': { bg: 'rgba(234, 179, 8, 0.15)', border: '#eab308', text: '#fef08a' },
+                        'LOW': { bg: 'rgba(34, 197, 94, 0.15)', border: '#22c55e', text: '#dcfce7' },
+                        'INFO': { bg: 'rgba(59, 130, 246, 0.15)', border: '#3b82f6', text: '#dbeafe' }
+                      };
+                      const severity = rec.severity || 'MEDIUM';
+                      const color = severityColors[severity] || severityColors['MEDIUM'];
+
                       return (
                         <div key={idx} style={{
-                          backgroundColor: colors.muted,
-                          padding: '0.75rem 1rem',
-                          borderRadius: '0.5rem',
-                          border: `1px solid ${colors.border}`,
-                          borderLeft: `3px solid ${primary}`,
-                          fontSize: '0.85rem',
-                          color: colors.foreground,
-                          lineHeight: '1.5'
+                          backgroundColor: color.bg,
+                          padding: '1.25rem',
+                          borderRadius: '0.75rem',
+                          border: `2px solid ${color.border}`,
+                          boxShadow: `0 2px 8px ${color.border}30`
                         }}>
-                          {cleanRec}
+                          {/* Header */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                            <div>
+                              <div style={{
+                                fontSize: '1.05rem',
+                                fontWeight: '700',
+                                color: colors.foreground,
+                                marginBottom: '0.25rem'
+                              }}>
+                                {rec.title || rec.pattern_type}
+                              </div>
+                              <div style={{ fontSize: '0.85rem', color: colors.mutedForeground }}>
+                                {rec.description}
+                              </div>
+                            </div>
+                            <div style={{
+                              backgroundColor: color.border,
+                              color: '#0f172a',
+                              padding: '0.375rem 0.75rem',
+                              borderRadius: '0.5rem',
+                              fontSize: '0.75rem',
+                              fontWeight: '700',
+                              whiteSpace: 'nowrap'
+                            }}>
+                              {severity}
+                            </div>
+                          </div>
+
+                          {/* Stats (if available) */}
+                          {(rec.count || rec.fraud_count || rec.fraud_percentage) && (
+                            <div style={{
+                              display: 'flex',
+                              gap: '1rem',
+                              marginBottom: '1rem',
+                              paddingBottom: '0.75rem',
+                              borderBottom: `1px solid ${color.border}40`
+                            }}>
+                              {rec.count && (
+                                <div style={{ fontSize: '0.8rem', color: colors.foreground }}>
+                                  <span style={{ fontWeight: '600' }}>{rec.count}</span> cases
+                                </div>
+                              )}
+                              {rec.percentage && (
+                                <div style={{ fontSize: '0.8rem', color: colors.foreground }}>
+                                  <span style={{ fontWeight: '600' }}>{rec.percentage.toFixed(1)}%</span> of fraud
+                                </div>
+                              )}
+                              {rec.total_amount && (
+                                <div style={{ fontSize: '0.8rem', color: colors.foreground }}>
+                                  <span style={{ fontWeight: '600' }}>${rec.total_amount.toLocaleString()}</span> total
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Immediate Actions */}
+                          {rec.immediate_actions?.length > 0 && (
+                            <div style={{ marginBottom: '1rem' }}>
+                              <div style={{
+                                fontSize: '0.85rem',
+                                fontWeight: '600',
+                                color: colors.foreground,
+                                marginBottom: '0.5rem'
+                              }}>
+                                Immediate Actions
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                {rec.immediate_actions.slice(0, 4).map((action, aIdx) => (
+                                  <div key={aIdx} style={{
+                                    fontSize: '0.8rem',
+                                    color: colors.foreground,
+                                    paddingLeft: '1rem',
+                                    position: 'relative',
+                                    lineHeight: '1.4'
+                                  }}>
+                                    <span style={{ position: 'absolute', left: 0 }}>•</span>
+                                    {action}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Prevention Steps */}
+                          {rec.prevention_steps?.length > 0 && (
+                            <div style={{ marginBottom: '0.75rem' }}>
+                              <div style={{
+                                fontSize: '0.85rem',
+                                fontWeight: '600',
+                                color: colors.foreground,
+                                marginBottom: '0.5rem'
+                              }}>
+                                Prevention Steps
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                {rec.prevention_steps.slice(0, 5).map((step, sIdx) => (
+                                  <div key={sIdx} style={{
+                                    fontSize: '0.8rem',
+                                    color: colors.foreground,
+                                    paddingLeft: '1rem',
+                                    position: 'relative',
+                                    lineHeight: '1.4'
+                                  }}>
+                                    <span style={{ position: 'absolute', left: 0 }}>•</span>
+                                    {step}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Monitoring */}
+                          {rec.monitoring && (
+                            <div style={{
+                              marginTop: '0.75rem',
+                              paddingTop: '0.75rem',
+                              borderTop: `1px solid ${color.border}40`
+                            }}>
+                              <div style={{
+                                fontSize: '0.85rem',
+                                fontWeight: '600',
+                                color: colors.foreground,
+                                marginBottom: '0.25rem'
+                              }}>
+                                Monitor
+                              </div>
+                              <div style={{ fontSize: '0.8rem', color: colors.mutedForeground, lineHeight: '1.4' }}>
+                                {rec.monitoring}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
