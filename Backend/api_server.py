@@ -21,51 +21,55 @@ from database.supabase_client import get_supabase, check_connection as check_sup
 from auth.supabase_auth import login_user_supabase, register_user_supabase, verify_token
 from database.document_storage import store_money_order_analysis, store_bank_statement_analysis, store_paystub_analysis, store_check_analysis
 
-# Create logs directory if it doesn't exist
-log_dir = os.path.join(os.path.dirname(__file__), 'logs')
-os.makedirs(log_dir, exist_ok=True)
-log_file = os.path.join(log_dir, 'api_server.log')
+# Import centralized configuration
+from config import Config
 
-# Configure logging to both console and file
-log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+# Ensure necessary directories exist
+Config.ensure_directories()
+
+# Configure logging using centralized config
+log_format = Config.LOG_FORMAT
 formatter = logging.Formatter(log_format)
 
 # File handler with rotation
 file_handler = RotatingFileHandler(
-    log_file, 
-    maxBytes=10*1024*1024,  # 10MB
-    backupCount=5
+    os.path.join(Config.LOG_DIR, 'api_server.log'),
+    maxBytes=Config.LOG_FILE_MAX_BYTES,
+    backupCount=Config.LOG_FILE_BACKUP_COUNT
 )
-file_handler.setLevel(logging.INFO)
+file_handler.setLevel(getattr(logging, Config.LOG_LEVEL))
 file_handler.setFormatter(formatter)
 
 # Console handler
 console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
+console_handler.setLevel(getattr(logging, Config.LOG_LEVEL))
 console_handler.setFormatter(formatter)
 
 # Configure root logger
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, Config.LOG_LEVEL),
     format=log_format,
     handlers=[file_handler, console_handler]
 )
 
 logger = logging.getLogger(__name__)
-logger.info(f"Logging configured. Log file: {log_file}")
+logger.info(f"Logging configured. Log file: {os.path.join(Config.LOG_DIR, 'api_server.log')}")
 
-# Load environment variables explicitly
-from dotenv import load_dotenv
-load_dotenv()
+# Validate configuration
+config_errors = Config.validate()
+if config_errors:
+    logger.warning("Configuration issues detected:")
+    for error in config_errors:
+        logger.warning(f"  - {error}")
 
 # Check for critical environment variables
-if os.getenv('OPENAI_API_KEY'):
-    logger.info(" OPENAI_API_KEY found in environment")
+if Config.OPENAI_API_KEY:
+    logger.info("✓ OPENAI_API_KEY found in environment")
 else:
-    logger.error(" OPENAI_API_KEY NOT found in environment")
+    logger.error("✗ OPENAI_API_KEY NOT found in environment")
 
-if os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
-    logger.info(f" Google Credentials path: {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}")
+if Config.GOOGLE_APPLICATION_CREDENTIALS:
+    logger.info(f"✓ Google Credentials path: {Config.GOOGLE_APPLICATION_CREDENTIALS}")
 else:
     logger.warning("GOOGLE_APPLICATION_CREDENTIALS not set")
 
@@ -89,14 +93,16 @@ except Exception as e:
 # from check_analysis.orchestrator import CheckAnalysisOrchestrator
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for React frontend
+app.config['SECRET_KEY'] = Config.SECRET_KEY
+app.config['MAX_CONTENT_LENGTH'] = Config.MAX_CONTENT_LENGTH
 
-# Configuration
-UPLOAD_FOLDER = 'temp_uploads'
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'pdf'}
-CREDENTIALS_PATH = os.getenv('GOOGLE_CREDENTIALS_PATH', 'google-credentials.json')
+# Enable CORS with configured origins
+CORS(app, origins=Config.CORS_ORIGINS)
 
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+# Configuration from centralized config
+UPLOAD_FOLDER = Config.UPLOAD_FOLDER
+ALLOWED_EXTENSIONS = Config.ALLOWED_EXTENSIONS
+CREDENTIALS_PATH = Config.GOOGLE_APPLICATION_CREDENTIALS or 'google-credentials.json'
 
 # Initialize Vision API client once
 try:
