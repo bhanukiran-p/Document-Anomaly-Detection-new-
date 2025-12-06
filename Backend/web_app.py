@@ -7,10 +7,12 @@ from flask import Flask, render_template, request, jsonify, send_from_directory
 import os
 from werkzeug.utils import secure_filename
 from datetime import datetime
-from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv(override=True)
+# Import centralized configuration
+from config import Config
+
+# Ensure necessary directories exist
+Config.ensure_directories()
 
 try:
     from mindee_extractor import extract_check
@@ -22,13 +24,10 @@ except Exception as exc:
     extract_check = None
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'check-extractor-secret-key'
-app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
-app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
-
-# Create uploads folder if it doesn't exist
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+app.config['SECRET_KEY'] = Config.SECRET_KEY
+app.config['UPLOAD_FOLDER'] = Config.UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = Config.MAX_CONTENT_LENGTH
+app.config['ALLOWED_EXTENSIONS'] = Config.ALLOWED_EXTENSIONS
 
 def allowed_file(filename):
     """Check if file extension is allowed"""
