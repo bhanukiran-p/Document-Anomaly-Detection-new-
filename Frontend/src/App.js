@@ -18,19 +18,20 @@ import BankStatementAnalysis from './pages/BankStatementAnalysis';
 import RealTimeAnalysis from './pages/RealTimeAnalysis.jsx';
 import AllDocumentsInsightsPage from './pages/AllDocumentsInsightsPage';
 import PaystubInsightsPage from './pages/PaystubInsightsPage';
+import IndustrySelection from './pages/IndustrySelection';
 import './styles/GlobalStyles.css';
 
 function AppContent() {
   const location = useLocation();
-  const isCustomLayout = location.pathname === '/' || location.pathname === '/splash' || location.pathname === '/transaction-type' || location.pathname === '/login' || location.pathname === '/register' || location.pathname === '/all-documents-insights' || location.pathname === '/paystub-insights';
-  
+  const isCustomLayout = location.pathname === '/' || location.pathname === '/splash' || location.pathname === '/industry-selection' || location.pathname === '/transaction-type' || location.pathname === '/login' || location.pathname === '/register' || location.pathname === '/all-documents-insights' || location.pathname === '/paystub-insights';
+
   // Pages that should show breadcrumb (starting from transaction-type and its children)
-  const shouldShowBreadcrumb = location.pathname === '/transaction-type' || 
-    location.pathname === '/finance' || 
-    location.pathname === '/check-analysis' || 
-    location.pathname === '/paystub-analysis' || 
-    location.pathname === '/money-order-analysis' || 
-    location.pathname === '/bank-statement-analysis' || 
+  const shouldShowBreadcrumb = location.pathname === '/transaction-type' ||
+    location.pathname === '/finance' ||
+    location.pathname === '/check-analysis' ||
+    location.pathname === '/paystub-analysis' ||
+    location.pathname === '/money-order-analysis' ||
+    location.pathname === '/bank-statement-analysis' ||
     location.pathname === '/real-time-analysis';
 
   const appStyle = {
@@ -52,6 +53,7 @@ function AppContent() {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/splash" element={<SplashPage />} />
+          <Route path="/industry-selection" element={<IndustrySelection />} />
           <Route path="/transaction-type" element={<TransactionTypePage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />

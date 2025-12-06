@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { colors } from '../styles/colors';
 import {
@@ -37,7 +37,7 @@ const CheckInsights = () => {
   const [csvData, setCsvData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [inputMode, setInputMode] = useState('upload'); // 'upload' or 'api'
+  const [inputMode, setInputMode] = useState('api'); // 'upload' or 'api'
   const [checksList, setChecksList] = useState([]);
   const [loadingChecksList, setLoadingChecksList] = useState(false);
   const [selectedCheckId, setSelectedCheckId] = useState(null);
@@ -168,7 +168,7 @@ const CheckInsights = () => {
         const decision = (r['Decision'] || r['ai_recommendation'] || 'UNKNOWN').toUpperCase();
         const risk = parseFloat_(r['RiskScore'] || r['fraud_risk_score'] || 0) * 100;
         const isFraudulent = decision === 'REJECT' || decision === 'ESCALATE' || risk >= 75;
-        
+
         if (isFraudulent) {
           if (!payeeFraudIncidents[payee]) {
             payeeFraudIncidents[payee] = 0;
@@ -312,11 +312,11 @@ const CheckInsights = () => {
         const fetchedData = data.data || [];
         // Store all fetched data
         setAllChecksData(fetchedData);
-        
+
         // Extract unique banks from the data
         const uniqueBanks = [...new Set(fetchedData.map(check => check.bank_name).filter(Boolean))].sort();
         setAvailableBanks(uniqueBanks);
-        
+
         // Apply bank filter if specified
         let filteredData = fetchedData;
         if (bank) {
@@ -325,7 +325,7 @@ const CheckInsights = () => {
         } else {
           setBankFilter(null);
         }
-        
+
         setChecksList(filteredData);
         setTotalRecords(data.total_records || data.count);
         setDateFilter(filter);
@@ -425,6 +425,13 @@ const CheckInsights = () => {
     }
   };
 
+  // Auto-fetch data when component mounts in 'api' mode
+  useEffect(() => {
+    if (inputMode === 'api' && allChecksData.length === 0 && !loadingChecksList) {
+      fetchChecksList();
+    }
+  }, []); // Empty dependency array - only run on mount
+
   const primary = colors.primaryColor || colors.accent?.red || '#E53935';
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
 
@@ -509,100 +516,7 @@ const CheckInsights = () => {
           {inputMode === 'upload' ? 'Check Insights from CSV' : 'Check Insights from Database'}
         </h2>
 
-        {/* Input Mode Toggle */}
-        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
-          <button
-            onClick={() => {
-              setInputMode('upload');
-              setCsvData(null);
-              setError(null);
-            }}
-            style={{
-              flex: 1,
-              padding: '0.75rem',
-              borderRadius: '0.5rem',
-              backgroundColor: inputMode === 'upload' ? primary : colors.secondary,
-              color: inputMode === 'upload' ? colors.primaryForeground : colors.foreground,
-              border: `1px solid ${colors.border}`,
-              cursor: 'pointer',
-              fontWeight: inputMode === 'upload' ? '600' : '500',
-              transition: 'all 0.3s',
-            }}
-          >
-            Upload CSV
-          </button>
-          <button
-            onClick={() => {
-              setInputMode('api');
-              setCsvData(null);
-              setError(null);
-              setBankFilter(null);
-              setAllChecksData([]);
-              fetchChecksList();
-            }}
-            style={{
-              flex: 1,
-              padding: '0.75rem',
-              borderRadius: '0.5rem',
-              backgroundColor: inputMode === 'api' ? primary : colors.secondary,
-              color: inputMode === 'api' ? colors.primaryForeground : colors.foreground,
-              border: `1px solid ${colors.border}`,
-              cursor: 'pointer',
-              fontWeight: inputMode === 'api' ? '600' : '500',
-              transition: 'all 0.3s',
-            }}
-          >
-            Live Data
-          </button>
-        </div>
 
-        {inputMode === 'upload' && (
-          <>
-            <div {...getRootProps()} style={dropzoneStyle}>
-              <input {...getInputProps()} />
-              <FaUpload style={{ fontSize: '2rem', marginBottom: '1rem', color: colors.foreground }} />
-              {isDragActive ? (
-                <p style={{ color: primary, fontWeight: '500' }}>
-                  Drop the CSV file here...
-                </p>
-              ) : (
-                <div>
-                  <p style={{ color: colors.foreground, marginBottom: '0.5rem' }}>
-                    Drag and drop your CSV file here, or click to browse
-                  </p>
-                  <p style={{ color: colors.mutedForeground, fontSize: '0.875rem' }}>
-                    CSV file with check analysis data
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {error && inputMode === 'upload' && (
-              <div style={{
-                backgroundColor: colors.accent.redLight,
-                color: colors.accent.red,
-                padding: '1rem',
-                borderRadius: '8px',
-                marginTop: '1rem',
-                fontWeight: '500',
-              }}>
-                {error}
-              </div>
-            )}
-
-            {loading && inputMode === 'upload' && (
-              <div style={{ textAlign: 'center', padding: '2rem' }}>
-                <FaCog className="spin" style={{
-                  fontSize: '2rem',
-                  color: primary,
-                }} />
-                <p style={{ marginTop: '0.5rem', color: colors.neutral.gray600 }}>
-                  Processing CSV...
-                </p>
-              </div>
-            )}
-          </>
-        )}
 
         {inputMode === 'api' && (
           <>
@@ -928,8 +842,8 @@ const CheckInsights = () => {
             <div style={chartBoxStyle}>
               <h3 style={chartTitleStyle}>Risk Score Distribution by Range</h3>
               <ResponsiveContainer width="100%" height={320}>
-                <BarChart 
-                  data={csvData.riskDistribution} 
+                <BarChart
+                  data={csvData.riskDistribution}
                   margin={{ top: 10, right: 20, left: 10, bottom: 10 }}
                   onMouseLeave={() => setActiveBarIndex(null)}
                 >
@@ -944,16 +858,16 @@ const CheckInsights = () => {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.3} />
-                  <XAxis 
-                    dataKey="range" 
+                  <XAxis
+                    dataKey="range"
                     tick={{ fill: colors.foreground, fontSize: 12 }}
                     stroke={colors.border}
                   />
-                  <YAxis 
+                  <YAxis
                     tick={{ fill: colors.foreground, fontSize: 12 }}
                     stroke={colors.border}
                   />
-                  <Tooltip 
+                  <Tooltip
                     content={({ active, payload }) => {
                       if (active && payload && payload.length) {
                         const data = payload[0];
@@ -978,15 +892,15 @@ const CheckInsights = () => {
                     }}
                     cursor={{ fill: 'transparent' }}
                   />
-                  <Bar 
-                    dataKey="count" 
+                  <Bar
+                    dataKey="count"
                     fill="url(#riskGradient)"
                     radius={[8, 8, 0, 0]}
                   >
                     {csvData.riskDistribution.map((entry, index) => {
                       const isActive = activeBarIndex === index;
                       return (
-                        <Cell 
+                        <Cell
                           key={`cell-${index}`}
                           fill={isActive ? "url(#riskGradientHover)" : "url(#riskGradient)"}
                           onMouseEnter={() => setActiveBarIndex(index)}
@@ -1059,10 +973,10 @@ const CheckInsights = () => {
                         };
                         const baseColor = colorMap[entry.name] || COLORS[index % COLORS.length];
                         const isActive = activePieIndex === index;
-                        
+
                         return (
-                          <Cell 
-                            key={`cell-${index}`} 
+                          <Cell
+                            key={`cell-${index}`}
                             fill={baseColor}
                             style={{
                               filter: isActive ? 'brightness(1.2)' : 'brightness(1)',
@@ -1073,7 +987,7 @@ const CheckInsights = () => {
                         );
                       })}
                     </Pie>
-                    <Tooltip 
+                    <Tooltip
                       content={({ active, payload }) => {
                         if (active && payload && payload.length) {
                           const data = payload[0];
@@ -1105,7 +1019,7 @@ const CheckInsights = () => {
                   </PieChart>
                 </ResponsiveContainer>
               </div>
-              
+
               {/* Legend below the chart */}
               <div style={{
                 display: 'flex',
@@ -1123,7 +1037,7 @@ const CheckInsights = () => {
                   };
                   const total = csvData.recommendationData.reduce((sum, item) => sum + item.value, 0);
                   const percentage = total > 0 ? ((entry.value / total) * 100).toFixed(2) : 0;
-                  
+
                   return (
                     <div
                       key={`legend-${index}`}
@@ -1161,7 +1075,7 @@ const CheckInsights = () => {
               <div style={chartBoxStyle}>
                 <h3 style={chartTitleStyle}>Risk Level by Bank</h3>
                 <ResponsiveContainer width="100%" height={320}>
-                  <ComposedChart 
+                  <ComposedChart
                     data={csvData.riskByBankData.map(bank => ({
                       ...bank,
                       displayName: (() => {
@@ -1190,8 +1104,8 @@ const CheckInsights = () => {
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.3} />
-                    <XAxis 
-                      dataKey="displayName" 
+                    <XAxis
+                      dataKey="displayName"
                       tick={{ fill: colors.foreground, fontSize: 11 }}
                       stroke={colors.border}
                       angle={-45}
@@ -1199,13 +1113,13 @@ const CheckInsights = () => {
                       height={80}
                       interval={0}
                     />
-                    <YAxis 
+                    <YAxis
                       yAxisId="left"
                       tick={{ fill: colors.foreground, fontSize: 12 }}
                       stroke={colors.border}
                       label={{ value: 'Check Count', angle: -90, position: 'insideLeft', fill: colors.foreground }}
                     />
-                    <YAxis 
+                    <YAxis
                       yAxisId="right"
                       orientation="right"
                       domain={[0, 100]}
@@ -1213,7 +1127,7 @@ const CheckInsights = () => {
                       stroke={colors.border}
                       label={{ value: 'Avg Risk Score (%)', angle: 90, position: 'insideRight', fill: colors.foreground }}
                     />
-                    <Tooltip 
+                    <Tooltip
                       content={({ active, payload }) => {
                         if (active && payload && payload.length) {
                           const data = payload[0].payload;
@@ -1241,16 +1155,16 @@ const CheckInsights = () => {
                       cursor={{ fill: 'transparent' }}
                     />
                     <Legend />
-                    <Bar 
+                    <Bar
                       yAxisId="left"
-                      dataKey="count" 
+                      dataKey="count"
                       fill="url(#countGradient)"
                       name="Check Count"
                     >
                       {csvData.riskByBankData.map((entry, index) => {
                         const isActive = activeBankBarIndex.bankIndex === index && activeBankBarIndex.series === 'count';
                         return (
-                          <Cell 
+                          <Cell
                             key={`count-cell-${index}`}
                             fill={isActive ? "url(#countGradientHover)" : "url(#countGradient)"}
                             onMouseEnter={() => setActiveBankBarIndex({ bankIndex: index, series: 'count' })}
@@ -1264,10 +1178,10 @@ const CheckInsights = () => {
                         );
                       })}
                     </Bar>
-                    <Line 
+                    <Line
                       yAxisId="right"
-                      type="monotone" 
-                      dataKey="avgRisk" 
+                      type="monotone"
+                      dataKey="avgRisk"
                       stroke={primary}
                       strokeWidth={3}
                       dot={{ fill: primary, r: 5 }}
@@ -1283,9 +1197,9 @@ const CheckInsights = () => {
               <div style={chartBoxStyle}>
                 <h3 style={chartTitleStyle}>Top High-Risk Payers</h3>
                 <ResponsiveContainer width="100%" height={Math.max(320, csvData.topHighRiskPayers.length * 40)}>
-                  <BarChart 
-                    data={csvData.topHighRiskPayers} 
-                    layout="vertical" 
+                  <BarChart
+                    data={csvData.topHighRiskPayers}
+                    layout="vertical"
                     margin={{ left: 120, right: 60, top: 10, bottom: 10 }}
                   >
                     <defs>
@@ -1303,16 +1217,16 @@ const CheckInsights = () => {
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.3} horizontal={false} />
-                    <XAxis 
-                      type="number" 
+                    <XAxis
+                      type="number"
                       domain={[0, 100]}
                       tick={{ fill: colors.foreground, fontSize: 11 }}
                       stroke={colors.border}
                       label={{ value: 'Risk Score (%)', position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fill: colors.foreground } }}
                     />
-                    <YAxis 
-                      dataKey="name" 
-                      type="category" 
+                    <YAxis
+                      dataKey="name"
+                      type="category"
                       stroke={colors.border}
                       width={110}
                       tick={{ fill: colors.foreground, fontSize: 11 }}
@@ -1345,8 +1259,8 @@ const CheckInsights = () => {
                       }}
                       cursor={{ fill: 'transparent' }}
                     />
-                    <Bar 
-                      dataKey="avgRisk" 
+                    <Bar
+                      dataKey="avgRisk"
                       barSize={12}
                       radius={[0, 4, 4, 0]}
                       label={({ value, x, y, width }) => {
@@ -1369,9 +1283,9 @@ const CheckInsights = () => {
                         let gradientId = 'heatGradientLow';
                         if (risk >= 75) gradientId = 'heatGradientHigh';
                         else if (risk >= 50) gradientId = 'heatGradientMedium';
-                        
+
                         return (
-                          <Cell 
+                          <Cell
                             key={`heat-cell-${index}`}
                             fill={`url(#${gradientId})`}
                           />
@@ -1394,9 +1308,9 @@ const CheckInsights = () => {
                     let barColor = '#FFB59E'; // Low Fraud Level - Pastel Faded Peach (<=20)
                     if (payee.fraudCount >= 60) barColor = '#FF6B5A'; // High Fraud Level - Soft Coral-Red (>=60)
                     else if (payee.fraudCount > 20) barColor = '#FF8A75'; // Medium Fraud Level - Faded Coral (>20 and <60)
-                    
+
                     return (
-                      <div 
+                      <div
                         key={`payee-bullet-${index}`}
                         style={{
                           display: 'flex',

@@ -36,7 +36,7 @@ const TransactionTypePage = () => {
     flexDirection: 'column',
     color: colors.foreground,
   };
-  
+
   const headerStyle = {
     display: 'flex',
     justifyContent: 'space-between',
@@ -45,24 +45,24 @@ const TransactionTypePage = () => {
     backgroundColor: colors.card,
     borderBottom: `1px solid ${colors.border}`,
   };
-  
+
   const logoContainerStyle = {
     display: 'flex',
     alignItems: 'center',
     gap: '1rem',
   };
-  
+
   const logoImageStyle = {
     height: '80px',
     width: 'auto',
   };
-  
+
   const taglineStyle = {
     fontSize: '1rem',
     fontWeight: '500',
     color: primary,
   };
-  
+
   const loginButtonStyle = {
     backgroundColor: primary,
     color: colors.primaryForeground,
@@ -78,7 +78,7 @@ const TransactionTypePage = () => {
     transition: 'all 0.3s',
     boxShadow: `0 0 20px ${primary}40`,
   };
-  
+
   const mainContentStyle = {
     flex: 1,
     display: 'flex',
@@ -88,7 +88,7 @@ const TransactionTypePage = () => {
     padding: '2rem',
     background: colors.gradients.dark,
   };
-  
+
   const dadLogoStyle = {
     height: '200px',
     width: '420px',
@@ -96,7 +96,7 @@ const TransactionTypePage = () => {
     objectFit: 'contain',
     marginBottom: '1.5rem',
   };
-  
+
   const titleStyle = {
     fontSize: '2rem',
     fontWeight: '700',
@@ -104,14 +104,14 @@ const TransactionTypePage = () => {
     marginBottom: '0.5rem',
     textAlign: 'center',
   };
-  
+
   const subtitleStyle = {
     fontSize: '1rem',
     color: colors.mutedForeground,
     marginBottom: '2rem',
     textAlign: 'center',
   };
-  
+
   const cardsContainerStyle = {
     display: 'grid',
     gridTemplateColumns: 'repeat(2, 1fr)',
@@ -119,7 +119,7 @@ const TransactionTypePage = () => {
     maxWidth: '900px',
     width: '100%',
   };
-  
+
   const cardStyle = {
     backgroundColor: colors.card,
     borderRadius: '0.75rem',
@@ -133,7 +133,7 @@ const TransactionTypePage = () => {
     border: `1px solid ${colors.border}`,
     minHeight: '320px',
   };
-  
+
   const iconCircleStyle = {
     width: '80px',
     height: '80px',
@@ -146,14 +146,14 @@ const TransactionTypePage = () => {
     fontSize: '2rem',
     color: colors.primaryForeground,
   };
-  
+
   const cardTitleStyle = {
     fontSize: '1.5rem',
     fontWeight: '700',
     color: colors.foreground,
     marginBottom: '0.75rem',
   };
-  
+
   const cardDescStyle = {
     fontSize: '0.95rem',
     color: colors.mutedForeground,
@@ -161,7 +161,7 @@ const TransactionTypePage = () => {
     marginBottom: '2rem',
     flex: 1,
   };
-  
+
   const activeButtonStyle = {
     backgroundColor: primary,
     color: colors.primaryForeground,
@@ -187,7 +187,7 @@ const TransactionTypePage = () => {
     fontWeight: '600',
     width: '100%',
   };
-  
+
   const footerStyle = {
     backgroundColor: colors.card,
     color: colors.foreground,
@@ -195,7 +195,7 @@ const TransactionTypePage = () => {
     textAlign: 'center',
     borderTop: `1px solid ${colors.border}`,
   };
-  
+
   const footerTextStyle = {
     display: 'flex',
     justifyContent: 'center',
@@ -204,23 +204,23 @@ const TransactionTypePage = () => {
     flexWrap: 'wrap',
     fontSize: '0.875rem',
   };
-  
+
   const separatorStyle = {
     color: colors.mutedForeground,
   };
-  
+
   return (
     <div style={pageStyle}>
       {/* Header */}
       <header style={headerStyle}>
         <div
           style={{ ...logoContainerStyle, cursor: 'pointer' }}
-          onClick={() => navigate('/')}
+          onClick={() => navigate(isAuthenticated ? '/industry-selection' : '/')}
         >
           <img src="/New_FD.png" alt="XFORIA DAD Logo" style={logoImageStyle} />
           <div style={taglineStyle}>Your Guardian against Fraud</div>
         </div>
-        
+
         {!isAuthenticated ? (
           <button
             style={loginButtonStyle}
@@ -255,16 +255,16 @@ const TransactionTypePage = () => {
           </button>
         )}
       </header>
-      
+
       {/* Breadcrumb Navigation */}
       <Breadcrumb />
-      
+
       {/* Main Content */}
       <main style={mainContentStyle}>
         <img src="/New_FD.png" alt="DAD Logo" style={dadLogoStyle} />
         <h1 style={titleStyle}>Choose Transaction Type</h1>
         <p style={subtitleStyle}>Select your preferred fraud detection method</p>
-        
+
         <div style={cardsContainerStyle}>
           {/* On Demand Transactions - LEFT SIDE - ACTIVE */}
           <div
@@ -287,7 +287,7 @@ const TransactionTypePage = () => {
             <p style={cardDescStyle}>
               Upload and analyze with comprehensive fraud assessment
             </p>
-            
+
             <button
               style={activeButtonStyle}
               onMouseEnter={(e) => {
@@ -303,7 +303,7 @@ const TransactionTypePage = () => {
               On Demand Transactions
             </button>
           </div>
-          
+
           {/* Real Time Transaction - RIGHT SIDE - ACTIVE */}
           <div
             style={cardStyle}
@@ -333,7 +333,7 @@ const TransactionTypePage = () => {
           </div>
         </div>
       </main>
-      
+
       {/* Footer */}
       <footer style={footerStyle}>
         <div style={footerTextStyle}>

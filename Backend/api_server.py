@@ -1185,10 +1185,60 @@ def get_bank_statements_list():
         data = all_data
         total_available = total_count if total_count is not None else len(data)
 
-        # Optional date filtering
+        # Optional date filtering - custom date range or predefined filters
         date_filter = request.args.get('date_filter', default=None)  # 'last_30', 'last_60', 'last_90', 'older'
+        start_date_str = request.args.get('start_date', default=None)  # Custom start date (YYYY-MM-DD)
+        end_date_str = request.args.get('end_date', default=None)  # Custom end date (YYYY-MM-DD)
 
-        if date_filter:
+        # Custom date range takes priority over predefined filters
+        if start_date_str or end_date_str:
+            filtered_data = []
+            
+            # Parse custom date range
+            start_date = None
+            end_date = None
+            
+            try:
+                if start_date_str:
+                    start_date = datetime.fromisoformat(start_date_str)
+                if end_date_str:
+                    end_date = datetime.fromisoformat(end_date_str)
+                    # Set end_date to end of day (23:59:59)
+                    end_date = end_date.replace(hour=23, minute=59, second=59)
+            except ValueError as e:
+                return jsonify({
+                    'success': False,
+                    'error': f'Invalid date format: {str(e)}',
+                    'message': 'Please use YYYY-MM-DD format for dates'
+                }), 400
+
+            for record in data:
+                created_at_str = record.get('created_at')
+                if not created_at_str:
+                    continue
+
+                # Parse created_at timestamp
+                try:
+                    # Handle ISO format timestamps with or without microseconds
+                    if 'T' in created_at_str:
+                        created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00').split('+')[0])
+                    else:
+                        created_at = datetime.fromisoformat(created_at_str)
+                except:
+                    continue
+
+                # Apply custom date range filter
+                if start_date and created_at < start_date:
+                    continue
+                if end_date and created_at > end_date:
+                    continue
+                
+                filtered_data.append(record)
+
+            data = filtered_data
+            date_filter = 'custom'  # Mark as custom filter for response
+
+        elif date_filter:
             now = datetime.utcnow()
             filtered_data = []
 
@@ -1225,7 +1275,9 @@ def get_bank_statements_list():
             'data': data,
             'count': len(data),
             'total_records': total_available if not date_filter else None,
-            'date_filter': date_filter
+            'date_filter': date_filter,
+            'start_date': start_date_str,
+            'end_date': end_date_str
         })
     except Exception as e:
         logger.error(f"Failed to fetch bank statements list: {e}")

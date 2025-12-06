@@ -14,12 +14,12 @@ const Breadcrumb = () => {
 
     // Step 1: Transaction Type
     const isTransactionType = path === '/transaction-type';
-    const isAfterTransactionType = path === '/finance' || path === '/real-time-analysis' || 
-      path.startsWith('/check-analysis') || path.startsWith('/paystub-analysis') || 
+    const isAfterTransactionType = path === '/finance' || path === '/real-time-analysis' ||
+      path.startsWith('/check-analysis') || path.startsWith('/paystub-analysis') ||
       path.startsWith('/money-order-analysis') || path.startsWith('/bank-statement-analysis');
 
     steps.push({
-      label: 'Transaction Type',
+      label: 'Mode of Transactions',
       path: '/transaction-type',
       stepNumber: 1,
       isCompleted: isAfterTransactionType,
@@ -27,11 +27,11 @@ const Breadcrumb = () => {
     });
 
     // Step 2: Transaction Selection (On Demand or Real Time)
-    if (path === '/finance' || path.startsWith('/check-analysis') || 
-        path.startsWith('/paystub-analysis') || path.startsWith('/money-order-analysis') || 
-        path.startsWith('/bank-statement-analysis')) {
+    if (path === '/finance' || path.startsWith('/check-analysis') ||
+      path.startsWith('/paystub-analysis') || path.startsWith('/money-order-analysis') ||
+      path.startsWith('/bank-statement-analysis')) {
       const isFinance = path === '/finance';
-      const isAfterFinance = path.startsWith('/check-analysis') || path.startsWith('/paystub-analysis') || 
+      const isAfterFinance = path.startsWith('/check-analysis') || path.startsWith('/paystub-analysis') ||
         path.startsWith('/money-order-analysis') || path.startsWith('/bank-statement-analysis');
 
       steps.push({
@@ -150,7 +150,7 @@ const Breadcrumb = () => {
               </div>
             ) : (
               <Link to={step.path} style={stepItemStyle}>
-                <div 
+                <div
                   style={stepIconStyle(step.isCompleted, step.isActive)}
                   onMouseEnter={(e) => {
                     if (!step.isCompleted && !step.isActive) {
@@ -169,7 +169,7 @@ const Breadcrumb = () => {
                 >
                   {step.isCompleted ? <FaCheck /> : step.stepNumber}
                 </div>
-                <span 
+                <span
                   style={stepLabelStyle(false)}
                   onMouseEnter={(e) => {
                     if (!step.isCompleted && !step.isActive) {
