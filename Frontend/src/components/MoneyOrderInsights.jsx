@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { colors } from '../styles/colors';
 import {
@@ -11,7 +11,7 @@ const MoneyOrderInsights = () => {
   const [csvData, setCsvData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [inputMode, setInputMode] = useState('upload'); // 'upload' or 'api'
+  const [inputMode, setInputMode] = useState('api'); // 'upload' or 'api'
   const [moneyOrdersList, setMoneyOrdersList] = useState([]);
   const [allMoneyOrdersData, setAllMoneyOrdersData] = useState([]); // Store full dataset for filtering
   const [loadingMoneyOrdersList, setLoadingMoneyOrdersList] = useState(false);
@@ -147,9 +147,9 @@ const MoneyOrderInsights = () => {
         // Use uppercase for consistent grouping (case-insensitive)
         const purchaserKey = purchaser.toUpperCase();
         if (!purchaserRisks[purchaserKey]) {
-          purchaserRisks[purchaserKey] = { 
-            count: 0, 
-            totalRisk: 0, 
+          purchaserRisks[purchaserKey] = {
+            count: 0,
+            totalRisk: 0,
             maxRisk: 0,
             originalName: purchaser // Keep original for display
           };
@@ -240,7 +240,7 @@ const MoneyOrderInsights = () => {
           const risk = parseFloat_(r['RiskScore'] || r['fraud_risk_score'] || 0);
           const recommendation = (r['Decision'] || r['ai_recommendation'] || 'UNKNOWN').toUpperCase();
           const isHighRisk = risk >= 0.75 || recommendation !== 'APPROVE';
-          
+
           const purchaserKey = purchaser.toUpperCase();
           if (!purchaserHighRisk[purchaserKey]) {
             purchaserHighRisk[purchaserKey] = {
@@ -255,7 +255,7 @@ const MoneyOrderInsights = () => {
           }
         }
       });
-      
+
       topRiskyPurchasersForIssuer = Object.entries(purchaserHighRisk)
         .map(([key, data]) => ({
           name: data.originalName || key,
@@ -277,7 +277,7 @@ const MoneyOrderInsights = () => {
           const risk = parseFloat_(r['RiskScore'] || r['fraud_risk_score'] || 0);
           const recommendation = (r['Decision'] || r['ai_recommendation'] || 'UNKNOWN').toUpperCase();
           const isHighRisk = risk >= 0.75 || recommendation !== 'APPROVE';
-          
+
           issuerTrendByDay[date].count++;
           issuerTrendByDay[date].totalRisk += risk;
           if (isHighRisk) {
@@ -285,7 +285,7 @@ const MoneyOrderInsights = () => {
           }
         }
       });
-      
+
       riskScoreTrendForIssuer = Object.entries(issuerTrendByDay)
         .map(([date, data]) => ({
           date,
@@ -394,10 +394,10 @@ const MoneyOrderInsights = () => {
         // Extract unique issuers from the data
         const issuers = [...new Set(data.data.map(mo => mo.money_order_institute).filter(Boolean))].sort();
         setAvailableIssuers(issuers);
-        
+
         // Store full dataset
         setAllMoneyOrdersData(data.data);
-        
+
         // Apply issuer filter if selected
         let filteredData = data.data;
         const activeIssuerFilter = issuer !== null ? issuer : issuerFilter;
@@ -409,15 +409,15 @@ const MoneyOrderInsights = () => {
             return moIssuer === normalizedIssuer;
           });
         }
-        
+
         setMoneyOrdersList(filteredData);
         setTotalRecords(data.total_records || data.count);
         setDateFilter(filter);
         // Auto-load all money orders as insights if data exists
         if (filteredData && filteredData.length > 0) {
           // Pass the active issuer filter to ensure correct chart data
-          const issuerToPass = (activeIssuerFilter && activeIssuerFilter !== '' && activeIssuerFilter !== 'All Issuers') 
-            ? activeIssuerFilter.trim() 
+          const issuerToPass = (activeIssuerFilter && activeIssuerFilter !== '' && activeIssuerFilter !== 'All Issuers')
+            ? activeIssuerFilter.trim()
             : null;
           loadMoneyOrderData(filteredData, issuerToPass);
         } else {
@@ -479,7 +479,7 @@ const MoneyOrderInsights = () => {
     try {
       // Use explicit issuer if provided, otherwise use issuerFilter state
       const issuerToUse = explicitIssuer !== null ? explicitIssuer : issuerFilter;
-      
+
       // Transform database records to format expected by processData
       const rows = moneyOrders.map(mo => ({
         'fraud_risk_score': mo.fraud_risk_score || 0,
@@ -510,7 +510,7 @@ const MoneyOrderInsights = () => {
           const rowIssuer = (r['IssuerName'] || r['money_order_institute'] || r['issuer_name'] || '').trim();
           return rowIssuer === normalizedIssuer;
         });
-        
+
         // Debug logging
         console.log('Issuer Filter Debug:', {
           selectedIssuer: normalizedIssuer,
@@ -518,12 +518,12 @@ const MoneyOrderInsights = () => {
           filteredRows: filteredRows.length,
           sampleIssuers: [...new Set(rows.map(r => r['IssuerName'] || r['money_order_institute'] || 'Unknown'))].slice(0, 5)
         });
-        
+
         if (filteredRows.length === 0) {
           setError(`No money orders found for issuer: ${issuerToUse}. Found issuers: ${[...new Set(rows.map(r => r['IssuerName'] || r['money_order_institute'] || 'Unknown'))].join(', ')}`);
           return;
         }
-        
+
         const processed = processData(filteredRows, normalizedIssuer);
         setCsvData(processed);
       } else {
@@ -539,6 +539,13 @@ const MoneyOrderInsights = () => {
       setError(`Error processing money orders: ${err.message}`);
     }
   };
+
+  // Auto-fetch data when component mounts in 'api' mode
+  useEffect(() => {
+    if (inputMode === 'api' && allMoneyOrdersData.length === 0 && !loadingMoneyOrdersList) {
+      fetchMoneyOrdersList();
+    }
+  }, []); // Empty dependency array - only run on mount
 
   const primary = colors.primaryColor || colors.accent?.red || '#E53935';
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
@@ -624,100 +631,7 @@ const MoneyOrderInsights = () => {
           {inputMode === 'upload' ? 'Money Order Insights' : 'Money Order Insights'}
         </h2>
 
-        {/* Input Mode Toggle */}
-        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
-          <button
-            onClick={() => {
-              setInputMode('upload');
-              setCsvData(null);
-              setError(null);
-            }}
-            style={{
-              flex: 1,
-              padding: '0.75rem',
-              borderRadius: '0.5rem',
-              backgroundColor: inputMode === 'upload' ? primary : colors.secondary,
-              color: inputMode === 'upload' ? colors.primaryForeground : colors.foreground,
-              border: `1px solid ${colors.border}`,
-              cursor: 'pointer',
-              fontWeight: inputMode === 'upload' ? '600' : '500',
-              transition: 'all 0.3s',
-            }}
-          >
-            Insights
-          </button>
-          <button
-            onClick={() => {
-              setInputMode('api');
-              setCsvData(null);
-              setError(null);
-              setIssuerFilter(null);
-              setAllMoneyOrdersData([]);
-              fetchMoneyOrdersList();
-            }}
-            style={{
-              flex: 1,
-              padding: '0.75rem',
-              borderRadius: '0.5rem',
-              backgroundColor: inputMode === 'api' ? primary : colors.secondary,
-              color: inputMode === 'api' ? colors.primaryForeground : colors.foreground,
-              border: `1px solid ${colors.border}`,
-              cursor: 'pointer',
-              fontWeight: inputMode === 'api' ? '600' : '500',
-              transition: 'all 0.3s',
-            }}
-          >
-            Live Data
-          </button>
-        </div>
 
-        {inputMode === 'upload' && (
-          <>
-            <div {...getRootProps()} style={dropzoneStyle}>
-              <input {...getInputProps()} />
-              <FaUpload style={{ fontSize: '2rem', marginBottom: '1rem', color: colors.foreground }} />
-              {isDragActive ? (
-                <p style={{ color: primary, fontWeight: '500' }}>
-                  Drop the CSV file here...
-                </p>
-              ) : (
-                <div>
-                  <p style={{ color: colors.foreground, marginBottom: '0.5rem' }}>
-                    Drag and drop your CSV file here, or click to browse
-                  </p>
-                  <p style={{ color: colors.mutedForeground, fontSize: '0.875rem' }}>
-                    CSV file with money order analysis data
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {error && inputMode === 'upload' && (
-              <div style={{
-                backgroundColor: colors.accent.redLight,
-                color: colors.accent.red,
-                padding: '1rem',
-                borderRadius: '8px',
-                marginTop: '1rem',
-                fontWeight: '500',
-              }}>
-                {error}
-              </div>
-            )}
-
-            {loading && inputMode === 'upload' && (
-              <div style={{ textAlign: 'center', padding: '2rem' }}>
-                <FaCog className="spin" style={{
-                  fontSize: '2rem',
-                  color: primary,
-                }} />
-                <p style={{ marginTop: '0.5rem', color: colors.neutral.gray600 }}>
-                  Processing CSV...
-                </p>
-              </div>
-            )}
-          </>
-        )}
 
         {inputMode === 'api' && (
           <>
@@ -1145,15 +1059,15 @@ const MoneyOrderInsights = () => {
                 <ResponsiveContainer width="100%" height={320}>
                   <BarChart data={csvData.topRiskyPurchasersForIssuer} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                    <XAxis 
-                      type="number" 
+                    <XAxis
+                      type="number"
                       stroke={colors.mutedForeground}
                       label={{ value: 'High-Risk Money Orders', position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fill: colors.foreground } }}
                     />
-                    <YAxis 
-                      dataKey="name" 
-                      type="category" 
-                      stroke={colors.mutedForeground} 
+                    <YAxis
+                      dataKey="name"
+                      type="category"
+                      stroke={colors.mutedForeground}
                       width={180}
                       tick={{ fill: colors.foreground, fontSize: 12 }}
                     />
@@ -1183,15 +1097,15 @@ const MoneyOrderInsights = () => {
                 <ResponsiveContainer width="100%" height={320}>
                   <BarChart data={csvData.topFraudulentIssuers} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                    <XAxis 
-                      type="number" 
+                    <XAxis
+                      type="number"
                       stroke={colors.mutedForeground}
                       label={{ value: 'High-Risk Percentage (%)', position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fill: colors.foreground } }}
                     />
-                    <YAxis 
-                      dataKey="name" 
-                      type="category" 
-                      stroke={colors.mutedForeground} 
+                    <YAxis
+                      dataKey="name"
+                      type="category"
+                      stroke={colors.mutedForeground}
                       width={180}
                       tick={{ fill: colors.foreground, fontSize: 12 }}
                     />
@@ -1221,15 +1135,15 @@ const MoneyOrderInsights = () => {
                 <ResponsiveContainer width="100%" height={320}>
                   <BarChart data={csvData.topHighRiskPurchasers} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                    <XAxis 
-                      type="number" 
+                    <XAxis
+                      type="number"
                       stroke={colors.mutedForeground}
                       label={{ value: 'Average Risk Score (%)', position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fill: colors.foreground } }}
                     />
-                    <YAxis 
-                      dataKey="name" 
-                      type="category" 
-                      stroke={colors.mutedForeground} 
+                    <YAxis
+                      dataKey="name"
+                      type="category"
+                      stroke={colors.mutedForeground}
                       width={180}
                       tick={{ fill: colors.foreground, fontSize: 12 }}
                     />
@@ -1259,15 +1173,15 @@ const MoneyOrderInsights = () => {
                 <ResponsiveContainer width="100%" height={320}>
                   <BarChart data={csvData.topHighRiskPayees} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                    <XAxis 
-                      type="number" 
+                    <XAxis
+                      type="number"
                       stroke={colors.mutedForeground}
                       label={{ value: 'High-Risk Count', position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fill: colors.foreground } }}
                     />
-                    <YAxis 
-                      dataKey="name" 
-                      type="category" 
-                      stroke={colors.mutedForeground} 
+                    <YAxis
+                      dataKey="name"
+                      type="category"
+                      stroke={colors.mutedForeground}
                       width={180}
                       tick={{ fill: colors.foreground, fontSize: 12 }}
                     />

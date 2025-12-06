@@ -1083,7 +1083,7 @@ const PricingSection = ({ id, colors, primary, pricingPlans, sectionStyle, secti
             </span>
           </h2>
         </div>
-        <div style={cardsGridStyle}>
+        <div style={{ ...cardsGridStyle, gridTemplateColumns: 'repeat(3, 1fr)' }}>
           {pricingPlans.map((plan, index) => (
             <div
               key={index}
@@ -1188,7 +1188,7 @@ const TestimonialsSection = ({ colors, primary, testimonials, sectionStyle, sect
             </span>
           </h2>
         </div>
-        <div style={cardsGridStyle}>
+        <div style={{ ...cardsGridStyle, gridTemplateColumns: 'repeat(3, 1fr)' }}>
           {testimonials.map((testimonial, index) => (
             <div
               key={index}
