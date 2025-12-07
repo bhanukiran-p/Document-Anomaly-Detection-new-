@@ -27,33 +27,12 @@ from config import Config
 # Ensure necessary directories exist
 Config.ensure_directories()
 
-# Configure logging using centralized config
-log_format = Config.LOG_FORMAT
-formatter = logging.Formatter(log_format)
+# Setup centralized logging
+Config.setup_logging()
 
-# File handler with rotation
-file_handler = RotatingFileHandler(
-    os.path.join(Config.LOG_DIR, 'api_server.log'),
-    maxBytes=Config.LOG_FILE_MAX_BYTES,
-    backupCount=Config.LOG_FILE_BACKUP_COUNT
-)
-file_handler.setLevel(getattr(logging, Config.LOG_LEVEL))
-file_handler.setFormatter(formatter)
-
-# Console handler
-console_handler = logging.StreamHandler()
-console_handler.setLevel(getattr(logging, Config.LOG_LEVEL))
-console_handler.setFormatter(formatter)
-
-# Configure root logger
-logging.basicConfig(
-    level=getattr(logging, Config.LOG_LEVEL),
-    format=log_format,
-    handlers=[file_handler, console_handler]
-)
-
-logger = logging.getLogger(__name__)
-logger.info(f"Logging configured. Log file: {os.path.join(Config.LOG_DIR, 'api_server.log')}")
+# Get logger for this module
+logger = Config.get_logger(__name__)
+logger.info(f"Logging configured. Log directory: {Config.LOG_DIR}")
 
 # Validate configuration
 config_errors = Config.validate()
@@ -64,12 +43,12 @@ if config_errors:
 
 # Check for critical environment variables
 if Config.OPENAI_API_KEY:
-    logger.info("✓ OPENAI_API_KEY found in environment")
+    logger.info("OPENAI_API_KEY found in environment")
 else:
-    logger.error("✗ OPENAI_API_KEY NOT found in environment")
+    logger.error("OPENAI_API_KEY NOT found in environment")
 
 if Config.GOOGLE_APPLICATION_CREDENTIALS:
-    logger.info(f"✓ Google Credentials path: {Config.GOOGLE_APPLICATION_CREDENTIALS}")
+    logger.info(f"Google Credentials path: {Config.GOOGLE_APPLICATION_CREDENTIALS}")
 else:
     logger.warning("GOOGLE_APPLICATION_CREDENTIALS not set")
 
