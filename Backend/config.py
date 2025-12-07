@@ -138,6 +138,40 @@ class Config:
         os.makedirs(cls.LOG_DIR, exist_ok=True)
         os.makedirs(os.path.dirname(cls.ML_MODEL_PATH), exist_ok=True)
 
+    @classmethod
+    def setup_logging(cls):
+        """
+        Setup application-wide logging using centralized logging config
+        Call this once at application startup
+        """
+        from logging_config import setup_application_logging
+        setup_application_logging(
+            log_dir=cls.LOG_DIR,
+            log_level=cls.LOG_LEVEL
+        )
+
+    @classmethod
+    def get_logger(cls, name: str):
+        """
+        Get a configured logger instance for a module
+
+        Args:
+            name: Module name (usually __name__)
+
+        Returns:
+            Configured logger instance
+
+        Usage:
+            from config import Config
+            logger = Config.get_logger(__name__)
+        """
+        from logging_config import get_logger
+        return get_logger(
+            name,
+            log_dir=cls.LOG_DIR,
+            log_level=cls.LOG_LEVEL
+        )
+
 
 class DevelopmentConfig(Config):
     """Development-specific configuration"""

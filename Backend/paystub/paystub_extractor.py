@@ -5,9 +5,16 @@ Completely self-contained - no dependencies on other document analysis modules
 """
 
 import os
-import logging
+import sys
 import json
 from datetime import datetime
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+# Import centralized config and logging
+from config import Config
+logger = Config.get_logger(__name__)
 from typing import Dict, List, Optional, Tuple
 
 # Load environment variables first (if not already loaded)
@@ -23,8 +30,8 @@ try:
     from mindee import ClientV2, InferenceParameters, PathInput
     MINDEE_AVAILABLE = True
 except ImportError as e:
-    logging.getLogger(__name__).error(f"Mindee library not properly installed: {e}")
-    logging.getLogger(__name__).error("Requires mindee>=4.31.0. Install with: pip install --upgrade 'mindee>=4.31.0'")
+    logger.error(f"Mindee library not properly installed: {e}")
+    logger.error("Requires mindee>=4.31.0. Install with: pip install --upgrade 'mindee>=4.31.0'")
     MINDEE_AVAILABLE = False
     ClientV2 = None
     InferenceParameters = None
@@ -32,8 +39,6 @@ except ImportError as e:
 
 # Import paystub-specific components from local modules
 from .normalization.paystub_normalizer_factory import PaystubNormalizerFactory
-
-logger = logging.getLogger(__name__)
 
 # Mindee configuration - read after load_dotenv()
 MINDEE_API_KEY = os.getenv("MINDEE_API_KEY", "").strip()

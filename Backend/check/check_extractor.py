@@ -4,22 +4,29 @@ Orchestrates: Mindee OCR → Normalization → ML Detection → AI Analysis → 
 """
 
 import os
-import logging
+import sys
 import json
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 # Load environment variables first
 from dotenv import load_dotenv
 load_dotenv()
+
+# Import centralized config and logging
+from config import Config
+logger = Config.get_logger(__name__)
 
 # Import Mindee - use ClientV2 API (requires mindee>=4.31.0)
 try:
     from mindee import ClientV2, InferenceParameters, PathInput
     MINDEE_AVAILABLE = True
 except ImportError as e:
-    logging.getLogger(__name__).error(f"Mindee library not properly installed: {e}")
-    logging.getLogger(__name__).error("Requires mindee>=4.31.0. Install with: pip install --upgrade 'mindee>=4.31.0'")
+    logger.error(f"Mindee library not properly installed: {e}")
+    logger.error("Requires mindee>=4.31.0. Install with: pip install --upgrade 'mindee>=4.31.0'")
     MINDEE_AVAILABLE = False
     ClientV2 = None
     InferenceParameters = None
@@ -30,8 +37,6 @@ from .normalization.check_normalizer_factory import CheckNormalizerFactory
 from .ml.check_fraud_detector import CheckFraudDetector
 from .ai.check_fraud_analysis_agent import CheckFraudAnalysisAgent
 from .ai.check_tools import CheckDataAccessTools
-
-logger = logging.getLogger(__name__)
 
 # Mindee configuration - read after load_dotenv()
 MINDEE_API_KEY = os.getenv("MINDEE_API_KEY", "").strip()
