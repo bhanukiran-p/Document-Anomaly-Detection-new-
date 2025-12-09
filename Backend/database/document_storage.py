@@ -753,6 +753,13 @@ class DocumentStorage:
             bank_name_raw = self._safe_string(extracted.get('bank_name'))
             bank_name_upper = bank_name_raw.upper() if bank_name_raw else None
 
+            # Extract fraud_type from AI analysis (primary fraud type only)
+            fraud_type = None
+            if ai_analysis and ai_analysis.get('fraud_types'):
+                fraud_types = ai_analysis.get('fraud_types', [])
+                # Store only the primary (first) fraud type
+                fraud_type = fraud_types[0] if isinstance(fraud_types, list) and fraud_types else fraud_types
+
             check_data = {
                 'check_id': str(uuid.uuid4()),
                 'document_id': document_id,
@@ -771,6 +778,7 @@ class DocumentStorage:
                 'model_confidence': self._parse_amount(ml_analysis.get('model_confidence')),
                 'ai_recommendation': self._safe_string(ai_analysis.get('recommendation')) if ai_analysis else None,
                 'signature_detected': extracted.get('signature_detected', False),
+                'fraud_type': self._safe_string(fraud_type),  # Add fraud_type
                 'anomaly_count': len(analysis_data.get('anomalies', [])),
                 'top_anomalies': json.dumps(analysis_data.get('anomalies', [])[:5]),
                 'timestamp': datetime.utcnow().isoformat()
@@ -778,7 +786,7 @@ class DocumentStorage:
 
             # Insert check record
             self.supabase.table('checks').insert([check_data]).execute()
-            logger.info(f"Stored check: {check_data['check_id']}")
+            logger.info(f"Stored check: {check_data['check_id']} with fraud_type: {fraud_type}")
 
             # Update document status
             self._update_document_status(document_id, 'success')

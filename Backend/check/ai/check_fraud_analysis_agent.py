@@ -62,10 +62,13 @@ class CheckFraudAnalysisAgent:
                     'openai_api_key': self.api_key,
                 }
                 
-                # Only set max_tokens for older models that support it
-                # Newer models (o4, o1) don't support max_tokens or max_completion_tokens in LangChain
-                if not (self.model_name.startswith('o4') or self.model_name.startswith('o1')):
+                # Newer models (o4, o1) only support temperature=1 (default)
+                # Older models support custom temperature values
+                if self.model_name.startswith('o4') or self.model_name.startswith('o1'):
+                    llm_kwargs['temperature'] = 1  # o4/o1 only support default temperature
+                else:
                     llm_kwargs['max_tokens'] = 1500
+                    llm_kwargs['temperature'] = 0.7  # Custom temperature for older models
                 
                 self.llm = ChatOpenAI(**llm_kwargs)
                 logger.info(f"Initialized CheckFraudAnalysisAgent with LangChain model: {model}")
@@ -106,7 +109,7 @@ class CheckFraudAnalysisAgent:
             customer_info = self.data_tools.get_customer_history(payer_name)
             logger.info(f"Retrieved customer history for: {payer_name}")
 
-        policy_decision = self._apply_policy_rules(payer_name, customer_info)
+        policy_decision = self._apply_policy_rules(payer_name, customer_info, ml_analysis)
         if policy_decision:
             return policy_decision
 
@@ -121,24 +124,43 @@ class CheckFraudAnalysisAgent:
             customer_info
         )
 
-    def _apply_policy_rules(self, payer_name: Optional[str], customer_info: Optional[Dict]) -> Optional[Dict]:
+    def _apply_policy_rules(self, payer_name: Optional[str], customer_info: Optional[Dict], ml_analysis: Optional[Dict] = None) -> Optional[Dict]:
         """Enforce mandatory payer-history policy before any LLM call."""
         if not payer_name:
             logger.warning("Payer name missing; defaulting to ESCALATE per policy.")
             return self._create_first_time_escalation("Unknown Payer", is_new_customer=True)
 
         customer_info = customer_info or {}
+        fraud_count = customer_info.get('fraud_count', 0) or 0
         escalate_count = customer_info.get('escalate_count', 0) or 0
+        
+        # Get fraud score from ML analysis
+        ml_analysis = ml_analysis or {}
+        fraud_risk_score = ml_analysis.get('fraud_risk_score', 0.0)
 
-        if escalate_count > 0:
+        # REPEAT OFFENDER: fraud_count > 0 → Auto-reject
+        if fraud_count > 0:
             logger.warning(
-                f"REPEAT OFFENDER DETECTED: {payer_name} has escalate_count={escalate_count}. Auto-rejecting."
+                f"REPEAT OFFENDER DETECTED: {payer_name} has fraud_count={fraud_count}. Auto-rejecting."
             )
-            return self._create_repeat_offender_rejection(payer_name, escalate_count)
+            return self._create_repeat_offender_rejection(payer_name, fraud_count)
 
-        # If we reach here, payer has no escalations logged → proceed to LLM for decision
-        # LLM will follow the decision table based on fraud score and customer history
-        logger.info(f"Customer {payer_name} has no escalations; proceeding to LLM analysis.")
+        # FIRST TIME: escalate_count = 0
+        if escalate_count == 0:
+            # Check fraud score: < 30% → APPROVE, >= 30% → ESCALATE
+            if fraud_risk_score < 0.30:
+                logger.info(
+                    f"FIRST TIME CUSTOMER: {payer_name} has escalate_count=0 and fraud_score={fraud_risk_score:.1%} < 30%. Auto-approving."
+                )
+                return self._create_approval(payer_name, fraud_risk_score)
+            else:
+                logger.info(
+                    f"FIRST TIME CUSTOMER: {payer_name} has escalate_count=0 and fraud_score={fraud_risk_score:.1%} >= 30%. Auto-escalating for manual review."
+                )
+                return self._create_first_time_escalation(payer_name, is_new_customer=True)
+
+        # PREVIOUSLY ESCALATED: escalate_count > 0, fraud_count = 0 → Proceed to LLM for decision
+        logger.info(f"Previously escalated customer {payer_name}; proceeding to LLM analysis.")
         return None
 
     def _llm_analysis(
@@ -164,19 +186,22 @@ class CheckFraudAnalysisAgent:
                     logger.info(f"Retrieved customer history for: {payer_name}")
 
             # MANDATORY REPEAT OFFENDER CHECK - BEFORE ANY LLM ANALYSIS
-            # If escalate_count > 0, this MUST trigger automatic rejection (per policy)
-            escalate_count = customer_info.get('escalate_count', 0)
-            if escalate_count > 0:
-                logger.warning(f"REPEAT OFFENDER DETECTED: {payer_name} has escalate_count={escalate_count}. Auto-rejecting.")
-                return self._create_repeat_offender_rejection(payer_name, escalate_count)
+            # If fraud_count > 0, this MUST trigger automatic rejection (per policy)
+            fraud_count = customer_info.get('fraud_count', 0)
+            if fraud_count > 0:
+                logger.warning(f"REPEAT OFFENDER DETECTED: {payer_name} has fraud_count={fraud_count}. Auto-rejecting.")
+                return self._create_repeat_offender_rejection(payer_name, fraud_count)
 
-            # Check for duplicates
+            # Check for duplicates - but don't return early, pass to AI for analysis
             check_number = extracted_data.get('check_number')
+            is_duplicate = False
             if check_number and payer_name:
                 is_duplicate = self.data_tools.check_duplicate(check_number, payer_name)
                 if is_duplicate:
-                    logger.warning(f"Duplicate check detected: {check_number} from {payer_name}")
-                    return self._create_duplicate_rejection(check_number, payer_name)
+                    logger.warning(f"Duplicate check detected: {check_number} from {payer_name} - will be flagged in AI analysis")
+                    # Add duplicate flag to customer_info so AI can consider it
+                    customer_info['is_duplicate'] = True
+                    customer_info['duplicate_check_number'] = check_number
 
             # Format the analysis prompt
             analysis_prompt = format_analysis_template(
@@ -222,6 +247,31 @@ class CheckFraudAnalysisAgent:
             # Return safe fallback decision
             return self._create_fallback_decision(ml_analysis)
 
+    def _create_approval(self, payer_name: str, fraud_risk_score: float) -> Dict:
+        """Create approval response for first-time customers with low fraud scores."""
+        return {
+            'recommendation': 'APPROVE',
+            'confidence_score': 1.0,
+            'summary': f"Automatic approval: {payer_name} is a first-time customer with low fraud risk ({fraud_risk_score:.1%}).",
+            'reasoning': [
+                f"Payer {payer_name} has no recorded escalations (escalate_count = 0)",
+                f"Fraud risk score ({fraud_risk_score:.1%}) is below 30% threshold",
+                'First-time customers with low fraud scores are auto-approved'
+            ],
+            'key_indicators': [
+                'Customer escalation count: 0',
+                f'Fraud risk score: {fraud_risk_score:.1%} < 30%',
+                'Policy: first-time low-risk uploads are approved'
+            ],
+            'actionable_recommendations': [
+                'Process this check normally',
+                'Create a customer record for future tracking',
+                'Monitor future uploads for this payer'
+            ],
+            'fraud_types': [],
+            'fraud_explanations': []
+        }
+
     def _create_first_time_escalation(self, payer_name: str, is_new_customer: bool = False) -> Dict:
         """Create escalation response for first-time or clean-history customers."""
         customer_state = "new customer" if is_new_customer else "customer with no prior escalations"
@@ -248,49 +298,58 @@ class CheckFraudAnalysisAgent:
             ]
         }
 
-    def _create_repeat_offender_rejection(self, payer_name: str, escalate_count: int) -> Dict:
-        """Create rejection response for repeat offenders (escalate_count > 0)"""
+    def _create_repeat_offender_rejection(self, payer_name: str, fraud_count: int) -> Dict:
+        """Create rejection response for repeat offenders (fraud_count > 0)"""
         return {
             'recommendation': 'REJECT',
             'confidence_score': 1.0,
             'summary': f'Automatic rejection: {payer_name} is a flagged repeat offender',
             'reasoning': [
-                f'Payer {payer_name} has escalate_count = {escalate_count}',
+                f'Payer {payer_name} has fraud_count = {fraud_count}',
                 'Per payer-based fraud tracking policy: repeat offenders are automatically rejected',
-                'This payer was previously escalated and is now subject to automatic rejection',
+                'This payer has previous fraud incidents and is now subject to automatic rejection',
                 'LLM analysis skipped - mandatory reject rule applies'
             ],
             'key_indicators': [
                 'Repeat offender detected',
-                f'Escalation count: {escalate_count}'
+                f'Previous fraud count: {fraud_count}'
             ],
             'actionable_recommendations': [
                 'Block this transaction immediately',
                 'Flag customer account for fraud investigation',
                 'Contact payer to verify legitimacy of future transactions'
+            ],
+            'fraud_types': ['REPEAT_OFFENDER'],
+            'fraud_explanations': [
+                {
+                    'type': 'REPEAT_OFFENDER',
+                    'explanation': f'Payer {payer_name} has {fraud_count} previous fraud incident(s). Per fraud tracking policy, repeat offenders are automatically rejected.'
+                }
             ]
         }
 
     def _create_duplicate_rejection(self, check_number: str, payer_name: str) -> Dict:
-        """Create rejection response for duplicate checks"""
+        """Create escalation response for duplicate checks"""
         return {
-            'recommendation': 'REJECT',
+            'recommendation': 'ESCALATE',  # Duplicates should be escalated, not rejected
             'confidence_score': 1.0,
             'summary': f'Duplicate check submission detected for check #{check_number}',
             'reasoning': [
                 f'Check #{check_number} from {payer_name} was previously submitted',
-                'Duplicate submissions are automatically rejected per fraud policy',
-                'This is a critical fraud indicator'
+                'Duplicate submissions require manual review to verify legitimacy',
+                'This may be a resubmission or potential fraud attempt'
             ],
             'key_indicators': [
                 'Duplicate check detected',
                 'Same check_number and payer_name combination'
             ],
             'actionable_recommendations': [
-                'Block this transaction immediately',
-                'Flag customer account for review',
-                'Investigate potential fraud attempt'
-            ]
+                'Review previous submission for this check',
+                'Contact payer to verify if this is an intentional resubmission',
+                'Investigate for potential fraud if no valid reason for duplicate'
+            ],
+            'fraud_types': [],  # Duplicate is not a fraud type - it's an escalation reason
+            'fraud_explanations': []
         }
 
     def _parse_text_response(self, text_response: str) -> Dict:
@@ -302,7 +361,9 @@ class CheckFraudAnalysisAgent:
             'summary': text_response[:200],
             'reasoning': [],
             'key_indicators': [],
-            'actionable_recommendations': []
+            'actionable_recommendations': [],
+            'fraud_types': [],
+            'fraud_explanations': []
         }
 
         # Try to extract recommendation
@@ -318,7 +379,7 @@ class CheckFraudAnalysisAgent:
         lines = text_response.split('\n')
         for line in lines:
             line = line.strip()
-            if line.startswith(('-', '*', '•')) or (len(line) > 2 and line[0].isdigit() and line[1] in '.):'):
+            if line.startswith(('-', '*', '•')) or (len(line) > 2 and line[0].isdigit() and line[1] in '.):'): 
                 result['reasoning'].append(line.lstrip('-*•0123456789.) '))
 
         return result
@@ -332,7 +393,9 @@ class CheckFraudAnalysisAgent:
             'summary': result.get('summary', 'AI fraud analysis completed'),
             'reasoning': result.get('reasoning', []),
             'key_indicators': result.get('key_indicators', []),
-            'actionable_recommendations': result.get('actionable_recommendations', [])
+            'actionable_recommendations': result.get('actionable_recommendations', []),
+            'fraud_types': result.get('fraud_types', []),
+            'fraud_explanations': result.get('fraud_explanations', [])
         }
 
         # Validate recommendation value
@@ -342,6 +405,18 @@ class CheckFraudAnalysisAgent:
 
         # Ensure confidence score is in valid range
         validated['confidence_score'] = max(0.0, min(1.0, validated['confidence_score']))
+
+        # Validate fraud_types is a list
+        if not isinstance(validated['fraud_types'], list):
+            validated['fraud_types'] = []
+
+        # Validate fraud_explanations is a list
+        if not isinstance(validated['fraud_explanations'], list):
+            validated['fraud_explanations'] = []
+
+        # Ensure fraud_types are valid
+        valid_fraud_types = ['SIGNATURE_FORGERY', 'AMOUNT_ALTERATION', 'COUNTERFEIT_CHECK', 'REPEAT_OFFENDER', 'STALE_CHECK']
+        validated['fraud_types'] = [ft for ft in validated['fraud_types'] if ft in valid_fraud_types]
 
         # Add additional context
         validated['ml_fraud_score'] = ml_analysis.get('fraud_risk_score', 0.0)
@@ -388,5 +463,7 @@ class CheckFraudAnalysisAgent:
             ],
             'ml_fraud_score': fraud_score,
             'ml_risk_level': risk_level,
-            'fallback_mode': True
+            'fallback_mode': True,
+            'fraud_types': [],  # Cannot determine fraud types without AI
+            'fraud_explanations': []
         }
