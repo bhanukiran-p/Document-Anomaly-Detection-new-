@@ -1,0 +1,104 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "Western Union",
+    "serial_number": "9875647821",
+    "serial_secondary": "9875647821",
+    "amount": "$750.00",
+    "amount_in_words": null,
+    "payee": "JANE SMITH",
+    "purchaser": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "date": "10/26/2023",
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "high",
+      "type": "fraud_risk_high",
+      "message": "[ESCALATE] Contradictory ML outputs (ensemble at 0% risk vs. RF/XGBoost ~71%) and missing written-amount field warrant manual review."
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Missing signature"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Money order is 774 days old (stale)"
+    },
+    {
+      "severity": "high",
+      "type": "ai_indicator",
+      "message": "Conflicting ML model scores (0% vs. ~71%)"
+    },
+    {
+      "severity": "high",
+      "type": "ai_indicator",
+      "message": "Missing written-amount field"
+    }
+  ],
+  "confidence_score": 85,
+  "raw_text": "WESTERN WESTERN UNION\u00ae\nUNION\nMONEY ORDER\nPAY TO: JANE SMITH\n987557821\nAMOUNT:\n$750.00\nDATE: OCTOBER 26, 2023\nSEVEN HUNDRED FISTY AND 00//100 DOLLARS\nFROM: JOHN DOE\n123 OAK ST, ANYTOWN, CA 91234\n9875647821\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-12-08T17:48:01.788063",
+  "normalized_data": {
+    "issuer_name": "Western Union",
+    "serial_primary": "9875647821",
+    "serial_secondary": null,
+    "recipient": "JANE SMITH",
+    "sender_name": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "amount_numeric": {
+      "value": 750.0,
+      "currency": "USD"
+    },
+    "amount_written": null,
+    "date": "10-26-2023",
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 0.8,
+  "ml_analysis": {
+    "fraud_risk_score": 0.719,
+    "risk_level": "HIGH",
+    "model_confidence": 0.983,
+    "model_scores": {
+      "random_forest": 0.71,
+      "xgboost": 0.718,
+      "ensemble": 0.719
+    },
+    "feature_importance": [
+      "Missing signature",
+      "Money order is 774 days old (stale)"
+    ],
+    "prediction_type": "mock"
+  },
+  "ai_analysis": {
+    "recommendation": "ESCALATE",
+    "confidence_score": 0.65,
+    "summary": "Contradictory ML outputs (ensemble at 0% risk vs. RF/XGBoost ~71%) and missing written-amount field warrant manual review.",
+    "reasoning": [
+      "Ensemble model reports 0% fraud risk with 0% confidence, yet both Random Forest (71.0%) and XGBoost (71.8%) flags are high\u2014this inconsistency reduces automated trust.",
+      "Written amount is not provided; training data shows 45% of frauds involve numeric-written mismatches, so absence of a written amount is a red flag.",
+      "New customer with no transaction history; no historical behavioral patterns to validate legitimacy.",
+      "No ML-identified indicators, but the conflict itself is a strong fraud signal per past cases where model disagreement preceded confirmed fraud."
+    ],
+    "key_indicators": [
+      "Conflicting ML model scores (0% vs. ~71%)",
+      "Missing written-amount field"
+    ],
+    "verification_notes": "",
+    "actionable_recommendations": [
+      "Ask the purchaser for the written-amount entry and compare it to USD 750.00.",
+      "Verify purchaser\u2019s government-issued ID and ensure it matches \u201cJOHN DOE.\u201d",
+      "Call Western Union\u2019s fraud hotline to confirm the serial number 9875647821 and issuance details."
+    ],
+    "training_insights": "",
+    "historical_comparison": " No directly similar past cases, but model disagreement has been a leading precursor to fraud in other workflows.",
+    "analysis_type": "ai_enhanced",
+    "model_used": "o4-mini"
+  },
+  "analysis_id": "analysis_20251208_174801_788_9875647821",
+  "saved_timestamp": "2025-12-08T17:48:01.788663"
+}

@@ -22,17 +22,17 @@ Your analysis should consider:
 - **Patterns from training data** (e.g., "45% of fraud cases have amount mismatch")
 - **Similar past analysis cases** and how they were resolved
 
-CRITICAL INSTRUCTIONS - PAYER-BASED ESCALATION POLICY:
+CRITICAL INSTRUCTIONS - MANDATORY SIGNATURE VALIDATION:
 ==========================================================
-**THIS IS THE MOST IMPORTANT RULE - FOLLOW STRICTLY:**
+**THIS IS THE HIGHEST PRIORITY RULE - ENFORCED BEFORE ALL OTHER CHECKS:**
 
-If the customer has been flagged with escalate_count > 0 in their history:
-- This means the PAYER has already submitted a suspicious money order before
-- **YOU MUST RECOMMEND REJECT** - this is a confirmed repeat offender
+If the signature field is missing or None in the extracted data:
+- **YOU MUST RECOMMEND REJECT** - this is a mandatory requirement
 - Do NOT apply normal fraud score thresholds
 - Do NOT suggest ESCALATE or APPROVE
-- This override applies to ALL payee combinations - even if different payee, same payer = REJECT
-- This is enforced policy, not AI discretion
+- This applies to ALL money orders regardless of other field validity
+- This is enforced policy to prevent fraud, even if it causes false positives
+- User has explicitly requested strict signature enforcement
 
 CRITICAL INSTRUCTIONS FOR HIGH FRAUD SCORES:
 - If Fraud Risk Score is 100.0% or >= 95%, you MUST recommend REJECT
@@ -42,6 +42,13 @@ CRITICAL INSTRUCTIONS FOR HIGH FRAUD SCORES:
 
 Use the training dataset patterns and past analysis results to strengthen your recommendations.
 Compare the current case to similar historical cases for better accuracy.
+
+**CRITICAL: MISSING SIGNATURE REPORTING**
+When a signature is missing or not detected:
+- **ALWAYS mention "Missing Signature" as the FIRST and PRIMARY reason** in your SUMMARY
+- Format: "Missing signature detected. [Additional context about other issues if any]"
+- Even if there are other anomalies, signature absence must be highlighted first
+- This applies to ALL recommendations (APPROVE, REJECT, ESCALATE)
 
 Always provide:
 1. Clear RECOMMENDATION: APPROVE, REJECT, or ESCALATE
@@ -76,7 +83,7 @@ ANALYSIS_TEMPLATE = """Analyze this money order for fraud risk:
 - Purchaser: {purchaser}
 - Date: {date}
 - Location: {location}
-- Signature: {signature}
+- **Signature: {signature}** ⚠️ CHECK THIS FIELD - If None/empty, MUST mention in summary
 
 **ML-Identified Fraud Indicators:**
 {fraud_indicators}
@@ -98,9 +105,9 @@ Based on all this information, provide your analysis in the following format:
 
 RECOMMENDATION: [APPROVE/REJECT/ESCALATE]
 CONFIDENCE: [0-100]%
-SUMMARY: [1-2 sentence overview]
+SUMMARY: [1-2 sentence overview - MUST start with "Missing signature detected." if signature is None/empty, then add other issues]
 REASONING: [Detailed analysis in bullet points, referencing training patterns and past cases when relevant]
-KEY_INDICATORS: [Specific fraud indicators found, if any]
+KEY_INDICATORS: [Specific fraud indicators found, if any - list "Missing signature" FIRST if applicable]
 VERIFICATION_NOTES: [What should be manually verified, if escalated]
 ACTIONABLE_RECOMMENDATIONS:
 - [Recommendation 1]
@@ -138,18 +145,8 @@ Identify any similarities to known fraud patterns and explain the significance."
 RECOMMENDATION_GUIDELINES = """
 Recommendation Guidelines:
 
-⚠️ PAYER-BASED ESCALATION TRACKING (HIGHEST PRIORITY):
-=====================================================
-If escalate_count > 0 in customer history:
-- **ALWAYS RECOMMEND REJECT** - no exceptions
-- The payer has been flagged as suspicious in a previous upload
-- Payee name does NOT matter - same payer = REJECT regardless of who they're paying
-- This is an enforced policy rule, not subject to fraud score discretion
-
 === FOR REPEAT CUSTOMERS (known from database) ===
-FIRST, check escalate_count. If > 0, REJECT immediately.
-
-Otherwise, if this is a REPEAT CUSTOMER with fraud history:
+If this is a REPEAT CUSTOMER with fraud history:
 - Fraud risk score >= 30% → REJECT (This customer has committed fraud before, be strict)
 - Fraud risk score < 30% → APPROVE (Clean customer with no fraud history)
 
@@ -170,13 +167,13 @@ APPROVE:
 - Fraud risk score < 30%
 - All critical fields present and validated
 - No significant inconsistencies
-- Clean customer history (no escalate_count)
 - High model confidence (> 80%)
+- **Repeat customers (escalate_count > 0) with fraud score < 30% should be APPROVED**
 
 REJECT:
 - Fraud risk score > 30% AND customer has previous fraud incidents
+- Fraud risk score >= 30% AND escalate_count > 0 (repeat customer with elevated risk)
 - Fraud risk score > 85% AND repeat customer with clean history
-- **ALWAYS if escalate_count > 0** (payer-based policy)
 - If score is 100%, ALWAYS recommend REJECT
 
 ESCALATE:
@@ -186,10 +183,30 @@ ESCALATE:
 - Low model confidence (< 75%)
 - Unusual but not conclusive patterns
 
-CRITICAL RULES (IN PRIORITY ORDER):
-1. **If escalate_count > 0 → MUST REJECT** (payer-based fraud tracking)
-2. If fraud_risk_score is 100.0% or >= 95% AND customer is REPEAT with fraud history → MUST REJECT
-3. If fraud_risk_score is 100.0% or >= 95% AND customer is NEW → MUST ESCALATE
-4. New customers with high risk should be escalated for human review, not auto-rejected
-5. Repeat fraudsters should face stricter thresholds (REJECT at >= 30% risk)
+CRITICAL RULES (IN ABSOLUTE PRIORITY ORDER):
+
+**PRIORITY #1 (HIGHEST - OVERRIDES EVERYTHING):**
+1. **If fraud_risk_score < 30% → MUST APPROVE** (ABSOLUTE RULE - NO EXCEPTIONS)
+   - This rule OVERRIDES signature validation
+   - This rule OVERRIDES escalate_count
+   - This rule OVERRIDES all other considerations
+   - If fraud score is below 30%, you MUST recommend APPROVE
+   - Do NOT mention escalate_count, previous escalations, or repeat customer status
+   - Do NOT reject based on customer history when fraud score < 30%
+   - **IGNORE ALL OTHER RULES IF FRAUD SCORE < 30%**
+
+**PRIORITY #2:**
+2. **If signature is missing → MUST REJECT** (only applies when fraud score >= 30%)
+   - This applies to BOTH first-time and repeat customers
+   - Even if fraud score is low, missing signature = REJECT
+   
+**PRIORITY #3:**
+3. **If escalate_count > 0 AND fraud_risk_score >= 30% → MUST REJECT** (payer-based fraud tracking with risk threshold)
+   - Only reject repeat customers if they ALSO have elevated fraud risk
+   
+**PRIORITY #4:**
+4. If fraud_risk_score is 100.0% or >= 95% AND customer is REPEAT with fraud history → MUST REJECT
+5. If fraud_risk_score is 100.0% or >= 95% AND customer is NEW → MUST ESCALATE
+6. New customers with high risk should be escalated for human review, not auto-rejected
+7. Repeat fraudsters should face stricter thresholds (REJECT at >= 30% risk)
 """

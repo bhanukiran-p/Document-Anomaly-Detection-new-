@@ -1,0 +1,93 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "Western Union",
+    "serial_number": "4783667589",
+    "serial_secondary": "4783667589",
+    "amount": "$325.00",
+    "amount_in_words": null,
+    "payee": "Hareen Edla",
+    "purchaser": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "date": null,
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Missing 1 critical field(s)"
+    },
+    {
+      "severity": "low",
+      "type": "ai_indicator",
+      "message": "Prior escalation count (repeat offender)"
+    },
+    {
+      "severity": "low",
+      "type": "ai_indicator",
+      "message": "Missing written amount field"
+    }
+  ],
+  "confidence_score": 82,
+  "raw_text": "WESTERN WESTERN UNION\u00ae\nUNION\nMONEY ORDER\nPAY TO: Hareen Edla\n737267558\nAMOUNT:\n$325.00\nDATE: NOVEMBER 27TH, 2025\nTHREE HUNDRED FIVETY AND 00// 00 DOLLARS\nFROM: JOHN DOE\n123 OAK ST, ANYTOWN, CA 91234\n4783667589\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-12-08T17:49:46.051853",
+  "normalized_data": {
+    "issuer_name": "Western Union",
+    "serial_primary": "4783667589",
+    "serial_secondary": null,
+    "recipient": "Hareen Edla",
+    "sender_name": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "amount_numeric": {
+      "value": 325.0,
+      "currency": "USD"
+    },
+    "amount_written": null,
+    "date": null,
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 0.7,
+  "ml_analysis": {
+    "fraud_risk_score": 0.215,
+    "risk_level": "LOW",
+    "model_confidence": 0.892,
+    "model_scores": {
+      "random_forest": 0.187,
+      "xgboost": 0.241,
+      "ensemble": 0.215
+    },
+    "feature_importance": [
+      "Missing 1 critical field(s)"
+    ],
+    "prediction_type": "mock"
+  },
+  "ai_analysis": {
+    "recommendation": "REJECT",
+    "confidence_score": 0.95,
+    "summary": "The payer has a prior escalation (escalate_count=1), triggering a mandatory reject under payer-based escalation policy. Despite a low ML fraud score, policy override applies.",
+    "reasoning": [
+      "Payer-Based Escalation Policy: Customer has escalate_count >0, indicating a repeat suspicious submission\u2014mandatory reject.",
+      "ML Model: Low fraud risk (0.0%) but cannot override escalation policy.",
+      "Missing Written Amount: The written-amount field is unknown, raising consistency concerns (45% of fraud cases involve amount mismatches).",
+      "No Missing Signature: Signature field is present, but policy override supersedes other checks."
+    ],
+    "key_indicators": [
+      "Prior escalation count (repeat offender)",
+      "Missing written amount field"
+    ],
+    "verification_notes": "",
+    "actionable_recommendations": [
+      "Inform the customer of rejection and request full documentation (including written amount and supporting ID).",
+      "Contact Western Union to confirm if the serial number is valid and check for any issuer flags.",
+      "Place payer on heightened monitoring for all future transactions."
+    ],
+    "training_insights": " Training data shows 45% of fraudulent money orders involve amount mismatches. The absence of a written-amount field increases risk despite low ML scores.",
+    "historical_comparison": " No directly similar past cases found, but training patterns consistently enforce strict action on repeat escalations.",
+    "analysis_type": "ai_enhanced",
+    "model_used": "o4-mini"
+  },
+  "analysis_id": "analysis_20251208_174946_052_4783667589",
+  "saved_timestamp": "2025-12-08T17:49:46.052290"
+}

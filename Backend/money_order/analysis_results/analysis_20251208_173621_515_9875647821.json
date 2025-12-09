@@ -1,0 +1,110 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "Western Union",
+    "serial_number": "9875647821",
+    "serial_secondary": "9875647821",
+    "amount": "$750.00",
+    "amount_in_words": null,
+    "payee": "JANE SMITH",
+    "purchaser": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "date": "10/26/2023",
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "high",
+      "type": "fraud_risk_high",
+      "message": "[ESCALATE] The money order lacks a written\u2010amount line and shows high risk signals from both Random Forest (78.3%) and XGBoost (76.5%) models despite the ensemble score reporting 0.0%, indicating a likely scoring anomaly. As a new customer with no history, these discrepancies warrant further manual review."
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Missing signature"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Money order is 774 days old (stale)"
+    },
+    {
+      "severity": "high",
+      "type": "ai_indicator",
+      "message": "Missing written amount"
+    },
+    {
+      "severity": "high",
+      "type": "ai_indicator",
+      "message": "High Random Forest score (78.3%)"
+    },
+    {
+      "severity": "high",
+      "type": "ai_indicator",
+      "message": "High XGBoost score (76.5%)"
+    }
+  ],
+  "confidence_score": 85,
+  "raw_text": "WESTERN WESTERN UNION\u00ae\nUNION\nMONEY ORDER\nPAY TO: JANE SMITH\n987557821\nAMOUNT:\n$750.00\nDATE: OCTOBER 26, 2023\nSEVEN HUNDRED FISTY AND 00//100 DOLLARS\nFROM: JOHN DOE\n123 OAK ST, ANYTOWN, CA 91234\n9875647821\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-12-08T17:36:21.515034",
+  "normalized_data": {
+    "issuer_name": "Western Union",
+    "serial_primary": "9875647821",
+    "serial_secondary": null,
+    "recipient": "JANE SMITH",
+    "sender_name": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "amount_numeric": {
+      "value": 750.0,
+      "currency": "USD"
+    },
+    "amount_written": null,
+    "date": "10-26-2023",
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 0.8,
+  "ml_analysis": {
+    "fraud_risk_score": 0.777,
+    "risk_level": "HIGH",
+    "model_confidence": 0.964,
+    "model_scores": {
+      "random_forest": 0.783,
+      "xgboost": 0.765,
+      "ensemble": 0.777
+    },
+    "feature_importance": [
+      "Missing signature",
+      "Money order is 774 days old (stale)"
+    ],
+    "prediction_type": "mock"
+  },
+  "ai_analysis": {
+    "recommendation": "ESCALATE",
+    "confidence_score": 0.75,
+    "summary": "The money order lacks a written\u2010amount line and shows high risk signals from both Random Forest (78.3%) and XGBoost (76.5%) models despite the ensemble score reporting 0.0%, indicating a likely scoring anomaly. As a new customer with no history, these discrepancies warrant further manual review.",
+    "reasoning": [
+      "ML MODEL DISCREPANCY: Both individual models flag high risk (>75%), but the combined score is 0.0%, suggesting a fusion or data\u2010collection error.",
+      "MISSING WRITTEN AMOUNT: Absence of the written amount prevents cross\u2010verification and aligns with the 45% of fraud cases in training data involving amount mismatches.",
+      "NEW CUSTOMER: No prior transactions to establish legitimacy; lack of historical patterns increases uncertainty.",
+      "NO OTHER SIGNIFICANT FIELDS: Signature is present, date and payee/purchaser fields appear consistent, but the missing written amount is a critical red flag."
+    ],
+    "key_indicators": [
+      "Missing written amount",
+      "High Random Forest score (78.3%)",
+      "High XGBoost score (76.5%)"
+    ],
+    "verification_notes": "",
+    "actionable_recommendations": [
+      "Request a full, legible copy of the money order showing the written amount.",
+      "Call Western Union\u2019s verification line to confirm serial number validity.",
+      "Ask the purchaser to present government\u2010issued ID and proof of address."
+    ],
+    "training_insights": "",
+    "historical_comparison": "",
+    "analysis_type": "ai_enhanced",
+    "model_used": "o4-mini"
+  },
+  "analysis_id": "analysis_20251208_173621_515_9875647821",
+  "saved_timestamp": "2025-12-08T17:36:21.515480"
+}

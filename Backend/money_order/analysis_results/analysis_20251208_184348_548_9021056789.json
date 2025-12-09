@@ -1,0 +1,91 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "MoneyGram",
+    "serial_number": "9021056789",
+    "serial_secondary": "9835647821",
+    "amount": "$450.00",
+    "amount_in_words": "FOUR HUNDRED FIFTY AND 00/100 DOLLARS",
+    "payee": "SARAH CHEN",
+    "purchaser": "MICHAEL LEE",
+    "sender_address": "456 PINE ST, ANYTOWN, CA 91234",
+    "date": "11/24/2025",
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "medium",
+      "type": "fraud_risk_medium",
+      "message": "[APPROVE] All key fields are consistent, signature is present, and the ML ensemble flags negligible fraud risk. No immediate red flags warrant escalation."
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Missing signature"
+    }
+  ],
+  "confidence_score": 99,
+  "raw_text": "MoneyGram\nPAY TO: SARAH CHEN\nMONEYGRAM\u24c7\nMONEY ORDER\n9021056789\nAMOUNT:\n$450.00\nDATE: NOVEMBER 24, 2025\nFOUR HUNDRED FIFTY AND 00/100 DOLLARS\nFROM: MICHAEL LEE\n456 PINE ST, ANYTOWN, CA 91234\n9835647821\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-12-08T18:43:48.548673",
+  "normalized_data": {
+    "issuer_name": "MoneyGram",
+    "serial_primary": "9021056789",
+    "serial_secondary": "9835647821",
+    "recipient": "SARAH CHEN",
+    "sender_name": "MICHAEL LEE",
+    "sender_address": "456 PINE ST, ANYTOWN, CA 91234",
+    "amount_numeric": {
+      "value": 450.0,
+      "currency": "USD"
+    },
+    "amount_written": "FOUR HUNDRED FIFTY AND 00/100 DOLLARS",
+    "date": "11-24-2025",
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 1.0,
+  "ml_analysis": {
+    "fraud_risk_score": 0.488,
+    "risk_level": "MEDIUM",
+    "model_confidence": 0.985,
+    "model_scores": {
+      "random_forest": 0.488,
+      "xgboost": 0.48,
+      "ensemble": 0.488
+    },
+    "feature_importance": [
+      "Missing signature"
+    ],
+    "fraud_indicators": [
+      "Missing signature"
+    ],
+    "prediction_type": "mock"
+  },
+  "ai_analysis": {
+    "recommendation": "APPROVE",
+    "confidence_score": 0.85,
+    "summary": "All key fields are consistent, signature is present, and the ML ensemble flags negligible fraud risk. No immediate red flags warrant escalation.",
+    "reasoning": [
+      "Signature present and legible \u2013 satisfies highest-priority validation rule.",
+      "Numeric amount (USD 450.00) matches written amount (\u201cFOUR HUNDRED FIFTY AND 00/100 DOLLARS\u201d); avoids the 45% fraud-case mismatch pattern.",
+      "Date (11-24-2025) is plausible (pre-dated but not unusually far ahead) and formatted correctly.",
+      "Issuer (MoneyGram) and serial number format align with known valid patterns.",
+      "Payee/purchaser fields filled and match typical transaction structure; no alterations detected.",
+      "ML ensemble yields 0.0% final fraud risk with low confidence in any fraud indicators; RF/XGBoost sub-scores (~48%) fall below threshold for concern.",
+      "New customer status increases baseline vigilance but no historical escalation or fraud counts."
+    ],
+    "key_indicators": [],
+    "verification_notes": "",
+    "actionable_recommendations": [
+      "Ask the payee (Sarah Chen) to present matching ID upon deposit.",
+      "Verify the money order\u2019s watermark and security thread per MoneyGram guidelines.",
+      "Record purchaser and payee contact details for audit trail."
+    ],
+    "training_insights": " Training data shows 45% of frauds involve amount mismatches; this case has no mismatch, aligning with low-risk profiles. Sub-threshold RF/XGB scores further support a benign pattern.",
+    "historical_comparison": " No similar past cases in the database for new customers at this amount level; absence of comparable fraud patterns reinforces the low-risk assessment.",
+    "analysis_type": "ai_enhanced",
+    "model_used": "o4-mini"
+  },
+  "analysis_id": "analysis_20251208_184348_548_9021056789",
+  "saved_timestamp": "2025-12-08T18:43:48.549022"
+}

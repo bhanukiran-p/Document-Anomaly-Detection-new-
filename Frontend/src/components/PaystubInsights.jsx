@@ -43,7 +43,7 @@ const PaystubInsights = () => {
   const [loadingPaystubsList, setLoadingPaystubsList] = useState(false);
   const [selectedPaystubId, setSelectedPaystubId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [dateFilter, setDateFilter] = useState(null); // null, 'last_30', 'last_60', 'last_90', 'older'
+  const [dateFilter, setDateFilter] = useState(null); // null, 'last_30', 'last_60', 'last_90', 'older', 'custom'
   const [employerFilter, setEmployerFilter] = useState(null);
   const [fraudTypeFilter, setFraudTypeFilter] = useState(null);
   const [availableEmployers, setAvailableEmployers] = useState([]);
@@ -52,6 +52,8 @@ const PaystubInsights = () => {
   const [activePieIndex, setActivePieIndex] = useState(null);
   const [activeBarIndex, setActiveBarIndex] = useState(null);
   const [activeScatterIndex, setActiveScatterIndex] = useState(null);
+  const [showCustomDatePicker, setShowCustomDatePicker] = useState(false);
+  const [customDateRange, setCustomDateRange] = useState({ startDate: '', endDate: '' });
 
   const parseCSV = (text) => {
     const lines = text.trim().split('\n');
@@ -583,19 +585,38 @@ const PaystubInsights = () => {
 
     // Filter by date range
     if (dateFilter) {
-      const now = new Date();
-      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
-      const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+      if (dateFilter === 'custom' && (customDateRange.startDate || customDateRange.endDate)) {
+        // Custom date range filtering
+        filtered = filtered.filter(p => {
+          const createdAt = new Date(p.created_at);
+          const startDate = customDateRange.startDate ? new Date(customDateRange.startDate) : null;
+          const endDate = customDateRange.endDate ? new Date(customDateRange.endDate) : null;
 
-      filtered = filtered.filter(p => {
-        const createdAt = new Date(p.created_at);
-        if (dateFilter === 'last_30') return createdAt >= thirtyDaysAgo;
-        if (dateFilter === 'last_60') return createdAt >= sixtyDaysAgo && createdAt < thirtyDaysAgo;
-        if (dateFilter === 'last_90') return createdAt >= ninetyDaysAgo && createdAt < sixtyDaysAgo;
-        if (dateFilter === 'older') return createdAt < ninetyDaysAgo;
-        return true;
-      });
+          if (startDate && endDate) {
+            return createdAt >= startDate && createdAt <= endDate;
+          } else if (startDate) {
+            return createdAt >= startDate;
+          } else if (endDate) {
+            return createdAt <= endDate;
+          }
+          return true;
+        });
+      } else {
+        // Predefined date filters
+        const now = new Date();
+        const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+        const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+        filtered = filtered.filter(p => {
+          const createdAt = new Date(p.created_at);
+          if (dateFilter === 'last_30') return createdAt >= thirtyDaysAgo;
+          if (dateFilter === 'last_60') return createdAt >= sixtyDaysAgo && createdAt < thirtyDaysAgo;
+          if (dateFilter === 'last_90') return createdAt >= ninetyDaysAgo && createdAt < sixtyDaysAgo;
+          if (dateFilter === 'older') return createdAt < ninetyDaysAgo;
+          return true;
+        });
+      }
     }
 
     // Filter by fraud type
@@ -675,7 +696,15 @@ const PaystubInsights = () => {
 
           <select
             value={dateFilter || ''}
-            onChange={(e) => setDateFilter(e.target.value || null)}
+            onChange={(e) => {
+              const value = e.target.value || null;
+              if (value === 'custom') {
+                setShowCustomDatePicker(true);
+              } else {
+                setShowCustomDatePicker(false);
+                setDateFilter(value);
+              }
+            }}
             style={styles.select}
           >
             <option value="">All Time</option>
@@ -683,7 +712,114 @@ const PaystubInsights = () => {
             <option value="last_60">Last 60 Days</option>
             <option value="last_90">Last 90 Days</option>
             <option value="older">Older</option>
+            <option value="custom">Custom Range</option>
           </select>
+
+          {/* Custom Date Range Picker */}
+          {showCustomDatePicker && (
+            <div style={{
+              gridColumn: '1 / -1',
+              padding: '16px',
+              backgroundColor: colors.card,
+              border: `1px solid ${colors.border}`,
+              borderRadius: '8px',
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
+            }}>
+              <div style={{ marginBottom: '12px', fontWeight: '600', color: colors.foreground }}>
+                Select Custom Date Range
+              </div>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <div style={{ flex: '1', minWidth: '180px' }}>
+                  <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: colors.mutedForeground }}>
+                    Start Date
+                  </label>
+                  <input
+                    type="date"
+                    value={customDateRange.startDate}
+                    onChange={(e) => setCustomDateRange({ ...customDateRange, startDate: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      borderRadius: '4px',
+                      border: `1px solid ${colors.border}`,
+                      fontSize: '13px',
+                      backgroundColor: colors.secondary,
+                      color: colors.foreground
+                    }}
+                  />
+                </div>
+                <div style={{ flex: '1', minWidth: '180px' }}>
+                  <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: colors.mutedForeground }}>
+                    End Date
+                  </label>
+                  <input
+                    type="date"
+                    value={customDateRange.endDate}
+                    onChange={(e) => setCustomDateRange({ ...customDateRange, endDate: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      borderRadius: '4px',
+                      border: `1px solid ${colors.border}`,
+                      fontSize: '13px',
+                      backgroundColor: colors.secondary,
+                      color: colors.foreground
+                    }}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={() => {
+                      if (!customDateRange.startDate && !customDateRange.endDate) {
+                        setError('Please select at least one date');
+                        return;
+                      }
+                      if (customDateRange.startDate && customDateRange.endDate &&
+                        customDateRange.startDate > customDateRange.endDate) {
+                        setError('Start date must be before end date');
+                        return;
+                      }
+                      setDateFilter('custom');
+                      setShowCustomDatePicker(false);
+                    }}
+                    style={{
+                      padding: '8px 20px',
+                      borderRadius: '4px',
+                      backgroundColor: primary,
+                      color: colors.primaryForeground,
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontWeight: '600',
+                      fontSize: '13px',
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    Apply
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowCustomDatePicker(false);
+                      setCustomDateRange({ startDate: '', endDate: '' });
+                      setDateFilter(null);
+                    }}
+                    style={{
+                      padding: '8px 20px',
+                      borderRadius: '4px',
+                      backgroundColor: colors.secondary,
+                      color: colors.foreground,
+                      border: `1px solid ${colors.border}`,
+                      cursor: 'pointer',
+                      fontWeight: '600',
+                      fontSize: '13px',
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {availableFraudTypes.length > 0 && (
             <select
@@ -704,6 +840,8 @@ const PaystubInsights = () => {
               setEmployerFilter(null);
               setDateFilter(null);
               setFraudTypeFilter(null);
+              setCustomDateRange({ startDate: '', endDate: '' });
+              setShowCustomDatePicker(false);
             }}
             style={{
               padding: '8px 16px',

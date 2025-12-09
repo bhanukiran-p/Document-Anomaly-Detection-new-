@@ -1,0 +1,114 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "Western Union",
+    "serial_number": "9875647821",
+    "serial_secondary": "9875647821",
+    "amount": "$750.00",
+    "amount_in_words": null,
+    "payee": "JANE SMITH",
+    "purchaser": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "date": "10/26/2023",
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "high",
+      "type": "fraud_risk_high",
+      "message": "[ESCALATE] The money order is missing the written\u2010out amount and exhibits high individual model risk scores, coupled with a new customer profile\u2014manual review is required."
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Missing signature"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Money order is 774 days old (stale)"
+    },
+    {
+      "severity": "high",
+      "type": "ai_indicator",
+      "message": "Missing written amount"
+    },
+    {
+      "severity": "high",
+      "type": "ai_indicator",
+      "message": "Elevated RF/XGB fraud scores"
+    },
+    {
+      "severity": "high",
+      "type": "ai_indicator",
+      "message": "New customer (no transaction history)"
+    }
+  ],
+  "confidence_score": 85,
+  "raw_text": "WESTERN WESTERN UNION\u00ae\nUNION\nMONEY ORDER\nPAY TO: JANE SMITH\n987557821\nAMOUNT:\n$750.00\nDATE: OCTOBER 26, 2023\nSEVEN HUNDRED FISTY AND 00//100 DOLLARS\nFROM: JOHN DOE\n123 OAK ST, ANYTOWN, CA 91234\n9875647821\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-12-08T18:15:44.395562",
+  "normalized_data": {
+    "issuer_name": "Western Union",
+    "serial_primary": "9875647821",
+    "serial_secondary": null,
+    "recipient": "JANE SMITH",
+    "sender_name": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "amount_numeric": {
+      "value": 750.0,
+      "currency": "USD"
+    },
+    "amount_written": null,
+    "date": "10-26-2023",
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 0.8,
+  "ml_analysis": {
+    "fraud_risk_score": 0.762,
+    "risk_level": "HIGH",
+    "model_confidence": 0.971,
+    "model_scores": {
+      "random_forest": 0.789,
+      "xgboost": 0.774,
+      "ensemble": 0.762
+    },
+    "feature_importance": [
+      "Missing signature",
+      "Money order is 774 days old (stale)"
+    ],
+    "fraud_indicators": [
+      "Missing signature",
+      "Money order is 774 days old (stale)"
+    ],
+    "prediction_type": "mock"
+  },
+  "ai_analysis": {
+    "recommendation": "ESCALATE",
+    "confidence_score": 0.75,
+    "summary": "The money order is missing the written\u2010out amount and exhibits high individual model risk scores, coupled with a new customer profile\u2014manual review is required.",
+    "reasoning": [
+      "Missing Written Amount: No text amount extracted. 45% of fraud cases in our training set involve numeric/text amount inconsistencies or omissions.",
+      "High Model Indicators: Random Forest = 78.9%, XGBoost = 77.4%, both well above average fraud probabilities in prior legitimate cases.",
+      "New Customer Risk: First\u2010time purchaser with no history; novel profiles account for a disproportionate share of early\u2010stage fraud attempts.",
+      "Document Completeness: Money orders must display both numeric and written amounts; absence of either prevents proper validation."
+    ],
+    "key_indicators": [
+      "Missing written amount",
+      "Elevated RF/XGB fraud scores",
+      "New customer (no transaction history)"
+    ],
+    "verification_notes": "",
+    "actionable_recommendations": [
+      "Request the issuer or payee to provide a clear photocopy or image showing the written amount.",
+      "Obtain and validate the purchaser\u2019s government\u2010issued photo ID on record.",
+      "Conduct a manual signature comparison to known Western Union specimen signatures."
+    ],
+    "training_insights": " Our dataset showed a 45% fraud rate when numeric and written amounts are inconsistent or missing. The high RF/XGB scores align with these patterns.",
+    "historical_comparison": " No directly similar past cases found in our system; this fresh combination of missing written amount and first\u2010time customer flags warrants heightened scrutiny.",
+    "analysis_type": "ai_enhanced",
+    "model_used": "o4-mini"
+  },
+  "analysis_id": "analysis_20251208_181544_396_9875647821",
+  "saved_timestamp": "2025-12-08T18:15:44.396455"
+}

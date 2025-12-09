@@ -17,10 +17,12 @@ const MoneyOrderInsights = () => {
   const [loadingMoneyOrdersList, setLoadingMoneyOrdersList] = useState(false);
   const [selectedMoneyOrderId, setSelectedMoneyOrderId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [dateFilter, setDateFilter] = useState(null); // null, 'last_30', 'last_60', 'last_90', 'older'
+  const [dateFilter, setDateFilter] = useState(null); // null, 'last_30', 'last_60', 'last_90', 'older', 'custom'
   const [issuerFilter, setIssuerFilter] = useState(null); // null or issuer name
   const [availableIssuers, setAvailableIssuers] = useState([]);
   const [totalRecords, setTotalRecords] = useState(0);
+  const [showCustomDatePicker, setShowCustomDatePicker] = useState(false);
+  const [customDateRange, setCustomDateRange] = useState({ startDate: '', endDate: '' });
 
   const parseCSV = (text) => {
     const lines = text.trim().split('\n');
@@ -379,15 +381,30 @@ const MoneyOrderInsights = () => {
     multiple: false
   });
 
-  const fetchMoneyOrdersList = async (filter = null, issuer = null) => {
+  const fetchMoneyOrdersList = async (filter = null, issuer = null, customRange = null) => {
     setLoadingMoneyOrdersList(true);
     setError(null);
     setCsvData(null);
     try {
       // Use relative URL to leverage proxy in package.json
-      const url = filter
-        ? `/api/money-orders/list?date_filter=${filter}`
-        : `/api/money-orders/list`;
+      let url = '/api/money-orders/list';
+
+      // Build query parameters
+      const params = new URLSearchParams();
+
+      if (customRange && (customRange.startDate || customRange.endDate)) {
+        // Custom date range takes priority
+        if (customRange.startDate) params.append('start_date', customRange.startDate);
+        if (customRange.endDate) params.append('end_date', customRange.endDate);
+      } else if (filter) {
+        // Predefined filter
+        params.append('date_filter', filter);
+      }
+
+      if (params.toString()) {
+        url += '?' + params.toString();
+      }
+
       const response = await fetch(url);
       const data = await response.json();
       if (data.success) {
@@ -823,7 +840,128 @@ const MoneyOrderInsights = () => {
                 >
                   Older
                 </button>
+                <button
+                  onClick={() => setShowCustomDatePicker(!showCustomDatePicker)}
+                  style={{
+                    padding: '0.75rem',
+                    borderRadius: '0.5rem',
+                    backgroundColor: dateFilter === 'custom' ? primary : colors.secondary,
+                    color: dateFilter === 'custom' ? colors.primaryForeground : colors.foreground,
+                    border: `1px solid ${colors.border}`,
+                    cursor: 'pointer',
+                    fontWeight: dateFilter === 'custom' ? '600' : '500',
+                    transition: 'all 0.3s',
+                  }}
+                  onMouseEnter={(e) => !loadingMoneyOrdersList && dateFilter !== 'custom' && (e.target.style.backgroundColor = colors.muted)}
+                  onMouseLeave={(e) => !loadingMoneyOrdersList && dateFilter !== 'custom' && (e.target.style.backgroundColor = colors.secondary)}
+                >
+                  Custom Range
+                </button>
               </div>
+
+              {/* Custom Date Range Picker */}
+              {showCustomDatePicker && (
+                <div style={{
+                  marginTop: '1rem',
+                  padding: '1.5rem',
+                  backgroundColor: colors.card,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: '0.5rem',
+                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
+                }}>
+                  <div style={{ marginBottom: '1rem', fontWeight: '600', color: colors.foreground }}>
+                    Select Custom Date Range
+                  </div>
+                  <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                    <div style={{ flex: '1', minWidth: '200px' }}>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '14px', color: colors.mutedForeground }}>
+                        Start Date
+                      </label>
+                      <input
+                        type="date"
+                        value={customDateRange.startDate}
+                        onChange={(e) => setCustomDateRange({ ...customDateRange, startDate: e.target.value })}
+                        style={{
+                          width: '100%',
+                          padding: '0.75rem',
+                          borderRadius: '0.5rem',
+                          border: `1px solid ${colors.border}`,
+                          fontSize: '14px',
+                          backgroundColor: colors.secondary,
+                          color: colors.foreground
+                        }}
+                      />
+                    </div>
+                    <div style={{ flex: '1', minWidth: '200px' }}>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '14px', color: colors.mutedForeground }}>
+                        End Date
+                      </label>
+                      <input
+                        type="date"
+                        value={customDateRange.endDate}
+                        onChange={(e) => setCustomDateRange({ ...customDateRange, endDate: e.target.value })}
+                        style={{
+                          width: '100%',
+                          padding: '0.75rem',
+                          borderRadius: '0.5rem',
+                          border: `1px solid ${colors.border}`,
+                          fontSize: '14px',
+                          backgroundColor: colors.secondary,
+                          color: colors.foreground
+                        }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        onClick={() => {
+                          if (!customDateRange.startDate && !customDateRange.endDate) {
+                            setError('Please select at least one date');
+                            return;
+                          }
+                          if (customDateRange.startDate && customDateRange.endDate &&
+                            customDateRange.startDate > customDateRange.endDate) {
+                            setError('Start date must be before end date');
+                            return;
+                          }
+                          setDateFilter('custom');
+                          setShowCustomDatePicker(false);
+                          fetchMoneyOrdersList(null, issuerFilter, customDateRange);
+                        }}
+                        style={{
+                          padding: '0.75rem 1.5rem',
+                          borderRadius: '0.5rem',
+                          backgroundColor: primary,
+                          color: colors.primaryForeground,
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontWeight: '600',
+                          transition: 'all 0.3s',
+                        }}
+                      >
+                        Apply
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowCustomDatePicker(false);
+                          setCustomDateRange({ startDate: '', endDate: '' });
+                        }}
+                        style={{
+                          padding: '0.75rem 1.5rem',
+                          borderRadius: '0.5rem',
+                          backgroundColor: colors.secondary,
+                          color: colors.foreground,
+                          border: `1px solid ${colors.border}`,
+                          cursor: 'pointer',
+                          fontWeight: '600',
+                          transition: 'all 0.3s',
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {loadingMoneyOrdersList ? (
