@@ -1,0 +1,76 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "MoneyGram",
+    "serial_number": "9021056789",
+    "serial_secondary": "9835647821",
+    "amount": "$450.00",
+    "amount_in_words": "FOUR HUNDRED FIFTY AND 00/100 DOLLARS",
+    "payee": "SARAH CHEN",
+    "purchaser": "MICHAEL LEE",
+    "sender_address": "456 PINE ST, ANYTOWN, CA 91234",
+    "date": "11/24/2025",
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [],
+  "confidence_score": 99,
+  "raw_text": "MoneyGram\nPAY TO: SARAH CHEN\nMONEYGRAM\u24c7\nMONEY ORDER\n9021056789\nAMOUNT:\n$450.00\nDATE: NOVEMBER 24, 2025\nFOUR HUNDRED FIFTY AND 00/100 DOLLARS\nFROM: MICHAEL LEE\n456 PINE ST, ANYTOWN, CA 91234\n9835647821\nAlex Chan\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-12-09T11:15:28.243170",
+  "normalized_data": {
+    "issuer_name": "MoneyGram",
+    "serial_primary": "9021056789",
+    "serial_secondary": "9835647821",
+    "recipient": "SARAH CHEN",
+    "sender_name": "MICHAEL LEE",
+    "sender_address": "456 PINE ST, ANYTOWN, CA 91234",
+    "amount_numeric": {
+      "value": 450.0,
+      "currency": "USD"
+    },
+    "amount_written": "FOUR HUNDRED FIFTY AND 00/100 DOLLARS",
+    "date": "11-24-2025",
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 1.0,
+  "ml_analysis": {
+    "fraud_risk_score": 0.035,
+    "risk_level": "LOW",
+    "model_confidence": 0.995,
+    "model_scores": {
+      "random_forest": 0.045,
+      "xgboost": 0.043,
+      "ensemble": 0.035
+    },
+    "feature_importance": [],
+    "fraud_indicators": [],
+    "prediction_type": "mock"
+  },
+  "ai_analysis": {
+    "recommendation": "APPROVE",
+    "confidence_score": 0.95,
+    "summary": "All key fields are consistent and the ML ensemble assigns a very low fraud risk (0.0%), supporting approval of this money order.",
+    "reasoning": [
+      "Numeric amount (USD 450.00) exactly matches the written amount (\u201cFOUR HUNDRED FIFTY AND 00/100 DOLLARS\u201d), avoiding the 45% fraud\u2010linked amount mismatches seen in the training set.",
+      "Issuer \u201cMoneyGram\u201d is valid and serial number 9021056789 conforms to known MoneyGram patterns.",
+      "Signature field is present and legible, satisfying mandatory signature requirements.",
+      "No ML-identified fraud indicators; Random Forest (4.5%) and XGBoost (4.3%) scores are well below typical escalation thresholds.",
+      "New customer with no negative history or similar fraud cases on record."
+    ],
+    "key_indicators": [],
+    "verification_notes": "N/A (no escalation)",
+    "actionable_recommendations": [
+      "Verify government-issued ID for payee SARAH CHEN at payout.",
+      "Confirm purchaser MICHAEL LEE\u2019s identity if present in person.",
+      "Record serial number and transaction details in your logging system."
+    ],
+    "fraud_types": [],
+    "fraud_explanations": [],
+    "training_insights": "",
+    "historical_comparison": "",
+    "analysis_type": "ai_enhanced",
+    "model_used": "o4-mini"
+  },
+  "analysis_id": "analysis_20251209_111528_244_9021056789",
+  "saved_timestamp": "2025-12-09T11:15:28.244484"
+}

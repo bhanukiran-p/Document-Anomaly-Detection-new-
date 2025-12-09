@@ -179,6 +179,25 @@ class FraudAnalysisAgent:
                             'Consider blocking future uploads from this customer'
                         ]
                     ),
+                    'fraud_types': ['SIGNATURE_FORGERY', 'REPEAT_OFFENDER'],
+                    'fraud_explanations': [
+                        {
+                            'type': 'SIGNATURE_FORGERY',
+                            'reasons': [
+                                'Signature field is missing or empty' if not signature else 'ML fraud detector identified missing signature',
+                                'Mandatory signature validation failed',
+                                'Signature is required for all money orders per policy'
+                            ]
+                        },
+                        {
+                            'type': 'REPEAT_OFFENDER',
+                            'reasons': [
+                                f'Customer has {escalate_count} previous escalation(s)',
+                                'Repeat attempt with missing signature indicates fraud pattern',
+                                'Per payer-based fraud tracking policy: repeat offenders are automatically rejected'
+                            ]
+                        }
+                    ],
                     'training_insights': 'Repeat missing signature attempts indicate potential fraud pattern',
                     'historical_comparison': 'Consistent with repeat offender policy',
                     'analysis_type': 'policy_enforcement',
@@ -211,6 +230,17 @@ class FraudAnalysisAgent:
                         'Manually verify if signature is present on the physical document',
                         'If signature is present, approve and note OCR limitation',
                         'If signature is truly missing, reject and flag customer for future uploads'
+                    ],
+                    'fraud_types': ['SIGNATURE_FORGERY'],
+                    'fraud_explanations': [
+                        {
+                            'type': 'SIGNATURE_FORGERY',
+                            'reasons': [
+                                'Signature field is missing or empty' if not signature else 'ML fraud detector identified missing signature',
+                                'Mandatory signature validation failed',
+                                'First-time upload requires human verification to rule out OCR error'
+                            ]
+                        }
                     ],
                     'training_insights': 'First-time missing signatures may be OCR errors or legitimate issues requiring human judgment',
                     'historical_comparison': 'Consistent with first-time escalation policy',
@@ -281,6 +311,17 @@ class FraudAnalysisAgent:
                         'Block this transaction immediately - repeat customer with high fraud score',
                         'Flag customer account for review',
                         'Consider deactivating customer'
+                    ],
+                    'fraud_types': ['REPEAT_OFFENDER'],
+                    'fraud_explanations': [
+                        {
+                            'type': 'REPEAT_OFFENDER',
+                            'reasons': [
+                                f'Customer has {escalate_count} previous escalation(s)',
+                                f'Fraud risk score is {fraud_risk_score:.1%} (>= 30% threshold)',
+                                'Per payer-based fraud tracking policy: repeat offenders with elevated risk are automatically rejected'
+                            ]
+                        }
                     ],
                     'training_insights': 'Repeat customers with escalation history and high fraud scores have very high fraud probability',
                     'historical_comparison': 'Similar to other repeat fraud cases',
@@ -403,6 +444,7 @@ class FraudAnalysisAgent:
             "serial_number": get_val(['serial_primary', 'serial_number']),
             "amount": format_amount(get_val(['amount_numeric', 'amount'])),
             "amount_in_words": get_val(['amount_written', 'amount_in_words']),
+            "raw_ocr_text": extracted_data.get('raw_text', 'N/A'),
             "payee": get_val(['recipient', 'payee', 'pay_to']),
             "purchaser": get_val(['sender_name', 'purchaser', 'from', 'sender']),
             "date": get_val(['date']),
@@ -417,6 +459,12 @@ class FraudAnalysisAgent:
             "training_patterns": training_patterns,
             "past_similar_cases": past_similar_cases
         }
+
+        # DEBUG: Log raw_text availability
+        logger.info(f"[FRAUD_ANALYSIS] DEBUG: extracted_data keys: {list(extracted_data.keys())}")
+        logger.info(f"[FRAUD_ANALYSIS] DEBUG: raw_text in extracted_data: {'raw_text' in extracted_data}")
+        logger.info(f"[FRAUD_ANALYSIS] DEBUG: raw_text value: {extracted_data.get('raw_text', 'MISSING')[:100] if extracted_data.get('raw_text') else 'NULL'}")
+        logger.info(f"[FRAUD_ANALYSIS] DEBUG: raw_ocr_text for prompt: {prompt_vars.get('raw_ocr_text', 'NOT SET')[:100] if prompt_vars.get('raw_ocr_text') != 'N/A' else 'N/A'}")
 
         # Create prompt
         prompt = ChatPromptTemplate.from_messages([
@@ -443,6 +491,8 @@ class FraudAnalysisAgent:
             'key_indicators': [],
             'verification_notes': '',
             'actionable_recommendations': [],
+            'fraud_types': [],
+            'fraud_explanations': [],
             'training_insights': '',
             'historical_comparison': '',
             'analysis_type': 'ai_enhanced',
@@ -481,6 +531,15 @@ class FraudAnalysisAgent:
                     current_section = 'verification_notes'
                 elif line.startswith('ACTIONABLE_RECOMMENDATIONS:'):
                     current_section = 'actionable_recommendations'
+                elif line.startswith('FRAUD_TYPES:'):
+                    # Parse comma-separated fraud types
+                    fraud_types_str = line.split(':', 1)[1].strip()
+                    if fraud_types_str and fraud_types_str.lower() not in ['none', 'n/a', '']:
+                        result['fraud_types'] = [ft.strip() for ft in fraud_types_str.split(',') if ft.strip()]
+                    current_section = None
+                elif line.startswith('FRAUD_EXPLANATIONS:'):
+                    current_section = 'fraud_explanations'
+                    current_fraud_type = None
                 elif line.startswith('TRAINING_INSIGHTS:'):
                     result['training_insights'] = line.split(':', 1)[1].strip()
                     current_section = 'training_insights'
@@ -495,6 +554,20 @@ class FraudAnalysisAgent:
                         result['key_indicators'].append(item)
                     elif current_section == 'actionable_recommendations':
                         result['actionable_recommendations'].append(item)
+                    elif current_section == 'fraud_explanations':
+                        # Check if this is a fraud type header (ends with colon)
+                        if item.endswith(':'):
+                            current_fraud_type = item[:-1].strip()
+                            # Initialize fraud explanation entry
+                            result['fraud_explanations'].append({
+                                'type': current_fraud_type,
+                                'reasons': []
+                            })
+                elif line.startswith('* ') and current_section == 'fraud_explanations':
+                    # This is a reason for the current fraud type
+                    reason = line[2:].strip()
+                    if result['fraud_explanations'] and current_fraud_type:
+                        result['fraud_explanations'][-1]['reasons'].append(reason)
                 elif current_section == 'verification_notes' and not line.isupper():
                      result['verification_notes'] += " " + line
                 elif current_section == 'training_insights' and not line.isupper():

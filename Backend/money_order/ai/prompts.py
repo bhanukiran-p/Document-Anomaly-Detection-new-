@@ -22,12 +22,105 @@ Your analysis should consider:
 - **Patterns from training data** (e.g., "45% of fraud cases have amount mismatch")
 - **Similar past analysis cases** and how they were resolved
 
+CRITICAL INSTRUCTIONS - FRAUD TYPE TAXONOMY:
+==========================================================
+The system uses ONLY the following 4 fraud types. You MUST use these exact fraud type IDs:
+
+1. **REPEAT_OFFENDER** - Payer with history of fraudulent submissions and escalations
+   - Triggered when: escalate_count > 0 (customer has previous escalations)
+   - Based on customer history, not document analysis
+
+2. **COUNTERFEIT_FORGERY** - Fake or counterfeit money order
+   - Triggered when: issuer_valid < 1.0, serial_format_valid == 0, text_quality_score < 0.5
+   - Serial number doesn't match issuer pattern
+   - Invalid issuer or unknown issuer
+   - Poor OCR quality suggesting tampering
+
+3. **AMOUNT_ALTERATION** - Amount has been altered or is suspicious
+   - Triggered when: exact_amount_match == 0, suspicious_amount_pattern == 1
+   - Numeric amount doesn't match written amount
+   - Suspicious amount patterns (e.g., $999, $2999 - just below limits)
+   - Amount parsing confidence is low
+
+4. **SIGNATURE_FORGERY** - Missing or forged signature
+   - Triggered when: signature_present == 0
+   - Signature field is missing or empty
+   - Mandatory signature validation failed
+
+**FRAUD TYPE USAGE RULES:**
+- For REJECT or ESCALATE recommendations: You MUST provide fraud_types and fraud_explanations
+- For APPROVE recommendations: Leave fraud_types empty (no fraud detected)
+- For NEW customers: Only provide fraud_types if recommending REJECT or ESCALATE
+- For REPEAT customers: Always provide fraud_types for REJECT or ESCALATE
+- Each fraud type in fraud_types MUST have a corresponding explanation in fraud_explanations
+- Explanations MUST reference specific document data (amounts, fields, ML scores)
+
+**FRAUD TYPE PRIORITIZATION (CRITICAL):**
+When multiple fraud indicators are present, list fraud types in order of severity and confidence:
+1. **AMOUNT_ALTERATION** - If exact_amount_match == 0 (numeric ≠ written amount), this is the PRIMARY fraud type
+   - Amount mismatch is concrete evidence of tampering
+   - Takes priority over weak signature detection
+2. **COUNTERFEIT_FORGERY** - If issuer_valid < 1.0 or serial_format_valid == 0
+   - Invalid issuer/serial is strong evidence of counterfeit
+3. **SIGNATURE_FORGERY** - If signature_present == 0 AND signature_confidence is low
+   - Only use as primary fraud type if signature is clearly missing (not just weak/light)
+   - If signature is weak but other fraud is present, list SIGNATURE_FORGERY second
+4. **REPEAT_OFFENDER** - Always include if escalate_count > 0, but typically as secondary fraud type
+
+**EXAMPLE PRIORITIZATION:**
+- If amount mismatch (exact_amount_match=0) AND weak signature (signature_confidence=0.3):
+  → fraud_types: ['AMOUNT_ALTERATION', 'SIGNATURE_FORGERY']
+  → Primary fraud: AMOUNT_ALTERATION (concrete evidence)
+- If signature clearly missing (signature_present=0) AND no other fraud:
+  → fraud_types: ['SIGNATURE_FORGERY']
+  → Primary fraud: SIGNATURE_FORGERY
+
+CRITICAL INSTRUCTIONS - AMOUNT SPELLING VALIDATION:
+==========================================================
+**IMPORTANT: OCR AUTO-CORRECTS MISSPELLINGS - YOU MUST MANUALLY VERIFY**
+
+The OCR system (Google Vision) automatically corrects spelling errors in the written amount field.
+This means `exact_amount_match` may show 1.0 (match) even when the ACTUAL written text has spelling errors.
+
+**CRITICAL: The `amount_in_words` field is often NULL. You MUST search the RAW OCR TEXT for the written amount!**
+
+**YOU MUST MANUALLY CHECK THE RAW OCR TEXT FOR SPELLING ERRORS:**
+
+**HOW TO CHECK:**
+1. Look at the `RAW OCR TEXT (CHECK FOR SPELLING ERRORS)` field
+2. Find the line that contains the written amount (usually contains words like "HUNDRED", "DOLLARS", "AND", "00//100")
+3. Check if ANY words are misspelled:
+   - Common number words: FOUR, FIVE, SIX, SEVEN, EIGHT, NINE, TEN, TWENTY, THIRTY, FORTY, FIFTY, SIXTY, SEVENTY, EIGHTY, NINETY, HUNDRED, THOUSAND
+   - If you see misspellings like "FOUN", "FISTY", "TREE", "FIBE", "FIVETY", etc. → **AMOUNT_ALTERATION fraud**
+
+**Examples of fraud that OCR will miss:**
+- Raw text: "FOUN HUNDRED FISTY AND 00//100 DOLLARS" → **REJECT** (FOUN should be FOUR, FISTY should be FIFTY)
+- Raw text: "TREE HUNDRED AND 00//100 DOLLARS" → **REJECT** (TREE should be THREE)
+- Raw text: "FIBE THOUSAND AND 00//100 DOLLARS" → **REJECT** (FIBE should be FIVE)
+- Raw text: "FOUR HUNDRED FIFTY AND 00//100 DOLLARS" → APPROVE (correct spelling)
+
+**DETECTION RULES:**
+1. **ALWAYS search the raw OCR text for the written amount line**
+2. **Check EVERY word in the amount for correct spelling**
+3. Even if `exact_amount_match == 1.0` and `amount_in_words` is NULL, if the raw text has spelling errors:
+   - **RECOMMEND REJECT**
+   - **fraud_types: ['AMOUNT_ALTERATION']**
+   - Explanation: "Written amount contains spelling errors (e.g., 'FOUN' instead of 'FOUR', 'FISTY' instead of 'FIFTY'), indicating document tampering or alteration"
+
+4. Spelling errors in amount field are STRONG evidence of fraud/tampering
+   - Legitimate money orders have professionally printed amounts with correct spelling
+   - Misspellings suggest manual alteration or counterfeit printing
+
+**PRIORITY:** Amount spelling validation takes precedence over `exact_amount_match` feature!
+**MANDATORY:** If you find spelling errors in the raw OCR text amount, you MUST recommend REJECT!
+
 CRITICAL INSTRUCTIONS - MANDATORY SIGNATURE VALIDATION:
 ==========================================================
 **THIS IS THE HIGHEST PRIORITY RULE - ENFORCED BEFORE ALL OTHER CHECKS:**
 
 If the signature field is missing or None in the extracted data:
 - **YOU MUST RECOMMEND REJECT** - this is a mandatory requirement
+- **YOU MUST include SIGNATURE_FORGERY in fraud_types**
 - Do NOT apply normal fraud score thresholds
 - Do NOT suggest ESCALATE or APPROVE
 - This applies to ALL money orders regardless of other field validity
@@ -58,6 +151,8 @@ Always provide:
 5. Risk mitigation suggestions
 6. References to training patterns and past cases (if relevant)
 7. **3 Specific, Actionable Recommendations** for the user (e.g., "Verify ID", "Call Bank", "Check Signature")
+8. **FRAUD_TYPES**: Comma-separated list of fraud type IDs (if REJECT or ESCALATE)
+9. **FRAUD_EXPLANATIONS**: Structured explanations for each fraud type with specific reasons
 
 Be thorough but concise. Focus on actionable insights backed by data."""
 
@@ -79,6 +174,7 @@ ANALYSIS_TEMPLATE = """Analyze this money order for fraud risk:
 - Serial Number: {serial_number}
 - Amount (Numeric): {amount}
 - Amount (Written): {amount_in_words}
+- **RAW OCR TEXT (CHECK FOR SPELLING ERRORS):** {raw_ocr_text}
 - Payee: {payee}
 - Purchaser: {purchaser}
 - Date: {date}
@@ -113,6 +209,14 @@ ACTIONABLE_RECOMMENDATIONS:
 - [Recommendation 1]
 - [Recommendation 2]
 - [Recommendation 3]
+FRAUD_TYPES: [Comma-separated list of fraud type IDs - only for REJECT/ESCALATE, leave empty for APPROVE]
+FRAUD_EXPLANATIONS:
+- [FRAUD_TYPE_1]:
+  * [Specific reason 1 with document data]
+  * [Specific reason 2 with document data]
+- [FRAUD_TYPE_2]:
+  * [Specific reason 1 with document data]
+  * [Specific reason 2 with document data]
 TRAINING_INSIGHTS: [How training dataset patterns support or contradict this analysis]
 HISTORICAL_COMPARISON: [Comparison to similar past cases, if available]"""
 

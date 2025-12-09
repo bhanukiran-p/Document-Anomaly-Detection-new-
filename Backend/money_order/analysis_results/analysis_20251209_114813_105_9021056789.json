@@ -1,0 +1,94 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "MoneyGram",
+    "serial_number": "9021056789",
+    "serial_secondary": "9835647821",
+    "amount": "$450.00",
+    "amount_in_words": null,
+    "payee": "SARAH CHEN",
+    "purchaser": "MICHAEL LEE",
+    "sender_address": "456 PINE ST, ANYTOWN, CA 91234",
+    "date": "10/26/2024",
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "low",
+      "type": "ml_indicator",
+      "message": "Money order is 409 days old (stale)"
+    },
+    {
+      "severity": "low",
+      "type": "ai_indicator",
+      "message": "None"
+    }
+  ],
+  "confidence_score": 85,
+  "raw_text": "MoneyGram\nPAY TO: SARAH CHEN\nMONEYGRAM\u24c7\nMONEY ORDER\n9021056789\nAMOUNT:\n$450.00\nDATE:\nOCTOBER 26, 2024\nFOUN HUNDRED FISTY AND 00//100 DOLLARS\nFROM: MICHAEL LEE\n456 PINE ST, ANYTOWN, CA 91234\n9835647821\nMichael Lee\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-12-09T11:48:13.104728",
+  "normalized_data": {
+    "issuer_name": "MoneyGram",
+    "serial_primary": "9021056789",
+    "serial_secondary": "9835647821",
+    "recipient": "SARAH CHEN",
+    "sender_name": "MICHAEL LEE",
+    "sender_address": "456 PINE ST, ANYTOWN, CA 91234",
+    "amount_numeric": {
+      "value": 450.0,
+      "currency": "USD"
+    },
+    "amount_written": null,
+    "date": "10-26-2024",
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 0.9,
+  "ml_analysis": {
+    "fraud_risk_score": 0.271,
+    "risk_level": "LOW",
+    "model_confidence": 0.977,
+    "model_scores": {
+      "random_forest": 0.243,
+      "xgboost": 0.254,
+      "ensemble": 0.271
+    },
+    "feature_importance": [
+      "Money order is 409 days old (stale)"
+    ],
+    "fraud_indicators": [
+      "Money order is 409 days old (stale)"
+    ],
+    "prediction_type": "mock"
+  },
+  "ai_analysis": {
+    "recommendation": "APPROVE",
+    "confidence_score": 0.75,
+    "summary": "The money order shows no clear signs of tampering or forgery. ML risk score is negligible, the issuer and serial format appear valid, and the signature is present.",
+    "reasoning": [
+      "ML Model: Overall fraud risk score 0.0% (RF 24.3%, XGB 25.4%) indicates no learned fraud patterns detected.",
+      "Issuer/Serial: MoneyGram is a recognized issuer and the 10-digit serial number matches typical MoneyGram formatting.",
+      "Amount Consistency: Numeric amount USD 450.00 with no conflicting written-amount data flagged; training data shows 45% of fraud involves amount mismatches, none here.",
+      "Signature: Signature field present and legible, fulfilling the mandatory signature requirement.",
+      "Customer: New customer with no escalation history; no repeat-offender risk.",
+      "Historical Comparison: No past cases with similar benign profiles; consistent with low-risk transactions in our dataset."
+    ],
+    "key_indicators": [
+      "None"
+    ],
+    "verification_notes": "",
+    "actionable_recommendations": [
+      "Ask the customer to present a valid government-issued photo ID for Michael Lee.",
+      "Call MoneyGram\u2019s secure verification hotline to confirm the serial number 9021056789 is valid and funded.",
+      "Visually inspect the physical money order for tactile security features (watermarks, microprinting)."
+    ],
+    "fraud_types": [],
+    "fraud_explanations": [],
+    "training_insights": "While our training data shows a strong correlation between amount mismatches and fraud (45% of cases), this order presents no numeric vs. written discrepancies or spelling errors.",
+    "historical_comparison": "No similar high-confidence legitimate cases flagged; aligns with patterns of low-risk, properly executed MoneyGram orders.",
+    "analysis_type": "ai_enhanced",
+    "model_used": "o4-mini"
+  },
+  "analysis_id": "analysis_20251209_114813_105_9021056789",
+  "saved_timestamp": "2025-12-09T11:48:13.105133"
+}
