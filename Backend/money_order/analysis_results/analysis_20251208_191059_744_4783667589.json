@@ -1,0 +1,97 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "Western Union",
+    "serial_number": "4783667589",
+    "serial_secondary": "4783667589",
+    "amount": "$325.00",
+    "amount_in_words": null,
+    "payee": "Hareen Edla",
+    "purchaser": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "date": null,
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Missing 1 critical field(s)"
+    },
+    {
+      "severity": "low",
+      "type": "ai_indicator",
+      "message": "Missing written amount"
+    },
+    {
+      "severity": "low",
+      "type": "ai_indicator",
+      "message": "Missing date"
+    }
+  ],
+  "confidence_score": 82,
+  "raw_text": "WESTERN WESTERN UNION\u00ae\nUNION\nMONEY ORDER\nPAY TO: Hareen Edla\n737267558\nAMOUNT:\n$325.00\nDATE: NOVEMBER 27TH, 2025\nTHREE HUNDRED FIVETY AND 00// 00 DOLLARS\nFROM: JOHN DOE\n123 OAK ST, ANYTOWN, CA 91234\n4783667589\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-12-08T19:10:59.744127",
+  "normalized_data": {
+    "issuer_name": "Western Union",
+    "serial_primary": "4783667589",
+    "serial_secondary": null,
+    "recipient": "Hareen Edla",
+    "sender_name": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "amount_numeric": {
+      "value": 325.0,
+      "currency": "USD"
+    },
+    "amount_written": null,
+    "date": null,
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 0.7,
+  "ml_analysis": {
+    "fraud_risk_score": 0.219,
+    "risk_level": "LOW",
+    "model_confidence": 0.937,
+    "model_scores": {
+      "random_forest": 0.228,
+      "xgboost": 0.197,
+      "ensemble": 0.219
+    },
+    "feature_importance": [
+      "Missing 1 critical field(s)"
+    ],
+    "fraud_indicators": [
+      "Missing 1 critical field(s)"
+    ],
+    "prediction_type": "mock"
+  },
+  "ai_analysis": {
+    "recommendation": "APPROVE",
+    "confidence_score": 0.85,
+    "summary": "Low fraud risk indicated by a 0.0% model score and a repeat customer with a clean history; however, missing written amount and date fields warrant manual verification before final processing.",
+    "reasoning": [
+      "ML ensemble fraud score is 0.0% with equally low confidence from both Random Forest (22.8%) and XGBoost (19.7%).",
+      "Customer is repeat with no prior fraud or escalation history, significantly reducing risk.",
+      "No ML-identified red-flag indicators were detected.",
+      "Critical fields\u2014amount in words and issue date\u2014are missing, which matches a known training-data pattern (45% of fraud cases involve amount mismatches or missing fields).",
+      "Signature field is present and intact, satisfying the mandatory signature requirement."
+    ],
+    "key_indicators": [
+      "Missing written amount",
+      "Missing date"
+    ],
+    "verification_notes": "",
+    "actionable_recommendations": [
+      "Inspect the physical document to record the written amount and ensure it aligns with USD 325.00.",
+      "Validate the date of issuance against transaction logs or purchase receipts.",
+      "Verify purchaser\u2019s government-issued ID to confirm identity and address."
+    ],
+    "training_insights": "",
+    "historical_comparison": "",
+    "analysis_type": "ai_enhanced",
+    "model_used": "o4-mini"
+  },
+  "analysis_id": "analysis_20251208_191059_744_4783667589",
+  "saved_timestamp": "2025-12-08T19:10:59.744514"
+}

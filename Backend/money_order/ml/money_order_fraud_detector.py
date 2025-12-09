@@ -272,6 +272,32 @@ class MoneyOrderFraudDetector:
             0.40,
             "CRITICAL: Future date detected (+0.40)"
         )
+        
+        # CRITICAL: Validate written amount spelling
+        amount_in_words = extracted_data.get('amount_in_words', '')
+        if amount_in_words and isinstance(amount_in_words, str):
+            # Valid English number words
+            valid_number_words = {
+                'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+                'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen',
+                'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety',
+                'hundred', 'thousand', 'million', 'billion',
+                'and', 'dollars', 'cents', 'only'
+            }
+            
+            # Extract words from written amount (lowercase, remove punctuation)
+            import re
+            words = re.findall(r'\b[a-zA-Z]+\b', amount_in_words.lower())
+            
+            # Check for invalid/misspelled number words
+            invalid_words = [w for w in words if w not in valid_number_words and len(w) > 2]
+            
+            if invalid_words:
+                apply(
+                    True,
+                    0.50,
+                    f"CRITICAL: Invalid/misspelled words in written amount: {invalid_words} (+0.50)"
+                )
 
         critical_missing_score = feature_dict.get('critical_missing_score', 0.0)
         apply(critical_missing_score >= 0.30, 0.30, "HIGH: Critical field missing - amount (+0.30)")
