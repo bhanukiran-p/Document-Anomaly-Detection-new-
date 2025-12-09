@@ -145,7 +145,7 @@ class MoneyOrderFraudDetector:
             (feature_dict.get('date_age_days', 0) > 90, 0.10),
             (feature_dict.get('amount_category', 0) >= 3.0, 0.10),
             (feature_dict.get('text_quality_score', 1.0) < 0.5, 0.15),
-            (feature_dict.get('signature_present', 0) == 0, 0.10),
+            (feature_dict.get('signature_present', 0) == 0, 0.50),  # CRITICAL: Missing signature now 50% penalty
         ]
 
         for condition, weight in rules:
@@ -183,6 +183,7 @@ class MoneyOrderFraudDetector:
                 'ensemble': round(risk_score, 3)
             },
             'feature_importance': fraud_indicators,
+            'fraud_indicators': fraud_indicators,  # Also store as fraud_indicators for AI agent
             'prediction_type': 'mock'
         }
 
@@ -241,6 +242,7 @@ class MoneyOrderFraudDetector:
                 'adjusted': round(final_fraud_score, 3)
             },
             'feature_importance': fraud_indicators,
+            'fraud_indicators': fraud_indicators,  # Also store as fraud_indicators for AI agent
             'prediction_type': 'model'
         }
 
@@ -276,6 +278,13 @@ class MoneyOrderFraudDetector:
         apply(0.25 <= critical_missing_score < 0.30, 0.25, "HIGH: Critical field missing - serial (+0.25)")
         apply(0.20 <= critical_missing_score < 0.25, 0.20, "HIGH: Critical field missing - recipient (+0.20)")
 
+        # CRITICAL: Mandatory signature validation - strict enforcement
+        apply(
+            feature_dict.get('signature_present', 0) == 0,
+            0.60,
+            "CRITICAL: Missing signature - mandatory field, document will be rejected (+0.60)"
+        )
+
         date_age_days = feature_dict.get('date_age_days', 0)
         apply(date_age_days > 180 and not is_paystub, 0.20, f"HIGH: Very old date ({int(date_age_days)} days) (+0.20)")
 
@@ -290,7 +299,6 @@ class MoneyOrderFraudDetector:
         )
         apply(feature_dict.get('serial_format_valid', 1.0) == 0.0, 0.15, "MEDIUM: Invalid serial format (+0.15)")
         apply(feature_dict.get('field_quality_score', 1.0) < 0.5, 0.10, "LOW: Poor field quality (+0.10)")
-        apply(feature_dict.get('signature_required_score', 0.5) == 0.0, 0.10, "LOW: Missing required signature (+0.10)")
 
         final_score = min(1.0, adjusted_score)
         if final_score != base_score:
@@ -351,8 +359,8 @@ class MoneyOrderFraudDetector:
         if name_consistency < 0.5:
             add(f"Name format inconsistent (score: {name_consistency:.2f})")
 
-        if feature_dict.get('signature_required_score', 0.5) == 0.0:
-            add("Missing required signature")
+        if feature_dict.get('signature_present', 0) == 0:
+            add("CRITICAL: Missing signature - document rejected per mandatory validation policy")
 
         if feature_dict.get('serial_format_valid', 1.0) == 0.0:
             add(f"Invalid serial format: '{ctx['serial_value']}'")

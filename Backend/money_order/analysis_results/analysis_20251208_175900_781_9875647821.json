@@ -1,0 +1,115 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "Western Union",
+    "serial_number": "9875647821",
+    "serial_secondary": "9875647821",
+    "amount": "$750.00",
+    "amount_in_words": null,
+    "payee": "JANE SMITH",
+    "purchaser": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "date": "10/26/2023",
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "high",
+      "type": "fraud_risk_high",
+      "message": "[ESCALATE] Written\u2010amount field is missing, preventing cross\u2010verification with the numeric amount; combined with elevated RF/XGBoost scores, this warrants manual review."
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Missing signature"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Money order is 774 days old (stale)"
+    },
+    {
+      "severity": "high",
+      "type": "ai_indicator",
+      "message": "Missing written\u2010amount field"
+    },
+    {
+      "severity": "high",
+      "type": "ai_indicator",
+      "message": "Elevated RF score (68.2%)"
+    },
+    {
+      "severity": "high",
+      "type": "ai_indicator",
+      "message": "Elevated XGBoost score (71.1%)"
+    }
+  ],
+  "confidence_score": 85,
+  "raw_text": "WESTERN WESTERN UNION\u00ae\nUNION\nMONEY ORDER\nPAY TO: JANE SMITH\n987557821\nAMOUNT:\n$750.00\nDATE: OCTOBER 26, 2023\nSEVEN HUNDRED FISTY AND 00//100 DOLLARS\nFROM: JOHN DOE\n123 OAK ST, ANYTOWN, CA 91234\n9875647821\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-12-08T17:59:00.780848",
+  "normalized_data": {
+    "issuer_name": "Western Union",
+    "serial_primary": "9875647821",
+    "serial_secondary": null,
+    "recipient": "JANE SMITH",
+    "sender_name": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "amount_numeric": {
+      "value": 750.0,
+      "currency": "USD"
+    },
+    "amount_written": null,
+    "date": "10-26-2023",
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 0.8,
+  "ml_analysis": {
+    "fraud_risk_score": 0.707,
+    "risk_level": "HIGH",
+    "model_confidence": 0.941,
+    "model_scores": {
+      "random_forest": 0.682,
+      "xgboost": 0.711,
+      "ensemble": 0.707
+    },
+    "feature_importance": [
+      "Missing signature",
+      "Money order is 774 days old (stale)"
+    ],
+    "fraud_indicators": [
+      "Missing signature",
+      "Money order is 774 days old (stale)"
+    ],
+    "prediction_type": "mock"
+  },
+  "ai_analysis": {
+    "recommendation": "ESCALATE",
+    "confidence_score": 0.65,
+    "summary": "Written\u2010amount field is missing, preventing cross\u2010verification with the numeric amount; combined with elevated RF/XGBoost scores, this warrants manual review.",
+    "reasoning": [
+      "Signature field is present and valid (no missing signature issue).",
+      "Numeric amount is USD 750.00 but written amount is unknown\u2014per training data, 45% of frauds show amount mismatches or missing written amounts.",
+      "Random Forest (68.2%) and XGBoost (71.1%) both signal above\u2010threshold risk, despite the system\u2019s final score glitch (0.0%).",
+      "New customer with no history\u2014lacks reliable behavioral baseline, increasing uncertainty.",
+      "No direct historical or ML\u2010identified fraud indicators, but missing written amount is a strong red flag in 2000+ case analysis."
+    ],
+    "key_indicators": [
+      "Missing written\u2010amount field",
+      "Elevated RF score (68.2%)",
+      "Elevated XGBoost score (71.1%)"
+    ],
+    "verification_notes": "",
+    "actionable_recommendations": [
+      "Request the original money order and verify the handwritten amount against the numeric field.",
+      "Confirm purchaser\u2019s government\u2010issued photo ID and match signature sample.",
+      "Call Western Union to validate serial number and issuance details."
+    ],
+    "training_insights": "",
+    "historical_comparison": "",
+    "analysis_type": "ai_enhanced",
+    "model_used": "o4-mini"
+  },
+  "analysis_id": "analysis_20251208_175900_781_9875647821",
+  "saved_timestamp": "2025-12-08T17:59:00.781163"
+}

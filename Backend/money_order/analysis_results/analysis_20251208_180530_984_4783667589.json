@@ -1,0 +1,90 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "Western Union",
+    "serial_number": "4783667589",
+    "serial_secondary": "4783667589",
+    "amount": "$325.00",
+    "amount_in_words": null,
+    "payee": "Hareen Edla",
+    "purchaser": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "date": null,
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Missing 1 critical field(s)"
+    },
+    {
+      "severity": "low",
+      "type": "ai_indicator",
+      "message": "Repeat escalated payer"
+    }
+  ],
+  "confidence_score": 82,
+  "raw_text": "WESTERN WESTERN UNION\u00ae\nUNION\nMONEY ORDER\nPAY TO: Hareen Edla\n737267558\nAMOUNT:\n$325.00\nDATE: NOVEMBER 27TH, 2025\nTHREE HUNDRED FIVETY AND 00// 00 DOLLARS\nFROM: JOHN DOE\n123 OAK ST, ANYTOWN, CA 91234\n4783667589\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-12-08T18:05:30.984041",
+  "normalized_data": {
+    "issuer_name": "Western Union",
+    "serial_primary": "4783667589",
+    "serial_secondary": null,
+    "recipient": "Hareen Edla",
+    "sender_name": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "amount_numeric": {
+      "value": 325.0,
+      "currency": "USD"
+    },
+    "amount_written": null,
+    "date": null,
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 0.7,
+  "ml_analysis": {
+    "fraud_risk_score": 0.262,
+    "risk_level": "LOW",
+    "model_confidence": 0.962,
+    "model_scores": {
+      "random_forest": 0.259,
+      "xgboost": 0.24,
+      "ensemble": 0.262
+    },
+    "feature_importance": [
+      "Missing 1 critical field(s)"
+    ],
+    "fraud_indicators": [
+      "Missing 1 critical field(s)"
+    ],
+    "prediction_type": "mock"
+  },
+  "ai_analysis": {
+    "recommendation": "REJECT",
+    "confidence_score": 0.95,
+    "summary": "Payer\u2010based escalation override: this customer has a prior suspicious submission (escalate_count = 1) and must be rejected.",
+    "reasoning": [
+      "Escalation Policy Violation: Purchaser has escalate_count = 1 \u2192 mandatory REJECT, override all other checks.",
+      "Signature Validation: Signature field is present (passes signature rule) but irrelevant due to payer override.",
+      "ML Scores: Fraud Risk Score = 0.0% (low), but policy override applies.",
+      "No amount written field to cross-check, but even with perfect numeric consistency, override mandates rejection."
+    ],
+    "key_indicators": [
+      "Repeat escalated payer"
+    ],
+    "verification_notes": "",
+    "actionable_recommendations": [
+      "Block any future money order purchases by this payer.",
+      "Escalate payer\u2019s profile to Compliance for enhanced due-diligence.",
+      "Inform the payer of rejection and request comprehensive identity verification before any future transactions."
+    ],
+    "training_insights": "",
+    "historical_comparison": "",
+    "analysis_type": "ai_enhanced",
+    "model_used": "o4-mini"
+  },
+  "analysis_id": "analysis_20251208_180530_984_4783667589",
+  "saved_timestamp": "2025-12-08T18:05:30.984530"
+}

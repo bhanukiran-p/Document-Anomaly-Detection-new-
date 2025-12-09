@@ -1,0 +1,109 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "MoneyGram",
+    "serial_number": "9021056789",
+    "serial_secondary": "9835647821",
+    "amount": "$450.00",
+    "amount_in_words": "FOUR HUNDRED FIFTY AND 00/100 DOLLARS",
+    "payee": "SARAH CHEN",
+    "purchaser": "MICHAEL LEE",
+    "sender_address": "456 PINE ST, ANYTOWN, CA 91234",
+    "date": "11/24/2025",
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "medium",
+      "type": "fraud_risk_medium",
+      "message": "[ESCALATE] Consistent money order fields with matching numeric and written amounts and no ML-flagged anomalies, but the medium fraud risk score, low model confidence, and new customer profile warrant additional verification."
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Missing signature"
+    },
+    {
+      "severity": "medium",
+      "type": "ai_indicator",
+      "message": "New customer profile"
+    },
+    {
+      "severity": "medium",
+      "type": "ai_indicator",
+      "message": "Medium ML fraud risk score"
+    },
+    {
+      "severity": "medium",
+      "type": "ai_indicator",
+      "message": "Low model confidence"
+    }
+  ],
+  "confidence_score": 99,
+  "raw_text": "MoneyGram\nPAY TO: SARAH CHEN\nMONEYGRAM\u24c7\nMONEY ORDER\n9021056789\nAMOUNT:\n$450.00\nDATE: NOVEMBER 24, 2025\nFOUR HUNDRED FIFTY AND 00/100 DOLLARS\nFROM: MICHAEL LEE\n456 PINE ST, ANYTOWN, CA 91234\n9835647821\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-12-08T18:42:34.115828",
+  "normalized_data": {
+    "issuer_name": "MoneyGram",
+    "serial_primary": "9021056789",
+    "serial_secondary": "9835647821",
+    "recipient": "SARAH CHEN",
+    "sender_name": "MICHAEL LEE",
+    "sender_address": "456 PINE ST, ANYTOWN, CA 91234",
+    "amount_numeric": {
+      "value": 450.0,
+      "currency": "USD"
+    },
+    "amount_written": "FOUR HUNDRED FIFTY AND 00/100 DOLLARS",
+    "date": "11-24-2025",
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 1.0,
+  "ml_analysis": {
+    "fraud_risk_score": 0.502,
+    "risk_level": "MEDIUM",
+    "model_confidence": 0.948,
+    "model_scores": {
+      "random_forest": 0.492,
+      "xgboost": 0.518,
+      "ensemble": 0.502
+    },
+    "feature_importance": [
+      "Missing signature"
+    ],
+    "fraud_indicators": [
+      "Missing signature"
+    ],
+    "prediction_type": "mock"
+  },
+  "ai_analysis": {
+    "recommendation": "ESCALATE",
+    "confidence_score": 0.65,
+    "summary": "Consistent money order fields with matching numeric and written amounts and no ML-flagged anomalies, but the medium fraud risk score, low model confidence, and new customer profile warrant additional verification.",
+    "reasoning": [
+      "ML ensemble average score is ~50.5% (Random Forest 49.2%, XGBoost 51.8%) indicating medium risk; model confidence at 0% suggests uncertainty.",
+      "Amount matches in numeric vs written (\u201c450.00\u201d vs \u201cFOUR HUNDRED FIFTY AND 00/100\u201d), so no classic amount-mismatch indicator (45% of fraud cases).",
+      "Signature field is present and was extracted\u2014no mandatory rejection criteria triggered.",
+      "New customer with no prior history or ID on file increases risk of first-time fraud attempts.",
+      "Date on document (11-24-2025) appears valid but should be cross-checked against system date to rule out post-dating.",
+      "No similar past fraud cases or ML-identified flags; however, absence of negative history is not proof of legitimacy."
+    ],
+    "key_indicators": [
+      "New customer profile",
+      "Medium ML fraud risk score",
+      "Low model confidence"
+    ],
+    "verification_notes": "",
+    "actionable_recommendations": [
+      "Contact Michael Lee to verify identity, purpose, and signature authenticity",
+      "Call MoneyGram with serial number 9021056789 to confirm issuance date/location",
+      "Request additional proof of payment or purchase receipt from the in-store agent at 456 Pine St, Anytown"
+    ],
+    "training_insights": "",
+    "historical_comparison": "",
+    "analysis_type": "ai_enhanced",
+    "model_used": "o4-mini"
+  },
+  "analysis_id": "analysis_20251208_184234_116_9021056789",
+  "saved_timestamp": "2025-12-08T18:42:34.116040"
+}

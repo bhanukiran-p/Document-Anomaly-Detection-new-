@@ -1,0 +1,104 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "Western Union",
+    "serial_number": "9875647821",
+    "serial_secondary": "9875647821",
+    "amount": "$750.00",
+    "amount_in_words": null,
+    "payee": "JANE SMITH",
+    "purchaser": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "date": "10/26/2023",
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "high",
+      "type": "fraud_risk_high",
+      "message": "[REJECT] Missing signature detected. Mandatory rejection per strict signature validation policy."
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Missing signature"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Money order is 774 days old (stale)"
+    },
+    {
+      "severity": "high",
+      "type": "ai_indicator",
+      "message": "ML fraud detector flagged missing signature"
+    },
+    {
+      "severity": "high",
+      "type": "ai_indicator",
+      "message": "Mandatory signature policy violation"
+    }
+  ],
+  "confidence_score": 85,
+  "raw_text": "WESTERN WESTERN UNION\u00ae\nUNION\nMONEY ORDER\nPAY TO: JANE SMITH\n987557821\nAMOUNT:\n$750.00\nDATE: OCTOBER 26, 2023\nSEVEN HUNDRED FISTY AND 00//100 DOLLARS\nFROM: JOHN DOE\n123 OAK ST, ANYTOWN, CA 91234\n9875647821\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-12-08T17:09:18.257414",
+  "normalized_data": {
+    "issuer_name": "Western Union",
+    "serial_primary": "9875647821",
+    "serial_secondary": null,
+    "recipient": "JANE SMITH",
+    "sender_name": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "amount_numeric": {
+      "value": 750.0,
+      "currency": "USD"
+    },
+    "amount_written": null,
+    "date": "10-26-2023",
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 0.8,
+  "ml_analysis": {
+    "fraud_risk_score": 0.766,
+    "risk_level": "HIGH",
+    "model_confidence": 0.897,
+    "model_scores": {
+      "random_forest": 0.793,
+      "xgboost": 0.741,
+      "ensemble": 0.766
+    },
+    "feature_importance": [
+      "Missing signature",
+      "Money order is 774 days old (stale)"
+    ],
+    "prediction_type": "mock"
+  },
+  "ai_analysis": {
+    "recommendation": "REJECT",
+    "confidence_score": 1.0,
+    "summary": "Missing signature detected. Mandatory rejection per strict signature validation policy.",
+    "reasoning": [
+      "ML fraud detector identified missing signature",
+      "Per system policy: ALL money orders must have detectable signatures",
+      "This is enforced before all other fraud checks (including escalate_count)",
+      "Policy enforced to prevent fraud even if it may cause false positives"
+    ],
+    "key_indicators": [
+      "ML fraud detector flagged missing signature",
+      "Mandatory signature policy violation"
+    ],
+    "verification_notes": "Document rejected due to missing signature. Manual review may be needed if signature exists but was not detected by OCR.",
+    "actionable_recommendations": [
+      "Reject this transaction immediately",
+      "Request customer to resubmit with clear signature",
+      "If signature exists on physical document, improve scan quality and resubmit"
+    ],
+    "training_insights": "Missing signatures are high-risk indicators for fraudulent money orders",
+    "historical_comparison": "Consistent with strict signature validation policy",
+    "analysis_type": "policy_enforcement",
+    "model_used": "mandatory_signature_policy"
+  },
+  "analysis_id": "analysis_20251208_170918_257_9875647821",
+  "saved_timestamp": "2025-12-08T17:09:18.257701"
+}

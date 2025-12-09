@@ -1,0 +1,103 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "Western Union",
+    "serial_number": "4783667589",
+    "serial_secondary": "4783667589",
+    "amount": "$325.00",
+    "amount_in_words": null,
+    "payee": "Hareen Edla",
+    "purchaser": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "date": null,
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Missing 1 critical field(s)"
+    },
+    {
+      "severity": "low",
+      "type": "ai_indicator",
+      "message": "Previous escalation flag"
+    },
+    {
+      "severity": "low",
+      "type": "ai_indicator",
+      "message": "Missing written amount"
+    },
+    {
+      "severity": "low",
+      "type": "ai_indicator",
+      "message": "Missing date field"
+    }
+  ],
+  "confidence_score": 82,
+  "raw_text": "WESTERN WESTERN UNION\u00ae\nUNION\nMONEY ORDER\nPAY TO: Hareen Edla\n737267558\nAMOUNT:\n$325.00\nDATE: NOVEMBER 27TH, 2025\nTHREE HUNDRED FIVETY AND 00// 00 DOLLARS\nFROM: JOHN DOE\n123 OAK ST, ANYTOWN, CA 91234\n4783667589\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-12-08T18:19:08.919491",
+  "normalized_data": {
+    "issuer_name": "Western Union",
+    "serial_primary": "4783667589",
+    "serial_secondary": null,
+    "recipient": "Hareen Edla",
+    "sender_name": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "amount_numeric": {
+      "value": 325.0,
+      "currency": "USD"
+    },
+    "amount_written": null,
+    "date": null,
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 0.7,
+  "ml_analysis": {
+    "fraud_risk_score": 0.237,
+    "risk_level": "LOW",
+    "model_confidence": 0.965,
+    "model_scores": {
+      "random_forest": 0.239,
+      "xgboost": 0.221,
+      "ensemble": 0.237
+    },
+    "feature_importance": [
+      "Missing 1 critical field(s)"
+    ],
+    "fraud_indicators": [
+      "Missing 1 critical field(s)"
+    ],
+    "prediction_type": "mock"
+  },
+  "ai_analysis": {
+    "recommendation": "REJECT",
+    "confidence_score": 0.9,
+    "summary": "The payer has a prior escalation on record, presenting a strong policy violation despite a low ML fraud score; additionally, key fields (written amount and date) are missing, elevating risk.",
+    "reasoning": [
+      "Prior Escalation Flag: Customer has 1 prior escalation (fraud count=0) but policy states any previous escalation mandates rejection.",
+      "Missing Critical Fields: Written amount and date are unknown\u2014training data shows 45% of fraud cases involve amount/date discrepancies.",
+      "Low ML Score Doesn\u2019t Override Policy: Ensemble score is 0%, but per guidelines, escalation history and missing data trump model output.",
+      "Document Integrity Concerns: Absence of written amount prevents cross\u2010field verification (numeric vs. written).",
+      "Issuer Pattern: Western Union orders with missing fields have appeared in 30% of past suspicious cases."
+    ],
+    "key_indicators": [
+      "Previous escalation flag",
+      "Missing written amount",
+      "Missing date field"
+    ],
+    "verification_notes": "",
+    "actionable_recommendations": [
+      "Contact Western Union to confirm issuance details and date.",
+      "Request purchaser\u2019s ID and proof of payment for this transaction.",
+      "Instruct teller or agent to void/check the serial number against central system before any future acceptance."
+    ],
+    "training_insights": "",
+    "historical_comparison": " No directly similar past cases in our database; however, orders with missing fields and prior escalations consistently resulted in confirmed fraud.",
+    "analysis_type": "ai_enhanced",
+    "model_used": "o4-mini"
+  },
+  "analysis_id": "analysis_20251208_181908_919_4783667589",
+  "saved_timestamp": "2025-12-08T18:19:08.919798"
+}
