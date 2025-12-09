@@ -190,10 +190,37 @@ class FraudAnalysisAgent:
             else:
                 logger.warning(f"[FRAUD_ANALYSIS] ⚠️ FIRST TIME OFFENDER: ESCALATE triggered")
                 
-                # First time missing signature - ESCALATE for human review
-                # Don't return yet - let it continue to normal analysis which will result in ESCALATE
-                # But we'll flag it in the ML analysis for the AI to pick up
-                logger.info(f"[FRAUD_ANALYSIS] Allowing normal analysis to proceed (will likely ESCALATE due to missing signature)")
+                # First time missing signature - force ESCALATE for human review
+                escalate_result = {
+                    'recommendation': 'ESCALATE',
+                    'confidence_score': 1.0,
+                    'summary': 'Missing signature detected on first upload. Escalating for human review per signature validation policy.',
+                    'reasoning': [
+                        'Signature field is missing or empty' if not signature else 'ML fraud detector identified missing signature',
+                        'This is the first upload from this payer (escalate_count=0)',
+                        'Per system policy: First missing signature → ESCALATE for human review',
+                        'Escalation allows verification of potential OCR error or legitimate missing signature'
+                    ],
+                    'key_indicators': [
+                        'No signature detected in OCR extraction' if not signature else 'ML fraud detector flagged missing signature',
+                        'First-time payer',
+                        'Mandatory signature policy - requires human verification'
+                    ],
+                    'verification_notes': 'Document escalated due to missing signature on first upload. Verify if signature is truly missing or if OCR failed to detect it.',
+                    'actionable_recommendations': [
+                        'Manually verify if signature is present on the physical document',
+                        'If signature is present, approve and note OCR limitation',
+                        'If signature is truly missing, reject and flag customer for future uploads'
+                    ],
+                    'training_insights': 'First-time missing signatures may be OCR errors or legitimate issues requiring human judgment',
+                    'historical_comparison': 'Consistent with first-time escalation policy',
+                    'analysis_type': 'policy_enforcement',
+                    'model_used': 'mandatory_signature_policy'
+                }
+                
+                logger.info(f"[FRAUD_ANALYSIS] Returning ESCALATE result: {escalate_result}")
+                return escalate_result
+
 
         # Store ML analysis and customer status for later validation
         self._current_ml_analysis = ml_analysis

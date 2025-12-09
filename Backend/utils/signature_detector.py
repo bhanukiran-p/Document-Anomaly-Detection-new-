@@ -92,7 +92,7 @@ class SignatureDetector:
 
         detection_method = "+".join(methods_detected)
 
-        is_present = avg_confidence >= 0.85  # Very strict threshold - require very strong evidence
+        is_present = avg_confidence >= 0.65  # Compromise threshold - balances false positives/negatives, relies on escalate-then-reject for error handling
 
         logger.info(
             f"Signature detection: present={is_present}, "

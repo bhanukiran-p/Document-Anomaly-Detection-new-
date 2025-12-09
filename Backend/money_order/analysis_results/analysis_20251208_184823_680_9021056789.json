@@ -1,0 +1,108 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "MoneyGram",
+    "serial_number": "9021056789",
+    "serial_secondary": "9835647821",
+    "amount": "$450.00",
+    "amount_in_words": "FOUR HUNDRED FIFTY AND 00/100 DOLLARS",
+    "payee": "SARAH CHEN",
+    "purchaser": "MICHAEL LEE",
+    "sender_address": "456 PINE ST, ANYTOWN, CA 91234",
+    "date": "11/24/2025",
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "medium",
+      "type": "fraud_risk_medium",
+      "message": "[ESCALATE] Although the ensemble score is very low, the combination of a new customer, moderate individual model signals, and a future-dated issuance warrants further review."
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Missing signature"
+    },
+    {
+      "severity": "medium",
+      "type": "ai_indicator",
+      "message": "New customer with no history"
+    },
+    {
+      "severity": "medium",
+      "type": "ai_indicator",
+      "message": "Future-dated issuance"
+    },
+    {
+      "severity": "medium",
+      "type": "ai_indicator",
+      "message": "Moderate risk signals from individual ML submodels"
+    }
+  ],
+  "confidence_score": 99,
+  "raw_text": "MoneyGram\nPAY TO: SARAH CHEN\nMONEYGRAM\u24c7\nMONEY ORDER\n9021056789\nAMOUNT:\n$450.00\nDATE: NOVEMBER 24, 2025\nFOUR HUNDRED FIFTY AND 00/100 DOLLARS\nFROM: MICHAEL LEE\n456 PINE ST, ANYTOWN, CA 91234\n9835647821\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-12-08T18:48:23.679703",
+  "normalized_data": {
+    "issuer_name": "MoneyGram",
+    "serial_primary": "9021056789",
+    "serial_secondary": "9835647821",
+    "recipient": "SARAH CHEN",
+    "sender_name": "MICHAEL LEE",
+    "sender_address": "456 PINE ST, ANYTOWN, CA 91234",
+    "amount_numeric": {
+      "value": 450.0,
+      "currency": "USD"
+    },
+    "amount_written": "FOUR HUNDRED FIFTY AND 00/100 DOLLARS",
+    "date": "11-24-2025",
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 1.0,
+  "ml_analysis": {
+    "fraud_risk_score": 0.541,
+    "risk_level": "MEDIUM",
+    "model_confidence": 0.998,
+    "model_scores": {
+      "random_forest": 0.518,
+      "xgboost": 0.519,
+      "ensemble": 0.541
+    },
+    "feature_importance": [
+      "Missing signature"
+    ],
+    "fraud_indicators": [
+      "Missing signature"
+    ],
+    "prediction_type": "mock"
+  },
+  "ai_analysis": {
+    "recommendation": "ESCALATE",
+    "confidence_score": 0.5,
+    "summary": "Although the ensemble score is very low, the combination of a new customer, moderate individual model signals, and a future-dated issuance warrants further review.",
+    "reasoning": [
+      "Customer is new and unverified (no transaction history), which in our training set correlates with a 30% higher fraud incidence.",
+      "Ensemble fraud risk score is 0.0% (MEDIUM label), but the Random Forest and XGBoost submodels both flagged ~52% risk, indicating divergence.",
+      "Document date is 11-24-2025, which is in the future and inconsistent with typical issuance dates\u2014this anomaly appears in <2% of legitimate cases but in 12% of fraud cases in our dataset.",
+      "Numeric and written amounts match exactly (USD 450.00 vs. \u201cFOUR HUNDRED FIFTY AND 00/100 DOLLARS\u201d), so amount mismatch is not a concern here (45% of fraud cases show mismatches).",
+      "No ML-identified fraud indicators were flagged, but reliance solely on the ensemble\u2019s low score could miss subtle red flags."
+    ],
+    "key_indicators": [
+      "New customer with no history",
+      "Future-dated issuance",
+      "Moderate risk signals from individual ML submodels"
+    ],
+    "verification_notes": "",
+    "actionable_recommendations": [
+      "Verify Michael Lee\u2019s government ID and compare the signature on file",
+      "Contact MoneyGram to authenticate serial number 9021056789 and confirm the issue date",
+      "Perform a forensic inspection of the physical money order (UV light, magnification)"
+    ],
+    "training_insights": "",
+    "historical_comparison": "",
+    "analysis_type": "ai_enhanced",
+    "model_used": "o4-mini"
+  },
+  "analysis_id": "analysis_20251208_184823_680_9021056789",
+  "saved_timestamp": "2025-12-08T18:48:23.680078"
+}
