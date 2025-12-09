@@ -224,336 +224,336 @@ const PaystubAnalysis = () => {
 
       {/* Tab Content */}
       {activeTab === 'analyze' && (
-      <div style={gridStyle}>
-        {/* Upload Section */}
-        <div style={cardStyle}>
-          <h2 style={{ color: colors.foreground, marginBottom: '1.5rem' }}>
-            Upload Paystub Document
-          </h2>
+        <div style={gridStyle}>
+          {/* Upload Section */}
+          <div style={cardStyle}>
+            <h2 style={{ color: colors.foreground, marginBottom: '1.5rem' }}>
+              Upload Paystub Document
+            </h2>
 
-          <div style={{
-            backgroundColor: '#FFF3CD',
-            border: '1px solid #FFC107',
-            borderRadius: '8px',
-            padding: '1rem',
-            marginBottom: '1rem',
-          }}>
-            <p style={{ color: '#856404', fontSize: '0.875rem', margin: 0, fontWeight: '500' }}>
-              ⚠️ Only upload paystub documents (payslips or salary statements)
-            </p>
-          </div>
-
-          <div {...getRootProps()} style={dropzoneStyle}>
-            <input {...getInputProps()} />
-            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>💰</div>
-            {isDragActive ? (
-              <p style={{ color: primary, fontWeight: '500' }}>
-                Drop the paystub here...
+            <div style={{
+              backgroundColor: '#FFF3CD',
+              border: '1px solid #FFC107',
+              borderRadius: '8px',
+              padding: '1rem',
+              marginBottom: '1rem',
+            }}>
+              <p style={{ color: '#856404', fontSize: '0.875rem', margin: 0, fontWeight: '500' }}>
+                ⚠️ Only upload paystub documents (payslips or salary statements)
               </p>
-            ) : (
-              <div>
-                <p style={{ color: colors.foreground, marginBottom: '0.5rem' }}>
-                  Drop your paystub here or click to browse
+            </div>
+
+            <div {...getRootProps()} style={dropzoneStyle}>
+              <input {...getInputProps()} />
+              <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>💰</div>
+              {isDragActive ? (
+                <p style={{ color: primary, fontWeight: '500' }}>
+                  Drop the paystub here...
                 </p>
-                <p style={{ color: colors.mutedForeground, fontSize: '0.875rem' }}>
-                  Paystubs Only - JPG, JPEG, PNG, PDF
-                </p>
+              ) : (
+                <div>
+                  <p style={{ color: colors.foreground, marginBottom: '0.5rem' }}>
+                    Drop your paystub here or click to browse
+                  </p>
+                  <p style={{ color: colors.mutedForeground, fontSize: '0.875rem' }}>
+                    Paystubs Only - JPG, JPEG, PNG, PDF
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {file && (
+              <div style={{ marginTop: '1.5rem' }}>
+                <div style={{
+                  backgroundColor: colors.muted,
+                  padding: '1rem',
+                  borderRadius: '8px',
+                }}>
+                  <strong>File:</strong> {file.name}<br />
+                  <strong>Size:</strong> {(file.size / 1024).toFixed(2)} KB<br />
+                  <strong>Type:</strong> {file.type || 'Unknown'}
+                </div>
+
+                {preview && (
+                  <div style={{ marginTop: '1rem' }}>
+                    <img
+                      src={preview}
+                      alt="Paystub preview"
+                      style={{
+                        width: '100%',
+                        borderRadius: '8px',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            <button
+              style={buttonStyle}
+              onClick={handleAnalyze}
+              disabled={loading || !file}
+              onMouseEnter={(e) => !loading && (e.target.style.backgroundColor = colors.accent.redDark)}
+              onMouseLeave={(e) => !loading && (e.target.style.backgroundColor = colors.accent.red)}
+            >
+              {loading ? 'Analyzing...' : 'Analyze Paystub'}
+            </button>
+
+            {error && (
+              <div style={{
+                backgroundColor: colors.accent.redLight,
+                color: colors.accent.red,
+                padding: '1rem',
+                borderRadius: '8px',
+                marginTop: '1rem',
+                fontWeight: '500',
+              }}>
+                {error}
               </div>
             )}
           </div>
 
-          {file && (
-            <div style={{ marginTop: '1.5rem' }}>
+          {/* Results Section */}
+          <div style={cardStyle}>
+            <h2 style={{ color: colors.foreground, marginBottom: '1.5rem' }}>
+              Analysis Results
+            </h2>
+
+            {!results && !loading && (
               <div style={{
                 backgroundColor: colors.muted,
-                padding: '1rem',
+                padding: '2rem',
                 borderRadius: '8px',
+                textAlign: 'center',
+                color: colors.foreground,
               }}>
-                <strong>File:</strong> {file.name}<br />
-                <strong>Size:</strong> {(file.size / 1024).toFixed(2)} KB<br />
-                <strong>Type:</strong> {file.type || 'Unknown'}
+                <p>Upload a paystub on the left to begin analysis</p>
               </div>
+            )}
 
-              {preview && (
-                <div style={{ marginTop: '1rem' }}>
-                  <img
-                    src={preview}
-                    alt="Paystub preview"
-                    style={{
-                      width: '100%',
-                      borderRadius: '8px',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-          )}
+            {loading && (
+              <div style={{ textAlign: 'center', padding: '3rem' }}>
+                <div className="spin" style={{ fontSize: '3rem', color: primary }}>⚙️</div>
+                <p style={{ marginTop: '1rem', color: colors.neutral.gray600 }}>
+                  Analyzing paystub...
+                </p>
+              </div>
+            )}
 
-          <button
-            style={buttonStyle}
-            onClick={handleAnalyze}
-            disabled={loading || !file}
-            onMouseEnter={(e) => !loading && (e.target.style.backgroundColor = colors.accent.redDark)}
-            onMouseLeave={(e) => !loading && (e.target.style.backgroundColor = colors.accent.red)}
-          >
-            {loading ? 'Analyzing...' : 'Analyze Paystub'}
-          </button>
+            {results && (
+              <div className="fade-in">
+                {/* AI Analysis Section */}
+                {results.fraud_risk_score !== undefined && (
+                  <div style={{ marginBottom: '2rem' }}>
+                    <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>
+                      Fraud Analysis
+                    </h3>
 
-          {error && (
-            <div style={{
-              backgroundColor: colors.accent.redLight,
-              color: colors.accent.red,
-              padding: '1rem',
-              borderRadius: '8px',
-              marginTop: '1rem',
-              fontWeight: '500',
-            }}>
-              {error}
-            </div>
-          )}
-        </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
+                      {/* Fraud Risk Score Card */}
+                      <div style={{
+                        ...resultCardStyle,
+                        marginBottom: 0,
+                        backgroundColor: `${primary}20`,
+                        borderLeft: `4px solid ${primary}`,
+                      }}>
+                        <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
+                          Fraud Risk Score
+                        </div>
+                        <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: primary }}>
+                          {(results.fraud_risk_score * 100).toFixed(1)}%
+                        </div>
+                      </div>
 
-        {/* Results Section */}
-        <div style={cardStyle}>
-          <h2 style={{ color: colors.foreground, marginBottom: '1.5rem' }}>
-            Analysis Results
-          </h2>
+                      {/* Model Confidence Card */}
+                      <div style={{
+                        ...resultCardStyle,
+                        marginBottom: 0,
+                        backgroundColor: `${colors.status.success}20`,
+                        borderLeft: `4px solid ${colors.status.success}`,
+                      }}>
+                        <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
+                          Model Confidence
+                        </div>
+                        <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: colors.status.success }}>
+                          {(results.model_confidence * 100).toFixed(1)}%
+                        </div>
+                      </div>
+                    </div>
 
-          {!results && !loading && (
-            <div style={{
-              backgroundColor: colors.muted,
-              padding: '2rem',
-              borderRadius: '8px',
-              textAlign: 'center',
-              color: colors.foreground,
-            }}>
-              <p>Upload a paystub on the left to begin analysis</p>
-            </div>
-          )}
-
-          {loading && (
-            <div style={{ textAlign: 'center', padding: '3rem' }}>
-              <div className="spin" style={{ fontSize: '3rem', color: primary }}>⚙️</div>
-              <p style={{ marginTop: '1rem', color: colors.neutral.gray600 }}>
-                Analyzing paystub...
-              </p>
-            </div>
-          )}
-
-          {results && (
-            <div className="fade-in">
-              {/* AI Analysis Section */}
-              {results.fraud_risk_score !== undefined && (
-                <div style={{ marginBottom: '2rem' }}>
-                  <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>
-                    Fraud Analysis
-                  </h3>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
-                    {/* Fraud Risk Score Card */}
+                    {/* AI Recommendation Card */}
                     <div style={{
                       ...resultCardStyle,
-                      marginBottom: 0,
-                      backgroundColor: `${primary}20`,
-                      borderLeft: `4px solid ${primary}`,
-                    }}>
-                      <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
-                        Fraud Risk Score
-                      </div>
-                      <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: primary }}>
-                        {(results.fraud_risk_score * 100).toFixed(1)}%
-                      </div>
-                    </div>
-
-                    {/* Model Confidence Card */}
-                    <div style={{
-                      ...resultCardStyle,
-                      marginBottom: 0,
-                      backgroundColor: `${colors.status.success}20`,
-                      borderLeft: `4px solid ${colors.status.success}`,
-                    }}>
-                      <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
-                        Model Confidence
-                      </div>
-                      <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: colors.status.success }}>
-                        {(results.model_confidence * 100).toFixed(1)}%
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* AI Recommendation Card */}
-                  <div style={{
-                    ...resultCardStyle,
-                    marginBottom: '1.5rem',
-                    backgroundColor: results.ai_recommendation === 'APPROVE' ? `${colors.status.success}20` :
-                      results.ai_recommendation === 'REJECT' ? `${primary}20` :
-                        `${colors.status.warning}20`,
-                    borderLeft: `4px solid ${results.ai_recommendation === 'APPROVE' ? colors.status.success :
-                      results.ai_recommendation === 'REJECT' ? primary :
-                        colors.status.warning}`,
-                  }}>
-                    <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
-                      AI Recommendation
-                    </div>
-                    <div style={{
-                      fontSize: '2rem',
-                      fontWeight: 'bold',
-                      color: results.ai_recommendation === 'APPROVE' ? colors.status.success :
+                      marginBottom: '1.5rem',
+                      backgroundColor: results.ai_recommendation === 'APPROVE' ? `${colors.status.success}20` :
+                        results.ai_recommendation === 'REJECT' ? `${primary}20` :
+                          `${colors.status.warning}20`,
+                      borderLeft: `4px solid ${results.ai_recommendation === 'APPROVE' ? colors.status.success :
                         results.ai_recommendation === 'REJECT' ? primary :
-                          colors.status.warning,
+                          colors.status.warning}`,
                     }}>
-                      {results.ai_recommendation || 'UNKNOWN'}
+                      <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
+                        AI Recommendation
+                      </div>
+                      <div style={{
+                        fontSize: '2rem',
+                        fontWeight: 'bold',
+                        color: results.ai_recommendation === 'APPROVE' ? colors.status.success :
+                          results.ai_recommendation === 'REJECT' ? primary :
+                            colors.status.warning,
+                      }}>
+                        {results.ai_recommendation || 'UNKNOWN'}
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Fraud Type Card - Primary Fraud Type with Employee History as Reasons */}
-                  {(() => {
-                    // Hide if recommendation is APPROVE
-                    if (results.ai_recommendation === 'APPROVE') {
-                      return false;
-                    }
-                    
-                    // Check if we have fraud types or employee info to display
-                    const fraudTypes = results.fraud_types || 
-                                      results.data?.fraud_types || 
-                                      results.ml_analysis?.fraud_types ||
-                                      results.data?.ml_analysis?.fraud_types || [];
-                    const employeeInfo = results.employee_info || results.data?.employee_info || {};
-                    const escalateCount = employeeInfo.escalate_count || 0;
-                    const fraudCount = employeeInfo.fraud_count || 0;
-                    const isNewEmployee = !employeeInfo.employee_id;
-                    const employeeStatus = isNewEmployee ? 'New Employee' : 'Repeat Employee';
-                    
-                    // Show card if we have fraud types OR employee history
-                    return fraudTypes.length > 0 || escalateCount > 0 || fraudCount > 0;
-                  })() ? (
-                    (() => {
-                      const fraudTypes = results.fraud_types || 
-                                        results.data?.fraud_types || 
-                                        results.ml_analysis?.fraud_types ||
-                                        results.data?.ml_analysis?.fraud_types || [];
+                    {/* Fraud Type Card - Primary Fraud Type with Employee History as Reasons */}
+                    {(() => {
+                      // Only show if recommendation is REJECT (hide for APPROVE and ESCALATE)
+                      if (results.ai_recommendation !== 'REJECT') {
+                        return false;
+                      }
+
+                      // Check if we have fraud types or employee info to display
+                      const fraudTypes = results.fraud_types ||
+                        results.data?.fraud_types ||
+                        results.ml_analysis?.fraud_types ||
+                        results.data?.ml_analysis?.fraud_types || [];
                       const employeeInfo = results.employee_info || results.data?.employee_info || {};
                       const escalateCount = employeeInfo.escalate_count || 0;
                       const fraudCount = employeeInfo.fraud_count || 0;
                       const isNewEmployee = !employeeInfo.employee_id;
                       const employeeStatus = isNewEmployee ? 'New Employee' : 'Repeat Employee';
-                      
-                      // Get fraud explanations from multiple possible locations
-                      const fraudExplanations = results.fraud_explanations ||
-                                                results.data?.fraud_explanations ||
-                                                results.ai_analysis?.fraud_explanations ||
-                                                results.data?.ai_analysis?.fraud_explanations || [];
-                      
-                      // Get primary fraud type - prioritize fraud_types, then fraud_explanations, then default
-                      let primaryFraudType = null;
-                      if (fraudTypes.length > 0) {
-                        primaryFraudType = fraudTypes[0].replace(/_/g, ' ');
-                      } else if (fraudExplanations.length > 0 && fraudExplanations[0].type) {
-                        // Use fraud explanation type if available
-                        primaryFraudType = fraudExplanations[0].type.replace(/_/g, ' ');
-                      } else if (escalateCount > 0 || fraudCount > 0) {
-                        // For repeat employees, default to FABRICATED_DOCUMENT
-                        primaryFraudType = 'FABRICATED_DOCUMENT';
-                      } else {
-                        // Last resort: use FABRICATED_DOCUMENT (removed MISSING_CRITICAL_FIELDS)
-                        primaryFraudType = 'FABRICATED_DOCUMENT';
-                      }
-                      
-                      // HYBRID APPROACH: Combine document-level fraud explanations with REPEAT_OFFENDER info
-                      let displayReasons = [];
-                      
-                      // First, add document-level fraud explanations (exclude REPEAT_OFFENDER)
-                      const documentLevelExplanations = fraudExplanations.filter(exp => 
-                        exp.type !== 'REPEAT_OFFENDER'
-                      );
-                      if (documentLevelExplanations.length > 0) {
-                        documentLevelExplanations.forEach(exp => {
-                          if (exp.reasons && exp.reasons.length > 0) {
-                            displayReasons.push(...exp.reasons.slice(0, 2));
-                          }
-                        });
-                      }
-                      
-                      // Then, add REPEAT_OFFENDER explanations (based on employee history)
-                      const repeatOffenderExplanations = fraudExplanations.filter(exp => 
-                        exp.type === 'REPEAT_OFFENDER'
-                      );
-                      if (repeatOffenderExplanations.length > 0) {
-                        repeatOffenderExplanations.forEach(exp => {
-                          if (exp.reasons && exp.reasons.length > 0) {
-                            displayReasons.push(...exp.reasons);
-                          }
-                        });
-                      }
-                      
-                      // Fallback: if no explanations, use employee history
-                      if (displayReasons.length === 0) {
-                        if (escalateCount > 0) {
-                          displayReasons.push(`Employee has ${escalateCount} previous escalation${escalateCount !== 1 ? 's' : ''}`);
+
+                      // Show card if we have fraud types OR employee history
+                      return fraudTypes.length > 0 || escalateCount > 0 || fraudCount > 0;
+                    })() ? (
+                      (() => {
+                        const fraudTypes = results.fraud_types ||
+                          results.data?.fraud_types ||
+                          results.ml_analysis?.fraud_types ||
+                          results.data?.ml_analysis?.fraud_types || [];
+                        const employeeInfo = results.employee_info || results.data?.employee_info || {};
+                        const escalateCount = employeeInfo.escalate_count || 0;
+                        const fraudCount = employeeInfo.fraud_count || 0;
+                        const isNewEmployee = !employeeInfo.employee_id;
+                        const employeeStatus = isNewEmployee ? 'New Employee' : 'Repeat Employee';
+
+                        // Get fraud explanations from multiple possible locations
+                        const fraudExplanations = results.fraud_explanations ||
+                          results.data?.fraud_explanations ||
+                          results.ai_analysis?.fraud_explanations ||
+                          results.data?.ai_analysis?.fraud_explanations || [];
+
+                        // Get primary fraud type - prioritize fraud_types, then fraud_explanations, then default
+                        let primaryFraudType = null;
+                        if (fraudTypes.length > 0) {
+                          primaryFraudType = fraudTypes[0].replace(/_/g, ' ');
+                        } else if (fraudExplanations.length > 0 && fraudExplanations[0].type) {
+                          // Use fraud explanation type if available
+                          primaryFraudType = fraudExplanations[0].type.replace(/_/g, ' ');
+                        } else if (escalateCount > 0 || fraudCount > 0) {
+                          // For repeat employees, default to FABRICATED_DOCUMENT
+                          primaryFraudType = 'FABRICATED_DOCUMENT';
+                        } else {
+                          // Last resort: use FABRICATED_DOCUMENT (removed MISSING_CRITICAL_FIELDS)
+                          primaryFraudType = 'FABRICATED_DOCUMENT';
                         }
-                        if (fraudCount > 0) {
-                          displayReasons.push(`Employee has ${fraudCount} previous fraud incident${fraudCount !== 1 ? 's' : ''}`);
+
+                        // HYBRID APPROACH: Combine document-level fraud explanations with REPEAT_OFFENDER info
+                        let displayReasons = [];
+
+                        // First, add document-level fraud explanations (exclude REPEAT_OFFENDER)
+                        const documentLevelExplanations = fraudExplanations.filter(exp =>
+                          exp.type !== 'REPEAT_OFFENDER'
+                        );
+                        if (documentLevelExplanations.length > 0) {
+                          documentLevelExplanations.forEach(exp => {
+                            if (exp.reasons && exp.reasons.length > 0) {
+                              displayReasons.push(...exp.reasons.slice(0, 2));
+                            }
+                          });
                         }
-                        displayReasons.push(`Employee status: ${employeeStatus} with documented fraud history`);
-                      }
-                      
-                      return (
-                        <div style={{
-                          ...resultCardStyle,
-                          marginBottom: '1.5rem',
-                          backgroundColor: `${primary}15`,
-                          borderLeft: `4px solid ${primary}`,
-                        }}>
-                          <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.75rem' }}>
-                            FRAUD TYPE
-                          </div>
+
+                        // Then, add REPEAT_OFFENDER explanations (based on employee history)
+                        const repeatOffenderExplanations = fraudExplanations.filter(exp =>
+                          exp.type === 'REPEAT_OFFENDER'
+                        );
+                        if (repeatOffenderExplanations.length > 0) {
+                          repeatOffenderExplanations.forEach(exp => {
+                            if (exp.reasons && exp.reasons.length > 0) {
+                              displayReasons.push(...exp.reasons);
+                            }
+                          });
+                        }
+
+                        // Fallback: if no explanations, use employee history
+                        if (displayReasons.length === 0) {
+                          if (escalateCount > 0) {
+                            displayReasons.push(`Employee has ${escalateCount} previous escalation${escalateCount !== 1 ? 's' : ''}`);
+                          }
+                          if (fraudCount > 0) {
+                            displayReasons.push(`Employee has ${fraudCount} previous fraud incident${fraudCount !== 1 ? 's' : ''}`);
+                          }
+                          displayReasons.push(`Employee status: ${employeeStatus} with documented fraud history`);
+                        }
+
+                        return (
                           <div style={{
-                            fontSize: '1.5rem',
-                            fontWeight: 'bold',
-                            color: primary,
-                            marginBottom: '1rem',
+                            ...resultCardStyle,
+                            marginBottom: '1.5rem',
+                            backgroundColor: `${primary}15`,
+                            borderLeft: `4px solid ${primary}`,
                           }}>
-                            {primaryFraudType}
-                          </div>
-                          <div style={{ color: colors.foreground }}>
-                            <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
-                              Why this fraud occurred:
+                            <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.75rem' }}>
+                              FRAUD TYPE
                             </div>
-                            <ul style={{ margin: 0, paddingLeft: '1.5rem', color: colors.foreground }}>
-                              {displayReasons.slice(0, 3).map((reason, index) => (
-                                <li key={index} style={{ marginBottom: '0.5rem', fontSize: '1rem' }}>{reason}</li>
-                              ))}
-                            </ul>
+                            <div style={{
+                              fontSize: '1.5rem',
+                              fontWeight: 'bold',
+                              color: primary,
+                              marginBottom: '1rem',
+                            }}>
+                              {primaryFraudType}
+                            </div>
+                            <div style={{ color: colors.foreground }}>
+                              <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
+                                Why this fraud occurred:
+                              </div>
+                              <ul style={{ margin: 0, paddingLeft: '1.5rem', color: colors.foreground }}>
+                                {displayReasons.slice(0, 3).map((reason, index) => (
+                                  <li key={index} style={{ marginBottom: '0.5rem', fontSize: '1rem' }}>{reason}</li>
+                                ))}
+                              </ul>
+                            </div>
                           </div>
+                        );
+                      })()
+                    ) : null}
+
+                    {/* Actionable Recommendations Card */}
+                    {results.ai_recommendation !== 'APPROVE' && results.ai_analysis && results.ai_analysis.actionable_recommendations && results.ai_analysis.actionable_recommendations.length > 0 && (
+                      <div style={{
+                        ...resultCardStyle,
+                        marginBottom: '1.5rem',
+                        borderLeft: `4px solid ${colors.status?.info || '#3b82f6'}`,
+                      }}>
+                        <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '1rem' }}>
+                          Actionable Recommendations
                         </div>
-                      );
-                    })()
-                  ) : null}
-
-                  {/* Actionable Recommendations Card */}
-                  {results.ai_recommendation !== 'APPROVE' && results.ai_analysis && results.ai_analysis.actionable_recommendations && results.ai_analysis.actionable_recommendations.length > 0 && (
-                    <div style={{
-                      ...resultCardStyle,
-                      marginBottom: '1.5rem',
-                      borderLeft: `4px solid ${colors.status?.info || '#3b82f6'}`,
-                    }}>
-                      <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '1rem' }}>
-                        Actionable Recommendations
+                        <ul style={{ margin: 0, paddingLeft: '1.5rem', color: colors.foreground }}>
+                          {results.ai_analysis.actionable_recommendations.map((rec, index) => (
+                            <li key={index} style={{ marginBottom: '0.5rem', fontSize: '1.1rem' }}>{rec}</li>
+                          ))}
+                        </ul>
                       </div>
-                      <ul style={{ margin: 0, paddingLeft: '1.5rem', color: colors.foreground }}>
-                        {results.ai_analysis.actionable_recommendations.map((rec, index) => (
-                          <li key={index} style={{ marginBottom: '0.5rem', fontSize: '1.1rem' }}>{rec}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              )}
+                    )}
+                  </div>
+                )}
 
 
-              {/* Detailed sections removed as per user request to show only top 4 metrics */}
-              {/*
+                {/* Detailed sections removed as per user request to show only top 4 metrics */}
+                {/*
               <div style={confidenceStyle(results.confidence_score || 0)}>
                 [{results.confidence_score >= 70 ? 'HIGH' : results.confidence_score >= 50 ? 'MEDIUM' : 'LOW'}]
                 Extraction Confidence: {results.confidence_score?.toFixed(1)}%
@@ -622,22 +622,22 @@ const PaystubAnalysis = () => {
               )}
               */}
 
-              <button
-                style={{
-                  ...buttonStyle,
-                  backgroundColor: primary,
-                  marginTop: '1.5rem',
-                }}
-                onClick={downloadJSON}
-                onMouseEnter={(e) => e.target.style.backgroundColor = primary}
-                onMouseLeave={(e) => e.target.style.backgroundColor = primary}
-              >
-                Download Full Results (JSON)
-              </button>
-            </div>
-          )}
+                <button
+                  style={{
+                    ...buttonStyle,
+                    backgroundColor: primary,
+                    marginTop: '1.5rem',
+                  }}
+                  onClick={downloadJSON}
+                  onMouseEnter={(e) => e.target.style.backgroundColor = primary}
+                  onMouseLeave={(e) => e.target.style.backgroundColor = primary}
+                >
+                  Download Full Results (JSON)
+                </button>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
       )}
 
       {/* Insights Tab */}
