@@ -588,8 +588,47 @@ def analyze_money_order():
             document_id = store_money_order_analysis(user_id, filename, result)
             logger.info(f"Money order stored to database: {document_id}")
 
+            # Extract fraud types and explanations for API response (similar to paystub/bank statement)
+            ml_analysis = result.get('ml_analysis', {})
+            ai_analysis = result.get('ai_analysis', {})
+            
+            # Get AI recommendation first
+            ai_recommendation = ai_analysis.get('recommendation', 'UNKNOWN') if ai_analysis else 'UNKNOWN'
+            ai_recommendation = ai_recommendation.upper()
+
+            # Only show fraud types if recommendation is REJECT or ESCALATE
+            # For APPROVE, keep fraud_type as None (no fraud detected)
+            fraud_type = None
+            fraud_type_label = None
+            fraud_explanations = []
+            
+            if ai_recommendation in ['REJECT', 'ESCALATE']:
+                # Extract fraud types from AI analysis
+                ai_fraud_types = ai_analysis.get('fraud_types', []) if ai_analysis else []
+
+                # Extract the primary fraud type (first in list)
+                if ai_fraud_types:
+                    fraud_type = ai_fraud_types[0] if isinstance(ai_fraud_types, list) else ai_fraud_types
+                    # Format fraud type for display (remove underscores and title case)
+                    fraud_type_label = fraud_type.replace('_', ' ').title() if fraud_type else None
+
+                # Get fraud explanations from AI analysis
+                fraud_explanations = ai_analysis.get('fraud_explanations', []) if ai_analysis else []
+            # For APPROVE, fraud_type remains None (no fraud detected)
+
             return jsonify({
                 'success': True,
+                'fraud_risk_score': ml_analysis.get('fraud_risk_score', 0.0),
+                'risk_level': ml_analysis.get('risk_level', 'UNKNOWN'),
+                'model_confidence': ml_analysis.get('model_confidence', 0.0),
+                'fraud_type': fraud_type,  # Single fraud type (machine format)
+                'fraud_type_label': fraud_type_label,  # Human-readable format (e.g., "Signature Forgery")
+                'fraud_explanations': fraud_explanations if isinstance(fraud_explanations, list) else [],
+                'fraud_types': [fraud_type] if fraud_type else [],  # List format for compatibility
+                'ai_recommendation': ai_analysis.get('recommendation', 'UNKNOWN'),
+                'ai_confidence': ai_analysis.get('confidence_score', 0.0),
+                'summary': ai_analysis.get('summary', ''),
+                'key_indicators': ai_analysis.get('key_indicators', []),
                 'data': response_data,
                 'analysis_id': analysis_id,  # For download
                 'document_id': document_id,  # Database record ID

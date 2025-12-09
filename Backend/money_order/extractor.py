@@ -567,7 +567,9 @@ class MoneyOrderExtractor:
             is_repeat_customer = False
 
         # Pass customer info to AI analysis
-        ai_analysis = self.ai_agent.analyze_fraud(ml_analysis, data, customer_id, is_repeat_customer, customer_fraud_history)
+        # CRITICAL: Add raw_text to data so AI can detect spelling errors in amount field
+        data_with_raw_text = {**data, 'raw_text': text}
+        ai_analysis = self.ai_agent.analyze_fraud(ml_analysis, data_with_raw_text, customer_id, is_repeat_customer, customer_fraud_history)
 
         # Convert ML fraud indicators into anomalies format for frontend
         anomalies = self._convert_to_anomalies(ml_analysis, ai_analysis)

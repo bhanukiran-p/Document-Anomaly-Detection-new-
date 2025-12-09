@@ -240,454 +240,353 @@ const MoneyOrderAnalysis = () => {
 
       {/* Tab Content */}
       {activeTab === 'analyze' && (
-      <div style={gridStyle}>
-        {/* Upload Section */}
-        <div style={cardStyle}>
-          <h2 style={{ color: colors.foreground, marginBottom: '1.5rem', fontSize: '1.5rem', fontWeight: 'bold' }}>
-            Upload Money Order Image
-          </h2>
+        <div style={gridStyle}>
+          {/* Upload Section */}
+          <div style={cardStyle}>
+            <h2 style={{ color: colors.foreground, marginBottom: '1.5rem', fontSize: '1.5rem', fontWeight: 'bold' }}>
+              Upload Money Order Image
+            </h2>
 
-          <div style={warningBannerStyle}>
-            <p style={{ color: primary, fontSize: '0.875rem', margin: 0, fontWeight: '500' }}>
-              ⚠️ Only upload money order documents (Western Union, MoneyGram, USPS, etc.)
-            </p>
-          </div>
-
-          <div {...getRootProps()} style={dropzoneStyle}>
-            <input {...getInputProps()} />
-            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>💵</div>
-            {isDragActive ? (
-              <p style={{ color: primary, fontWeight: '500' }}>
-                Drop the money order image here...
+            <div style={warningBannerStyle}>
+              <p style={{ color: primary, fontSize: '0.875rem', margin: 0, fontWeight: '500' }}>
+                ⚠️ Only upload money order documents (Western Union, MoneyGram, USPS, etc.)
               </p>
-            ) : (
-              <div>
-                <p style={{ color: colors.foreground, marginBottom: '0.5rem' }}>
-                  Drop your money order image here or click to browse
+            </div>
+
+            <div {...getRootProps()} style={dropzoneStyle}>
+              <input {...getInputProps()} />
+              <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>💵</div>
+              {isDragActive ? (
+                <p style={{ color: primary, fontWeight: '500' }}>
+                  Drop the money order image here...
                 </p>
-                <p style={{ color: colors.mutedForeground, fontSize: '0.875rem' }}>
-                  Money Orders Only - JPG, JPEG, PNG, PDF
-                </p>
+              ) : (
+                <div>
+                  <p style={{ color: colors.foreground, marginBottom: '0.5rem' }}>
+                    Drop your money order image here or click to browse
+                  </p>
+                  <p style={{ color: colors.mutedForeground, fontSize: '0.875rem' }}>
+                    Money Orders Only - JPG, JPEG, PNG, PDF
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {file && (
+              <div style={{ marginTop: '1.5rem' }}>
+                <div style={{
+                  backgroundColor: colors.secondary,
+                  padding: '1rem',
+                  borderRadius: '0.5rem',
+                  border: `1px solid ${colors.border}`,
+                  color: colors.foreground,
+                }}>
+                  <strong>File:</strong> {file.name}<br />
+                  <strong>Size:</strong> {(file.size / 1024).toFixed(2)} KB<br />
+                  <strong>Type:</strong> {file.type || 'Unknown'}
+                </div>
+
+                {preview && (
+                  <div style={{ marginTop: '1rem' }}>
+                    <img
+                      src={preview}
+                      alt="Money order preview"
+                      style={{
+                        width: '100%',
+                        borderRadius: '0.5rem',
+                        boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)',
+                        border: `1px solid ${colors.border}`,
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            <button
+              style={buttonStyle}
+              onClick={handleAnalyze}
+              disabled={loading || !file}
+              onMouseEnter={(e) => {
+                if (!loading) {
+                  e.target.style.transform = 'translateY(-2px)';
+                  e.target.style.boxShadow = `0 6px 30px ${primary}60`;
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!loading) {
+                  e.target.style.transform = 'translateY(0)';
+                  e.target.style.boxShadow = `0 0 20px ${primary}40`;
+                }
+              }}
+            >
+              {loading ? 'Analyzing...' : 'Analyze Money Order'}
+            </button>
+
+            {error && (
+              <div style={{
+                backgroundColor: `${colors.destructive}20`,
+                color: colors.destructive,
+                padding: '1rem',
+                borderRadius: '0.5rem',
+                marginTop: '1rem',
+                fontWeight: '500',
+                border: `1px solid ${colors.destructive}`,
+              }}>
+                {error}
               </div>
             )}
           </div>
 
-          {file && (
-            <div style={{ marginTop: '1.5rem' }}>
+          {/* Results Section */}
+          <div style={cardStyle}>
+            <h2 style={{ color: colors.foreground, marginBottom: '1.5rem', fontSize: '1.5rem', fontWeight: 'bold' }}>
+              Analysis Results
+            </h2>
+
+            {!results && !loading && (
               <div style={{
                 backgroundColor: colors.secondary,
-                padding: '1rem',
+                padding: '2rem',
                 borderRadius: '0.5rem',
+                textAlign: 'center',
+                color: colors.mutedForeground,
                 border: `1px solid ${colors.border}`,
-                color: colors.foreground,
               }}>
-                <strong>File:</strong> {file.name}<br />
-                <strong>Size:</strong> {(file.size / 1024).toFixed(2)} KB<br />
-                <strong>Type:</strong> {file.type || 'Unknown'}
+                <p>Upload a money order image on the left to begin analysis</p>
               </div>
+            )}
 
-              {preview && (
-                <div style={{ marginTop: '1rem' }}>
-                  <img
-                    src={preview}
-                    alt="Money order preview"
-                    style={{
-                      width: '100%',
-                      borderRadius: '0.5rem',
-                      boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)',
-                      border: `1px solid ${colors.border}`,
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-          )}
-
-          <button
-            style={buttonStyle}
-            onClick={handleAnalyze}
-            disabled={loading || !file}
-            onMouseEnter={(e) => {
-              if (!loading) {
-                e.target.style.transform = 'translateY(-2px)';
-                e.target.style.boxShadow = `0 6px 30px ${primary}60`;
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!loading) {
-                e.target.style.transform = 'translateY(0)';
-                e.target.style.boxShadow = `0 0 20px ${primary}40`;
-              }
-            }}
-          >
-            {loading ? 'Analyzing...' : 'Analyze Money Order'}
-          </button>
-
-          {error && (
-            <div style={{
-              backgroundColor: `${colors.destructive}20`,
-              color: colors.destructive,
-              padding: '1rem',
-              borderRadius: '0.5rem',
-              marginTop: '1rem',
-              fontWeight: '500',
-              border: `1px solid ${colors.destructive}`,
-            }}>
-              {error}
-            </div>
-          )}
-        </div>
-
-        {/* Results Section */}
-        <div style={cardStyle}>
-          <h2 style={{ color: colors.foreground, marginBottom: '1.5rem', fontSize: '1.5rem', fontWeight: 'bold' }}>
-            Analysis Results
-          </h2>
-
-          {!results && !loading && (
-            <div style={{
-              backgroundColor: colors.secondary,
-              padding: '2rem',
-              borderRadius: '0.5rem',
-              textAlign: 'center',
-              color: colors.mutedForeground,
-              border: `1px solid ${colors.border}`,
-            }}>
-              <p>Upload a money order image on the left to begin analysis</p>
-            </div>
-          )}
-
-          {loading && (
-            <div style={{ textAlign: 'center', padding: '3rem' }}>
-              <div className="spin" style={{
-                fontSize: '3rem',
-                color: primary,
-              }}>⚙️</div>
-              <p style={{ marginTop: '1rem', color: colors.mutedForeground }}>
-                Analyzing money order...
-              </p>
-            </div>
-          )}
-
-          {/* Display Results */}
-          {results && results.success && hasResults && (
-            <div className="fade-in">
-              {/* Fraud Risk Score Card */}
-              <div style={{
-                ...resultCardStyle,
-                marginBottom: '1.5rem',
-                backgroundColor: `${primary}20`,
-                borderLeft: `4px solid ${primary}`,
-              }}>
-                <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
-                  Fraud Risk Score
-                </div>
-                <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: primary }}>
-                  {(mlAnalysis.fraud_risk_score * 100).toFixed(1)}%
-                </div>
+            {loading && (
+              <div style={{ textAlign: 'center', padding: '3rem' }}>
+                <div className="spin" style={{
+                  fontSize: '3rem',
+                  color: primary,
+                }}>⚙️</div>
+                <p style={{ marginTop: '1rem', color: colors.mutedForeground }}>
+                  Analyzing money order...
+                </p>
               </div>
+            )}
 
-              {/* Model Confidence Card */}
-              <div style={{
-                ...resultCardStyle,
-                marginBottom: '1.5rem',
-                backgroundColor: `${colors.status.success}20`,
-                borderLeft: `4px solid ${colors.status.success}`,
-              }}>
-                <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
-                  Model Confidence
-                </div>
-                <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: colors.status.success }}>
-                  {(mlAnalysis.model_confidence * 100).toFixed(1)}%
-                </div>
-              </div>
-
-              {/* AI Recommendation Card */}
-              <div style={{
-                ...resultCardStyle,
-                marginBottom: '1.5rem',
-                backgroundColor: (aiAnalysis.recommendation || aiAnalysis.ai_recommendation) === 'APPROVE' ? `${colors.status.success}20` :
-                  (aiAnalysis.recommendation || aiAnalysis.ai_recommendation) === 'REJECT' ? `${primary}20` :
-                    `${colors.status.warning}20`,
-                borderLeft: `4px solid ${(aiAnalysis.recommendation || aiAnalysis.ai_recommendation) === 'APPROVE' ? colors.status.success :
-                  (aiAnalysis.recommendation || aiAnalysis.ai_recommendation) === 'REJECT' ? primary :
-                    colors.status.warning}`,
-              }}>
-                <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
-                  AI Recommendation
-                </div>
-                <div style={{
-                  fontSize: '2rem',
-                  fontWeight: 'bold',
-                  color: (aiAnalysis.recommendation || aiAnalysis.ai_recommendation) === 'APPROVE' ? colors.status.success :
-                    (aiAnalysis.recommendation || aiAnalysis.ai_recommendation) === 'REJECT' ? primary :
-                      colors.status.warning,
-                }}>
-                  {aiAnalysis.recommendation || aiAnalysis.ai_recommendation || 'UNKNOWN'}
-                </div>
-              </div>
-
-              {/* Actionable Recommendations Card */}
-              {aiAnalysis.actionable_recommendations && aiAnalysis.actionable_recommendations.length > 0 && (
+            {/* Display Results */}
+            {results && results.success && hasResults && (
+              <div className="fade-in">
+                {/* Fraud Risk Score Card */}
                 <div style={{
                   ...resultCardStyle,
                   marginBottom: '1.5rem',
-                  borderLeft: `4px solid ${colors.status?.info || '#3b82f6'}`,
+                  backgroundColor: `${primary}20`,
+                  borderLeft: `4px solid ${primary}`,
                 }}>
-                  <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '1rem' }}>
-                    Actionable Recommendations
+                  <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
+                    Fraud Risk Score
                   </div>
-                  <ul style={{ margin: 0, paddingLeft: '1.5rem', color: colors.foreground }}>
-                    {aiAnalysis.actionable_recommendations.map((rec, index) => (
-                      <li key={index} style={{ marginBottom: '0.5rem', fontSize: '1.1rem' }}>{rec}</li>
-                    ))}
-                  </ul>
+                  <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: primary }}>
+                    {(mlAnalysis.fraud_risk_score * 100).toFixed(1)}%
+                  </div>
                 </div>
-              )}
 
-              {/* AI Analysis Details - Reasoning */}
-              <div style={{
-                ...resultCardStyle,
-                marginBottom: '1.5rem',
-                backgroundColor: colors.card,
-                border: `1px solid ${colors.border}`,
-              }}>
-                <h4 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"/>
-                    <path d="M12 6v6l4 2"/>
-                  </svg>
-                  Analysis Details
-                </h4>
+                {/* Model Confidence Card */}
+                <div style={{
+                  ...resultCardStyle,
+                  marginBottom: '1.5rem',
+                  backgroundColor: `${colors.status.success}20`,
+                  borderLeft: `4px solid ${colors.status.success}`,
+                }}>
+                  <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
+                    Model Confidence
+                  </div>
+                  <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: colors.status.success }}>
+                    {(mlAnalysis.model_confidence * 100).toFixed(1)}%
+                  </div>
+                </div>
 
-                {aiAnalysis && aiAnalysis.summary ? (
-                  <div style={{ marginBottom: '1rem' }}>
-                    <strong style={{ color: colors.foreground }}>Summary:</strong>
-                    <p style={{ color: colors.mutedForeground, marginTop: '0.5rem' }}>
-                      {aiAnalysis.summary}
-                    </p>
+                {/* AI Recommendation Card */}
+                <div style={{
+                  ...resultCardStyle,
+                  marginBottom: '1.5rem',
+                  backgroundColor: (aiAnalysis.recommendation || aiAnalysis.ai_recommendation) === 'APPROVE' ? `${colors.status.success}20` :
+                    (aiAnalysis.recommendation || aiAnalysis.ai_recommendation) === 'REJECT' ? `${primary}20` :
+                      `${colors.status.warning}20`,
+                  borderLeft: `4px solid ${(aiAnalysis.recommendation || aiAnalysis.ai_recommendation) === 'APPROVE' ? colors.status.success :
+                    (aiAnalysis.recommendation || aiAnalysis.ai_recommendation) === 'REJECT' ? primary :
+                      colors.status.warning}`,
+                }}>
+                  <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
+                    AI Recommendation
                   </div>
-                ) : mlAnalysis ? (
-                  <div style={{ marginBottom: '1rem' }}>
-                    <strong style={{ color: colors.foreground }}>Summary:</strong>
-                    <p style={{ color: colors.mutedForeground, marginTop: '0.5rem' }}>
-                      {mlAnalysis.risk_level === 'HIGH' || mlAnalysis.risk_level === 'CRITICAL' 
-                        ? 'High fraud risk - requires immediate review'
-                        : mlAnalysis.risk_level === 'MEDIUM'
-                        ? 'Moderate fraud risk - requires human review'
-                        : 'Low fraud risk - proceed with caution'}
-                    </p>
+                  <div style={{
+                    fontSize: '2rem',
+                    fontWeight: 'bold',
+                    color: (aiAnalysis.recommendation || aiAnalysis.ai_recommendation) === 'APPROVE' ? colors.status.success :
+                      (aiAnalysis.recommendation || aiAnalysis.ai_recommendation) === 'REJECT' ? primary :
+                        colors.status.warning,
+                  }}>
+                    {aiAnalysis.recommendation || aiAnalysis.ai_recommendation || 'UNKNOWN'}
                   </div>
-                ) : null}
+                </div>
 
-                {aiAnalysis && aiAnalysis.reasoning ? (
-                  <div style={{ marginBottom: '1rem' }}>
-                    <strong style={{ color: colors.foreground }}>Reasoning:</strong>
-                    <p style={{ color: colors.mutedForeground, marginTop: '0.5rem', whiteSpace: 'pre-wrap' }}>
-                      {typeof aiAnalysis.reasoning === 'string' 
-                        ? aiAnalysis.reasoning 
-                        : Array.isArray(aiAnalysis.reasoning) 
-                          ? aiAnalysis.reasoning.join('\n') 
-                          : 'AI analysis unavailable - using ML-based fallback decision'}
-                    </p>
-                    {mlAnalysis && (
-                      <p style={{ color: colors.mutedForeground, marginTop: '0.5rem' }}>
-                        ML fraud score: {((mlAnalysis.fraud_risk_score || 0) * 100).toFixed(2)}%<br/>
-                        Risk level: {mlAnalysis.risk_level || 'UNKNOWN'}
-                      </p>
-                    )}
-                  </div>
-                ) : mlAnalysis ? (
-                  <div style={{ marginBottom: '1rem' }}>
-                    <strong style={{ color: colors.foreground }}>Reasoning:</strong>
-                    <p style={{ color: colors.mutedForeground, marginTop: '0.5rem' }}>
-                      AI analysis unavailable - using ML-based fallback decision<br/>
-                      ML fraud score: {((mlAnalysis.fraud_risk_score || 0) * 100).toFixed(2)}%<br/>
-                      Risk level: {mlAnalysis.risk_level || 'UNKNOWN'}
-                    </p>
-                  </div>
-                ) : (
-                  <div style={{ marginBottom: '1rem' }}>
-                    <strong style={{ color: colors.foreground }}>Reasoning:</strong>
-                    <p style={{ color: colors.mutedForeground, marginTop: '0.5rem' }}>
-                      Analysis data not available
-                    </p>
-                  </div>
-                )}
+                {/* Fraud Type Card - Shows fraud type and explanations for REJECT ONLY */}
+                {(() => {
+                  // Only show for REJECT (not APPROVE or ESCALATE)
+                  const recommendation = aiAnalysis.recommendation || aiAnalysis.ai_recommendation;
+                  if (recommendation !== 'REJECT') {
+                    return null;
+                  }
 
-                {aiAnalysis && aiAnalysis.key_indicators && aiAnalysis.key_indicators.length > 0 ? (
-                  <div style={{ marginBottom: '1rem' }}>
-                    <strong style={{ color: colors.foreground }}>Key Fraud Indicators:</strong>
-                    <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
-                      {aiAnalysis.key_indicators.map((indicator, idx) => (
-                        <li key={idx} style={{ marginBottom: '0.3rem' }}>{indicator}</li>
+                  // Get fraud type and explanations from response
+                  const fraudType = results.fraud_type || analysisData?.fraud_type;
+                  const fraudTypeLabel = results.fraud_type_label || analysisData?.fraud_type_label;
+                  const fraudExplanations = results.fraud_explanations || analysisData?.fraud_explanations || [];
+
+                  // Only show if we have fraud type or explanations
+                  if (!fraudType && !fraudTypeLabel && fraudExplanations.length === 0) {
+                    return null;
+                  }
+
+                  // Get display label (prefer fraud_type_label, fallback to formatted fraud_type)
+                  const displayLabel = fraudTypeLabel || (fraudType ? fraudType.replace(/_/g, ' ') : 'FRAUD DETECTED');
+
+                  // Collect all reasons from fraud explanations
+                  let displayReasons = [];
+                  if (fraudExplanations.length > 0) {
+                    fraudExplanations.forEach(exp => {
+                      if (exp.reasons && exp.reasons.length > 0) {
+                        displayReasons.push(...exp.reasons);
+                      }
+                    });
+                  }
+
+                  // Fallback if no reasons
+                  if (displayReasons.length === 0) {
+                    displayReasons.push('Fraud indicators detected by ML analysis');
+                  }
+
+                  return (
+                    <div style={{
+                      ...resultCardStyle,
+                      marginBottom: '1.5rem',
+                      backgroundColor: `${primary}15`,
+                      borderLeft: `4px solid ${primary}`,
+                    }}>
+                      <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.75rem' }}>
+                        FRAUD TYPE
+                      </div>
+                      <div style={{
+                        fontSize: '1.5rem',
+                        fontWeight: 'bold',
+                        color: primary,
+                        marginBottom: '1rem',
+                      }}>
+                        {displayLabel}
+                      </div>
+                      <div style={{ color: colors.foreground }}>
+                        <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
+                          Why this fraud occurred:
+                        </div>
+                        <ul style={{ margin: 0, paddingLeft: '1.5rem', color: colors.foreground }}>
+                          {displayReasons.slice(0, 3).map((reason, index) => (
+                            <li key={index} style={{ marginBottom: '0.5rem', fontSize: '1rem' }}>{reason}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Actionable Recommendations Card */}
+                {aiAnalysis.actionable_recommendations && aiAnalysis.actionable_recommendations.length > 0 && (
+                  <div style={{
+                    ...resultCardStyle,
+                    marginBottom: '1.5rem',
+                    borderLeft: `4px solid ${colors.status?.info || '#3b82f6'}`,
+                  }}>
+                    <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '1rem' }}>
+                      Actionable Recommendations
+                    </div>
+                    <ul style={{ margin: 0, paddingLeft: '1.5rem', color: colors.foreground }}>
+                      {aiAnalysis.actionable_recommendations.map((rec, index) => (
+                        <li key={index} style={{ marginBottom: '0.5rem', fontSize: '1.1rem' }}>{rec}</li>
                       ))}
                     </ul>
                   </div>
-                ) : (
-                  <div style={{ marginBottom: '1rem' }}>
-                    <strong style={{ color: colors.foreground }}>Key Fraud Indicators:</strong>
-                    <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
-                      <li>No significant risk factors</li>
-                    </ul>
-                  </div>
                 )}
 
-                {aiAnalysis && aiAnalysis.verification_notes && (
-                  <div style={{ marginBottom: '1rem' }}>
-                    <strong style={{ color: colors.foreground }}>Verification Notes:</strong>
-                    <p style={{ color: colors.mutedForeground, marginTop: '0.5rem', whiteSpace: 'pre-wrap' }}>
-                      {aiAnalysis.verification_notes}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Risk Analysis Details - Feature Importance */}
-              <div style={{
-                ...resultCardStyle,
-                marginBottom: '1.5rem',
-                backgroundColor: colors.card,
-                border: `1px solid ${colors.border}`,
-              }}>
-                <h4 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M3 3v18h18"/>
-                    <path d="M18 17V9"/>
-                    <path d="M13 17V5"/>
-                    <path d="M8 17v-3"/>
-                  </svg>
-                  Risk Analysis
-                </h4>
-
-                {mlAnalysis && mlAnalysis.risk_level ? (
-                  <div style={{ marginBottom: '1rem' }}>
-                    <strong style={{ color: colors.foreground }}>Risk Level:</strong>
-                    <span style={{
-                      marginLeft: '0.5rem',
-                      color: mlAnalysis.risk_level === 'HIGH' || mlAnalysis.risk_level === 'CRITICAL' ? primary : 
-                             mlAnalysis.risk_level === 'MEDIUM' ? colors.status.warning : colors.status.success,
-                      fontWeight: 'bold'
-                    }}>
-                      {mlAnalysis.risk_level}
-                    </span>
-                  </div>
-                ) : null}
-
-                {mlAnalysis && Array.isArray(mlAnalysis.feature_importance) && mlAnalysis.feature_importance.length > 0 ? (
-                  <div style={{ marginBottom: '1rem' }}>
-                    <strong style={{ color: colors.foreground }}>Top Risk Indicators:</strong>
-                    <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
-                      {mlAnalysis.feature_importance.slice(0, 5).map((item, idx) => {
-                        if (typeof item === 'string') {
-                          return <li key={idx} style={{ marginBottom: '0.3rem' }}>{item}</li>;
-                        } else if (item.feature && item.importance) {
-                          return (
-                            <li key={idx} style={{ marginBottom: '0.3rem' }}>
-                              {item.feature}: {(item.importance * 100).toFixed(1)}%
-                            </li>
-                          );
-                        }
-                        return null;
-                      })}
-                    </ul>
-                  </div>
-                ) : (
-                  <div style={{ marginBottom: '1rem' }}>
-                    <strong style={{ color: colors.foreground }}>Top Risk Indicators:</strong>
-                    <ul style={{ color: colors.mutedForeground, marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
-                      <li>No significant risk factors</li>
-                    </ul>
-                  </div>
-                )}
-
-                {mlAnalysis && mlAnalysis.model_scores ? (
-                  <div style={{ fontSize: '0.85rem', color: colors.mutedForeground, marginTop: '1rem' }}>
-                    <strong>Analysis Scores:</strong>
-                    {mlAnalysis.model_scores.random_forest !== undefined && (
-                      <div>Primary Analysis: {(mlAnalysis.model_scores.random_forest * 100).toFixed(1)}%</div>
-                    )}
-                    {mlAnalysis.model_scores.xgboost !== undefined && (
-                      <div>Secondary Analysis: {(mlAnalysis.model_scores.xgboost * 100).toFixed(1)}%</div>
-                    )}
-                  </div>
-                ) : null}
-              </div>
-
-              {/* Informational Message */}
-              <div style={{
-                ...resultCardStyle,
-                backgroundColor: colors.card,
-                border: `1px solid ${colors.border}`
-              }}>
-                <p style={{ margin: 0, color: colors.mutedForeground }}>
-                  Detailed extracted money order information is available in the downloaded JSON file in a structured table format.
-                </p>
-              </div>
-
-              {/* Download Button */}
-              <button
-                style={{
-                  ...buttonStyle,
+                {/* Informational Message */}
+                <div style={{
+                  ...resultCardStyle,
                   backgroundColor: colors.card,
-                  color: colors.foreground,
-                  border: `2px solid ${colors.border}`,
-                  marginTop: '1.5rem',
-                }}
-                onClick={downloadJSON}
-                onMouseEnter={(e) => {
-                  e.target.style.borderColor = primary;
-                  e.target.style.backgroundColor = colors.muted;
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.borderColor = colors.border;
-                  e.target.style.backgroundColor = colors.card;
-                }}
-              >
-                Download Full Results (JSON)
-              </button>
-            </div>
-          )}
+                  border: `1px solid ${colors.border}`
+                }}>
+                  <p style={{ margin: 0, color: colors.mutedForeground }}>
+                    Detailed extracted money order information is available in the downloaded JSON file in a structured table format.
+                  </p>
+                </div>
 
-          {/* Legacy format support (if old API response structure) */}
-          {results && results.success && !hasResults && results.data && (
-            <div className="fade-in">
-              <div style={{
-                backgroundColor: colors.secondary,
-                padding: '1.5rem',
-                borderRadius: '0.5rem',
-                border: `1px solid ${colors.border}`,
-                color: colors.foreground,
-              }}>
-                <p style={{ color: colors.mutedForeground }}>
-                  Analysis completed. Full results available for download.
-                </p>
+                {/* Download Button */}
+                <button
+                  style={{
+                    ...buttonStyle,
+                    backgroundColor: colors.card,
+                    color: colors.foreground,
+                    border: `2px solid ${colors.border}`,
+                    marginTop: '1.5rem',
+                  }}
+                  onClick={downloadJSON}
+                  onMouseEnter={(e) => {
+                    e.target.style.borderColor = primary;
+                    e.target.style.backgroundColor = colors.muted;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.borderColor = colors.border;
+                    e.target.style.backgroundColor = colors.card;
+                  }}
+                >
+                  Download Full Results (JSON)
+                </button>
               </div>
+            )}
 
-              <button
-                style={{
-                  ...buttonStyle,
-                  backgroundColor: colors.card,
+            {/* Legacy format support (if old API response structure) */}
+            {results && results.success && !hasResults && results.data && (
+              <div className="fade-in">
+                <div style={{
+                  backgroundColor: colors.secondary,
+                  padding: '1.5rem',
+                  borderRadius: '0.5rem',
+                  border: `1px solid ${colors.border}`,
                   color: colors.foreground,
-                  border: `2px solid ${colors.border}`,
-                  marginTop: '1.5rem',
-                }}
-                onClick={downloadJSON}
-                onMouseEnter={(e) => {
-                  e.target.style.borderColor = primary;
-                  e.target.style.backgroundColor = colors.muted;
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.borderColor = colors.border;
-                  e.target.style.backgroundColor = colors.card;
-                }}
-              >
-                Download Full Results (JSON)
-              </button>
-            </div>
-          )}
+                }}>
+                  <p style={{ color: colors.mutedForeground }}>
+                    Analysis completed. Full results available for download.
+                  </p>
+                </div>
+
+                <button
+                  style={{
+                    ...buttonStyle,
+                    backgroundColor: colors.card,
+                    color: colors.foreground,
+                    border: `2px solid ${colors.border}`,
+                    marginTop: '1.5rem',
+                  }}
+                  onClick={downloadJSON}
+                  onMouseEnter={(e) => {
+                    e.target.style.borderColor = primary;
+                    e.target.style.backgroundColor = colors.muted;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.borderColor = colors.border;
+                    e.target.style.backgroundColor = colors.card;
+                  }}
+                >
+                  Download Full Results (JSON)
+                </button>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
       )}
 
       {/* Insights Tab */}
