@@ -470,7 +470,7 @@ const PaystubInsights = () => {
         setAllPaystubsData(rows);
         setTotalRecords(rows.length);
 
-        const employers = [...new Set(rows.map(r => r['employer_name'] || 'Unknown'))];
+        const employers = [...new Set(rows.map(r => r['employer_name']).filter(emp => emp && emp.trim() && emp !== 'Unknown'))];
         setAvailableEmployers(employers.sort());
 
         // Extract available fraud types
@@ -525,7 +525,7 @@ const PaystubInsights = () => {
       setAllPaystubsData(rows);
       setTotalRecords(rows.length);
 
-      const employers = [...new Set(rows.map(r => r.employer_name || 'Unknown'))];
+      const employers = [...new Set(rows.map(r => r.employer_name).filter(emp => emp && emp.trim() && emp !== 'Unknown'))];
       setAvailableEmployers(employers.sort());
 
       // Extract available fraud types
