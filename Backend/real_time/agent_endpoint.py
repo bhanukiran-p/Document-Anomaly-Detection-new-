@@ -63,7 +63,27 @@ class AgentAnalysisService:
             fraud_patterns = self.agent.explain_fraud_patterns(analysis_result)
 
             # Generate recommendations using LLM
-            recommendations = self.agent.generate_recommendations(analysis_result)
+            llm_recommendations = self.agent.generate_recommendations(analysis_result)
+
+            # Log recommendation source and details
+            logger.info("=" * 80)
+            logger.info("FRAUD PREVENTION RECOMMENDATIONS SOURCE VERIFICATION")
+            logger.info("=" * 80)
+            logger.info(f"Recommendation count: {len(llm_recommendations)}")
+            logger.info(f"Recommendation type: {type(llm_recommendations)}")
+
+            if llm_recommendations:
+                logger.info(f"First recommendation type: {type(llm_recommendations[0])}")
+                if isinstance(llm_recommendations[0], dict):
+                    logger.info("✓ RECOMMENDATIONS ARE STRUCTURED OBJECTS FROM AI")
+                    logger.info(f"Sample recommendation keys: {list(llm_recommendations[0].keys())}")
+                    logger.info(f"Pattern type: {llm_recommendations[0].get('pattern_type', 'N/A')}")
+                    logger.info(f"Severity: {llm_recommendations[0].get('severity', 'N/A')}")
+                else:
+                    logger.warning("✗ RECOMMENDATIONS ARE STRINGS (NOT FROM AI STRUCTURED FORMAT)")
+            else:
+                logger.warning("✗ NO RECOMMENDATIONS GENERATED")
+            logger.info("=" * 80)
 
             return {
                 'success': True,
@@ -72,9 +92,10 @@ class AgentAnalysisService:
                     'csv_features': csv_features,
                     'detailed_insights': detailed_insights.get('insights', ''),
                     'fraud_patterns': fraud_patterns.get('explanation', ''),
-                    'recommendations': recommendations,
+                    'recommendations': llm_recommendations,
+                    'pattern_recommendations': llm_recommendations,  # Use LLM recommendations
                     'analysis_type': detailed_insights.get('analysis_type', 'llm'),
-                    'model_used': detailed_insights.get('model_used', 'gpt-4')
+                    'model_used': detailed_insights.get('model_used', 'gpt-3.5-turbo')
                 }
             }
 

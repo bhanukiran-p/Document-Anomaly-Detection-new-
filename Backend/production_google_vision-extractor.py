@@ -18,15 +18,33 @@ class ProductionCheckExtractor:
         """
         Initialize Vision API client
         """
+        # Get the directory where this script is located (Backend folder)
+        backend_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # Resolve credentials path
         if credentials_path and os.path.exists(credentials_path):
             credentials = service_account.Credentials.from_service_account_file(
                 credentials_path
             )
             self.client = vision.ImageAnnotatorClient(credentials=credentials)
-        elif 'GOOGLE_APPLICATION_CREDENTIALS' in os.environ:
-            self.client = vision.ImageAnnotatorClient()
         else:
-            self.client = vision.ImageAnnotatorClient()
+            # Try default location in Backend folder
+            default_path = os.path.join(backend_dir, 'google-credentials.json')
+            if os.path.exists(default_path):
+                credentials = service_account.Credentials.from_service_account_file(
+                    default_path
+                )
+                self.client = vision.ImageAnnotatorClient(credentials=credentials)
+            elif 'GOOGLE_APPLICATION_CREDENTIALS' in os.environ:
+                env_path = os.environ['GOOGLE_APPLICATION_CREDENTIALS']
+                # Only use environment variable if the file actually exists
+                if os.path.exists(env_path):
+                    self.client = vision.ImageAnnotatorClient()
+                else:
+                    # Fallback: try Backend folder
+                    self.client = vision.ImageAnnotatorClient()
+            else:
+                self.client = vision.ImageAnnotatorClient()
 
     def extract_check_details(self, image_path: str) -> Dict[str, Any]:
         """

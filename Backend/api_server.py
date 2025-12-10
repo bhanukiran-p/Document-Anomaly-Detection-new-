@@ -10,9 +10,12 @@ import sys
 import logging
 from logging.handlers import RotatingFileHandler
 from werkzeug.utils import secure_filename
+from pathlib import Path
 import importlib.util
 import re
 import fitz
+import uuid
+from datetime import datetime
 from google.cloud import vision
 from auth import login_user, register_user
 from database.supabase_client import get_supabase, check_connection as check_supabase_connection
@@ -58,19 +61,25 @@ load_dotenv()
 
 # Check for critical environment variables
 if os.getenv('OPENAI_API_KEY'):
-    logger.info("✅ OPENAI_API_KEY found in environment")
+    logger.info(" OPENAI_API_KEY found in environment")
 else:
-    logger.error("❌ OPENAI_API_KEY NOT found in environment")
+    logger.error(" OPENAI_API_KEY NOT found in environment")
 
-if os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
-    logger.info(f"✅ Google Credentials path: {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}")
+# Check for GOOGLE_APPLICATION_CREDENTIALS but validate file exists
+google_app_creds = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+if google_app_creds:
+    if os.path.exists(google_app_creds):
+        logger.info(f" Google Credentials path (from env): {google_app_creds}")
+    else:
+        logger.warning(f" GOOGLE_APPLICATION_CREDENTIALS points to non-existent file: {google_app_creds}")
+        logger.info(" Will use default location in Backend folder instead")
 else:
-    logger.warning("⚠️ GOOGLE_APPLICATION_CREDENTIALS not set")
+    logger.info(" GOOGLE_APPLICATION_CREDENTIALS not set, will use default location in Backend folder")
 
 # Load the production extractor
 try:
     spec = importlib.util.spec_from_file_location(
-        "production_extractor",
+        "production_extractor", 
         "production_google_vision-extractor.py"
     )
     production_extractor = importlib.util.module_from_spec(spec)
@@ -92,14 +101,28 @@ CORS(app)  # Enable CORS for React frontend
 # Configuration
 UPLOAD_FOLDER = 'temp_uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'pdf'}
-CREDENTIALS_PATH = os.getenv('GOOGLE_CREDENTIALS_PATH', 'google-credentials.json')
+
+# Get the directory where this script is located (Backend folder)
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Resolve credentials path - check environment variable first, then default to Backend folder
+CREDENTIALS_PATH_ENV = os.getenv('GOOGLE_CREDENTIALS_PATH')
+if CREDENTIALS_PATH_ENV and os.path.exists(CREDENTIALS_PATH_ENV):
+    CREDENTIALS_PATH = CREDENTIALS_PATH_ENV
+else:
+    # Default to Backend folder
+    CREDENTIALS_PATH = os.path.join(BACKEND_DIR, 'google-credentials.json')
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Initialize Vision API client once
 try:
-    vision_client = vision.ImageAnnotatorClient.from_service_account_file(CREDENTIALS_PATH)
-    logger.info(f"Successfully loaded Google Cloud Vision credentials from {CREDENTIALS_PATH}")
+    if os.path.exists(CREDENTIALS_PATH):
+        vision_client = vision.ImageAnnotatorClient.from_service_account_file(CREDENTIALS_PATH)
+        logger.info(f"Successfully loaded Google Cloud Vision credentials from {CREDENTIALS_PATH}")
+    else:
+        logger.warning(f"Google credentials file not found at: {CREDENTIALS_PATH}")
+        vision_client = None
 except Exception as e:
     logger.warning(f"Failed to load Vision API credentials: {e}")
     vision_client = None
@@ -1424,6 +1447,24 @@ def analyze_real_time_transactions():
                     'message': 'AI analysis unavailable'
                 }
 
+            # Step 6: Save analyzed transactions to database
+            from database.analyzed_transactions_db import save_analyzed_transactions
+
+            batch_id = str(uuid.uuid4())
+            analysis_id = f"analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+            db_save_success, db_error = save_analyzed_transactions(
+                transactions=fraud_result.get('transactions', []),
+                batch_id=batch_id,
+                analysis_id=analysis_id,
+                model_type='transaction_fraud_model'
+            )
+
+            if db_save_success:
+                logger.info(f"Successfully saved {len(fraud_result.get('transactions', []))} transactions to database (batch: {batch_id})")
+            else:
+                logger.warning(f"Failed to save transactions to database: {db_error}")
+
             # Clean up temp file
             if os.path.exists(filepath):
                 os.remove(filepath)
@@ -1433,8 +1474,12 @@ def analyze_real_time_transactions():
                 'success': True,
                 'csv_info': csv_result,
                 'fraud_detection': fraud_result,
+                'transactions': fraud_result.get('transactions', []),  # Add transactions for CSV download
                 'insights': insights_result,
                 'agent_analysis': agent_analysis.get('agent_analysis') if agent_analysis and agent_analysis.get('success') else None,
+                'batch_id': batch_id if db_save_success else None,
+                'analysis_id': analysis_id if db_save_success else None,
+                'database_status': 'saved' if db_save_success else 'failed',  # Add database status
                 'message': 'Real-time transaction analysis completed successfully'
             }
 
@@ -1555,6 +1600,410 @@ def get_paystubs_insights():
         }), 500
 
 
+@app.route('/api/real-time/regenerate-plots', methods=['POST'])
+def regenerate_plots_with_filters():
+    """
+    Regenerate plots with filter parameters applied.
+    Expects JSON body with 'transactions' array and 'filters' object.
+    """
+    try:
+        data = request.get_json()
+        
+        if not data or 'transactions' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'Transactions data required'
+            }), 400
+        
+        transactions = data['transactions']
+        filters = data.get('filters', {})
+
+        logger.info(f"Regenerate plots endpoint called with {len(transactions)} transactions")
+        logger.info(f"Filters received: {filters}")
+
+        # Apply filters to transactions
+        filtered_transactions = transactions
+
+        # Amount filters
+        if 'amount_min' in filters:
+            before = len(filtered_transactions)
+            filtered_transactions = [t for t in filtered_transactions if t.get('amount', 0) >= filters['amount_min']]
+            logger.info(f"Amount min filter ({filters['amount_min']}): {before} → {len(filtered_transactions)}")
+        if 'amount_max' in filters:
+            before = len(filtered_transactions)
+            filtered_transactions = [t for t in filtered_transactions if t.get('amount', 0) <= filters['amount_max']]
+            logger.info(f"Amount max filter ({filters['amount_max']}): {before} → {len(filtered_transactions)}")
+
+        # Fraud probability filters
+        if 'fraud_probability_min' in filters:
+            before = len(filtered_transactions)
+            filtered_transactions = [t for t in filtered_transactions if t.get('fraud_probability', 0) >= filters['fraud_probability_min']]
+            logger.info(f"Fraud prob min filter ({filters['fraud_probability_min']}): {before} → {len(filtered_transactions)}")
+        if 'fraud_probability_max' in filters:
+            before = len(filtered_transactions)
+            filtered_transactions = [t for t in filtered_transactions if t.get('fraud_probability', 0) <= filters['fraud_probability_max']]
+            logger.info(f"Fraud prob max filter ({filters['fraud_probability_max']}): {before} → {len(filtered_transactions)}")
+
+        # Category filter
+        if 'category' in filters and filters['category']:
+            before = len(filtered_transactions)
+            filtered_transactions = [t for t in filtered_transactions if t.get('category') == filters['category']]
+            logger.info(f"Category filter ({filters['category']}): {before} → {len(filtered_transactions)}")
+
+        # Merchant filter
+        if 'merchant' in filters and filters['merchant']:
+            before = len(filtered_transactions)
+            filtered_transactions = [t for t in filtered_transactions if t.get('merchant') == filters['merchant']]
+            logger.info(f"Merchant filter ({filters['merchant']}): {before} → {len(filtered_transactions)}")
+
+        # City filter
+        if 'city' in filters and filters['city']:
+            before = len(filtered_transactions)
+            filtered_transactions = [t for t in filtered_transactions if (
+                t.get('transaction_city') == filters['city'] or
+                t.get('transaction_location_city') == filters['city'] or
+                t.get('transactionlocationcity') == filters['city']
+            )]
+            logger.info(f"City filter ({filters['city']}): {before} → {len(filtered_transactions)}")
+
+        # Country filter
+        if 'country' in filters and filters['country']:
+            before = len(filtered_transactions)
+            filtered_transactions = [t for t in filtered_transactions if (
+                t.get('transaction_country') == filters['country'] or
+                t.get('transaction_location_country') == filters['country'] or
+                t.get('transactionlocationcountry') == filters['country']
+            )]
+            logger.info(f"Country filter ({filters['country']}): {before} → {len(filtered_transactions)}")
+
+        # Fraud reason filter
+        if 'fraud_reason' in filters and filters['fraud_reason']:
+            before = len(filtered_transactions)
+            filtered_transactions = [t for t in filtered_transactions if t.get('fraud_reason') == filters['fraud_reason']]
+            logger.info(f"Fraud reason filter ({filters['fraud_reason']}): {before} → {len(filtered_transactions)}")
+
+        # Date filters
+        from datetime import datetime
+        if 'date_start' in filters and filters['date_start']:
+            try:
+                before = len(filtered_transactions)
+                start_date = datetime.fromisoformat(filters['date_start'])
+                filtered_transactions = [t for t in filtered_transactions if t.get('timestamp') and datetime.fromisoformat(t['timestamp'].replace('Z', '+00:00')) >= start_date]
+                logger.info(f"Date start filter ({filters['date_start']}): {before} → {len(filtered_transactions)}")
+            except Exception as e:
+                logger.error(f"Date start filter error: {e}")
+
+        if 'date_end' in filters and filters['date_end']:
+            try:
+                before = len(filtered_transactions)
+                end_date = datetime.fromisoformat(filters['date_end'])
+                filtered_transactions = [t for t in filtered_transactions if t.get('timestamp') and datetime.fromisoformat(t['timestamp'].replace('Z', '+00:00')) <= end_date]
+                logger.info(f"Date end filter ({filters['date_end']}): {before} → {len(filtered_transactions)}")
+            except Exception as e:
+                logger.error(f"Date end filter error: {e}")
+
+        # Fraud/Legitimate only filters
+        if filters.get('fraud_only'):
+            before = len(filtered_transactions)
+            filtered_transactions = [t for t in filtered_transactions if t.get('is_fraud') == 1]
+            logger.info(f"Fraud only filter: {before} → {len(filtered_transactions)}")
+        if filters.get('legitimate_only'):
+            before = len(filtered_transactions)
+            filtered_transactions = [t for t in filtered_transactions if t.get('is_fraud') == 0]
+            logger.info(f"Legitimate only filter: {before} → {len(filtered_transactions)}")
+
+        logger.info(f"FINAL: Filtered transactions from {len(transactions)} to {len(filtered_transactions)}")
+
+        # Create a mock analysis result structure with filtered transactions
+        fraud_result = {
+            'success': True,
+            'transactions': filtered_transactions,
+            'fraud_count': sum(1 for t in filtered_transactions if t.get('is_fraud') == 1),
+            'legitimate_count': sum(1 for t in filtered_transactions if t.get('is_fraud') == 0),
+            'fraud_percentage': 0,
+            'legitimate_percentage': 0,
+            'total_fraud_amount': sum(t.get('amount', 0) for t in filtered_transactions if t.get('is_fraud') == 1),
+            'total_legitimate_amount': sum(t.get('amount', 0) for t in filtered_transactions if t.get('is_fraud') == 0),
+            'total_amount': sum(t.get('amount', 0) for t in filtered_transactions),
+            'average_fraud_probability': sum(t.get('fraud_probability', 0) for t in filtered_transactions) / len(filtered_transactions) if filtered_transactions else 0,
+            'model_type': 'filtered'
+        }
+
+        if len(filtered_transactions) > 0:
+            fraud_result['fraud_percentage'] = (fraud_result['fraud_count'] / len(filtered_transactions)) * 100
+            fraud_result['legitimate_percentage'] = (fraud_result['legitimate_count'] / len(filtered_transactions)) * 100
+        
+        # Generate insights with filtered transactions
+        from real_time.insights_generator import generate_insights
+        logger.info(f"Regenerating plots with {len(filtered_transactions)} filtered transactions (from {len(transactions)} total)")
+        insights_result = generate_insights(fraud_result)
+        
+        if not insights_result.get('success'):
+            logger.error(f"Failed to generate insights: {insights_result.get('error')}")
+            return jsonify({
+                'success': False,
+                'error': insights_result.get('error', 'Failed to generate plots')
+            }), 500
+        
+        logger.info(f"Successfully generated {len(insights_result.get('plots', []))} plots with filters applied")
+        
+        return jsonify({
+            'success': True,
+            'plots': insights_result.get('plots', []),
+            'statistics': insights_result.get('statistics', {}),
+            'fraud_patterns': insights_result.get('fraud_patterns', {}),
+            'recommendations': insights_result.get('recommendations', [])
+        })
+        
+
+    except Exception as e:
+        logger.error(f"Error regenerating plots: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to regenerate plots'
+        }), 500
+
+
+@app.route('/api/real-time/filter-options', methods=['POST'])
+def get_filter_options():
+    """
+    Extract available filter options from the transaction dataset.
+    Returns dropdown options for categories, merchants, cities, etc.
+    """
+    try:
+        data = request.get_json()
+
+        if not data or 'transactions' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'Transactions data required'
+            }), 400
+
+        transactions = data['transactions']
+
+        if not transactions:
+            return jsonify({
+                'success': False,
+                'error': 'Empty transactions list'
+            }), 400
+
+        logger.info(f"Extracting filter options from {len(transactions)} transactions")
+
+        # Extract unique values for each filterable field
+        categories = set()
+        merchants = set()
+        cities = set()
+        countries = set()
+        fraud_reasons = set()
+
+        # Amount statistics for bucketing
+        amounts = []
+        fraud_probabilities = []
+
+        for txn in transactions:
+            # Categories
+            if txn.get('category'):
+                categories.add(str(txn['category']))
+
+            # Merchants
+            if txn.get('merchant'):
+                merchants.add(str(txn['merchant']))
+
+            # Cities (try multiple field variations)
+            city = (txn.get('transaction_city') or
+                   txn.get('transaction_location_city') or
+                   txn.get('transactionlocationcity'))
+            if city:
+                cities.add(str(city))
+
+            # Countries
+            country = (txn.get('transaction_country') or
+                      txn.get('transaction_location_country') or
+                      txn.get('transactionlocationcountry'))
+            if country:
+                countries.add(str(country))
+
+            # Fraud reasons
+            if txn.get('fraud_reason') and txn.get('is_fraud') == 1:
+                fraud_reasons.add(str(txn['fraud_reason']))
+
+            # Amount
+            if txn.get('amount'):
+                amounts.append(float(txn['amount']))
+
+            # Fraud probability
+            if txn.get('fraud_probability') is not None:
+                fraud_probabilities.append(float(txn['fraud_probability']))
+
+        # Calculate amount ranges
+        amount_ranges = []
+        if amounts:
+            min_amount = min(amounts)
+            max_amount = max(amounts)
+
+            # Create 5 buckets
+            if max_amount > min_amount:
+                step = (max_amount - min_amount) / 5
+                for i in range(5):
+                    range_start = min_amount + (i * step)
+                    range_end = min_amount + ((i + 1) * step)
+                    amount_ranges.append({
+                        'label': f"${range_start:.2f} - ${range_end:.2f}",
+                        'min': round(range_start, 2),
+                        'max': round(range_end, 2)
+                    })
+
+        # Sort and clean up options
+        filter_options = {
+            'categories': sorted([c for c in categories if c and c != 'N/A']),
+            'merchants': sorted([m for m in merchants if m and m != 'Unknown Merchant'])[:50],  # Limit to top 50
+            'cities': sorted([c for c in cities if c])[:50],  # Limit to top 50
+            'countries': sorted([c for c in countries if c]),
+            'fraud_reasons': sorted([fr for fr in fraud_reasons if fr]),
+            'amount_ranges': amount_ranges,
+            'fraud_probability_ranges': [
+                {'label': '0% - 20%', 'min': 0, 'max': 0.2},
+                {'label': '20% - 40%', 'min': 0.2, 'max': 0.4},
+                {'label': '40% - 60%', 'min': 0.4, 'max': 0.6},
+                {'label': '60% - 80%', 'min': 0.6, 'max': 0.8},
+                {'label': '80% - 100%', 'min': 0.8, 'max': 1.0}
+            ]
+        }
+
+        logger.info(f"Extracted filter options: {len(filter_options['categories'])} categories, "
+                   f"{len(filter_options['merchants'])} merchants, {len(filter_options['cities'])} cities")
+
+        return jsonify({
+            'success': True,
+            'filter_options': filter_options
+        })
+
+    except Exception as e:
+        logger.error(f"Error extracting filter options: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to extract filter options'
+        }), 500
+
+
+@app.route('/api/real-time/retrain-model', methods=['POST'])
+def retrain_fraud_model():
+    """
+    Retrain the fraud detection model on uploaded data
+    Useful when the current model's training data doesn't match your actual data distribution
+    """
+    try:
+        logger.info("Model retraining requested")
+
+        # Check if file is uploaded
+        if 'file' not in request.files:
+            return jsonify({
+                'success': False,
+                'error': 'No file provided',
+                'message': 'Please upload a CSV file with labeled fraud data'
+            }), 400
+
+        file = request.files['file']
+
+        if file.filename == '':
+            return jsonify({
+                'success': False,
+                'error': 'Empty filename',
+                'message': 'Please select a file to upload'
+            }), 400
+
+        # Read CSV
+        import pandas as pd
+        from real_time.model_trainer import auto_train_model
+
+        df = pd.read_csv(file)
+
+        # Verify required columns
+        if 'amount' not in df.columns:
+            return jsonify({
+                'success': False,
+                'error': 'Missing required column: amount'
+            }), 400
+
+        # Check if dataset has fraud labels
+        if 'is_fraud' not in df.columns:
+            return jsonify({
+                'success': False,
+                'error': 'Missing fraud labels',
+                'message': 'Dataset must have an "is_fraud" column with 0/1 labels'
+            }), 400
+
+        logger.info(f"Retraining model on {len(df)} transactions")
+
+        # Calculate current fraud distribution
+        fraud_count = df['is_fraud'].sum()
+        fraud_percentage = (fraud_count / len(df)) * 100
+
+        logger.info(f"Training data has {fraud_count} fraud cases ({fraud_percentage:.1f}%)")
+
+        # Train model
+        training_result = auto_train_model(df)
+
+        if not training_result.get('success'):
+            return jsonify({
+                'success': False,
+                'error': training_result.get('error'),
+                'message': 'Failed to retrain model'
+            }), 500
+
+        logger.info("Model retraining completed successfully")
+
+        return jsonify({
+            'success': True,
+            'message': 'Model retrained successfully',
+            'training_results': {
+                'samples': training_result.get('training_samples'),
+                'fraud_samples': training_result.get('fraud_samples'),
+                'legitimate_samples': training_result.get('legitimate_samples'),
+                'fraud_percentage': round(fraud_percentage, 2),
+                'metrics': training_result.get('metrics'),
+                'trained_at': training_result.get('trained_at')
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Model retraining failed: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to retrain fraud detection model'
+        }), 500
+
+
+@app.route('/custom.geo.json', methods=['GET'])
+def serve_geo_json():
+    """Serve the custom geo JSON file for map visualizations"""
+    try:
+        # Path to the geo.json file in the frontend public folder
+        frontend_public = Path(__file__).resolve().parent.parent / 'Frontend' / 'public' / 'custom.geo.json'
+
+        if not frontend_public.exists():
+            return jsonify({
+                'error': 'Geo JSON file not found'
+            }), 404
+
+        response = send_file(
+            str(frontend_public),
+            mimetype='application/json'
+        )
+        # Set cache headers
+        response.cache_control.max_age = 3600  # Cache for 1 hour
+        return response
+    except Exception as e:
+        logger.error(f"Error serving geo JSON: {e}")
+        return jsonify({
+            'error': str(e),
+            'message': 'Failed to serve geo JSON file'
+        }), 500
+
+
 if __name__ == '__main__':
     print("=" * 60)
     print("XFORIA DAD API Server")
@@ -1578,5 +2027,5 @@ if __name__ == '__main__':
     print(f"  - GET  /api/paystubs/insights")
     print("=" * 60)
 
-    app.run(debug=True, host='0.0.0.0', port=5001)
+    app.run(debug=False, host='0.0.0.0', port=5001, use_reloader=False)
 

@@ -75,7 +75,7 @@ Please provide:
 
 Focus on practical, actionable insights that can be implemented immediately."""
 
-PLOT_EXPLANATION_PROMPT = """Explain this visualization in the context of fraud detection:
+PLOT_EXPLANATION_PROMPT = """You are a fraud detection expert analyzing visualizations for a financial services team. Provide a comprehensive, insightful explanation of this plot.
 
 **Plot Information:**
 - Title: {plot_title}
@@ -85,19 +85,45 @@ PLOT_EXPLANATION_PROMPT = """Explain this visualization in the context of fraud 
 **Key Metrics:**
 {plot_details}
 
-Please provide:
+Provide a detailed, multi-paragraph explanation that covers:
 
-1. **What This Plot Shows**: Clear explanation of what the visualization represents
+**1. What This Plot Shows (2-3 sentences)**
+- Clearly explain what the visualization represents and how to read it
+- Describe the axes, data points, and what patterns to look for
+- Mention what normal vs. abnormal patterns look like in this type of visualization
 
-2. **Key Insights**: What are the most important insights from this plot?
+**2. Key Insights & Data Interpretation (3-4 sentences)**
+- Analyze the actual metrics shown above
+- Point out the most significant findings (highs, lows, trends, distributions)
+- Compare different segments if applicable (fraud vs legitimate, categories, time periods)
+- Quantify your observations with specific numbers and percentages from the metrics
 
-3. **Fraud Indicators**: What fraud-related patterns or anomalies are visible?
+**3. Fraud Detection Implications (2-3 sentences)**
+- Explain what fraud-related patterns or anomalies are visible in this specific plot
+- Discuss whether the patterns shown are expected or concerning
+- Identify any red flags or unusual distributions that warrant attention
+- Reference industry standards or typical fraud patterns when relevant
 
-4. **Business Impact**: What does this mean for the business and risk management?
+**4. Business Impact & Risk Assessment (2-3 sentences)**
+- Translate the technical findings into business terms
+- Quantify financial risk or exposure if applicable
+- Explain the urgency level (critical, high, medium, low attention needed)
+- Discuss potential impact on operations, customer trust, or compliance
 
-5. **Action Items**: What actions should be taken based on this visualization?
+**5. Actionable Recommendations (3-4 specific bullet points)**
+- Provide concrete, implementable actions based on this visualization
+- Prioritize recommendations by urgency and impact
+- Include both immediate actions and longer-term strategies
+- Be specific about WHO should do WHAT and WHY
 
-Make your explanation accessible to both technical and non-technical audiences."""
+**Tone & Style:**
+- Use clear, professional language accessible to both technical and business audiences
+- Include specific numbers and percentages from the metrics
+- Make it engaging and informative, not just a dry recitation of facts
+- Show expertise by explaining WHY patterns matter, not just WHAT they are
+- Connect insights to real-world fraud prevention strategies
+
+**Length:** Aim for a comprehensive explanation of 10-15 sentences total across all sections. Make every sentence count with valuable insights."""
 
 ANALYSIS_PROMPT = """You are analyzing a real-time transaction dataset for fraud detection.
 
@@ -170,16 +196,42 @@ CSV_FEATURES_PROMPT = """Analyze the CSV dataset features and provide:
 
 Focus on features that provide the most value for fraud detection."""
 
-RECOMMENDATIONS_PROMPT = """Based on the fraud analysis below, provide 3-5 concise, actionable recommendations:
+RECOMMENDATIONS_PROMPT = """Based on the fraud analysis below, generate structured fraud prevention recommendations for the TOP 3 most significant fraud patterns detected:
 
 {context}
 
-Provide ONLY the most critical recommendations in this format:
-- [Action Item]: [Brief 1-sentence description]
+For each fraud pattern, provide a JSON object with this EXACT structure:
+{{
+  "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
+  "category": "Authentication Security" | "Geographic Security" | "Transaction Velocity" | "Amount Anomaly" | "Money Laundering" | "Card Fraud" | "Merchant Risk" | "Account Security" | etc.,
+  "pattern_type": "Suspicious login" | "Account takeover" | "Unusual location" | "Velocity abuse" | etc.,
+  "title": "[Pattern Type] Detected",
+  "description": "Detected X cases representing Y% of fraud, $Z total",
+  "count": <number>,
+  "percentage": <float>,
+  "total_amount": <float>,
+  "immediate_actions": [
+    "Specific action 1",
+    "Specific action 2",
+    "Specific action 3"
+  ],
+  "prevention_steps": [
+    "Prevention measure 1",
+    "Prevention measure 2",
+    "Prevention measure 3",
+    "Prevention measure 4"
+  ],
+  "monitoring": "What metrics to monitor continuously"
+}}
 
-Focus on:
-1. Most urgent immediate action (if any)
-2. Top 2-3 prevention measures
-3. One monitoring/alert suggestion
+IMPORTANT:
+- Return ONLY valid JSON array containing 3 recommendation objects
+- Pattern types should match detected fraud reasons (e.g., "Suspicious login", "Unusual amount", "Money mule pattern")
+- Severity levels: CRITICAL (>50% fraud or critical patterns), HIGH (20-50%), MEDIUM (10-20%), LOW (<10%)
+- Categories: Authentication Security, Geographic Security, Transaction Velocity, Amount Anomaly, Money Laundering, Card Fraud, Merchant Risk, Account Security, Device Security, Temporal Patterns, etc.
+- Each immediate_action should be a specific, actionable step (3-5 actions)
+- Each prevention_step should be a concrete preventive measure (4-6 steps)
+- Monitoring should describe specific metrics to track
+- Focus on the most critical patterns with highest fraud counts/amounts
 
-Keep each recommendation to ONE sentence. Be specific and actionable."""
+Return ONLY the JSON array, no additional text."""

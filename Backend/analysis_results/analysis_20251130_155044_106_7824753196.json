@@ -1,0 +1,124 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "bank_name": "MONEYGRAM",
+    "country": null,
+    "check_type": null,
+    "payee_name": "SARAH DAVIS",
+    "amount_numeric": 70.9,
+    "amount": "$70.90",
+    "amount_words": "SEVENTY AND 90/100 DOLLARS",
+    "date": "2020-08-08",
+    "check_number": "7824753196",
+    "routing_number": null,
+    "account_number": null,
+    "memo": null,
+    "signature_detected": true,
+    "currency": null,
+    "payer_name": "PATRICIA MILLER",
+    "payer_address": "6812 MAPLE DR, MADISON, OH 62769",
+    "raw_ocr_text": "MoneyGram MONEYGRAM\nMONEY ORDER\nPAY TO: SARAH DAVIS AMOUNT: $70.90 DATE: AUGUST 08, 20\n\nSEVENTY AND 90/100 DOLLARS\n\nFROM: PATRICIA MILLER\n6812 MAPLE DR, MADISON, OH 62769\n\n7824753196\n\n7824753196\nHennin\nAGENT AUTHORIZED SIGNATURE\n\n"
+  },
+  "raw_fields": {
+    "payer_name": "PATRICIA MILLER",
+    "payer_address": "6812 MAPLE DR, MADISON, OH 62769",
+    "pay_to": "SARAH DAVIS",
+    "check_date": "2020-08-08",
+    "number_amount": 70.9,
+    "word_amount": "SEVENTY AND 90/100 DOLLARS",
+    "bank_name": "MONEYGRAM",
+    "routing_number": null,
+    "account_number": null,
+    "check_number": "7824753196",
+    "signature": true,
+    "memo": null
+  },
+  "raw_text": "MoneyGram MONEYGRAM\nMONEY ORDER\nPAY TO: SARAH DAVIS AMOUNT: $70.90 DATE: AUGUST 08, 20\n\nSEVENTY AND 90/100 DOLLARS\n\nFROM: PATRICIA MILLER\n6812 MAPLE DR, MADISON, OH 62769\n\n7824753196\n\n7824753196\nHennin\nAGENT AUTHORIZED SIGNATURE\n\n",
+  "timestamp": "2025-11-30T15:50:44.105825",
+  "anomalies": [
+    "Missing security features: No microprinting, padlock icon, or security background - real checks have built-in protection",
+    "Invalid or future date detected",
+    "High fraud risk detected: CRITICAL (score: 100.00%)",
+    "AI recommendation: ERROR"
+  ],
+  "confidence_score": 0.9944000000000001,
+  "normalized_data": {
+    "bank_name": "MONEYGRAM",
+    "routing_number": null,
+    "account_number": null,
+    "check_number": "7824753196",
+    "check_date": "2020-08-08",
+    "check_type": null,
+    "amount_numeric": 70.9,
+    "amount_words": "SEVENTY AND 90/100 DOLLARS",
+    "currency": "USD",
+    "payee_name": "SARAH DAVIS",
+    "payer_name": "PATRICIA MILLER",
+    "payer_address": "6812 MAPLE DR, MADISON, OH 62769",
+    "memo": null,
+    "signature_detected": true,
+    "amount_match": true,
+    "date_valid": false,
+    "fields_complete": true
+  },
+  "missing_fields": [
+    "routing_number",
+    "account_number",
+    "check_type",
+    "memo"
+  ],
+  "ml_analysis": {
+    "fraud_risk_score": 1.0,
+    "risk_level": "CRITICAL",
+    "model_confidence": 0.972,
+    "model_scores": {
+      "random_forest": 0.983,
+      "xgboost": 0.996999979019165,
+      "ensemble": 0.992,
+      "adjusted": 1.0
+    },
+    "feature_importance": [
+      "Amount parsing confidence low",
+      "Missing critical fields (score: 0.95)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "Invalid serial format: 'N/A'",
+      "Invalid issuer: 'MONEYGRAM'"
+    ],
+    "prediction_type": "model"
+  },
+  "ml_fraud_analysis": {
+    "fraud_risk_score": 1.0,
+    "risk_level": "CRITICAL",
+    "model_confidence": 0.972,
+    "model_scores": {
+      "random_forest": 0.983,
+      "xgboost": 0.996999979019165,
+      "ensemble": 0.992,
+      "adjusted": 1.0
+    },
+    "feature_importance": [
+      "Amount parsing confidence low",
+      "Missing critical fields (score: 0.95)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "Invalid serial format: 'N/A'",
+      "Invalid issuer: 'MONEYGRAM'"
+    ],
+    "prediction_type": "model"
+  },
+  "ai_analysis": {
+    "recommendation": "ERROR",
+    "confidence": 0.0,
+    "summary": "\u26a0\ufe0f AI Analysis unavailable: Error code: 403 - {'error': {'message': 'Project `proj_WpmFo0qrMuAMWYpss0dLv9IJ` does not have access to model `gpt-3.5-turbo`', 'type': 'invalid_request_error', 'param': None, 'code': 'model_not_found'}}",
+    "reasoning": "OpenAI API error (gpt-3.5-turbo). Please check your OpenAI API key or usage limits.",
+    "key_indicators": [],
+    "verification_notes": "Manual review required - AI analysis failed",
+    "analysis_type": "failed",
+    "model_used": "gpt-3.5-turbo"
+  },
+  "analysis_id": "analysis_20251130_155044_106_7824753196",
+  "saved_timestamp": "2025-11-30T15:50:44.106903"
+}

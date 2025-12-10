@@ -11,7 +11,7 @@ echo Waiting for backend to initialize...
 timeout /t 5 /nobreak > nul
 
 echo.
-echo [2/2] Starting Frontend Server on http://localhost:3000
+echo [2/2] Starting Frontend Server on http://localhost:3002
 start "DAD Frontend Server" cmd /k "cd /d "%~dp0Frontend" && npm start"
 
 echo.
@@ -20,7 +20,7 @@ echo                    Servers Started!
 echo ================================================================
 echo.
 echo Backend API:  http://localhost:5001
-echo Frontend App: http://localhost:3000 (will open automatically)
+echo Frontend App: http://localhost:3002 (will open automatically)
 echo.
 echo IMPORTANT: Keep both command windows open!
 echo            Close them to stop the servers.
