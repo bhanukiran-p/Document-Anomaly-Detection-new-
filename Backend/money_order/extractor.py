@@ -57,15 +57,32 @@ class MoneyOrderExtractor:
             credentials_path: Path to Google Cloud service account JSON file
         """
         # Set up Google Vision API credentials
+        # Get the directory where this script is located
+        backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
         if credentials_path and os.path.exists(credentials_path):
             credentials = service_account.Credentials.from_service_account_file(
                 credentials_path
             )
             self.client = vision.ImageAnnotatorClient(credentials=credentials)
-        elif 'GOOGLE_APPLICATION_CREDENTIALS' in os.environ:
-            self.client = vision.ImageAnnotatorClient()
         else:
-            self.client = vision.ImageAnnotatorClient()
+            # Try default location in Backend folder
+            default_path = os.path.join(backend_dir, 'google-credentials.json')
+            if os.path.exists(default_path):
+                credentials = service_account.Credentials.from_service_account_file(
+                    default_path
+                )
+                self.client = vision.ImageAnnotatorClient(credentials=credentials)
+            elif 'GOOGLE_APPLICATION_CREDENTIALS' in os.environ:
+                env_path = os.environ['GOOGLE_APPLICATION_CREDENTIALS']
+                # Only use if file exists
+                if os.path.exists(env_path):
+                    self.client = vision.ImageAnnotatorClient()
+                else:
+                    # Fallback
+                    self.client = vision.ImageAnnotatorClient()
+            else:
+                self.client = vision.ImageAnnotatorClient()
 
         # Initialize ML fraud detector and AI agent
         if ML_AVAILABLE:

@@ -236,33 +236,50 @@ class RealTimeAnalysisAgent:
             'patterns_detected': len(fraud_transactions)
         }
 
-    def generate_recommendations(self, analysis_result: Dict[str, Any]) -> List[str]:
+    def generate_recommendations(self, analysis_result: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        Generate actionable recommendations using LLM
+        Generate structured fraud prevention recommendations using LLM
 
         Args:
             analysis_result: Complete analysis result
 
         Returns:
-            List of recommendations
+            List of structured recommendation objects
         """
         if self.llm is not None:
+            logger.info(f"✓ LLM is available ({self.model_name}), calling _llm_recommendations()")
             try:
-                return self._llm_recommendations(analysis_result)
+                recommendations = self._llm_recommendations(analysis_result)
+                logger.info(f"✓ LLM recommendations generated: {len(recommendations)} items")
+                return recommendations
             except Exception as e:
-                logger.error(f"Error generating recommendations: {e}")
-                return [f"⚠️ AI Recommendations unavailable: {str(e)}", "Please check your OpenAI API key or usage limits."]
+                logger.error(f"✗ Error generating LLM recommendations: {e}", exc_info=True)
+                # Return empty list on error so frontend doesn't break
+                return []
         else:
-            return ["⚠️ AI Recommendations unavailable: OpenAI API key not configured"]
+            logger.warning("✗ LLM not available for recommendations (API key missing or LangChain not installed)")
+            return []
 
-    def _llm_recommendations(self, analysis_result: Dict[str, Any]) -> List[str]:
-        """Generate recommendations using LLM"""
+    def _llm_recommendations(self, analysis_result: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Generate structured recommendations using LLM"""
+        import json
+        import re
 
         # Extract key metrics
         fraud_count = analysis_result.get('fraud_detection', {}).get('fraud_count', 0)
         fraud_percentage = analysis_result.get('fraud_detection', {}).get('fraud_percentage', 0)
         total_amount = analysis_result.get('fraud_detection', {}).get('total_amount', 0)
         fraud_amount = analysis_result.get('fraud_detection', {}).get('total_fraud_amount', 0)
+
+        # Get fraud reason breakdown
+        fraud_reasons = analysis_result.get('fraud_detection', {}).get('fraud_reason_breakdown', [])
+
+        # Format fraud reasons for context
+        fraud_reasons_text = ""
+        if fraud_reasons:
+            fraud_reasons_text = "\n**Fraud Pattern Breakdown:**\n"
+            for reason in fraud_reasons[:5]:  # Top 5 patterns
+                fraud_reasons_text += f"- {reason.get('type', 'Unknown')}: {reason.get('count', 0)} cases ({reason.get('percentage', 0):.1f}% of fraud), ${reason.get('total_amount', 0):,.2f} total\n"
 
         # Get fraud patterns info
         transactions = analysis_result.get('transactions', [])
@@ -285,23 +302,51 @@ class RealTimeAnalysisAgent:
 - Fraudulent Transactions: {fraud_count}
 - Fraudulent Amount: ${fraud_amount:,.2f} out of ${total_amount:,.2f} ({(fraud_amount/total_amount*100) if total_amount > 0 else 0:.1f}%)
 
-**Detected Patterns:**
-{patterns_text}
+{fraud_reasons_text}
 
-Please provide 5-7 actionable recommendations prioritized by urgency and impact."""
+**Additional Pattern Analysis:**
+{patterns_text}"""
 
         messages = chat_prompt.format_messages(context=context)
 
+        logger.info("Sending recommendation request to OpenAI LLM...")
+        logger.debug(f"Context provided to LLM:\n{context[:500]}...")
+
         response = self.llm.invoke(messages)
 
-        # Parse recommendations (split by lines or bullet points)
-        recommendations_text = response.content
-        recommendations = [line.strip() for line in recommendations_text.split('\n') if line.strip() and not line.strip().startswith('#')]
+        logger.info(f"✓ Received response from OpenAI ({self.model_name})")
 
-        # Filter out empty lines and headers
-        recommendations = [rec for rec in recommendations if rec and len(rec) > 10]
+        # Parse JSON response
+        try:
+            response_text = response.content.strip()
+            logger.debug(f"LLM response (first 500 chars): {response_text[:500]}...")
 
-        return recommendations[:7]  # Limit to 7 recommendations
+            # Try to extract JSON array from response
+            # Sometimes LLM adds markdown formatting
+            json_match = re.search(r'\[[\s\S]*\]', response_text)
+            if json_match:
+                json_str = json_match.group(0)
+                recommendations = json.loads(json_str)
+
+                # Validate structure
+                if isinstance(recommendations, list) and len(recommendations) > 0:
+                    logger.info(f"Successfully parsed {len(recommendations)} structured recommendations")
+                    return recommendations[:3]  # Return top 3
+                else:
+                    logger.warning("LLM returned empty or invalid recommendations list")
+                    return []
+            else:
+                logger.warning("Could not find JSON array in LLM response")
+                logger.debug(f"Response content: {response_text[:500]}")
+                return []
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse LLM recommendations JSON: {e}")
+            logger.debug(f"Response content: {response_text[:500]}")
+            return []
+        except Exception as e:
+            logger.error(f"Unexpected error parsing recommendations: {e}")
+            return []
 
     def _fallback_recommendations(self, analysis_result: Dict[str, Any]) -> List[str]:
         """Generate fallback recommendations when LLM is not available"""

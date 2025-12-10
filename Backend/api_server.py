@@ -10,6 +10,7 @@ import sys
 import logging
 from logging.handlers import RotatingFileHandler
 from werkzeug.utils import secure_filename
+from pathlib import Path
 import importlib.util
 import re
 import fitz
@@ -50,7 +51,7 @@ else:
 if Config.GOOGLE_APPLICATION_CREDENTIALS:
     logger.info(f"Google Credentials path: {Config.GOOGLE_APPLICATION_CREDENTIALS}")
 else:
-    logger.warning("GOOGLE_APPLICATION_CREDENTIALS not set")
+    logger.info(" GOOGLE_APPLICATION_CREDENTIALS not set, will use default location in Backend folder")
 
 # Load the production extractor
 try:
@@ -85,8 +86,12 @@ CREDENTIALS_PATH = Config.GOOGLE_APPLICATION_CREDENTIALS or 'google-credentials.
 
 # Initialize Vision API client once
 try:
-    vision_client = vision.ImageAnnotatorClient.from_service_account_file(CREDENTIALS_PATH)
-    logger.info(f"Successfully loaded Google Cloud Vision credentials from {CREDENTIALS_PATH}")
+    if os.path.exists(CREDENTIALS_PATH):
+        vision_client = vision.ImageAnnotatorClient.from_service_account_file(CREDENTIALS_PATH)
+        logger.info(f"Successfully loaded Google Cloud Vision credentials from {CREDENTIALS_PATH}")
+    else:
+        logger.warning(f"Google credentials file not found at: {CREDENTIALS_PATH}")
+        vision_client = None
 except Exception as e:
     logger.warning(f"Failed to load Vision API credentials: {e}")
     vision_client = None
@@ -1838,8 +1843,40 @@ def regenerate_plots_with_filters():
         # Category filter
         if 'category' in filters and filters['category']:
             before = len(filtered_transactions)
-            filtered_transactions = [t for t in filtered_transactions if filters['category'].lower() in str(t.get('category', '')).lower()]
+            filtered_transactions = [t for t in filtered_transactions if t.get('category') == filters['category']]
             logger.info(f"Category filter ({filters['category']}): {before} → {len(filtered_transactions)}")
+
+        # Merchant filter
+        if 'merchant' in filters and filters['merchant']:
+            before = len(filtered_transactions)
+            filtered_transactions = [t for t in filtered_transactions if t.get('merchant') == filters['merchant']]
+            logger.info(f"Merchant filter ({filters['merchant']}): {before} → {len(filtered_transactions)}")
+
+        # City filter
+        if 'city' in filters and filters['city']:
+            before = len(filtered_transactions)
+            filtered_transactions = [t for t in filtered_transactions if (
+                t.get('transaction_city') == filters['city'] or
+                t.get('transaction_location_city') == filters['city'] or
+                t.get('transactionlocationcity') == filters['city']
+            )]
+            logger.info(f"City filter ({filters['city']}): {before} → {len(filtered_transactions)}")
+
+        # Country filter
+        if 'country' in filters and filters['country']:
+            before = len(filtered_transactions)
+            filtered_transactions = [t for t in filtered_transactions if (
+                t.get('transaction_country') == filters['country'] or
+                t.get('transaction_location_country') == filters['country'] or
+                t.get('transactionlocationcountry') == filters['country']
+            )]
+            logger.info(f"Country filter ({filters['country']}): {before} → {len(filtered_transactions)}")
+
+        # Fraud reason filter
+        if 'fraud_reason' in filters and filters['fraud_reason']:
+            before = len(filtered_transactions)
+            filtered_transactions = [t for t in filtered_transactions if t.get('fraud_reason') == filters['fraud_reason']]
+            logger.info(f"Fraud reason filter ({filters['fraud_reason']}): {before} → {len(filtered_transactions)}")
 
         # Date filters
         from datetime import datetime
@@ -1921,6 +1958,129 @@ def regenerate_plots_with_filters():
             'success': False,
             'error': str(e),
             'message': 'Failed to regenerate plots'
+        }), 500
+
+
+@app.route('/api/real-time/filter-options', methods=['POST'])
+def get_filter_options():
+    """
+    Extract available filter options from the transaction dataset.
+    Returns dropdown options for categories, merchants, cities, etc.
+    """
+    try:
+        data = request.get_json()
+
+        if not data or 'transactions' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'Transactions data required'
+            }), 400
+
+        transactions = data['transactions']
+
+        if not transactions:
+            return jsonify({
+                'success': False,
+                'error': 'Empty transactions list'
+            }), 400
+
+        logger.info(f"Extracting filter options from {len(transactions)} transactions")
+
+        # Extract unique values for each filterable field
+        categories = set()
+        merchants = set()
+        cities = set()
+        countries = set()
+        fraud_reasons = set()
+
+        # Amount statistics for bucketing
+        amounts = []
+        fraud_probabilities = []
+
+        for txn in transactions:
+            # Categories
+            if txn.get('category'):
+                categories.add(str(txn['category']))
+
+            # Merchants
+            if txn.get('merchant'):
+                merchants.add(str(txn['merchant']))
+
+            # Cities (try multiple field variations)
+            city = (txn.get('transaction_city') or
+                   txn.get('transaction_location_city') or
+                   txn.get('transactionlocationcity'))
+            if city:
+                cities.add(str(city))
+
+            # Countries
+            country = (txn.get('transaction_country') or
+                      txn.get('transaction_location_country') or
+                      txn.get('transactionlocationcountry'))
+            if country:
+                countries.add(str(country))
+
+            # Fraud reasons
+            if txn.get('fraud_reason') and txn.get('is_fraud') == 1:
+                fraud_reasons.add(str(txn['fraud_reason']))
+
+            # Amount
+            if txn.get('amount'):
+                amounts.append(float(txn['amount']))
+
+            # Fraud probability
+            if txn.get('fraud_probability') is not None:
+                fraud_probabilities.append(float(txn['fraud_probability']))
+
+        # Calculate amount ranges
+        amount_ranges = []
+        if amounts:
+            min_amount = min(amounts)
+            max_amount = max(amounts)
+
+            # Create 5 buckets
+            if max_amount > min_amount:
+                step = (max_amount - min_amount) / 5
+                for i in range(5):
+                    range_start = min_amount + (i * step)
+                    range_end = min_amount + ((i + 1) * step)
+                    amount_ranges.append({
+                        'label': f"${range_start:.2f} - ${range_end:.2f}",
+                        'min': round(range_start, 2),
+                        'max': round(range_end, 2)
+                    })
+
+        # Sort and clean up options
+        filter_options = {
+            'categories': sorted([c for c in categories if c and c != 'N/A']),
+            'merchants': sorted([m for m in merchants if m and m != 'Unknown Merchant'])[:50],  # Limit to top 50
+            'cities': sorted([c for c in cities if c])[:50],  # Limit to top 50
+            'countries': sorted([c for c in countries if c]),
+            'fraud_reasons': sorted([fr for fr in fraud_reasons if fr]),
+            'amount_ranges': amount_ranges,
+            'fraud_probability_ranges': [
+                {'label': '0% - 20%', 'min': 0, 'max': 0.2},
+                {'label': '20% - 40%', 'min': 0.2, 'max': 0.4},
+                {'label': '40% - 60%', 'min': 0.4, 'max': 0.6},
+                {'label': '60% - 80%', 'min': 0.6, 'max': 0.8},
+                {'label': '80% - 100%', 'min': 0.8, 'max': 1.0}
+            ]
+        }
+
+        logger.info(f"Extracted filter options: {len(filter_options['categories'])} categories, "
+                   f"{len(filter_options['merchants'])} merchants, {len(filter_options['cities'])} cities")
+
+        return jsonify({
+            'success': True,
+            'filter_options': filter_options
+        })
+
+    except Exception as e:
+        logger.error(f"Error extracting filter options: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to extract filter options'
         }), 500
 
 

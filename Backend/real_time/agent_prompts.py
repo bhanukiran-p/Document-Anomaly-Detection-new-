@@ -196,16 +196,42 @@ CSV_FEATURES_PROMPT = """Analyze the CSV dataset features and provide:
 
 Focus on features that provide the most value for fraud detection."""
 
-RECOMMENDATIONS_PROMPT = """Based on the fraud analysis below, provide 3-5 concise, actionable recommendations:
+RECOMMENDATIONS_PROMPT = """Based on the fraud analysis below, generate structured fraud prevention recommendations for the TOP 3 most significant fraud patterns detected:
 
 {context}
 
-Provide ONLY the most critical recommendations in this format:
-- [Action Item]: [Brief 1-sentence description]
+For each fraud pattern, provide a JSON object with this EXACT structure:
+{{
+  "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
+  "category": "Authentication Security" | "Geographic Security" | "Transaction Velocity" | "Amount Anomaly" | "Money Laundering" | "Card Fraud" | "Merchant Risk" | "Account Security" | etc.,
+  "pattern_type": "Suspicious login" | "Account takeover" | "Unusual location" | "Velocity abuse" | etc.,
+  "title": "[Pattern Type] Detected",
+  "description": "Detected X cases representing Y% of fraud, $Z total",
+  "count": <number>,
+  "percentage": <float>,
+  "total_amount": <float>,
+  "immediate_actions": [
+    "Specific action 1",
+    "Specific action 2",
+    "Specific action 3"
+  ],
+  "prevention_steps": [
+    "Prevention measure 1",
+    "Prevention measure 2",
+    "Prevention measure 3",
+    "Prevention measure 4"
+  ],
+  "monitoring": "What metrics to monitor continuously"
+}}
 
-Focus on:
-1. Most urgent immediate action (if any)
-2. Top 2-3 prevention measures
-3. One monitoring/alert suggestion
+IMPORTANT:
+- Return ONLY valid JSON array containing 3 recommendation objects
+- Pattern types should match detected fraud reasons (e.g., "Suspicious login", "Unusual amount", "Money mule pattern")
+- Severity levels: CRITICAL (>50% fraud or critical patterns), HIGH (20-50%), MEDIUM (10-20%), LOW (<10%)
+- Categories: Authentication Security, Geographic Security, Transaction Velocity, Amount Anomaly, Money Laundering, Card Fraud, Merchant Risk, Account Security, Device Security, Temporal Patterns, etc.
+- Each immediate_action should be a specific, actionable step (3-5 actions)
+- Each prevention_step should be a concrete preventive measure (4-6 steps)
+- Monitoring should describe specific metrics to track
+- Focus on the most critical patterns with highest fraud counts/amounts
 
-Keep each recommendation to ONE sentence. Be specific and actionable."""
+Return ONLY the JSON array, no additional text."""
