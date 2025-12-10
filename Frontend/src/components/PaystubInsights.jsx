@@ -152,6 +152,10 @@ const PaystubInsights = () => {
     const employerRisks = {};
     rows.forEach(r => {
       const employer = r['employer_name'] || 'Unknown';
+      // Skip Unknown employers
+      if (!employer || employer === 'Unknown' || employer.toLowerCase() === 'unknown') {
+        return;
+      }
       if (!employerRisks[employer]) {
         employerRisks[employer] = { count: 0, totalRisk: 0 };
       }
@@ -312,6 +316,10 @@ const PaystubInsights = () => {
       const employerCounts = {};
       rows.forEach(r => {
         const employer = r['employer_name'] || 'Unknown';
+        // Skip Unknown employers
+        if (!employer || employer === 'Unknown' || employer.toLowerCase() === 'unknown') {
+          return;
+        }
         employerCounts[employer] = (employerCounts[employer] || 0) + 1;
       });
       const topEmployersForFraudType = Object.entries(employerCounts)
@@ -472,7 +480,8 @@ const PaystubInsights = () => {
         setAllPaystubsData(rows);
         setTotalRecords(rows.length);
 
-        const employers = [...new Set(rows.map(r => r['employer_name'] || 'Unknown'))];
+        const employers = [...new Set(rows.map(r => r['employer_name'] || 'Unknown'))]
+          .filter(emp => emp && emp !== 'Unknown' && emp.toLowerCase() !== 'unknown');
         setAvailableEmployers(employers.sort());
 
         // Extract available fraud types
@@ -527,7 +536,8 @@ const PaystubInsights = () => {
       setAllPaystubsData(rows);
       setTotalRecords(rows.length);
 
-      const employers = [...new Set(rows.map(r => r.employer_name || 'Unknown'))];
+      const employers = [...new Set(rows.map(r => r.employer_name || 'Unknown'))]
+        .filter(emp => emp && emp !== 'Unknown' && emp.toLowerCase() !== 'unknown');
       setAvailableEmployers(employers.sort());
 
       // Extract available fraud types
