@@ -22,57 +22,34 @@ from database.supabase_client import get_supabase, check_connection as check_sup
 from auth.supabase_auth import login_user_supabase, register_user_supabase, verify_token
 from database.document_storage import store_money_order_analysis, store_bank_statement_analysis, store_paystub_analysis, store_check_analysis
 
-# Create logs directory if it doesn't exist
-log_dir = os.path.join(os.path.dirname(__file__), 'logs')
-os.makedirs(log_dir, exist_ok=True)
-log_file = os.path.join(log_dir, 'api_server.log')
+# Import centralized configuration
+from config import Config
 
-# Configure logging to both console and file
-log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-formatter = logging.Formatter(log_format)
+# Ensure necessary directories exist
+Config.ensure_directories()
 
-# File handler with rotation
-file_handler = RotatingFileHandler(
-    log_file, 
-    maxBytes=10*1024*1024,  # 10MB
-    backupCount=5
-)
-file_handler.setLevel(logging.INFO)
-file_handler.setFormatter(formatter)
+# Setup centralized logging
+Config.setup_logging()
 
-# Console handler
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
-console_handler.setFormatter(formatter)
+# Get logger for this module
+logger = Config.get_logger(__name__)
+logger.info(f"Logging configured. Log directory: {Config.LOG_DIR}")
 
-# Configure root logger
-logging.basicConfig(
-    level=logging.INFO,
-    format=log_format,
-    handlers=[file_handler, console_handler]
-)
-
-logger = logging.getLogger(__name__)
-logger.info(f"Logging configured. Log file: {log_file}")
-
-# Load environment variables explicitly
-from dotenv import load_dotenv
-load_dotenv()
+# Validate configuration
+config_errors = Config.validate()
+if config_errors:
+    logger.warning("Configuration issues detected:")
+    for error in config_errors:
+        logger.warning(f"  - {error}")
 
 # Check for critical environment variables
-if os.getenv('OPENAI_API_KEY'):
-    logger.info(" OPENAI_API_KEY found in environment")
+if Config.OPENAI_API_KEY:
+    logger.info("OPENAI_API_KEY found in environment")
 else:
-    logger.error(" OPENAI_API_KEY NOT found in environment")
+    logger.error("OPENAI_API_KEY NOT found in environment")
 
-# Check for GOOGLE_APPLICATION_CREDENTIALS but validate file exists
-google_app_creds = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
-if google_app_creds:
-    if os.path.exists(google_app_creds):
-        logger.info(f" Google Credentials path (from env): {google_app_creds}")
-    else:
-        logger.warning(f" GOOGLE_APPLICATION_CREDENTIALS points to non-existent file: {google_app_creds}")
-        logger.info(" Will use default location in Backend folder instead")
+if Config.GOOGLE_APPLICATION_CREDENTIALS:
+    logger.info(f"Google Credentials path: {Config.GOOGLE_APPLICATION_CREDENTIALS}")
 else:
     logger.info(" GOOGLE_APPLICATION_CREDENTIALS not set, will use default location in Backend folder")
 
@@ -96,24 +73,16 @@ except Exception as e:
 # from check_analysis.orchestrator import CheckAnalysisOrchestrator
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for React frontend
+app.config['SECRET_KEY'] = Config.SECRET_KEY
+app.config['MAX_CONTENT_LENGTH'] = Config.MAX_CONTENT_LENGTH
 
-# Configuration
-UPLOAD_FOLDER = 'temp_uploads'
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'pdf'}
+# Enable CORS with configured origins
+CORS(app, origins=Config.CORS_ORIGINS)
 
-# Get the directory where this script is located (Backend folder)
-BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# Resolve credentials path - check environment variable first, then default to Backend folder
-CREDENTIALS_PATH_ENV = os.getenv('GOOGLE_CREDENTIALS_PATH')
-if CREDENTIALS_PATH_ENV and os.path.exists(CREDENTIALS_PATH_ENV):
-    CREDENTIALS_PATH = CREDENTIALS_PATH_ENV
-else:
-    # Default to Backend folder
-    CREDENTIALS_PATH = os.path.join(BACKEND_DIR, 'google-credentials.json')
-
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+# Configuration from centralized config
+UPLOAD_FOLDER = Config.UPLOAD_FOLDER
+ALLOWED_EXTENSIONS = Config.ALLOWED_EXTENSIONS
+CREDENTIALS_PATH = Config.GOOGLE_APPLICATION_CREDENTIALS or 'google-credentials.json'
 
 # Initialize Vision API client once
 try:
@@ -806,12 +775,69 @@ def analyze_bank_statement():
                     if not recommendation:
                         logger.warning("Cannot update customer fraud status - AI recommendation missing")
 
-            return jsonify({
+            # Extract fraud types for response (similar to paystub)
+            ml_analysis = result.get('ml_analysis', {})
+            ai_analysis = result.get('ai_analysis', {})
+            customer_info = result.get('customer_info', {})
+            
+            # Get AI recommendation first
+            ai_recommendation = ai_analysis.get('recommendation', 'UNKNOWN') if ai_analysis else 'UNKNOWN'
+            ai_recommendation = ai_recommendation.upper()
+            
+            # Check if this is a new customer
+            is_new_customer = not customer_info.get('customer_id')
+            
+            # Fraud types logic:
+            # - For new customers: Never show fraud types (always empty)
+            # - For repeat customers: Show fraud types if recommendation is REJECT or ESCALATE (but not APPROVE)
+            fraud_type = None
+            fraud_type_label = None
+            fraud_explanations = []
+            
+            # Only extract fraud types for repeat customers (not new customers)
+            # Only use what LLM returns - no fallback to ML
+            if not is_new_customer and ai_recommendation in ['REJECT', 'ESCALATE']:
+                # Show fraud types for repeat customers with REJECT or ESCALATE recommendations
+                # Only use AI/LLM fraud_types - no fallback to ML
+                ai_fraud_types = ai_analysis.get('fraud_types', []) if ai_analysis else []
+
+                # Extract the primary fraud type (only from LLM response)
+                if ai_fraud_types:
+                    fraud_type = ai_fraud_types[0] if isinstance(ai_fraud_types, list) else ai_fraud_types
+                    # Format fraud type for display (remove underscores and title case)
+                    fraud_type_label = fraud_type.replace('_', ' ').title() if fraud_type else None
+                else:
+                    # LLM didn't provide fraud_types - leave as None (no fallback)
+                    fraud_type = None
+                    fraud_type_label = None
+
+                # For fraud explanations, only use AI/LLM explanations - no fallback to ML
+                fraud_explanations = ai_analysis.get('fraud_explanations', []) if ai_analysis else []
+            # For new customers or APPROVE, fraud_type remains None (no fraud detected)
+
+            # Build structured response
+            response_data = {
                 'success': True,
-                'data': result,
+                'fraud_risk_score': ml_analysis.get('fraud_risk_score', 0.0),
+                'risk_level': ml_analysis.get('risk_level', 'UNKNOWN'),
+                'model_confidence': ml_analysis.get('model_confidence', 0.0),
+                'fraud_type': fraud_type,  # Single fraud type (machine format)
+                'fraud_type_label': fraud_type_label,  # Human-readable format
+                'fraud_explanations': fraud_explanations if isinstance(fraud_explanations, list) else [],
+                'fraud_types': [fraud_type] if fraud_type else [],  # List format for compatibility
+                'ai_recommendation': ai_analysis.get('recommendation', 'UNKNOWN'),
+                'ai_confidence': ai_analysis.get('confidence_score', 0.0),
+                'summary': ai_analysis.get('summary', ''),
+                'key_indicators': ai_analysis.get('key_indicators', []),
+                'customer_info': result.get('customer_info', {}),  # Include customer history
+                'ml_analysis': ml_analysis,  # Include full ML analysis for frontend access
+                'ai_analysis': ai_analysis,  # Include full AI analysis for frontend access
                 'document_id': document_id,
+                'data': result,  # Include full result for backward compatibility
                 'message': 'Bank statement analyzed and stored successfully'
-            })
+            }
+
+            return jsonify(response_data)
 
         except Exception as e:
             # Clean up on error
@@ -1108,6 +1134,176 @@ def search_money_orders():
             'success': False,
             'error': str(e),
             'message': 'Failed to search money orders'
+        }), 500
+
+
+# Database query endpoints for bank statements
+@app.route('/api/bank-statements/list', methods=['GET'])
+def get_bank_statements_list():
+    """Fetch list of bank statements from database table with optional date filtering"""
+    try:
+        from datetime import datetime, timedelta
+        supabase = get_supabase()
+
+        # Fetch all records using pagination to bypass Supabase default limit of 1000
+        all_data = []
+        page_size = 1000
+        offset = 0
+        total_count = None
+        
+        while True:
+            # Get count only on first request
+            count_param = 'exact' if offset == 0 else None
+            response = supabase.table('bank_statements').select('*', count=count_param).order('created_at', desc=True).range(offset, offset + page_size - 1).execute()
+            page_data = response.data or []
+            if not page_data:
+                break
+            
+            # Get total count from first response
+            if total_count is None:
+                total_count = response.count if hasattr(response, 'count') else None
+            
+            all_data.extend(page_data)
+            
+            # Check if we got all records
+            if total_count and len(all_data) >= total_count:
+                break
+            if len(page_data) < page_size:
+                break
+            offset += page_size
+        
+        data = all_data
+        total_available = total_count if total_count is not None else len(data)
+
+        # Optional date filtering - custom date range or predefined filters
+        date_filter = request.args.get('date_filter', default=None)  # 'last_30', 'last_60', 'last_90', 'older'
+        start_date_str = request.args.get('start_date', default=None)  # Custom start date (YYYY-MM-DD)
+        end_date_str = request.args.get('end_date', default=None)  # Custom end date (YYYY-MM-DD)
+
+        # Custom date range takes priority over predefined filters
+        if start_date_str or end_date_str:
+            filtered_data = []
+            
+            # Parse custom date range
+            start_date = None
+            end_date = None
+            
+            try:
+                if start_date_str:
+                    start_date = datetime.fromisoformat(start_date_str)
+                if end_date_str:
+                    end_date = datetime.fromisoformat(end_date_str)
+                    # Set end_date to end of day (23:59:59)
+                    end_date = end_date.replace(hour=23, minute=59, second=59)
+            except ValueError as e:
+                return jsonify({
+                    'success': False,
+                    'error': f'Invalid date format: {str(e)}',
+                    'message': 'Please use YYYY-MM-DD format for dates'
+                }), 400
+
+            for record in data:
+                created_at_str = record.get('created_at')
+                if not created_at_str:
+                    continue
+
+                # Parse created_at timestamp
+                try:
+                    # Handle ISO format timestamps with or without microseconds
+                    if 'T' in created_at_str:
+                        created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00').split('+')[0])
+                    else:
+                        created_at = datetime.fromisoformat(created_at_str)
+                except:
+                    continue
+
+                # Apply custom date range filter
+                if start_date and created_at < start_date:
+                    continue
+                if end_date and created_at > end_date:
+                    continue
+                
+                filtered_data.append(record)
+
+            data = filtered_data
+            date_filter = 'custom'  # Mark as custom filter for response
+
+        elif date_filter:
+            now = datetime.utcnow()
+            filtered_data = []
+
+            for record in data:
+                created_at_str = record.get('created_at')
+                if not created_at_str:
+                    continue
+
+                # Parse created_at timestamp
+                try:
+                    # Handle ISO format timestamps with or without microseconds
+                    if 'T' in created_at_str:
+                        created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00').split('+')[0])
+                    else:
+                        created_at = datetime.fromisoformat(created_at_str)
+                except:
+                    continue
+
+                days_old = (now - created_at).days
+
+                if date_filter == 'last_30' and days_old <= 30:
+                    filtered_data.append(record)
+                elif date_filter == 'last_60' and days_old <= 60:
+                    filtered_data.append(record)
+                elif date_filter == 'last_90' and days_old <= 90:
+                    filtered_data.append(record)
+                elif date_filter == 'older' and days_old > 90:
+                    filtered_data.append(record)
+
+            data = filtered_data
+
+        return jsonify({
+            'success': True,
+            'data': data,
+            'count': len(data),
+            'total_records': total_available if not date_filter else None,
+            'date_filter': date_filter,
+            'start_date': start_date_str,
+            'end_date': end_date_str
+        })
+    except Exception as e:
+        logger.error(f"Failed to fetch bank statements list: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to fetch bank statements list'
+        }), 500
+
+
+@app.route('/api/bank-statements/search', methods=['GET'])
+def search_bank_statements():
+    """Search bank statements by account holder or bank name"""
+    try:
+        supabase = get_supabase()
+        query = request.args.get('q', default='', type=str)
+        limit = request.args.get('limit', default=20, type=int)
+        if not query:
+            return jsonify({
+                'success': False,
+                'error': 'Query parameter required',
+                'message': 'Please provide a search query'
+            }), 400
+        # Search in both account_holder and bank_name fields
+        response = supabase.table('bank_statements').select('*').or_(f'account_holder.ilike.%{query}%,bank_name.ilike.%{query}%').limit(limit).execute()
+        return jsonify({
+            'success': True,
+            'data': response.data or [],
+            'count': len(response.data or [])
+        })
+    except Exception as e:
+        logger.error(f"Failed to search bank statements: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to search bank statements'
         }), 500
 
 
@@ -2022,6 +2218,8 @@ if __name__ == '__main__':
     print(f"  - GET  /api/money-orders/list")
     print(f"  - GET  /api/money-orders/search")
     print(f"  - GET  /api/money-orders/<money_order_id>")
+    print(f"  - GET  /api/bank-statements/list")
+    print(f"  - GET  /api/bank-statements/search")
     print(f"  - GET  /api/documents/list")
     print(f"  - GET  /api/documents/search")
     print(f"  - GET  /api/paystubs/insights")

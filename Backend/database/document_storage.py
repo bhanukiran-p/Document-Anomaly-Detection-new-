@@ -70,6 +70,9 @@ class DocumentStorage:
             if not name:
                 return None
 
+            # Convert to UPPERCASE for consistent storage
+            name = name.upper()
+
             # Check if exists
             response = self.supabase.table('financial_institutions').select('institution_id').eq(
                 'name', name
@@ -489,7 +492,41 @@ class DocumentStorage:
             if not isinstance(transactions, list):
                 transactions = []
 
+            # Get AI recommendation first
+            ai_recommendation = ai_analysis.get('recommendation', 'UNKNOWN') if ai_analysis else 'UNKNOWN'
+            ai_recommendation = ai_recommendation.upper()
+
+            # Only store fraud types if recommendation is REJECT
+            # For ESCALATE or APPROVE, keep fraud_type as None (no fraud detected)
+            primary_fraud_type = None
+            primary_fraud_type_label = None
+            fraud_explanations = []
+            
+            if ai_recommendation == 'REJECT':
+                # Only store fraud types for REJECT recommendations (actual fraud detected)
+                fraud_types = ai_analysis.get('fraud_types', []) if ai_analysis else ml_analysis.get('fraud_types', [])
+                fraud_explanations = ai_analysis.get('fraud_explanations', []) if ai_analysis else []
+
+                # Ensure fraud_types is a list, then extract first element as primary fraud type
+                if not isinstance(fraud_types, list):
+                    fraud_types = [fraud_types] if fraud_types else []
+
+                # Store only the primary (first) fraud type as a string
+                primary_fraud_type = fraud_types[0] if fraud_types else None
+
+                # Format fraud type label for display (remove underscores and title case)
+                primary_fraud_type_label = primary_fraud_type.replace('_', ' ').title() if primary_fraud_type else None
+            # For ESCALATE or APPROVE, primary_fraud_type remains None (no fraud detected)
+
+            # Ensure fraud_explanations is a list of dicts
+            if not isinstance(fraud_explanations, list):
+                fraud_explanations = []
+
             # Prepare bank statement data
+            # Convert bank_name to UPPERCASE for consistent storage
+            bank_name_raw = self._safe_string(extracted.get('bank_name'))
+            bank_name_upper = bank_name_raw.upper() if bank_name_raw else None
+
             statement_data = {
                 'statement_id': str(uuid.uuid4()),
                 'document_id': document_id,
@@ -501,7 +538,7 @@ class DocumentStorage:
                 'account_holder_city': None,
                 'account_holder_state': None,
                 'account_holder_zip': None,
-                'bank_name': self._safe_string(extracted.get('bank_name')),
+                'bank_name': bank_name_upper,
                 'institution_id': institution_id,
                 'bank_address': self._safe_string(extracted.get('bank_address')),
                 'bank_city': None,
@@ -530,6 +567,9 @@ class DocumentStorage:
                 'ai_confidence': self._parse_amount(ai_analysis.get('confidence_score')) if ai_analysis else None,
                 'anomaly_count': len(analysis_data.get('anomalies', [])),
                 'top_anomalies': json.dumps(analysis_data.get('anomalies', [])[:5]),
+                # Fraud types - store as human-readable label (primary fraud type only)
+                'fraud_types': self._safe_string(primary_fraud_type_label),
+                # Note: fraud_explanations column doesn't exist in bank_statements table
                 'timestamp': datetime.utcnow().isoformat(),
                 'created_at': datetime.utcnow().isoformat()  # Keep for backward compatibility
             }
@@ -707,6 +747,10 @@ class DocumentStorage:
             institution_id = self._get_or_create_institution(institution_data)
 
             # Prepare check data
+            # Convert bank_name to UPPERCASE for consistent storage
+            bank_name_raw = self._safe_string(extracted.get('bank_name'))
+            bank_name_upper = bank_name_raw.upper() if bank_name_raw else None
+
             check_data = {
                 'check_id': str(uuid.uuid4()),
                 'document_id': document_id,
@@ -716,7 +760,7 @@ class DocumentStorage:
                 'payer_name': self._safe_string(extracted.get('payer_name')),
                 'payer_address': self._safe_string(extracted.get('payer_address')),
                 'payee_name': self._safe_string(extracted.get('payee_name')),
-                'bank_name': self._safe_string(extracted.get('bank_name')),
+                'bank_name': bank_name_upper,
                 'institution_id': institution_id,
                 'account_number': self._safe_string(extracted.get('account_number')),
                 'routing_number': self._safe_string(extracted.get('routing_number')),
@@ -754,7 +798,14 @@ def store_money_order_analysis(user_id: str, file_name: str, analysis_data: Dict
 
 
 def store_bank_statement_analysis(user_id: str, file_name: str, analysis_data: Dict) -> Optional[str]:
-    """Store bank statement analysis to database"""
+    """Store bank statement analysis to database using dedicated bank statement storage"""
+    try:
+        from bank_statement.database.bank_statement_storage import BankStatementStorage
+        storage = BankStatementStorage()
+        return storage.store_bank_statement(user_id, file_name, analysis_data)
+    except Exception as e:
+        logger.error(f"Error using dedicated bank statement storage: {e}, falling back to DocumentStorage")
+        # Fallback to old method if new storage fails
     storage = DocumentStorage()
     return storage.store_bank_statement(user_id, file_name, analysis_data)
 

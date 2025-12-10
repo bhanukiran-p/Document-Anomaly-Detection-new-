@@ -1,0 +1,89 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "Western Union",
+    "serial_number": "9875647821",
+    "serial_secondary": "9875647821",
+    "amount": "$750.00",
+    "amount_in_words": null,
+    "payee": "JANE SMITH",
+    "purchaser": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "date": "10/26/2023",
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "low",
+      "type": "ml_indicator",
+      "message": "Money order is 772 days old (stale)"
+    },
+    {
+      "severity": "low",
+      "type": "ai_indicator",
+      "message": "Missing \u201cAmount (Written)\u201d field extraction (potential OCR gap, not confirmed mismatch)."
+    }
+  ],
+  "confidence_score": 85,
+  "raw_text": "WESTERN WESTERN UNION\u00ae\nUNION\nMONEY ORDER\nPAY TO: JANE SMITH\n987557821\nAMOUNT:\n$750.00\nDATE: OCTOBER 26, 2023\nSEVEN HUNDRED FISTY AND 00//100 DOLLARS\nFROM: JOHN DOE\n123 OAK ST, ANYTOWN, CA 91234\n9875647821\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-12-06T18:51:16.276468",
+  "normalized_data": {
+    "issuer_name": "Western Union",
+    "serial_primary": "9875647821",
+    "serial_secondary": null,
+    "recipient": "JANE SMITH",
+    "sender_name": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "amount_numeric": {
+      "value": 750.0,
+      "currency": "USD"
+    },
+    "amount_written": null,
+    "date": "10-26-2023",
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 0.8,
+  "ml_analysis": {
+    "fraud_risk_score": 0.279,
+    "risk_level": "LOW",
+    "model_confidence": 0.956,
+    "model_scores": {
+      "random_forest": 0.294,
+      "xgboost": 0.272,
+      "ensemble": 0.279
+    },
+    "feature_importance": [
+      "Money order is 772 days old (stale)"
+    ],
+    "prediction_type": "mock"
+  },
+  "ai_analysis": {
+    "recommendation": "APPROVE",
+    "confidence_score": 0.9,
+    "summary": "",
+    "reasoning": [
+      "ML Model Low Risk: Ensemble fraud score 0.0%, RF 29.4%, XGB 27.2%\u2014all well below typical fraud thresholds.",
+      "New Customer: No prior history, escalate_count = 0, so no payer-based override.",
+      "Field Consistency: Numeric amount USD 750.0 is plausible. Written amount was not extracted\u2014likely OCR omission rather than a mismatch.",
+      "No ML\u2010Identified Indicators: The model did not flag any known red\u2010flag features.",
+      "Training Pattern Context: Although 45% of frauds involve amount mismatches, missing written amount extraction is different from a mismatch. A quick manual check resolves this.",
+      "Authenticity Markers: Signature field present; issuer (Western Union) is reputable."
+    ],
+    "key_indicators": [
+      "Missing \u201cAmount (Written)\u201d field extraction (potential OCR gap, not confirmed mismatch)."
+    ],
+    "verification_notes": "",
+    "actionable_recommendations": [
+      "Verify that the handwritten amount matches the numeric amount.",
+      "Check the money order\u2019s security features with Western Union guidelines.",
+      "Call Western Union\u2019s fraud hotline or use their online verification portal for serial number 9875647821."
+    ],
+    "training_insights": "",
+    "historical_comparison": "",
+    "analysis_type": "ai_enhanced",
+    "model_used": "o4-mini"
+  },
+  "analysis_id": "analysis_20251206_185116_276_9875647821",
+  "saved_timestamp": "2025-12-06T18:51:16.276634"
+}

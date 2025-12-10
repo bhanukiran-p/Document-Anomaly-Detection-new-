@@ -16,6 +16,11 @@ temp_*.pdf
 
 # Logs
 *.log
+*.log.*
+logs/
+backend.log
+app.log
+application.log
 
 # Credentials - IMPORTANT! Never commit real credentials
 check-ocr-project-469619-d18e1cdc414d.json

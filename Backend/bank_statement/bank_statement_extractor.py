@@ -5,9 +5,16 @@ Completely self-contained - no dependencies on other document analysis modules
 """
 
 import os
-import logging
+import sys
 import json
 from datetime import datetime
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+# Import centralized config and logging
+from config import Config
+logger = Config.get_logger(__name__)
 from typing import Dict, List, Optional, Tuple
 
 # Load environment variables first (if not already loaded)
@@ -23,8 +30,8 @@ try:
     from mindee import ClientV2, InferenceParameters, PathInput
     MINDEE_AVAILABLE = True
 except ImportError as e:
-    logging.getLogger(__name__).error(f"Mindee library not properly installed: {e}")
-    logging.getLogger(__name__).error("Requires mindee>=4.31.0. Install with: pip install --upgrade 'mindee>=4.31.0'")
+    logger.error(f"Mindee library not properly installed: {e}")
+    logger.error("Requires mindee>=4.31.0. Install with: pip install --upgrade 'mindee>=4.31.0'")
     MINDEE_AVAILABLE = False
     ClientV2 = None
     InferenceParameters = None
@@ -32,8 +39,6 @@ except ImportError as e:
 
 # Import bank statement-specific components from local modules
 from .normalization.bank_statement_normalizer_factory import BankStatementNormalizerFactory
-
-logger = logging.getLogger(__name__)
 
 # Mindee configuration - read after load_dotenv()
 MINDEE_API_KEY = os.getenv("MINDEE_API_KEY", "").strip()
@@ -118,7 +123,10 @@ class BankStatementExtractor:
 
         # Stage 4: ML Fraud Detection
         ml_analysis = self._run_ml_fraud_detection(normalized_data, raw_text)
-        logger.info(f"ML fraud analysis complete: {ml_analysis.get('risk_level')}")
+        # Validate ml_analysis is not None before accessing
+        if ml_analysis is None:
+            raise RuntimeError("ML fraud detection returned None. This should not happen - ML models are required.")
+        logger.info(f"ML fraud analysis complete: {ml_analysis.get('risk_level', 'UNKNOWN')}")
 
         # Stage 5: Customer History & Duplicate Detection (continue regardless)
         customer_info = self._get_customer_info(normalized_data)
@@ -127,9 +135,9 @@ class BankStatementExtractor:
             logger.warning("Duplicate bank statement detected - will be included in issues")
             validation_issues.append("Duplicate bank statement submission detected")
 
-        # Stage 6: AI Fraud Analysis (always runs unless initialization failed)
+        # Stage 6: AI Fraud Analysis (LLM is required - will raise error if unavailable)
         ai_analysis = self._run_ai_analysis(normalized_data, ml_analysis, customer_info)
-        logger.info(f"AI analysis complete: {ai_analysis.get('recommendation') if ai_analysis else 'N/A'}")
+        logger.info(f"AI analysis complete: {ai_analysis.get('recommendation', 'UNKNOWN')}")
 
         # Stage 7: Generate Anomalies
         anomalies = self._generate_anomalies(normalized_data, ml_analysis, ai_analysis)
@@ -151,6 +159,7 @@ class BankStatementExtractor:
             normalized_data=normalized_data,
             ml_analysis=ml_analysis,
             ai_analysis=ai_analysis,
+            customer_info=customer_info,
             anomalies=anomalies,
             confidence_score=confidence_score,
             validation_issues=validation_issues,
@@ -276,6 +285,14 @@ class BankStatementExtractor:
             logger.warning("Bank name not detected - skipping normalization")
             return extracted_data
 
+        # Check if bank is in database (case-insensitive)
+        try:
+            from .utils.bank_list_loader import is_supported_bank
+            bank_is_supported = is_supported_bank(bank_name)
+        except ImportError:
+            # Fallback: check against normalizer factory
+            bank_is_supported = BankStatementNormalizerFactory.is_supported_bank(bank_name)
+
         normalizer = BankStatementNormalizerFactory.get_normalizer(bank_name)
 
         if normalizer:
@@ -283,8 +300,8 @@ class BankStatementExtractor:
             normalized_obj = normalizer.normalize(extracted_data)
             normalized_data = normalized_obj.to_dict()
 
-            # Add validation flags
-            normalized_data['is_supported_bank'] = normalized_obj.is_supported_bank()
+            # Add validation flags (use database check for is_supported_bank)
+            normalized_data['is_supported_bank'] = bank_is_supported  # Use database check
             normalized_data['is_valid'] = normalized_obj.is_valid()
             normalized_data['completeness_score'] = normalized_obj.get_completeness_score()
             normalized_data['critical_missing_fields'] = normalized_obj.get_critical_missing_fields()
@@ -292,19 +309,27 @@ class BankStatementExtractor:
             logger.info(f"Normalization complete - Completeness: {normalized_data['completeness_score']}")
             return normalized_data
         else:
-            logger.warning(f"No normalizer found for bank: {bank_name}")
-            # Mark as unsupported bank
-            extracted_data['is_supported_bank'] = False
-            extracted_data['bank_name'] = bank_name
+            # No specific normalizer, but bank might still be in database
+            # Use generic normalization (Chase normalizer as template for common fields)
+            logger.info(f"No specific normalizer for bank: {bank_name}, using generic normalization")
             
-            # Convert account_holder_names array to account_holder_name string (even for unsupported banks)
-            if not extracted_data.get('account_holder_name') and extracted_data.get('account_holder_names'):
-                account_holder_names = extracted_data.get('account_holder_names', [])
-                if isinstance(account_holder_names, list) and len(account_holder_names) > 0:
-                    extracted_data['account_holder_name'] = account_holder_names[0]
-                    logger.info(f"Converted account_holder_names to account_holder_name: {extracted_data['account_holder_name']}")
+            # Use Chase normalizer as template (it handles common fields)
+            from .normalization.chase import ChaseNormalizer
+            generic_normalizer = ChaseNormalizer()
+            # Override bank name
+            generic_normalizer.bank_name = bank_name
             
-            return extracted_data
+            normalized_obj = generic_normalizer.normalize(extracted_data)
+            normalized_data = normalized_obj.to_dict()
+            
+            # Use database check for is_supported_bank (not normalizer's check)
+            normalized_data['is_supported_bank'] = bank_is_supported
+            normalized_data['is_valid'] = normalized_obj.is_valid()
+            normalized_data['completeness_score'] = normalized_obj.get_completeness_score()
+            normalized_data['critical_missing_fields'] = normalized_obj.get_critical_missing_fields()
+            
+            logger.info(f"Generic normalization complete - Completeness: {normalized_data['completeness_score']}")
+            return normalized_data
 
     def _collect_validation_issues(self, data: Dict) -> List[str]:
         """
@@ -335,8 +360,53 @@ class BankStatementExtractor:
         if isinstance(beginning, dict) and isinstance(ending, dict):
             beg_value = beginning.get('value', 0)
             end_value = ending.get('value', 0)
+            
+            # Get total_credits and total_debits from data
             total_credits = data.get('total_credits', {}).get('value', 0) if isinstance(data.get('total_credits'), dict) else 0
             total_debits = data.get('total_debits', {}).get('value', 0) if isinstance(data.get('total_debits'), dict) else 0
+            
+            # ALWAYS calculate total_credits and total_debits from transactions to verify accuracy
+            calculated_credits = 0.0
+            calculated_debits = 0.0
+            
+            if data.get('transactions'):
+                transactions = data.get('transactions', [])
+                
+                for txn in transactions:
+                    if isinstance(txn, dict):
+                        amount = txn.get('amount', {})
+                        if isinstance(amount, dict):
+                            txn_value = amount.get('value', 0.0)
+                        elif isinstance(amount, (int, float)):
+                            txn_value = float(amount)
+                        else:
+                            continue
+                        
+                        if txn_value > 0:
+                            calculated_credits += txn_value
+                        elif txn_value < 0:
+                            calculated_debits += abs(txn_value)
+            
+            # Use calculated values if they produce a better balance match
+            if calculated_credits > 0 or calculated_debits > 0:
+                # Calculate balance with Mindee values
+                mindee_expected = beg_value + total_credits - total_debits
+                mindee_diff = abs(end_value - mindee_expected)
+                
+                # Calculate balance with transaction-calculated values
+                calc_expected = beg_value + calculated_credits - calculated_debits
+                calc_diff = abs(end_value - calc_expected)
+                
+                # Use calculated values if they produce a better match (smaller difference)
+                if calc_diff < mindee_diff:
+                    total_credits = calculated_credits
+                    total_debits = calculated_debits
+            elif total_credits == 0 and calculated_credits > 0:
+                # Fallback: use calculated if original is zero
+                total_credits = calculated_credits
+            elif total_debits == 0 and calculated_debits > 0:
+                # Fallback: use calculated if original is zero
+                total_debits = calculated_debits
             
             # Check if balances are consistent
             expected_ending = beg_value + total_credits - total_debits
@@ -351,28 +421,31 @@ class BankStatementExtractor:
         return issues
 
     def _run_ml_fraud_detection(self, data: Dict, raw_text: str) -> Dict:
-        """Run ML fraud detection"""
+        """Run ML fraud detection - ML detector is REQUIRED, no fallback"""
         if not self.ml_detector:
-            logger.warning("ML detector not available - using fallback")
-            return {
-                'fraud_risk_score': 0.5,
-                'risk_level': 'UNKNOWN',
-                'model_confidence': 0.0,
-                'anomalies': []
-            }
+            raise RuntimeError(
+                "ML detector is not available. Bank statement fraud detection requires ML models. "
+                "Please ensure ML detector is properly initialized."
+            )
 
-        try:
-            ml_analysis = self.ml_detector.predict_fraud(data, raw_text)
-            return ml_analysis
-        except Exception as e:
-            logger.error(f"ML fraud detection failed: {e}", exc_info=True)
-            return {
-                'fraud_risk_score': 0.5,
-                'risk_level': 'UNKNOWN',
-                'model_confidence': 0.0,
-                'error': str(e),
-                'anomalies': []
-            }
+        # NO FALLBACK - if ML fails, raise error
+        ml_analysis = self.ml_detector.predict_fraud(data, raw_text)
+        
+        # Validate that ML returned a dict (not None)
+        if ml_analysis is None:
+            raise RuntimeError(
+                "ML fraud detection returned None. ML models must return a valid analysis dict. "
+                "Please check ML model initialization and prediction logic."
+            )
+        
+        if not isinstance(ml_analysis, dict):
+            raise RuntimeError(
+                f"ML fraud detection returned invalid type: {type(ml_analysis)}. "
+                f"Expected dict, got {type(ml_analysis)}. "
+                f"ML models must return a valid analysis dict."
+            )
+        
+        return ml_analysis
 
     def _get_customer_info(self, data: Dict) -> Dict:
         """Get customer history from database"""
@@ -424,32 +497,32 @@ class BankStatementExtractor:
             logger.error(f"Duplicate check failed: {e}")
             return False
 
-    def _run_ai_analysis(self, data: Dict, ml_analysis: Dict, customer_info: Dict) -> Optional[Dict]:
-        """Run AI fraud analysis"""
+    def _run_ai_analysis(self, data: Dict, ml_analysis: Dict, customer_info: Dict) -> Dict:
+        """Run AI fraud analysis - LLM is required, no fallback"""
         if not self.ai_agent:
-            logger.info("AI agent not available - skipping AI analysis")
-            return None
-
-        try:
-            # Try multiple sources for account holder name
-            account_holder_name = (
-                data.get('account_holder_name') or
-                data.get('account_holder') or
-                (data.get('account_holder_names', [])[0] if isinstance(data.get('account_holder_names'), list) and len(data.get('account_holder_names', [])) > 0 else None)
+            raise RuntimeError(
+                "AI agent (LLM) not available. "
+                "LLM analysis is required for bank statement fraud detection. "
+                "Please check OpenAI API key configuration."
             )
-            logger.info(f"Using account_holder_name for AI analysis: {account_holder_name}")
-            
-            ai_analysis = self.ai_agent.analyze_fraud(
-                extracted_data=data,
-                ml_analysis=ml_analysis,
-                account_holder_name=account_holder_name
-            )
-            return ai_analysis
-        except Exception as e:
-            logger.error(f"AI analysis failed: {e}", exc_info=True)
-            return None
 
-    def _generate_anomalies(self, data: Dict, ml_analysis: Dict, ai_analysis: Optional[Dict]) -> List[str]:
+        # Try multiple sources for account holder name
+        account_holder_name = (
+            data.get('account_holder_name') or
+            data.get('account_holder') or
+            (data.get('account_holder_names', [])[0] if isinstance(data.get('account_holder_names'), list) and len(data.get('account_holder_names', [])) > 0 else None)
+        )
+        logger.info(f"Using account_holder_name for AI analysis: {account_holder_name}")
+        
+        # LLM analysis is required - will raise error if it fails
+        ai_analysis = self.ai_agent.analyze_fraud(
+            extracted_data=data,
+            ml_analysis=ml_analysis,
+            account_holder_name=account_holder_name
+        )
+        return ai_analysis
+
+    def _generate_anomalies(self, data: Dict, ml_analysis: Dict, ai_analysis: Dict) -> List[str]:
         """Generate comprehensive anomaly list"""
         anomalies = []
 
@@ -457,14 +530,22 @@ class BankStatementExtractor:
         ml_anomalies = ml_analysis.get('anomalies', [])
         anomalies.extend(ml_anomalies)
 
-        # From AI analysis
-        if ai_analysis:
-            ai_factors = ai_analysis.get('key_indicators', [])
-            anomalies.extend(ai_factors)
+        # From AI analysis (LLM is required)
+        ai_factors = ai_analysis.get('key_indicators', [])
+        anomalies.extend(ai_factors)
 
         # From validation
         if not data.get('is_supported_bank', True):
-            anomalies.append(f"Unsupported bank: {data.get('bank_name')}")
+            # Only mark as unsupported if not in database (case-insensitive check)
+            try:
+                from .utils.bank_list_loader import is_supported_bank
+                bank_name = data.get('bank_name')
+                if bank_name and not is_supported_bank(bank_name):
+                    anomalies.append(f"Unsupported bank: {bank_name}")
+            except ImportError:
+                # Fallback: use is_supported_bank flag
+                if not data.get('is_supported_bank', False):
+                    anomalies.append(f"Unsupported bank: {data.get('bank_name')}")
 
         critical_missing = data.get('critical_missing_fields', [])
         if critical_missing:
@@ -503,7 +584,7 @@ class BankStatementExtractor:
 
         return anomalies
 
-    def _calculate_confidence(self, data: Dict, ml_analysis: Dict, ai_analysis: Optional[Dict]) -> float:
+    def _calculate_confidence(self, data: Dict, ml_analysis: Dict, ai_analysis: Dict) -> float:
         """Calculate overall confidence score"""
         scores = []
 
@@ -511,10 +592,9 @@ class BankStatementExtractor:
         ml_confidence = ml_analysis.get('model_confidence', 0.0)
         scores.append(ml_confidence)
 
-        # AI confidence
-        if ai_analysis:
-            ai_confidence = ai_analysis.get('confidence_score', 0.0)
-            scores.append(ai_confidence)
+        # AI confidence (LLM is required)
+        ai_confidence = ai_analysis.get('confidence_score', 0.0)
+        scores.append(ai_confidence)
 
         # Data completeness
         completeness = data.get('completeness_score', 0.0)
@@ -529,16 +609,16 @@ class BankStatementExtractor:
         self,
         validation_issues: List[str],
         ml_analysis: Dict,
-        ai_analysis: Optional[Dict],
+        ai_analysis: Dict,
         normalized_data: Dict
     ) -> str:
         """Determine final decision based on all collected information"""
         # Priority: AI recommendation > ML risk level > Validation issues
+        # LLM is required, so ai_analysis is always present
 
-        if ai_analysis:
-            ai_recommendation = ai_analysis.get('recommendation')
-            if ai_recommendation in ['APPROVE', 'REJECT', 'ESCALATE']:
-                return ai_recommendation
+        ai_recommendation = ai_analysis.get('recommendation')
+        if ai_recommendation in ['APPROVE', 'REJECT', 'ESCALATE']:
+            return ai_recommendation
 
         # Fallback to ML risk level
         risk_level = ml_analysis.get('risk_level', 'UNKNOWN')
@@ -559,7 +639,8 @@ class BankStatementExtractor:
         extracted_data: Dict,
         normalized_data: Dict,
         ml_analysis: Dict,
-        ai_analysis: Optional[Dict],
+        ai_analysis: Dict,
+        customer_info: Dict,
         anomalies: List[str],
         confidence_score: float,
         validation_issues: List[str],
@@ -586,10 +667,16 @@ class BankStatementExtractor:
             'extracted_data': extracted_data,
             'normalized_data': normalized_data,
             'ml_analysis': ml_analysis,
-            'ai_analysis': ai_analysis,
+            'ai_analysis': ai_analysis,  # LLM is required, so always present
+            'customer_info': customer_info or {},  # Include customer_info for frontend to determine new vs repeat
+            'fraud_risk_score': ml_analysis.get('fraud_risk_score', 0.0),
+            'risk_level': ml_analysis.get('risk_level', 'UNKNOWN'),
+            'model_confidence': ml_analysis.get('model_confidence', 0.0),
+            'ai_recommendation': ai_analysis.get('recommendation', 'UNKNOWN'),  # LLM is required
+            'ai_confidence': ai_analysis.get('confidence_score', 0.0),  # LLM is required
             'anomalies': anomalies,
-            'confidence_score': confidence_score,
             'validation_issues': validation_issues,
+            'confidence_score': confidence_score,
             'overall_decision': overall_decision,
             'duplicate_detected': duplicate_detected,
             'raw_text': raw_text,

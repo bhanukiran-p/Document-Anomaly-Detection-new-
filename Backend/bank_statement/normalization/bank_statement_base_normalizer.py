@@ -54,6 +54,21 @@ class BankStatementBaseNormalizer(ABC):
             'bank_name': self.bank_name
         }
 
+        # Extract currency early to use as default for amounts
+        # Check all possible currency field names
+        statement_currency = None
+        for currency_field in ['currency', 'Currency', 'CURRENCY']:
+            if currency_field in ocr_data and ocr_data[currency_field]:
+                statement_currency = self._clean_string(ocr_data[currency_field])
+                break
+        
+        # Also check in field mappings (in case currency field name is mapped)
+        if not statement_currency:
+            for ocr_field, std_field in field_mappings.items():
+                if std_field == 'currency' and ocr_field in ocr_data and ocr_data[ocr_field]:
+                    statement_currency = self._clean_string(ocr_data[ocr_field])
+                    break
+
         # Map and normalize each field
         for ocr_field, std_field in field_mappings.items():
             if ocr_field in ocr_data and ocr_data[ocr_field] is not None:
@@ -61,15 +76,21 @@ class BankStatementBaseNormalizer(ABC):
 
                 # Apply field-specific normalization
                 if std_field == 'beginning_balance' or std_field == 'ending_balance' or std_field == 'total_credits' or std_field == 'total_debits':
-                    normalized_data[std_field] = self._normalize_amount(raw_value)
+                    normalized_data[std_field] = self._normalize_amount(raw_value, default_currency=statement_currency)
                 elif 'date' in std_field:
                     normalized_data[std_field] = self._normalize_date(raw_value)
                 elif std_field == 'transactions':
-                    normalized_data[std_field] = self._normalize_transactions(raw_value)
+                    normalized_data[std_field] = self._normalize_transactions(raw_value, default_currency=statement_currency)
                 elif std_field == 'bank_address' or std_field == 'account_holder_address':
                     normalized_data[std_field] = self._normalize_address(raw_value)
                 elif std_field == 'account_holder_names':
                     normalized_data[std_field] = self._normalize_account_holder_names(raw_value)
+                elif std_field == 'currency':
+                    # Normalize currency field and update statement_currency
+                    normalized_currency = self._clean_string(raw_value)
+                    normalized_data[std_field] = normalized_currency
+                    if not statement_currency:
+                        statement_currency = normalized_currency
                 else:
                     # For other fields, clean the string
                     normalized_data[std_field] = self._clean_string(raw_value)
@@ -77,12 +98,65 @@ class BankStatementBaseNormalizer(ABC):
         # Create and return NormalizedBankStatement instance
         return NormalizedBankStatement.from_dict(normalized_data)
 
-    def _normalize_amount(self, amount_value) -> Optional[Dict]:
+    def _detect_currency_from_symbol(self, amount_string: str) -> str:
+        """
+        Detect currency code from currency symbol in amount string
+        
+        Args:
+            amount_string: Amount string that may contain currency symbols
+            
+        Returns:
+            Currency code (USD, EUR, GBP, etc.) or 'USD' as default
+        """
+        if not isinstance(amount_string, str):
+            return 'USD'
+        
+        # Currency symbol to code mapping
+        currency_map = {
+            '$': 'USD',
+            '€': 'EUR',
+            '£': 'GBP',
+            '¥': 'JPY',
+            '₹': 'INR',
+            'CAD': 'CAD',
+            'AUD': 'AUD',
+            'CHF': 'CHF',
+            'USD': 'USD',
+            'EUR': 'EUR',
+            'GBP': 'GBP',
+        }
+        
+        # Check for currency symbols (most common first)
+        amount_upper = amount_string.upper()
+        
+        # Check for currency codes first (3-letter codes)
+        for code, currency in currency_map.items():
+            if len(code) == 3 and code in amount_upper:
+                return currency
+        
+        # Check for currency symbols
+        if '$' in amount_string:
+            return 'USD'
+        elif '€' in amount_string:
+            return 'EUR'
+        elif '£' in amount_string:
+            return 'GBP'
+        elif '¥' in amount_string:
+            return 'JPY'
+        elif '₹' in amount_string:
+            return 'INR'
+        
+        # Default to USD if no symbol detected
+        return 'USD'
+
+    def _normalize_amount(self, amount_value, default_currency: Optional[str] = None) -> Optional[Dict]:
         """
         Normalize amount to {'value': float, 'currency': str} format
+        Detects currency from symbols ($, €, £, etc.) instead of defaulting to USD
 
         Args:
             amount_value: Amount from OCR (could be float, str, or dict)
+            default_currency: Default currency to use if no symbol detected (optional)
 
         Returns:
             Dictionary with 'value' and 'currency' keys
@@ -92,26 +166,38 @@ class BankStatementBaseNormalizer(ABC):
 
         # If already a dict with value, return it
         if isinstance(amount_value, dict) and 'value' in amount_value:
+            currency = amount_value.get('currency')
+            if not currency:
+                # Try to detect from value string if available
+                if isinstance(amount_value.get('value'), str):
+                    currency = self._detect_currency_from_symbol(amount_value['value'])
+                else:
+                    currency = default_currency or 'USD'
             return {
                 'value': float(amount_value['value']),
-                'currency': amount_value.get('currency', 'USD')
+                'currency': currency
             }
 
-        # If it's a number, convert directly
+        # If it's a number, use default currency or USD
         if isinstance(amount_value, (int, float)):
             return {
                 'value': float(amount_value),
-                'currency': 'USD'
+                'currency': default_currency or 'USD'
             }
 
-        # If it's a string, parse it
+        # If it's a string, detect currency from symbols BEFORE removing them
         if isinstance(amount_value, str):
-            # Remove currency symbols and commas
+            # Detect currency from symbol
+            detected_currency = self._detect_currency_from_symbol(amount_value)
+            # Use detected currency, or default_currency, or 'USD'
+            currency = detected_currency if detected_currency != 'USD' else (default_currency or 'USD')
+            
+            # Remove currency symbols and commas to extract numeric value
             clean_amount = re.sub(r'[^\d.-]', '', amount_value)
             try:
                 return {
                     'value': float(clean_amount),
-                    'currency': 'USD'
+                    'currency': currency
                 }
             except ValueError:
                 return None
@@ -161,12 +247,14 @@ class BankStatementBaseNormalizer(ABC):
 
         return None
 
-    def _normalize_transactions(self, transactions_value) -> Optional[List[Dict]]:
+    def _normalize_transactions(self, transactions_value, default_currency: Optional[str] = None) -> Optional[List[Dict]]:
         """
         Normalize transactions list
+        Detects currency from transaction amount symbols ($, €, £, etc.)
 
         Args:
             transactions_value: Transactions from OCR (could be list of dicts or list of objects)
+            default_currency: Default currency to use if no symbol detected in transaction amount
 
         Returns:
             List of normalized transaction dicts
@@ -183,16 +271,17 @@ class BankStatementBaseNormalizer(ABC):
                 normalized_txn = {
                     'date': self._normalize_date(transaction.get('date')),
                     'description': self._clean_string(transaction.get('description')),
-                    'amount': self._normalize_amount(transaction.get('amount'))
+                    'amount': self._normalize_amount(transaction.get('amount'), default_currency=default_currency)
                 }
                 normalized_transactions.append(normalized_txn)
             elif hasattr(transaction, 'fields'):
                 # Mindee object with fields
                 fields = transaction.fields if hasattr(transaction, 'fields') else {}
+                amount_value = fields.get('amount').value if hasattr(fields.get('amount'), 'value') else fields.get('amount')
                 normalized_txn = {
                     'date': self._normalize_date(fields.get('date').value if hasattr(fields.get('date'), 'value') else fields.get('date')),
                     'description': self._clean_string(fields.get('description').value if hasattr(fields.get('description'), 'value') else fields.get('description')),
-                    'amount': self._normalize_amount(fields.get('amount').value if hasattr(fields.get('amount'), 'value') else fields.get('amount'))
+                    'amount': self._normalize_amount(amount_value, default_currency=default_currency)
                 }
                 normalized_transactions.append(normalized_txn)
 

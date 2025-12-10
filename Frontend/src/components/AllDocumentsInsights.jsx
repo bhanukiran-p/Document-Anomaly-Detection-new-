@@ -1,10 +1,10 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
 import { colors } from '../styles/colors';
 import {
   BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList
 } from 'recharts';
 import { FaUpload, FaCog } from 'react-icons/fa';
 import CheckInsights from './CheckInsights';
@@ -23,10 +23,8 @@ const AllDocumentsInsights = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState(null);
   const [documentTypeFilter, setDocumentTypeFilter] = useState(null);
-  const [riskLevelFilter, setRiskLevelFilter] = useState(null);
   const [totalRecords, setTotalRecords] = useState(0);
   const [availableDocumentTypes, setAvailableDocumentTypes] = useState([]);
-  const [availableRiskLevels, setAvailableRiskLevels] = useState([]);
 
   // Normalize document type filter for comparison
   const normalizedDocumentType = documentTypeFilter 
@@ -86,131 +84,80 @@ const AllDocumentsInsights = () => {
   const processData = (rows) => {
     if (!rows.length) return null;
 
-    // 1. Fraud Risk Distribution (0-25%, 25-50%, 50-75%, 75-100%)
-    const riskScores = rows.map(r => parseFloat_(r['fraud_risk_score'] || r['RiskScore'] || 0));
-    const riskScoresPercent = riskScores.map(s => s * 100);
-    const riskDistribution = [
-      { range: '0-25%', count: riskScoresPercent.filter(s => s < 25).length },
-      { range: '25-50%', count: riskScoresPercent.filter(s => s >= 25 && s < 50).length },
-      { range: '50-75%', count: riskScoresPercent.filter(s => s >= 50 && s < 75).length },
-      { range: '75-100%', count: riskScoresPercent.filter(s => s >= 75).length },
-    ];
-
-    // 2. Document Type Distribution
-    const documentTypes = rows.map(r => r['document_type'] || r['DocumentType'] || 'Unknown');
+    // 1. Fraud Rate by Document Type
+    const fraudRateByType = {};
     const typeCounts = {};
-    documentTypes.forEach(type => {
-      typeCounts[type] = (typeCounts[type] || 0) + 1;
+    
+    rows.forEach(r => {
+      const type = r['document_type'] || r['DocumentType'] || 'Unknown';
+      const riskScore = parseFloat_(r['fraud_risk_score'] || r['RiskScore'] || 0);
+      const riskScorePercent = riskScore * 100;
+      const decision = (r['ai_recommendation'] || r['decision'] || r['status'] || '').toString().toUpperCase();
+      
+      // Initialize if needed
+      if (!fraudRateByType[type]) {
+        fraudRateByType[type] = { total: 0, fraud: 0 };
+      }
+      if (!typeCounts[type]) {
+        typeCounts[type] = 0;
+      }
+      
+      typeCounts[type]++;
+      fraudRateByType[type].total++;
+      
+      // Count as fraud if: risk_score >= 70 OR decision = "REJECT"
+      if (riskScorePercent >= 70 || decision === 'REJECT') {
+        fraudRateByType[type].fraud++;
+      }
     });
+    
+    const fraudRateData = Object.entries(fraudRateByType)
+      .map(([name, data]) => ({
+        name,
+        fraudRate: data.total > 0 ? ((data.fraud / data.total) * 100).toFixed(1) : '0.0',
+        fraudCount: data.fraud,
+        totalCount: data.total
+      }))
+      .filter(item => item.totalCount > 0)
+      .sort((a, b) => parseFloat(b.fraudRate) - parseFloat(a.fraudRate));
+    
+    // Document Type Distribution (for pie chart if space allows)
     const documentTypeData = Object.entries(typeCounts)
       .map(([name, value]) => ({ name, value }))
       .filter(item => item.value > 0);
 
-    // 3. Risk Level Distribution
-    // Calculate risk level from fraud_risk_score if not provided
-    const riskLevels = rows.map(r => {
-      let riskLevel = (r['risk_level'] || r['RiskLevel'] || '').trim();
+    // 3. Risk Level Distribution (for stacked bar chart)
+    // Calculate based on risk_score thresholds: LOW (<50%), MEDIUM (50-75%), HIGH (>=75%)
+    const totalRecords = rows.length;
+    let lowCount = 0;
+    let mediumCount = 0;
+    let highCount = 0;
+    
+    rows.forEach(r => {
       const riskScore = parseFloat_(r['fraud_risk_score'] || r['RiskScore'] || 0);
       const riskScorePercent = riskScore * 100;
       
-      // Normalize risk level - handle different formats
-      if (riskLevel) {
-        // Normalize common variations
-        const normalized = riskLevel.toUpperCase().replace(/\s+/g, '');
-        if (normalized.includes('HIGH') || normalized.includes('CRITICAL')) {
-          riskLevel = 'HIGH';
-        } else if (normalized.includes('MEDIUM')) {
-          riskLevel = 'MEDIUM';
-        } else if (normalized.includes('LOW')) {
-          riskLevel = 'LOW';
-        } else {
-          // If we can't match, calculate from score
-          riskLevel = null;
-        }
+      if (riskScorePercent >= 75) {
+        highCount++;
+      } else if (riskScorePercent >= 50) {
+        mediumCount++;
+      } else {
+        lowCount++;
       }
-      
-      // If risk_level is missing or couldn't be normalized, calculate from score
-      if (!riskLevel || riskLevel === 'UNKNOWN') {
-        if (riskScorePercent >= 70) {
-          riskLevel = 'HIGH';
-        } else if (riskScorePercent >= 35) {
-          riskLevel = 'MEDIUM';
-        } else {
-          riskLevel = 'LOW';
-        }
-      }
-      
-      return riskLevel;
     });
     
-    const riskLevelCounts = {
-      'HIGH': 0,
-      'MEDIUM': 0,
-      'LOW': 0,
-      'UNKNOWN': 0,
-      'CRITICAL': 0  // Some systems use CRITICAL instead of HIGH
+    const riskLevelData = {
+      lowCount,
+      mediumCount,
+      highCount,
+      totalRecords,
+      lowPercent: totalRecords > 0 ? ((lowCount / totalRecords) * 100).toFixed(1) : '0.0',
+      mediumPercent: totalRecords > 0 ? ((mediumCount / totalRecords) * 100).toFixed(1) : '0.0',
+      highPercent: totalRecords > 0 ? ((highCount / totalRecords) * 100).toFixed(1) : '0.0'
     };
-    riskLevels.forEach(level => {
-      // Map CRITICAL to HIGH for counting
-      const levelToCount = (level === 'CRITICAL') ? 'HIGH' : level;
-      riskLevelCounts[levelToCount] = (riskLevelCounts[levelToCount] || 0) + 1;
-    });
-    const riskLevelData = [
-      { name: 'HIGH', value: riskLevelCounts['HIGH'] },
-      { name: 'MEDIUM', value: riskLevelCounts['MEDIUM'] },
-      { name: 'LOW', value: riskLevelCounts['LOW'] },
-      { name: 'UNKNOWN', value: riskLevelCounts['UNKNOWN'] }
-    ].filter(item => item.value > 0);
 
-    // 4. Risk Score Range Distribution (More detailed than risk distribution)
-    // This shows distribution in 10% increments for better granularity
-    const riskScoreRanges = {
-      '0-10%': 0,
-      '10-20%': 0,
-      '20-30%': 0,
-      '30-40%': 0,
-      '40-50%': 0,
-      '50-60%': 0,
-      '60-70%': 0,
-      '70-80%': 0,
-      '80-90%': 0,
-      '90-100%': 0
-    };
-    riskScoresPercent.forEach(score => {
-      if (score < 10) riskScoreRanges['0-10%']++;
-      else if (score < 20) riskScoreRanges['10-20%']++;
-      else if (score < 30) riskScoreRanges['20-30%']++;
-      else if (score < 40) riskScoreRanges['30-40%']++;
-      else if (score < 50) riskScoreRanges['40-50%']++;
-      else if (score < 60) riskScoreRanges['50-60%']++;
-      else if (score < 70) riskScoreRanges['60-70%']++;
-      else if (score < 80) riskScoreRanges['70-80%']++;
-      else if (score < 90) riskScoreRanges['80-90%']++;
-      else riskScoreRanges['90-100%']++;
-    });
-    const riskScoreRangeData = Object.entries(riskScoreRanges)
-      .map(([name, value]) => ({ name, value }))
-      .filter(item => item.value > 0);
 
-    // 5. Risk by Document Type (Average risk score per type)
-    const typeRisks = {};
-    rows.forEach(r => {
-      const type = r['document_type'] || r['DocumentType'] || 'Unknown';
-      if (!typeRisks[type]) {
-        typeRisks[type] = { count: 0, totalRisk: 0 };
-      }
-      typeRisks[type].count++;
-      typeRisks[type].totalRisk += parseFloat_(r['fraud_risk_score'] || r['RiskScore'] || 0);
-    });
-    const riskByTypeData = Object.entries(typeRisks)
-      .map(([name, data]) => ({
-        name,
-        avgRisk: ((data.totalRisk / data.count) * 100).toFixed(1),
-        count: data.count
-      }))
-      .sort((a, b) => parseFloat(b.avgRisk) - parseFloat(a.avgRisk));
-
-    // 6. Risk Score Trends Over Time
+    // 4. Risk Score Trends Over Time
     const dateRisks = {};
     rows.forEach(r => {
       const dateStr = r['upload_date'] || r['UploadDate'] || r['created_at'] || '';
@@ -231,24 +178,125 @@ const AllDocumentsInsights = () => {
       .sort((a, b) => a.date.localeCompare(b.date))
       .slice(-30); // Last 30 days
 
+    // 6. Fraud Contribution by Document Type (%)
+    // Calculate what percentage of total high-risk documents each type contributes
+    const highRiskByType = {};
+    rows.forEach(r => {
+      const type = r['document_type'] || r['DocumentType'] || 'Unknown';
+      const riskScore = parseFloat_(r['fraud_risk_score'] || r['RiskScore'] || 0);
+      const riskScorePercent = riskScore * 100;
+      
+      // Count as high-risk if: risk_score >= 75 (HIGH threshold)
+      if (riskScorePercent >= 75) {
+        if (!highRiskByType[type]) {
+          highRiskByType[type] = 0;
+        }
+        highRiskByType[type]++;
+      }
+    });
+    
+    const totalHighRisk = Object.values(highRiskByType).reduce((sum, count) => sum + count, 0);
+    const fraudContributionData = Object.entries(highRiskByType)
+      .map(([name, count]) => ({
+        name,
+        value: count,
+        percent: totalHighRisk > 0 ? ((count / totalHighRisk) * 100).toFixed(1) : '0.0'
+      }))
+      .filter(item => item.value > 0)
+      .sort((a, b) => b.value - a.value);
+
+    // 7. Top High-Risk Entities
+    // Try to find entity fields: employee_name, employer_name, bank_name, payer, payee, purchaser_name
+    const entityData = {};
+    rows.forEach(r => {
+      const riskScore = parseFloat_(r['fraud_risk_score'] || r['RiskScore'] || 0);
+      const riskScorePercent = riskScore * 100;
+      
+      // Try different entity fields based on document type
+      let entityName = null;
+      const type = (r['document_type'] || r['DocumentType'] || '').toLowerCase();
+      
+      if (type.includes('paystub')) {
+        entityName = r['employee_name'] || r['EmployeeName'] || r['employer_name'] || r['EmployerName'];
+      } else if (type.includes('check')) {
+        entityName = r['bank_name'] || r['BankName'] || r['payer'] || r['Payer'] || r['payee'] || r['Payee'];
+      } else if (type.includes('money_order')) {
+        entityName = r['purchaser_name'] || r['PurchaserName'] || r['issuer'] || r['Issuer'] || r['payee_name'] || r['PayeeName'];
+      } else {
+        // Fallback: try common fields
+        entityName = r['employee_name'] || r['EmployeeName'] || 
+                    r['employer_name'] || r['EmployerName'] ||
+                    r['bank_name'] || r['BankName'] ||
+                    r['payer'] || r['Payer'] ||
+                    r['payee'] || r['Payee'] ||
+                    r['purchaser_name'] || r['PurchaserName'];
+      }
+      
+      if (entityName && entityName.trim() && entityName !== 'Unknown' && entityName.toLowerCase() !== 'unknown') {
+        const entityKey = entityName.trim();
+        if (!entityData[entityKey]) {
+          entityData[entityKey] = {
+            name: entityKey,
+            totalRisk: 0,
+            count: 0,
+            highRiskCount: 0
+          };
+        }
+        entityData[entityKey].count++;
+        entityData[entityKey].totalRisk += riskScorePercent;
+        if (riskScorePercent >= 75) {
+          entityData[entityKey].highRiskCount++;
+        }
+      }
+    });
+    
+    const topHighRiskEntities = Object.values(entityData)
+      .map(entity => ({
+        name: entity.name,
+        avgRisk: entity.count > 0 ? (entity.totalRisk / entity.count).toFixed(1) : '0.0',
+        highRiskCount: entity.highRiskCount,
+        totalCount: entity.count
+      }))
+      .filter(item => item.totalCount > 0)
+      .sort((a, b) => {
+        // Sort by high-risk count first, then by average risk
+        if (b.highRiskCount !== a.highRiskCount) {
+          return b.highRiskCount - a.highRiskCount;
+        }
+        return parseFloat(b.avgRisk) - parseFloat(a.avgRisk);
+      })
+      .slice(0, 10); // Top 10
+
     // 8. Summary Metrics
     const totalDocuments = rows.length;
+    const riskScores = rows.map(r => parseFloat_(r['fraud_risk_score'] || r['RiskScore'] || 0));
     const avgRiskScore = riskScores.length > 0 
       ? (riskScores.reduce((a, b) => a + b, 0) / riskScores.length * 100).toFixed(1)
       : '0.0';
-    const highRiskCount = (riskLevelCounts['HIGH'] || 0) + (riskLevelCounts['CRITICAL'] || 0);
+    const highRiskCount = riskLevelData.highCount;
+    const highRiskPercent = totalDocuments > 0 
+      ? ((highRiskCount / totalDocuments) * 100).toFixed(1)
+      : '0.0';
+
+    // Document type counts for summary metrics
+    const documentTypeCounts = {};
+    documentTypeData.forEach(item => {
+      documentTypeCounts[item.name] = item.value;
+    });
 
     return {
-      riskDistribution,
+      fraudRateData,
       documentTypeData,
       riskLevelData,
-      riskScoreRangeData,
-      riskByTypeData,
       riskTrends,
+      fraudContributionData,
+      topHighRiskEntities,
       metrics: {
         totalDocuments,
         avgRiskScore,
-        highRiskCount
+        highRiskCount,
+        highRiskPercent,
+        documentTypeCounts
       }
     };
   };
@@ -298,7 +346,15 @@ const AllDocumentsInsights = () => {
     multiple: false
   });
 
-  const fetchDocumentsList = async (dateFilter = null, documentType = null, riskLevel = null) => {
+  // Auto-fetch data when component mounts or switches to API mode
+  useEffect(() => {
+    if (inputMode === 'api' && documentsList.length === 0 && !loadingDocumentsList && !csvData) {
+      fetchDocumentsList(null, null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inputMode]);
+
+  const fetchDocumentsList = async (dateFilter = null, documentType = null) => {
     setLoadingDocumentsList(true);
     setError(null);
     setCsvData(null);
@@ -307,7 +363,6 @@ const AllDocumentsInsights = () => {
       const params = [];
       if (dateFilter) params.push(`date_filter=${dateFilter}`);
       if (documentType) params.push(`document_type=${encodeURIComponent(documentType)}`);
-      if (riskLevel) params.push(`risk_level=${encodeURIComponent(riskLevel)}`);
       if (params.length > 0) {
         url += '?' + params.join('&');
       }
@@ -320,16 +375,13 @@ const AllDocumentsInsights = () => {
 
         // Extract unique values for filters
         const uniqueTypes = [...new Set(fetchedData.map(d => d.document_type).filter(Boolean))].sort();
-        const uniqueRiskLevels = [...new Set(fetchedData.map(d => d.risk_level).filter(Boolean))].sort();
 
         setAvailableDocumentTypes(uniqueTypes);
-        setAvailableRiskLevels(uniqueRiskLevels);
 
         setDocumentsList(fetchedData);
         setTotalRecords(data.total_records || data.count);
         setDateFilter(dateFilter);
         setDocumentTypeFilter(documentType);
-        setRiskLevelFilter(riskLevel);
 
         if (fetchedData.length > 0) {
           loadDocumentsData(fetchedData);
@@ -352,7 +404,6 @@ const AllDocumentsInsights = () => {
   const handleSearchDocuments = async (query) => {
     if (!query) {
       setDocumentTypeFilter(null);
-      setRiskLevelFilter(null);
       fetchDocumentsList(dateFilter);
       return;
     }
@@ -630,7 +681,6 @@ const AllDocumentsInsights = () => {
               setCsvData(null);
               setError(null);
               setDocumentTypeFilter(null);
-              setRiskLevelFilter(null);
               setAllDocumentsData([]);
               setDateFilter(null);
               // Don't auto-fetch, let user click date filter or search
@@ -732,7 +782,7 @@ const AllDocumentsInsights = () => {
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.5rem' }}>
                 <button
-                  onClick={() => fetchDocumentsList(null, documentTypeFilter, riskLevelFilter)}
+                  onClick={() => fetchDocumentsList(null, documentTypeFilter)}
                   style={{
                     padding: '0.75rem',
                     borderRadius: '0.5rem',
@@ -747,7 +797,7 @@ const AllDocumentsInsights = () => {
                   All Records
                 </button>
                 <button
-                  onClick={() => fetchDocumentsList('last_30', documentTypeFilter, riskLevelFilter)}
+                  onClick={() => fetchDocumentsList('last_30', documentTypeFilter)}
                   style={{
                     padding: '0.75rem',
                     borderRadius: '0.5rem',
@@ -762,7 +812,7 @@ const AllDocumentsInsights = () => {
                   Last 30
                 </button>
                 <button
-                  onClick={() => fetchDocumentsList('last_60', documentTypeFilter, riskLevelFilter)}
+                  onClick={() => fetchDocumentsList('last_60', documentTypeFilter)}
                   style={{
                     padding: '0.75rem',
                     borderRadius: '0.5rem',
@@ -777,7 +827,7 @@ const AllDocumentsInsights = () => {
                   Last 60
                 </button>
                 <button
-                  onClick={() => fetchDocumentsList('last_90', documentTypeFilter, riskLevelFilter)}
+                  onClick={() => fetchDocumentsList('last_90', documentTypeFilter)}
                   style={{
                     padding: '0.75rem',
                     borderRadius: '0.5rem',
@@ -792,7 +842,7 @@ const AllDocumentsInsights = () => {
                   Last 90
                 </button>
                 <button
-                  onClick={() => fetchDocumentsList('older', documentTypeFilter, riskLevelFilter)}
+                  onClick={() => fetchDocumentsList('older', documentTypeFilter)}
                   style={{
                     padding: '0.75rem',
                     borderRadius: '0.5rem',
@@ -819,7 +869,7 @@ const AllDocumentsInsights = () => {
                   value={documentTypeFilter || ''}
                   onChange={(e) => {
                     const selectedType = e.target.value || null;
-                    fetchDocumentsList(dateFilter, selectedType, riskLevelFilter);
+                    fetchDocumentsList(dateFilter, selectedType);
                   }}
                   style={{
                     width: '100%',
@@ -847,43 +897,6 @@ const AllDocumentsInsights = () => {
               </div>
             )}
 
-            {/* Risk Level Filter */}
-            {availableRiskLevels.length > 0 && (
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', color: colors.foreground, marginBottom: '0.5rem', fontWeight: '500' }}>
-                  Filter by Risk Level:
-                </label>
-                <select
-                  value={riskLevelFilter || ''}
-                  onChange={(e) => {
-                    const selectedRisk = e.target.value || null;
-                    fetchDocumentsList(dateFilter, documentTypeFilter, selectedRisk);
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    borderRadius: '0.5rem',
-                    backgroundColor: colors.secondary,
-                    color: colors.foreground,
-                    border: `1px solid ${colors.border}`,
-                    fontSize: '1rem',
-                    cursor: 'pointer',
-                    appearance: 'none',
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='${encodeURIComponent(colors.foreground)}' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
-                    backgroundRepeat: 'no-repeat',
-                    backgroundPosition: 'right 0.75rem center',
-                    paddingRight: '2.5rem',
-                  }}
-                >
-                  <option value="">All Levels</option>
-                  {availableRiskLevels.map((level) => (
-                    <option key={level} value={level}>
-                      {level}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
 
 
             {loadingDocumentsList ? (
@@ -940,149 +953,145 @@ const AllDocumentsInsights = () => {
             </div>
             <div style={metricCardStyle}>
               <div style={{ fontSize: '2rem', fontWeight: 'bold', color: primary, marginBottom: '0.5rem' }}>
-                {csvData.metrics.highRiskCount}
+                {csvData.metrics.highRiskPercent}%
               </div>
-              <div style={{ color: colors.mutedForeground }}>High Risk Documents</div>
+              <div style={{ color: colors.mutedForeground }}>High Risk Documents %</div>
             </div>
           </div>
+          
+          {/* Document Type Counts */}
+          {csvData.metrics.documentTypeCounts && Object.keys(csvData.metrics.documentTypeCounts).length > 0 && (
+            <div style={{ marginTop: '2rem' }}>
+              <h3 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.2rem' }}>Documents by Type</h3>
+              <div style={metricsGridStyle}>
+                {Object.entries(csvData.metrics.documentTypeCounts).map(([type, count]) => (
+                  <div key={type} style={metricCardStyle}>
+                    <div style={{ fontSize: '1.75rem', fontWeight: 'bold', color: primary, marginBottom: '0.5rem' }}>
+                      {count}
+                    </div>
+                    <div style={{ color: colors.mutedForeground, fontSize: '0.9rem' }}>
+                      {type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, ' ')}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       {/* Charts Section */}
       {csvData && (
         <>
-          {/* Risk Distribution */}
-          {csvData.riskDistribution && csvData.riskDistribution.some(r => r.count > 0) && (
+          {/* Fraud Rate by Document Type */}
+          {csvData.fraudRateData && csvData.fraudRateData.length > 0 && (
             <div style={chartContainerStyle}>
-              <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>Risk Score Distribution</h3>
+              <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>Fraud Rate by Document Type</h3>
               <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={csvData.riskDistribution}>
+                <BarChart data={csvData.fraudRateData}>
                   <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                  <XAxis dataKey="range" stroke={colors.mutedForeground} />
-                  <YAxis stroke={colors.mutedForeground} />
+                  <XAxis dataKey="name" stroke={colors.mutedForeground} />
+                  <YAxis stroke={colors.mutedForeground} label={{ value: 'Fraud Rate (%)', angle: -90, position: 'insideLeft', style: { fill: colors.foreground } }} />
                   <Tooltip
                     contentStyle={{
                       backgroundColor: colors.card,
                       border: `1px solid ${colors.border}`,
                       color: colors.foreground
                     }}
+                    formatter={(value, name) => {
+                      if (name === 'fraudRate') {
+                        const item = csvData.fraudRateData.find(d => d.fraudRate === value);
+                        return [`${value}%`, `Fraud Rate (${item?.fraudCount || 0} of ${item?.totalCount || 0} documents)`];
+                      }
+                      return [value, name];
+                    }}
                   />
-                  <Bar dataKey="count" fill={primary} />
+                  <Bar dataKey="fraudRate" fill={primary}>
+                    <LabelList 
+                      dataKey="fraudRate" 
+                      position="top" 
+                      formatter={(value) => `${value}%`}
+                      fill={colors.foreground}
+                      style={{ fontSize: '12px', fontWeight: '600' }}
+                    />
+                  </Bar>
                 </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-
-          {/* Document Type Distribution */}
-          {csvData.documentTypeData && csvData.documentTypeData.length > 0 && (
-            <div style={chartContainerStyle}>
-              <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>Document Type Distribution</h3>
-              <ResponsiveContainer width="100%" height={500}>
-                <PieChart>
-                  <Pie
-                    data={csvData.documentTypeData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={{
-                      stroke: colors.border,
-                      strokeWidth: 1
-                    }}
-                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                    outerRadius={100}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {csvData.documentTypeData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: colors.card,
-                      border: `1px solid ${colors.border}`,
-                      color: colors.foreground
-                    }}
-                  />
-                </PieChart>
               </ResponsiveContainer>
             </div>
           )}
 
           {/* Risk Level Distribution */}
-          {csvData.riskLevelData && csvData.riskLevelData.length > 0 && (
+          {csvData.riskLevelData && csvData.riskLevelData.totalRecords > 0 && (
             <div style={chartContainerStyle}>
               <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>Risk Level Distribution</h3>
               <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={csvData.riskLevelData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {csvData.riskLevelData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: colors.card,
-                      border: `1px solid ${colors.border}`,
-                      color: colors.foreground
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-
-          {/* Detailed Risk Score Range Distribution */}
-          {csvData.riskScoreRangeData && csvData.riskScoreRangeData.length > 0 && (
-            <div style={chartContainerStyle}>
-              <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>Detailed Risk Score Distribution</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={csvData.riskScoreRangeData}>
+                <BarChart
+                  data={[{
+                    name: 'Risk Distribution',
+                    LOW: parseFloat(csvData.riskLevelData.lowPercent),
+                    MEDIUM: parseFloat(csvData.riskLevelData.mediumPercent),
+                    HIGH: parseFloat(csvData.riskLevelData.highPercent)
+                  }]}
+                  layout="vertical"
+                  margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                >
                   <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                  <XAxis dataKey="name" stroke={colors.mutedForeground} angle={-45} textAnchor="end" height={80} />
-                  <YAxis stroke={colors.mutedForeground} />
+                  <XAxis 
+                    type="number" 
+                    domain={[0, 100]}
+                    stroke={colors.mutedForeground}
+                    label={{ value: 'Percentage (%)', position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fill: colors.foreground } }}
+                  />
+                  <YAxis 
+                    dataKey="name" 
+                    type="category" 
+                    stroke={colors.mutedForeground}
+                    width={150}
+                    tick={{ fill: colors.foreground }}
+                  />
                   <Tooltip
                     contentStyle={{
                       backgroundColor: colors.card,
                       border: `1px solid ${colors.border}`,
                       color: colors.foreground
                     }}
+                    formatter={(value, name) => {
+                      const label = name === 'LOW' ? 'LOW' : name === 'MEDIUM' ? 'MEDIUM' : 'HIGH';
+                      return [`${value.toFixed(1)}%`, label];
+                    }}
                   />
-                  <Bar dataKey="value" fill={primary} />
+                  <Bar dataKey="LOW" stackId="a" fill="#34a853" name={`LOW ${csvData.riskLevelData.lowPercent}%`}>
+                    <LabelList 
+                      dataKey="LOW" 
+                      position="insideLeft" 
+                      formatter={(value) => `LOW ${value.toFixed(1)}%`}
+                      fill={colors.foreground}
+                      style={{ fontSize: '12px', fontWeight: '600' }}
+                    />
+                  </Bar>
+                  <Bar dataKey="MEDIUM" stackId="a" fill="#f4b400" name={`MEDIUM ${csvData.riskLevelData.mediumPercent}%`}>
+                    <LabelList 
+                      dataKey="MEDIUM" 
+                      position="inside" 
+                      formatter={(value) => `MEDIUM ${value.toFixed(1)}%`}
+                      fill={colors.foreground}
+                      style={{ fontSize: '12px', fontWeight: '600' }}
+                    />
+                  </Bar>
+                  <Bar dataKey="HIGH" stackId="a" fill="#e53935" name={`HIGH ${csvData.riskLevelData.highPercent}%`}>
+                    <LabelList 
+                      dataKey="HIGH" 
+                      position="insideRight" 
+                      formatter={(value) => `HIGH ${value.toFixed(1)}%`}
+                      fill={colors.foreground}
+                      style={{ fontSize: '12px', fontWeight: '600' }}
+                    />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
           )}
 
-          {/* Risk by Document Type */}
-          {csvData.riskByTypeData && csvData.riskByTypeData.length > 0 && (
-            <div style={chartContainerStyle}>
-              <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>Average Risk Score by Document Type</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={csvData.riskByTypeData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                  <XAxis dataKey="name" stroke={colors.mutedForeground} />
-                  <YAxis stroke={colors.mutedForeground} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: colors.card,
-                      border: `1px solid ${colors.border}`,
-                      color: colors.foreground
-                    }}
-                  />
-                  <Bar dataKey="avgRisk" fill={primary} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
 
           {/* Risk Score Trends */}
           {csvData.riskTrends && csvData.riskTrends.length > 0 && (
@@ -1102,6 +1111,92 @@ const AllDocumentsInsights = () => {
                   />
                   <Area type="monotone" dataKey="avgRisk" stroke={primary} fill={primary} fillOpacity={0.6} />
                 </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Fraud Contribution by Document Type (%) */}
+          {csvData.fraudContributionData && csvData.fraudContributionData.length > 0 && (
+            <div style={chartContainerStyle}>
+              <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>Fraud Contribution by Document Type (%)</h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={csvData.fraudContributionData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={(entry) => `${entry.name}: ${entry.percent}%`}
+                    outerRadius={100}
+                    innerRadius={40}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {csvData.fraudContributionData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: colors.card,
+                      border: `1px solid ${colors.border}`,
+                      color: colors.foreground
+                    }}
+                    formatter={(value, name, props) => {
+                      const percent = props.payload.percent;
+                      return [`${value} high-risk documents (${percent}%)`, props.payload.name];
+                    }}
+                  />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Top High-Risk Entities */}
+          {csvData.topHighRiskEntities && csvData.topHighRiskEntities.length > 0 && (
+            <div style={chartContainerStyle}>
+              <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>Top High-Risk Entities</h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={csvData.topHighRiskEntities} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+                  <XAxis 
+                    type="number" 
+                    stroke={colors.mutedForeground}
+                    label={{ value: 'High-Risk Count', position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fill: colors.foreground } }}
+                  />
+                  <YAxis 
+                    dataKey="name" 
+                    type="category" 
+                    stroke={colors.mutedForeground} 
+                    width={180}
+                    tick={{ fill: colors.foreground, fontSize: 12 }}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: colors.card,
+                      border: `1px solid ${colors.border}`,
+                      color: colors.foreground
+                    }}
+                    formatter={(value, name) => {
+                      if (name === 'highRiskCount') {
+                        const item = csvData.topHighRiskEntities.find(e => e.highRiskCount === value);
+                        return [`${value} high-risk documents`, `Avg Risk: ${item?.avgRisk}% | Total: ${item?.totalCount}`];
+                      }
+                      return [value, name];
+                    }}
+                    labelFormatter={(label) => `Entity: ${label}`}
+                  />
+                  <Bar dataKey="highRiskCount" fill={primary}>
+                    <LabelList 
+                      dataKey="highRiskCount" 
+                      position="right" 
+                      formatter={(value) => `${value}`}
+                      fill={colors.foreground}
+                      style={{ fontSize: '11px', fontWeight: '600' }}
+                    />
+                  </Bar>
+                </BarChart>
               </ResponsiveContainer>
             </div>
           )}

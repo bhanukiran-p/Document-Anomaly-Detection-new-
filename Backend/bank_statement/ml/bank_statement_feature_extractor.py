@@ -8,6 +8,16 @@ from datetime import datetime
 from typing import Dict, List, Optional
 import numpy as np
 
+# Import bank list loader for dynamic bank support
+try:
+    from ..utils.bank_list_loader import get_supported_bank_names, is_supported_bank
+    BANK_LIST_LOADER_AVAILABLE = True
+except ImportError:
+    # Fallback if utils module not available
+    BANK_LIST_LOADER_AVAILABLE = False
+    logger = __import__('logging').getLogger(__name__)
+    logger.warning("Bank list loader not available, using default bank list")
+
 
 class BankStatementFeatureExtractor:
     """
@@ -16,11 +26,28 @@ class BankStatementFeatureExtractor:
     """
 
     def __init__(self):
-        self.supported_banks = [
-            'Bank of America', 'Chase', 'Wells Fargo', 'Citibank',
-            'U.S. Bank', 'PNC Bank', 'TD Bank', 'Capital One',
-            'BANK OF AMERICA', 'CHASE', 'WELLS FARGO', 'CITIBANK'
-        ]
+        # Load supported banks from database (case-insensitive)
+        if BANK_LIST_LOADER_AVAILABLE:
+            try:
+                self.supported_banks = get_supported_bank_names()  # Set of lowercase bank names
+                self._use_database_banks = True
+            except Exception as e:
+                logger = __import__('logging').getLogger(__name__)
+                logger.warning(f"Failed to load banks from database: {e}, using default list")
+                self.supported_banks = {
+                    'bank of america', 'chase', 'wells fargo', 'citibank',
+                    'u.s. bank', 'pnc bank', 'td bank', 'capital one',
+                    'jpmorgan chase bank', 'td bank usa', 'capital one bank'
+                }
+                self._use_database_banks = False
+        else:
+            # Fallback to default list
+            self.supported_banks = {
+                'bank of america', 'chase', 'wells fargo', 'citibank',
+                'u.s. bank', 'pnc bank', 'td bank', 'capital one',
+                'jpmorgan chase bank', 'td bank usa', 'capital one bank'
+            }
+            self._use_database_banks = False
 
     def extract_features(self, extracted_data: Dict, raw_text: str = "") -> List[float]:
         """
@@ -49,18 +76,72 @@ class BankStatementFeatureExtractor:
         total_credits = self._extract_numeric_amount(extracted_data.get('total_credits'))
         total_debits = self._extract_numeric_amount(extracted_data.get('total_debits'))
 
+        # Get transactions first (needed for balance calculation)
+        transactions = extracted_data.get('transactions', [])
+        
+        # ALWAYS calculate total_credits and total_debits from transactions to verify accuracy
+        # This ensures we use the most accurate values for balance consistency checking
+        calculated_credits = 0.0
+        calculated_debits = 0.0
+        
+        if transactions:
+            for txn in transactions:
+                if isinstance(txn, dict):
+                    amount = txn.get('amount', {})
+                    txn_value = self._extract_numeric_amount(amount)
+                    
+                    if txn_value > 0:
+                        calculated_credits += txn_value
+                    elif txn_value < 0:
+                        calculated_debits += abs(txn_value)
+        
+        # Use calculated values if:
+        # 1. Original values are missing/zero, OR
+        # 2. Calculated values produce a better balance match (more accurate)
+        if calculated_credits > 0 or calculated_debits > 0:
+            # Check which values produce better balance consistency
+            if beginning_balance is not None and ending_balance is not None:
+                # Calculate balance with Mindee values
+                mindee_expected = beginning_balance + total_credits - total_debits
+                mindee_diff = abs(ending_balance - mindee_expected)
+                
+                # Calculate balance with transaction-calculated values
+                calc_expected = beginning_balance + calculated_credits - calculated_debits
+                calc_diff = abs(ending_balance - calc_expected)
+                
+                # Use calculated values if they produce a better match (smaller difference)
+                if calc_diff < mindee_diff:
+                    total_credits = calculated_credits
+                    total_debits = calculated_debits
+            else:
+                # If balances are missing, use calculated values if original are zero
+                if total_credits == 0 and calculated_credits > 0:
+                    total_credits = calculated_credits
+                if total_debits == 0 and calculated_debits > 0:
+                    total_debits = calculated_debits
+
         # Date handling
         statement_period_start = self._get_field(extracted_data, 'statement_period_start_date')
         statement_period_end = self._get_field(extracted_data, 'statement_period_end_date')
         statement_date = self._get_field(extracted_data, 'statement_date')
 
-        # Transactions
-        transactions = extracted_data.get('transactions', [])
+        # Transactions (already retrieved above for balance calculation)
 
         # === BASIC FEATURES (1-20) ===
 
-        # Feature 1: Bank validity (supported bank)
-        features.append(1.0 if bank_name in self.supported_banks else 0.0)
+        # Feature 1: Bank validity (supported bank) - Case-insensitive check
+        if bank_name:
+            bank_name_lower = bank_name.lower().strip()
+            # Check if bank is in supported list (case-insensitive)
+            if self._use_database_banks:
+                # Use set lookup (O(1) operation)
+                bank_valid = 1.0 if bank_name_lower in self.supported_banks else 0.0
+            else:
+                # Fallback: check against set
+                bank_valid = 1.0 if bank_name_lower in self.supported_banks else 0.0
+        else:
+            bank_valid = 0.0
+        features.append(bank_valid)
 
         # Feature 2: Account number present
         features.append(1.0 if account_number else 0.0)
@@ -137,8 +218,11 @@ class BankStatementFeatureExtractor:
         features.append(min(large_txn_count, 50.0))
 
         # Feature 23: Round number transactions (suspicious pattern)
+        # MEDIUM IMPACT: Normalize to reduce impact (divide by 2 to make it less influential)
         round_txn_count = self._count_round_number_transactions(transactions)
-        features.append(min(round_txn_count, 100.0))
+        # Normalize: divide by 2 to reduce impact, then cap at 50.0 (reduced from 100.0)
+        normalized_round_count = round_txn_count / 2.0
+        features.append(min(normalized_round_count, 50.0))
 
         # Feature 24: Date format validation
         features.append(self._validate_date_format(statement_period_start))
@@ -438,7 +522,14 @@ class BankStatementFeatureExtractor:
                 else:
                     seen.add(signature)
 
-        return 1.0 if duplicates > 0 else 0.0
+        # MEDIUM IMPACT: Only return 1.0 if multiple duplicates (2+), otherwise return 0.5 for single duplicate
+        # This reduces the impact of a single duplicate transaction
+        if duplicates >= 2:
+            return 1.0
+        elif duplicates == 1:
+            return 0.5  # Medium impact for single duplicate
+        else:
+            return 0.0
 
     def _detect_unusual_timing(self, transactions: List) -> float:
         """Detect transactions on weekends/holidays"""

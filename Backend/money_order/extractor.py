@@ -4,12 +4,20 @@ Extracts key information from money order documents and provides fraud risk asse
 """
 
 import os
+import sys
 import io
 import re
 from typing import Dict, Optional
 from datetime import datetime
 from google.cloud import vision
 from google.oauth2 import service_account
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+# Import centralized config and logging
+from config import Config
+logger = Config.get_logger(__name__)
 
 # Import ML models and AI agent
 try:
