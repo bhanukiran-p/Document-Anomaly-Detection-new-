@@ -4,7 +4,7 @@ import { analyzeBankStatement } from '../services/api';
 import { colors } from '../styles/colors';
 import { FaExclamationTriangle, FaUniversity, FaCog } from 'react-icons/fa';
 import * as pdfjsLib from 'pdfjs-dist';
-import BankStatementInsights from '../components/BankStatementInsights.jsx';
+import BankStatementInsights from '../components/BankStatementInsights';
 
 const buildBankStatementSections = (data) => ({
   'Account Information': [

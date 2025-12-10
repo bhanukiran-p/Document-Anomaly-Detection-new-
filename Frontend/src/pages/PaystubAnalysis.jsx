@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { analyzePaystub } from '../services/api';
 import { colors } from '../styles/colors';
-import PaystubInsights from '../components/PaystubInsights.jsx';
+import PaystubInsights from '../components/PaystubInsights';
 
 const PaystubAnalysis = () => {
   const [file, setFile] = useState(null);

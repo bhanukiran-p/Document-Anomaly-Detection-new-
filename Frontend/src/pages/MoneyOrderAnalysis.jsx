@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { analyzeMoneyOrder } from '../services/api';
 import { colors } from '../styles/colors';
-import MoneyOrderInsights from '../components/MoneyOrderInsights.jsx';
+import MoneyOrderInsights from '../components/MoneyOrderInsights';
 
 const MoneyOrderAnalysis = () => {
   const [file, setFile] = useState(null);

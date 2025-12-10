@@ -3,7 +3,7 @@ import { useDropzone } from 'react-dropzone';
 import { analyzeCheck } from '../services/api';
 import { colors } from '../styles/colors';
 import { FaExclamationTriangle, FaLandmark, FaCog } from 'react-icons/fa';
-import CheckInsights from '../components/CheckInsights.jsx';
+import CheckInsights from '../components/CheckInsights';
 
 const buildCheckSections = (data) => ({
   'Bank Information': [
