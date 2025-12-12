@@ -1,0 +1,122 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "MoneyGram",
+    "serial_number": "9021056789",
+    "serial_secondary": "9835647821",
+    "amount": "$450.00",
+    "amount_in_words": null,
+    "payee": "SARAH CHEN",
+    "purchaser": "MICHAEL LEE",
+    "sender_address": "456 PINE ST, ANYTOWN, CA 91234",
+    "date": "10/26/2024",
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "medium",
+      "type": "fraud_risk_medium",
+      "message": "[REJECT] Written amount contains clear spelling errors (\u201cFOUN\u201d instead of \u201cFOUR\u201d and \u201cFISTY\u201d instead of \u201cFIFTY\u201d), indicating document tampering."
+    },
+    {
+      "severity": "low",
+      "type": "ml_indicator",
+      "message": "Amount parsing confidence low"
+    },
+    {
+      "severity": "low",
+      "type": "ml_indicator",
+      "message": "Issued on weekend/holiday"
+    },
+    {
+      "severity": "low",
+      "type": "ml_indicator",
+      "message": "Very old (411 days)"
+    },
+    {
+      "severity": "medium",
+      "type": "ai_indicator",
+      "message": "Spelling errors in written amount: \u201cFOUN\u201d and \u201cFISTY\u201d"
+    }
+  ],
+  "confidence_score": 85,
+  "raw_text": "MoneyGram\nPAY TO: SARAH CHEN\nMONEYGRAM\u24c7\nMONEY ORDER\n9021056789\nAMOUNT:\n$450.00\nDATE:\nOCTOBER 26, 2024\nFOUN HUNDRED FISTY AND 00//100 DOLLARS\nFROM: MICHAEL LEE\n456 PINE ST, ANYTOWN, CA 91234\n9835647821\nMichael Lee\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-12-11T18:37:12.007755",
+  "normalized_data": {
+    "issuer_name": "MoneyGram",
+    "serial_primary": "9021056789",
+    "serial_secondary": "9835647821",
+    "recipient": "SARAH CHEN",
+    "sender_name": "MICHAEL LEE",
+    "sender_address": "456 PINE ST, ANYTOWN, CA 91234",
+    "amount_numeric": {
+      "value": 450.0,
+      "currency": "USD"
+    },
+    "amount_written": null,
+    "date": "10-26-2024",
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 0.9,
+  "ml_analysis": {
+    "fraud_risk_score": 0.334,
+    "risk_level": "MEDIUM",
+    "model_confidence": 0.7,
+    "model_scores": {
+      "random_forest": 0.284,
+      "xgboost": 0.034,
+      "ensemble": 0.134,
+      "adjusted": 0.334
+    },
+    "feature_importance": [
+      "Amount parsing confidence low",
+      "Issued on weekend/holiday",
+      "Very old (411 days)"
+    ],
+    "fraud_indicators": [
+      "Amount parsing confidence low",
+      "Issued on weekend/holiday",
+      "Very old (411 days)"
+    ],
+    "prediction_type": "model"
+  },
+  "ai_analysis": {
+    "recommendation": "REJECT",
+    "confidence_score": 0.9,
+    "summary": "Written amount contains clear spelling errors (\u201cFOUN\u201d instead of \u201cFOUR\u201d and \u201cFISTY\u201d instead of \u201cFIFTY\u201d), indicating document tampering.",
+    "reasoning": [
+      "Raw OCR text shows \u201cFOUN HUNDRED FISTY AND 00//100 DOLLARS,\u201d two misspellings in the amount-in-words line.",
+      "Training data indicates 45% of frauds involve altered or mismatched amounts; spelling errors are strong evidence of manual tampering.",
+      "ML ensemble risk score is low, but the model does not detect manual misspellings; manual validation is paramount.",
+      "Issuer and serial number appear valid; signature is present, so no signature-related fraud."
+    ],
+    "key_indicators": [
+      "Spelling errors in written amount: \u201cFOUN\u201d and \u201cFISTY\u201d"
+    ],
+    "verification_notes": "",
+    "actionable_recommendations": [
+      "Retain the money order and notify the issuing agent (MoneyGram) of suspected tampering.",
+      "Contact Michael Lee (purchaser) for explanation of misspellings.",
+      "Report and escalate this case to compliance and legal for potential fraud investigation."
+    ],
+    "fraud_types": [
+      "AMOUNT_ALTERATION"
+    ],
+    "fraud_explanations": [
+      {
+        "type": "AMOUNT_ALTERATION",
+        "reasons": [
+          "Raw OCR shows \u201cFOUN HUNDRED FISTY AND 00//100 DOLLARS,\u201d with \u201cFOUN\u201d and \u201cFISTY\u201d misspelled, confirming manual alteration.",
+          "Numeric amount ($450.00) appears consistent with printed value, but written line errors override numeric check."
+        ]
+      }
+    ],
+    "training_insights": "In our dataset, 45% of confirmed frauds feature amount mismatches or alterations; spelling errors are a high-confidence indicator of tampering.",
+    "historical_comparison": "No directly similar past cases found, but consistent with patterns of manual document alterations documented in prior fraud investigations.",
+    "analysis_type": "ai_enhanced",
+    "model_used": "o4-mini"
+  },
+  "analysis_id": "analysis_20251211_183712_008_9021056789",
+  "saved_timestamp": "2025-12-11T18:37:12.008243"
+}
