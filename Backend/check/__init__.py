@@ -10,10 +10,10 @@ from .check_extractor import CheckExtractor
 def extract_check(file_path: str) -> dict:
     """
     Extract and analyze check - main entry point
-    
+
     Args:
         file_path: Path to check image/PDF file
-        
+
     Returns:
         Complete analysis results dict
     """

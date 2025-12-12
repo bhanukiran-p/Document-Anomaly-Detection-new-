@@ -1,29 +1,31 @@
 """
 Check Normalizer Factory
 Automatically selects and returns the appropriate normalizer for a given bank
+Uses generic normalizer for all banks by default
 """
 
 from typing import Optional
 from .check_base_normalizer import CheckBaseNormalizer
-from .bank_of_america import BankOfAmericaNormalizer
-from .chase import ChaseNormalizer
+from .normalise_generic import GenericCheckNormalizer
 
 
 class CheckNormalizerFactory:
     """
     Factory class to create appropriate check normalizer based on bank name
+    Uses generic normalizer for all banks by default
     """
 
-    # Registry of supported check normalizers
-    NORMALIZERS = {
-        'bank of america': BankOfAmericaNormalizer,
-        'bofa': BankOfAmericaNormalizer,
-        'boa': BankOfAmericaNormalizer,
-        'bankofamerica': BankOfAmericaNormalizer,
-        'chase': ChaseNormalizer,
-        'chase bank': ChaseNormalizer,
-        'jpmorgan chase': ChaseNormalizer,
-        'jp morgan chase': ChaseNormalizer,
+    # Registry of bank-specific normalizers (optional - for special cases)
+    BANK_SPECIFIC_NORMALIZERS = {
+        # Commented out - using generic normalizer for all banks now
+        # 'bank of america': BankOfAmericaNormalizer,
+        # 'bofa': BankOfAmericaNormalizer,
+        # 'boa': BankOfAmericaNormalizer,
+        # 'bankofamerica': BankOfAmericaNormalizer,
+        # 'chase': ChaseNormalizer,
+        # 'chase bank': ChaseNormalizer,
+        # 'jpmorgan chase': ChaseNormalizer,
+        # 'jp morgan chase': ChaseNormalizer,
     }
 
     @classmethod
@@ -31,61 +33,69 @@ class CheckNormalizerFactory:
         """
         Get appropriate normalizer for the given bank
 
+        Now uses GenericCheckNormalizer for ALL banks by default.
+        Mindee provides standardized field names, so we don't need bank-specific logic.
+
         Args:
             bank_name: Name of the bank (case-insensitive)
 
         Returns:
-            Appropriate normalizer instance or None if bank not supported
+            GenericCheckNormalizer instance (works for all banks)
 
         Examples:
             >>> normalizer = CheckNormalizerFactory.get_normalizer('Bank of America')
             >>> normalizer = CheckNormalizerFactory.get_normalizer('Chase')
+            >>> normalizer = CheckNormalizerFactory.get_normalizer('Wells Fargo')
+            # All return GenericCheckNormalizer
         """
         if not bank_name:
-            return None
+            # Return generic normalizer even if bank name is unknown
+            return GenericCheckNormalizer(bank_name='Unknown Bank')
 
         # Normalize bank name (lowercase, strip whitespace, remove special chars)
         bank_key = bank_name.lower().strip().replace('-', '').replace('_', '')
 
-        # Get normalizer class from registry
-        normalizer_class = cls.NORMALIZERS.get(bank_key)
+        # Check if there's a bank-specific normalizer (for special cases)
+        normalizer_class = cls.BANK_SPECIFIC_NORMALIZERS.get(bank_key)
 
         if normalizer_class:
             return normalizer_class()
 
-        return None
+        # Default: Use generic normalizer for all banks
+        return GenericCheckNormalizer(bank_name=bank_name)
 
     @classmethod
     def is_supported_bank(cls, bank_name: str) -> bool:
         """
         Check if a bank is supported
 
+        Since we now use generic normalizer, ALL banks are supported.
+
         Args:
             bank_name: Name of the bank
 
         Returns:
-            True if bank is supported, False otherwise
+            Always True (generic normalizer works for all banks)
         """
-        if not bank_name:
-            return False
-
-        bank_key = bank_name.lower().strip().replace('-', '').replace('_', '')
-        return bank_key in cls.NORMALIZERS
+        # Generic normalizer supports all banks
+        return True
 
     @classmethod
     def get_supported_banks(cls) -> list:
         """
-        Get list of all supported banks (canonical names only)
+        Get list of all supported banks
 
         Returns:
-            List of supported bank names
+            List indicating all banks are supported via generic normalizer
         """
-        return ['Bank of America', 'Chase']
+        return ['All Banks (using generic normalizer)']
 
     @classmethod
     def register_normalizer(cls, bank_name: str, normalizer_class):
         """
-        Register a new normalizer for a bank
+        Register a bank-specific normalizer for a bank (optional)
+
+        Only needed if a bank requires special handling beyond generic normalization.
 
         Args:
             bank_name: Bank name (will be lowercased)
@@ -95,7 +105,7 @@ class CheckNormalizerFactory:
             raise ValueError(f"{normalizer_class} must inherit from CheckBaseNormalizer")
 
         bank_key = bank_name.lower().strip().replace('-', '').replace('_', '')
-        cls.NORMALIZERS[bank_key] = normalizer_class
+        cls.BANK_SPECIFIC_NORMALIZERS[bank_key] = normalizer_class
 
     @classmethod
     def normalize_data(cls, bank_name: str, ocr_data: dict):
