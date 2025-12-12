@@ -18,12 +18,16 @@ from datetime import datetime
 from auth import login_user, register_user
 from database.supabase_client import get_supabase, check_connection as check_supabase_connection
 from auth.supabase_auth import login_user_supabase, register_user_supabase, verify_token
+<<<<<<< Updated upstream
 from database.document_storage import (
     store_check_analysis,
     store_paystub_analysis,
     store_money_order_analysis,
     store_bank_statement_analysis
 )
+=======
+# On-demand document storage removed - only real-time transaction analysis supported
+>>>>>>> Stashed changes
 
 # Create logs directory if it doesn't exist
 log_dir = os.path.join(os.path.dirname(__file__), 'logs')
@@ -49,6 +53,9 @@ console_handler.setLevel(logging.INFO)
 console_handler.setFormatter(formatter)
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+=======
+>>>>>>> Stashed changes
 # Configure root logger
 logging.basicConfig(
     level=logging.INFO,
@@ -56,10 +63,17 @@ logging.basicConfig(
     handlers=[file_handler, console_handler]
 )
 
+<<<<<<< Updated upstream
 logger = logging.getLogger(__name__)
 logger.info(f"Logging configured. Log file: {log_file}")
 
 =======
+>>>>>>> Stashed changes
+=======
+
+logger = logging.getLogger(__name__)
+logger.info(f"Logging configured. Log file: {log_file}")
+
 >>>>>>> Stashed changes
 # Google Vision API and PyMuPDF imports (after logger is initialized)
 try:
@@ -77,6 +91,7 @@ except ImportError:
     logger.warning("PyMuPDF (fitz) not available - PDF conversion will not work")
     fitz = None
 
+<<<<<<< Updated upstream
 <<<<<<< Updated upstream
 # Load environment variables explicitly
 from dotenv import load_dotenv
