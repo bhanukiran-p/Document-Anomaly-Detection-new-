@@ -48,6 +48,7 @@ console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.INFO)
 console_handler.setFormatter(formatter)
 
+<<<<<<< Updated upstream
 # Configure root logger
 logging.basicConfig(
     level=logging.INFO,
@@ -58,6 +59,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.info(f"Logging configured. Log file: {log_file}")
 
+=======
+>>>>>>> Stashed changes
 # Google Vision API and PyMuPDF imports (after logger is initialized)
 try:
     from google.cloud import vision
@@ -74,9 +77,18 @@ except ImportError:
     logger.warning("PyMuPDF (fitz) not available - PDF conversion will not work")
     fitz = None
 
+<<<<<<< Updated upstream
 # Load environment variables explicitly
 from dotenv import load_dotenv
 load_dotenv()
+=======
+# Validate configuration
+config_errors = Config.validate()
+if config_errors:
+    logger.warning("Configuration issues detected:")
+    for error in config_errors:
+        logger.warning(f"  - {error}")
+>>>>>>> Stashed changes
 
 # Check for critical environment variables
 if os.getenv('OPENAI_API_KEY'):
