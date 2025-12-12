@@ -1,0 +1,136 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "Western Union",
+    "serial_number": "9875647821",
+    "serial_secondary": "9875647821",
+    "amount": "$750.00",
+    "amount_in_words": null,
+    "payee": "JANE SMITH",
+    "purchaser": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "date": "10/26/2023",
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "high",
+      "type": "fraud_risk_high",
+      "message": "[REJECT] Missing signature detected on repeat upload (escalate_count=1). Automatic rejection per strict signature validation policy."
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Missing signature"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Money order is 775 days old (stale)"
+    },
+    {
+      "severity": "high",
+      "type": "ai_indicator",
+      "message": "ML fraud detector flagged missing signature"
+    },
+    {
+      "severity": "high",
+      "type": "ai_indicator",
+      "message": "Repeat offender (escalate_count=1)"
+    },
+    {
+      "severity": "high",
+      "type": "ai_indicator",
+      "message": "Mandatory signature policy violation"
+    }
+  ],
+  "confidence_score": 85,
+  "raw_text": "WESTERN WESTERN UNION\u00ae\nUNION\nMONEY ORDER\nPAY TO: JANE SMITH\n987557821\nAMOUNT:\n$750.00\nDATE: OCTOBER 26, 2023\nSEVEN HUNDRED FISTY AND 00//100 DOLLARS\nFROM: JOHN DOE\n123 OAK ST, ANYTOWN, CA 91234\n9875647821\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-12-09T16:46:41.021019",
+  "normalized_data": {
+    "issuer_name": "Western Union",
+    "serial_primary": "9875647821",
+    "serial_secondary": null,
+    "recipient": "JANE SMITH",
+    "sender_name": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "amount_numeric": {
+      "value": 750.0,
+      "currency": "USD"
+    },
+    "amount_written": null,
+    "date": "10-26-2023",
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 0.8,
+  "ml_analysis": {
+    "fraud_risk_score": 0.737,
+    "risk_level": "HIGH",
+    "model_confidence": 0.955,
+    "model_scores": {
+      "random_forest": 0.763,
+      "xgboost": 0.741,
+      "ensemble": 0.737
+    },
+    "feature_importance": [
+      "Missing signature",
+      "Money order is 775 days old (stale)"
+    ],
+    "fraud_indicators": [
+      "Missing signature",
+      "Money order is 775 days old (stale)"
+    ],
+    "prediction_type": "mock"
+  },
+  "ai_analysis": {
+    "recommendation": "REJECT",
+    "confidence_score": 1.0,
+    "summary": "Missing signature detected on repeat upload (escalate_count=1). Automatic rejection per strict signature validation policy.",
+    "reasoning": [
+      "ML fraud detector identified missing signature",
+      "Customer has 1 previous escalation(s) - this is a repeat attempt",
+      "Per system policy: First missing signature \u2192 ESCALATE, repeat attempts \u2192 REJECT",
+      "Automatic rejection enforced to prevent repeat fraud attempts"
+    ],
+    "key_indicators": [
+      "ML fraud detector flagged missing signature",
+      "Repeat offender (escalate_count=1)",
+      "Mandatory signature policy violation"
+    ],
+    "verification_notes": "Document rejected due to missing signature on repeat upload. Customer was previously escalated for same issue.",
+    "actionable_recommendations": [
+      "Reject this transaction immediately - signature not present on repeat upload",
+      "Flag customer account for potential fraud pattern (repeat missing signature attempts)",
+      "Consider blocking future uploads from this customer"
+    ],
+    "fraud_types": [
+      "SIGNATURE_FORGERY",
+      "REPEAT_OFFENDER"
+    ],
+    "fraud_explanations": [
+      {
+        "type": "SIGNATURE_FORGERY",
+        "reasons": [
+          "ML fraud detector identified missing signature",
+          "Mandatory signature validation failed",
+          "Signature is required for all money orders per policy"
+        ]
+      },
+      {
+        "type": "REPEAT_OFFENDER",
+        "reasons": [
+          "Customer has 1 previous escalation(s)",
+          "Repeat attempt with missing signature indicates fraud pattern",
+          "Per payer-based fraud tracking policy: repeat offenders are automatically rejected"
+        ]
+      }
+    ],
+    "training_insights": "Repeat missing signature attempts indicate potential fraud pattern",
+    "historical_comparison": "Consistent with repeat offender policy",
+    "analysis_type": "policy_enforcement",
+    "model_used": "mandatory_signature_policy"
+  },
+  "analysis_id": "analysis_20251209_164641_021_9875647821",
+  "saved_timestamp": "2025-12-09T16:46:41.021136"
+}

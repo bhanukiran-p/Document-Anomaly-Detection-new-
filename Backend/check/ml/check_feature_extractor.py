@@ -7,6 +7,13 @@ import re
 from datetime import datetime
 from typing import Dict, List, Optional
 import numpy as np
+import sys
+import os
+
+# Add parent directories to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+
+from bank_statement.utils.bank_list_loader import get_supported_bank_names
 
 
 class CheckFeatureExtractor:
@@ -16,11 +23,45 @@ class CheckFeatureExtractor:
     """
 
     def __init__(self):
-        self.supported_banks = ['Bank of America', 'Chase', 'BANK OF AMERICA', 'CHASE']
-        self.valid_routing_prefixes = {
-            'Bank of America': ['0', '1', '2', '3', '0', '1'],
-            'Chase': ['0', '1', '2', '3', '0', '2', '0', '7']
-        }
+        # Load supported banks from database
+        self._load_supported_banks()
+
+    def _load_supported_banks(self):
+        """Load supported banks from database (stored in UPPERCASE)"""
+        import logging
+        logger = logging.getLogger(__name__)
+
+        self.supported_banks = get_supported_bank_names()
+        logger.info(f"Loaded {len(self.supported_banks)} banks from database")
+
+    def _is_bank_supported(self, bank_name: Optional[str]) -> bool:
+        """
+        Check if bank is supported (case-insensitive with flexible matching).
+
+        Supports flexible matching:
+        - "CHASE" matches "CHASE" in database
+        - "CHASE BANK" matches "CHASE" in database
+        - "chase" matches "CHASE" in database (case-insensitive)
+        """
+        if not bank_name:
+            return False
+
+        bank_name_upper = bank_name.upper().strip()
+
+        # Direct match
+        if bank_name_upper in self.supported_banks:
+            return True
+
+        # Flexible matching
+        for supported_bank in self.supported_banks:
+            # "CHASE BANK" should match "CHASE"
+            if bank_name_upper.startswith(supported_bank + ' ') or bank_name_upper == supported_bank:
+                return True
+            # "CHASE" should match "CHASE BANK"
+            if supported_bank.startswith(bank_name_upper + ' ') or supported_bank == bank_name_upper:
+                return True
+
+        return False
 
     def extract_features(self, extracted_data: Dict, raw_text: str = "") -> List[float]:
         """
@@ -67,8 +108,8 @@ class CheckFeatureExtractor:
 
         # === BASIC FEATURES (1-15) ===
 
-        # Feature 1: Bank validity (supported bank)
-        features.append(1.0 if bank_name in self.supported_banks else 0.0)
+        # Feature 1: Bank validity (supported bank) - case-insensitive check
+        features.append(1.0 if self._is_bank_supported(bank_name) else 0.0)
 
         # Feature 2: Routing number validity (9 digits)
         features.append(self._validate_routing_number(routing_number))
@@ -353,17 +394,21 @@ class CheckFeatureExtractor:
         return populated_fields / total_fields
 
     def _validate_bank_routing_match(self, bank_name: Optional[str], routing: Optional[str]) -> float:
-        """Validate routing number matches bank"""
+        """Validate routing number format and bank recognition"""
         if not bank_name or not routing:
             return 0.5
 
-        # Known routing prefixes for supported banks
+        # Check if bank is in our supported banks list (from database)
+        if not self._is_bank_supported(bank_name):
+            return 0.0  # Bank not recognized
+
+        # Validate routing number format (9 digits)
         routing_str = str(routing).strip()
-        if len(routing_str) != 9:
+        if len(routing_str) != 9 or not routing_str.isdigit():
             return 0.0
 
-        # Simple validation - would need full routing database in production
-        return 1.0 if routing_str.isdigit() else 0.0
+        # Bank is supported and routing number format is valid
+        return 1.0
 
     def _check_number_pattern_score(self, check_num: Optional[str]) -> float:
         """Validate check number follows expected pattern"""

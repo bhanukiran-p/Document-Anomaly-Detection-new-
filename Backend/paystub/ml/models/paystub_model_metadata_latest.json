@@ -1,6 +1,10 @@
 {
   "document_type": "paystub",
-  "model_type": "random_forest",
+  "model_type": "ensemble_random_forest_xgboost",
+  "ensemble_weights": {
+    "random_forest": 0.4,
+    "xgboost": 0.6
+  },
   "feature_names": [
     "has_company",
     "has_employee",
@@ -21,8 +25,11 @@
     "net_to_gross_ratio",
     "deduction_percentage"
   ],
-  "model_path": "paystub_risk_model_20251202_185808.pkl",
-  "scaler_path": "paystub_scaler_20251202_185808.pkl",
-  "trained_at": "20251202_185808",
-  "feature_count": 18
+  "feature_count": 18,
+  "model_paths": {
+    "random_forest": "paystub_random_forest.pkl",
+    "xgboost": "paystub_xgboost.pkl"
+  },
+  "scaler_path": "paystub_feature_scaler.pkl",
+  "trained_at": "20251211_175342"
 }

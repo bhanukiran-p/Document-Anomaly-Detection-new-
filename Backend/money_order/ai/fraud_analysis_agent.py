@@ -119,6 +119,139 @@ class FraudAnalysisAgent:
         logger.info(f"[FRAUD_ANALYSIS] Input params: is_repeat_customer={is_repeat_customer}, customer_id={customer_id}")
         logger.info(f"[FRAUD_ANALYSIS] customer_fraud_history={customer_fraud_history}")
 
+        # PRIORITY #1: MANDATORY SIGNATURE VALIDATION CHECK
+        # This is the HIGHEST priority check - enforced before ALL other rules
+        signature = extracted_data.get('signature')
+        
+        # Check both the signature field AND ML fraud indicators for missing signature
+        # ML stores fraud indicators in 'fraud_indicators' list
+        ml_fraud_indicators = ml_analysis.get('fraud_indicators', []) if ml_analysis else []
+        ml_detected_missing_sig = any('missing signature' in str(indicator).lower() for indicator in ml_fraud_indicators)
+        
+        # Log signature status for debugging
+        logger.info(f"[FRAUD_ANALYSIS] Signature field value: {signature}")
+        logger.info(f"[FRAUD_ANALYSIS] ML fraud_indicators: {ml_fraud_indicators}")
+        logger.info(f"[FRAUD_ANALYSIS] ML detected missing signature: {ml_detected_missing_sig}")
+        
+        # Check if signature is missing (either field is empty OR ML detected it)
+        if (not signature or signature == '' or signature is None) or ml_detected_missing_sig:
+            logger.warning(f"[FRAUD_ANALYSIS] ⚠️ MISSING SIGNATURE DETECTED")
+            logger.warning(f"[FRAUD_ANALYSIS] Signature field: {signature}, ML detected: {ml_detected_missing_sig}")
+            
+            # Check if this is a repeat customer with previous escalations
+            escalate_count = 0
+            if customer_fraud_history:
+                escalate_count = customer_fraud_history.get('escalate_count', 0)
+            
+            logger.info(f"[FRAUD_ANALYSIS] Customer escalate_count: {escalate_count}")
+            
+            # FIRST TIME (escalate_count == 0): ESCALATE for human review
+            # SECOND TIME (escalate_count > 0): REJECT automatically
+            if escalate_count > 0:
+                logger.warning(f"[FRAUD_ANALYSIS] ⚠️ REPEAT OFFENDER: REJECT triggered (escalate_count={escalate_count})")
+                
+                # Repeat attempt with missing signature - force REJECT
+                reject_result = {
+                    'recommendation': 'REJECT',
+                    'confidence_score': 1.0,
+                    'summary': f'Missing signature detected on repeat upload (escalate_count={escalate_count}). Automatic rejection per strict signature validation policy.',
+                    'reasoning': [
+                        'Signature field is missing or empty' if not signature else 'ML fraud detector identified missing signature',
+                        f'Customer has {escalate_count} previous escalation(s) - this is a repeat attempt',
+                        'Per system policy: First missing signature → ESCALATE, repeat attempts → REJECT',
+                        'Automatic rejection enforced to prevent repeat fraud attempts'
+                    ],
+                    'key_indicators': [
+                        'No signature detected in OCR extraction' if not signature else 'ML fraud detector flagged missing signature',
+                        f'Repeat offender (escalate_count={escalate_count})',
+                        'Mandatory signature policy violation'
+                    ],
+                    'verification_notes': 'Document rejected due to missing signature on repeat upload. Customer was previously escalated for same issue.',
+                    'actionable_recommendations': (
+                        [
+                            'Reject this transaction immediately - policy enforcement overrides low fraud score',
+                            'Signature policy takes precedence over normal approval thresholds',
+                            'Flag customer account for potential fraud pattern (repeat missing signature attempts)',
+                            'Consider blocking future uploads from this customer'
+                        ] if ml_analysis.get("fraud_risk_score", 0) < 0.30 else [
+                            'Reject this transaction immediately - signature not present on repeat upload',
+                            'Flag customer account for potential fraud pattern (repeat missing signature attempts)',
+                            'Consider blocking future uploads from this customer'
+                        ]
+                    ),
+                    'fraud_types': ['SIGNATURE_FORGERY', 'REPEAT_OFFENDER'],
+                    'fraud_explanations': [
+                        {
+                            'type': 'SIGNATURE_FORGERY',
+                            'reasons': [
+                                'Signature field is missing or empty' if not signature else 'ML fraud detector identified missing signature',
+                                'Mandatory signature validation failed',
+                                'Signature is required for all money orders per policy'
+                            ]
+                        },
+                        {
+                            'type': 'REPEAT_OFFENDER',
+                            'reasons': [
+                                f'Customer has {escalate_count} previous escalation(s)',
+                                'Repeat attempt with missing signature indicates fraud pattern',
+                                'Per payer-based fraud tracking policy: repeat offenders are automatically rejected'
+                            ]
+                        }
+                    ],
+                    'training_insights': 'Repeat missing signature attempts indicate potential fraud pattern',
+                    'historical_comparison': 'Consistent with repeat offender policy',
+                    'analysis_type': 'policy_enforcement',
+                    'model_used': 'mandatory_signature_policy'
+                }
+                
+                logger.info(f"[FRAUD_ANALYSIS] Returning REJECT result: {reject_result}")
+                return reject_result
+            else:
+                logger.warning(f"[FRAUD_ANALYSIS] ⚠️ FIRST TIME OFFENDER: ESCALATE triggered")
+                
+                # First time missing signature - force ESCALATE for human review
+                escalate_result = {
+                    'recommendation': 'ESCALATE',
+                    'confidence_score': 1.0,
+                    'summary': 'Missing signature detected on first upload. Escalating for human review per signature validation policy.',
+                    'reasoning': [
+                        'Signature field is missing or empty' if not signature else 'ML fraud detector identified missing signature',
+                        'This is the first upload from this payer (escalate_count=0)',
+                        'Per system policy: First missing signature → ESCALATE for human review',
+                        'Escalation allows verification of potential OCR error or legitimate missing signature'
+                    ],
+                    'key_indicators': [
+                        'No signature detected in OCR extraction' if not signature else 'ML fraud detector flagged missing signature',
+                        'First-time payer',
+                        'Mandatory signature policy - requires human verification'
+                    ],
+                    'verification_notes': 'Document escalated due to missing signature on first upload. Verify if signature is truly missing or if OCR failed to detect it.',
+                    'actionable_recommendations': [
+                        'Manually verify if signature is present on the physical document',
+                        'If signature is present, approve and note OCR limitation',
+                        'If signature is truly missing, reject and flag customer for future uploads'
+                    ],
+                    'fraud_types': ['SIGNATURE_FORGERY'],
+                    'fraud_explanations': [
+                        {
+                            'type': 'SIGNATURE_FORGERY',
+                            'reasons': [
+                                'Signature field is missing or empty' if not signature else 'ML fraud detector identified missing signature',
+                                'Mandatory signature validation failed',
+                                'First-time upload requires human verification to rule out OCR error'
+                            ]
+                        }
+                    ],
+                    'training_insights': 'First-time missing signatures may be OCR errors or legitimate issues requiring human judgment',
+                    'historical_comparison': 'Consistent with first-time escalation policy',
+                    'analysis_type': 'policy_enforcement',
+                    'model_used': 'mandatory_signature_policy'
+                }
+                
+                logger.info(f"[FRAUD_ANALYSIS] Returning ESCALATE result: {escalate_result}")
+                return escalate_result
+
+
         # Store ML analysis and customer status for later validation
         self._current_ml_analysis = ml_analysis
         self._is_repeat_customer = is_repeat_customer
@@ -143,50 +276,88 @@ class FraudAnalysisAgent:
         else:
             logger.info(f"[FRAUD_ANALYSIS] No customer_fraud_history provided, escalate_count=0")
 
-        # CRITICAL CHECK: MANDATORY REJECT if escalate_count > 0
+        # CRITICAL CHECK: MANDATORY REJECT if escalate_count > 0 AND fraud_risk_score >= 30%
         # This MUST happen before any LLM analysis
+        # If fraud score is low (< 30%), allow normal analysis even for repeat customers
         # Double-check with explicit comparison to handle edge cases
+        fraud_risk_score = ml_analysis.get('fraud_risk_score', 0) if ml_analysis else 0
+        
         if escalate_count is not None and int(escalate_count) > 0:
-            logger.warning(f"[FRAUD_ANALYSIS] ⚠️ MANDATORY REJECT TRIGGERED: escalate_count={escalate_count} > 0")
-            logger.warning(f"[FRAUD_ANALYSIS] Customer has previous ESCALATE records - forcing REJECT recommendation")
+            logger.info(f"[FRAUD_ANALYSIS] Repeat customer detected: escalate_count={escalate_count}, fraud_risk_score={fraud_risk_score:.1%}")
             
-            # Customer has previous ESCALATE records - force REJECT recommendation
-            reject_result = {
-                'recommendation': 'REJECT',
-                'confidence_score': 1.0,
-                'summary': f'Payer has escalate_count={escalate_count} from previous uploads. Forcing REJECT per payer-based fraud tracking rules.',
-                'reasoning': [
-                    f'Customer escalate_count is {escalate_count} (> 0)',
-                    'Per system policy: second and subsequent uploads by same payer are automatically REJECTED',
-                    'This overrides ML and AI scoring to enforce strict repeat customer fraud policy'
-                ],
-                'key_indicators': [
-                    f'Repeat payer detected with {escalate_count} previous escalation(s)',
-                    'Policy: Force REJECT on repeat offenders'
-                ],
-                'verification_notes': 'Forced rejection based on customer fraud history, not AI analysis',
-                'actionable_recommendations': [
-                    'Block this transaction immediately',
-                    'Flag customer account for review',
-                    'Consider deactivating customer'
-                ],
-                'training_insights': 'Repeat customers with escalation history have high fraud probability',
-                'historical_comparison': 'Similar to other repeat fraud cases',
-                'analysis_type': 'policy_enforcement',
-                'model_used': 'payer_fraud_policy'
-            }
-            
-            logger.info(f"[FRAUD_ANALYSIS] Returning REJECT result: {reject_result}")
-            return reject_result
+            # Check if fraud score warrants rejection
+            if fraud_risk_score >= 0.30:
+                logger.warning(f"[FRAUD_ANALYSIS] ⚠️ MANDATORY REJECT TRIGGERED: escalate_count={escalate_count} > 0 AND fraud_risk_score={fraud_risk_score:.1%} >= 30%")
+                logger.warning(f"[FRAUD_ANALYSIS] Customer has previous ESCALATE records AND high fraud score - forcing REJECT recommendation")
+                
+                # Customer has previous ESCALATE records AND high fraud score - force REJECT recommendation
+                reject_result = {
+                    'recommendation': 'REJECT',
+                    'confidence_score': 1.0,
+                    'summary': f'Payer has escalate_count={escalate_count} from previous uploads and fraud score of {fraud_risk_score:.1%}. Forcing REJECT per payer-based fraud tracking rules.',
+                    'reasoning': [
+                        f'Customer escalate_count is {escalate_count} (> 0)',
+                        f'Fraud risk score is {fraud_risk_score:.1%} (>= 30% threshold)',
+                        'Per system policy: repeat customers with high fraud scores are automatically REJECTED',
+                        'This overrides AI scoring to enforce strict repeat customer fraud policy'
+                    ],
+                    'key_indicators': [
+                        f'Repeat payer detected with {escalate_count} previous escalation(s)',
+                        f'High fraud risk score: {fraud_risk_score:.1%}',
+                        'Policy: Force REJECT on repeat offenders with elevated risk'
+                    ],
+                    'verification_notes': 'Forced rejection based on customer fraud history combined with high fraud score',
+                    'actionable_recommendations': [
+                        'Block this transaction immediately - repeat customer with high fraud score',
+                        'Flag customer account for review',
+                        'Consider deactivating customer'
+                    ],
+                    'fraud_types': ['REPEAT_OFFENDER'],
+                    'fraud_explanations': [
+                        {
+                            'type': 'REPEAT_OFFENDER',
+                            'reasons': [
+                                f'Customer has {escalate_count} previous escalation(s)',
+                                f'Fraud risk score is {fraud_risk_score:.1%} (>= 30% threshold)',
+                                'Per payer-based fraud tracking policy: repeat offenders with elevated risk are automatically rejected'
+                            ]
+                        }
+                    ],
+                    'training_insights': 'Repeat customers with escalation history and high fraud scores have very high fraud probability',
+                    'historical_comparison': 'Similar to other repeat fraud cases',
+                    'analysis_type': 'policy_enforcement',
+                    'model_used': 'payer_fraud_policy'
+                }
+                
+                logger.info(f"[FRAUD_ANALYSIS] Returning REJECT result: {reject_result}")
+                return reject_result
+            else:
+                logger.info(f"[FRAUD_ANALYSIS] Repeat customer with LOW fraud score ({fraud_risk_score:.1%} < 30%) - allowing normal analysis to proceed")
+                # Low fraud score - allow normal analysis even though escalate_count > 0
         else:
             logger.info(f"[FRAUD_ANALYSIS] escalate_count={escalate_count}, proceeding with LLM analysis")
+
+        # Get fraud risk score to determine if we should hide escalate_count from AI
+        fraud_risk_score = ml_analysis.get('fraud_risk_score', 0) if ml_analysis else 0
+        hide_escalate_count = fraud_risk_score < 0.30
+        
+        if hide_escalate_count:
+            logger.info(f"[FRAUD_ANALYSIS] Fraud score ({fraud_risk_score:.1%}) < 30% - hiding escalate_count from AI to allow approval")
 
         # Get customer history if ID provided
         customer_history = "No customer ID provided"
         if customer_id and self.data_tools:
             history = self.data_tools.get_customer_history(customer_id)
             if history:
-                customer_history = str(history)
+                # If fraud score is low, remove escalate_count from history to prevent AI from seeing it
+                if hide_escalate_count and isinstance(history, dict):
+                    history_copy = history.copy()
+                    history_copy.pop('escalate_count', None)
+                    history_copy.pop('last_recommendation', None)  # Also remove last recommendation
+                    customer_history = str(history_copy)
+                    logger.info(f"[FRAUD_ANALYSIS] Sanitized customer history (removed escalate_count): {customer_history}")
+                else:
+                    customer_history = str(history)
 
         # Search for similar fraud cases
         similar_cases = "No similar cases found"
@@ -253,9 +424,15 @@ class FraudAnalysisAgent:
             fraud_count = customer_fraud_history.get('fraud_count', 0)
 
         # Format escalation status for clear LLM understanding
-        escalation_status = f"Escalate Count: {escalate_count} | Fraud Count: {fraud_count}"
-        if escalate_count > 0:
-            escalation_status += " | ⚠️ PAYER HAS BEEN ESCALATED BEFORE - MUST REJECT"
+        # Only show escalation warning if fraud score >= 30%
+        if hide_escalate_count:
+            # Low fraud score - hide escalation details from AI
+            escalation_status = "No escalation history"
+        else:
+            # High fraud score - show full escalation details
+            escalation_status = f"Escalate Count: {escalate_count} | Fraud Count: {fraud_count}"
+            if escalate_count > 0:
+                escalation_status += " | ⚠️ PAYER HAS BEEN ESCALATED BEFORE - MUST REJECT"
 
         prompt_vars = {
             "fraud_risk_score": ml_analysis.get('fraud_score', 0),
@@ -267,6 +444,7 @@ class FraudAnalysisAgent:
             "serial_number": get_val(['serial_primary', 'serial_number']),
             "amount": format_amount(get_val(['amount_numeric', 'amount'])),
             "amount_in_words": get_val(['amount_written', 'amount_in_words']),
+            "raw_ocr_text": extracted_data.get('raw_text', 'N/A'),
             "payee": get_val(['recipient', 'payee', 'pay_to']),
             "purchaser": get_val(['sender_name', 'purchaser', 'from', 'sender']),
             "date": get_val(['date']),
@@ -281,6 +459,12 @@ class FraudAnalysisAgent:
             "training_patterns": training_patterns,
             "past_similar_cases": past_similar_cases
         }
+
+        # DEBUG: Log raw_text availability
+        logger.info(f"[FRAUD_ANALYSIS] DEBUG: extracted_data keys: {list(extracted_data.keys())}")
+        logger.info(f"[FRAUD_ANALYSIS] DEBUG: raw_text in extracted_data: {'raw_text' in extracted_data}")
+        logger.info(f"[FRAUD_ANALYSIS] DEBUG: raw_text value: {extracted_data.get('raw_text', 'MISSING')[:100] if extracted_data.get('raw_text') else 'NULL'}")
+        logger.info(f"[FRAUD_ANALYSIS] DEBUG: raw_ocr_text for prompt: {prompt_vars.get('raw_ocr_text', 'NOT SET')[:100] if prompt_vars.get('raw_ocr_text') != 'N/A' else 'N/A'}")
 
         # Create prompt
         prompt = ChatPromptTemplate.from_messages([
@@ -307,6 +491,8 @@ class FraudAnalysisAgent:
             'key_indicators': [],
             'verification_notes': '',
             'actionable_recommendations': [],
+            'fraud_types': [],
+            'fraud_explanations': [],
             'training_insights': '',
             'historical_comparison': '',
             'analysis_type': 'ai_enhanced',
@@ -345,6 +531,15 @@ class FraudAnalysisAgent:
                     current_section = 'verification_notes'
                 elif line.startswith('ACTIONABLE_RECOMMENDATIONS:'):
                     current_section = 'actionable_recommendations'
+                elif line.startswith('FRAUD_TYPES:'):
+                    # Parse comma-separated fraud types
+                    fraud_types_str = line.split(':', 1)[1].strip()
+                    if fraud_types_str and fraud_types_str.lower() not in ['none', 'n/a', '']:
+                        result['fraud_types'] = [ft.strip() for ft in fraud_types_str.split(',') if ft.strip()]
+                    current_section = None
+                elif line.startswith('FRAUD_EXPLANATIONS:'):
+                    current_section = 'fraud_explanations'
+                    current_fraud_type = None
                 elif line.startswith('TRAINING_INSIGHTS:'):
                     result['training_insights'] = line.split(':', 1)[1].strip()
                     current_section = 'training_insights'
@@ -359,6 +554,20 @@ class FraudAnalysisAgent:
                         result['key_indicators'].append(item)
                     elif current_section == 'actionable_recommendations':
                         result['actionable_recommendations'].append(item)
+                    elif current_section == 'fraud_explanations':
+                        # Check if this is a fraud type header (ends with colon)
+                        if item.endswith(':'):
+                            current_fraud_type = item[:-1].strip()
+                            # Initialize fraud explanation entry
+                            result['fraud_explanations'].append({
+                                'type': current_fraud_type,
+                                'reasons': []
+                            })
+                elif line.startswith('* ') and current_section == 'fraud_explanations':
+                    # This is a reason for the current fraud type
+                    reason = line[2:].strip()
+                    if result['fraud_explanations'] and current_fraud_type:
+                        result['fraud_explanations'][-1]['reasons'].append(reason)
                 elif current_section == 'verification_notes' and not line.isupper():
                      result['verification_notes'] += " " + line
                 elif current_section == 'training_insights' and not line.isupper():

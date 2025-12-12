@@ -1,0 +1,99 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "Western Union",
+    "serial_number": "9875647821",
+    "serial_secondary": "9875647821",
+    "amount": "$750.00",
+    "amount_in_words": null,
+    "payee": "JANE SMITH",
+    "purchaser": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "date": "10/26/2023",
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "high",
+      "type": "fraud_risk_high",
+      "message": "[APPROVE] The money order exhibits no critical fraud markers and the ML ensemble flags 0% risk. However, the absence of a written\u2010amount field warrants a quick manual check."
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Missing signature"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Money order is 774 days old (stale)"
+    },
+    {
+      "severity": "high",
+      "type": "ai_indicator",
+      "message": "Missing written amount"
+    }
+  ],
+  "confidence_score": 85,
+  "raw_text": "WESTERN WESTERN UNION\u00ae\nUNION\nMONEY ORDER\nPAY TO: JANE SMITH\n987557821\nAMOUNT:\n$750.00\nDATE: OCTOBER 26, 2023\nSEVEN HUNDRED FISTY AND 00//100 DOLLARS\nFROM: JOHN DOE\n123 OAK ST, ANYTOWN, CA 91234\n9875647821\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-12-08T17:07:00.839096",
+  "normalized_data": {
+    "issuer_name": "Western Union",
+    "serial_primary": "9875647821",
+    "serial_secondary": null,
+    "recipient": "JANE SMITH",
+    "sender_name": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "amount_numeric": {
+      "value": 750.0,
+      "currency": "USD"
+    },
+    "amount_written": null,
+    "date": "10-26-2023",
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 0.8,
+  "ml_analysis": {
+    "fraud_risk_score": 0.758,
+    "risk_level": "HIGH",
+    "model_confidence": 0.917,
+    "model_scores": {
+      "random_forest": 0.735,
+      "xgboost": 0.776,
+      "ensemble": 0.758
+    },
+    "feature_importance": [
+      "Missing signature",
+      "Money order is 774 days old (stale)"
+    ],
+    "prediction_type": "mock"
+  },
+  "ai_analysis": {
+    "recommendation": "APPROVE",
+    "confidence_score": 0.85,
+    "summary": "The money order exhibits no critical fraud markers and the ML ensemble flags 0% risk. However, the absence of a written\u2010amount field warrants a quick manual check.",
+    "reasoning": [
+      "Ensemble Fraud Score is 0.0% with 0.0% confidence, indicating low overall risk.",
+      "Both Random Forest (73.5%) and XGBoost (77.6%) individually showed moderate concern, but the combined model output de\u2010emphasizes those outlier signals.",
+      "Signature field is present and matches expected format.",
+      "No prior escalation or fraud history for this (new) customer.",
+      "Missing written amount is the only inconsistency\u2014per training data, 45% of frauds involve amount mismatches, so this should be verified."
+    ],
+    "key_indicators": [
+      "Missing written amount"
+    ],
+    "verification_notes": "",
+    "actionable_recommendations": [
+      "Ask the customer to provide or complete the written\u2010amount line.",
+      "Inspect purchaser\u2019s photo ID against the name on the money order.",
+      "Call Western Union to authenticate the serial number and issuance details."
+    ],
+    "training_insights": "",
+    "historical_comparison": "",
+    "analysis_type": "ai_enhanced",
+    "model_used": "o4-mini"
+  },
+  "analysis_id": "analysis_20251208_170700_839_9875647821",
+  "saved_timestamp": "2025-12-08T17:07:00.839625"
+}

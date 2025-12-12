@@ -14,6 +14,61 @@ You have access to:
 3. Customer history and transaction patterns
 4. Historical fraud cases and patterns
 
+CRITICAL INSTRUCTIONS - FRAUD TYPE TAXONOMY:
+==========================================================
+The system uses ONLY the following 5 fraud types. You MUST use these exact fraud type IDs:
+
+1. **SIGNATURE_FORGERY** - Missing or forged signature
+   - Triggered when: signature_detected == 0 or signature_requirement == 0
+   - Signature field is missing or empty
+   - Mandatory signature validation failed
+   - IMPORTANT: Missing signature follows escalation logic (1st time = ESCALATE, 2nd time = REJECT)
+   - NOT an automatic rejection - evaluated based on customer history and fraud score
+
+2. **AMOUNT_ALTERATION** - Amount has been altered or is suspicious
+   - Triggered when: amount_matching < 0.5, suspicious_amount == 1
+   - Numeric amount doesn't match written amount
+   - Suspicious amount patterns (e.g., $999, $9999 - just below limits)
+   - Amount parsing confidence is low
+
+3. **COUNTERFEIT_CHECK** - Fake or counterfeit check
+   - Triggered when: bank_validity == 0, routing_validity == 0, bank_routing_match == 0
+   - Bank not in supported banks list
+   - Routing number doesn't match bank or invalid format
+   - Poor OCR quality suggesting tampering (text_quality < 0.5)
+
+4. **REPEAT_OFFENDER** - Payer with history of fraudulent submissions
+   - Triggered when: fraud_count > 0 (customer has previous fraud incidents)
+   - Based on customer fraud history, not escalations
+
+5. **STALE_CHECK** - Check is too old or post-dated
+   - Triggered when: date_age_days > 180 (older than 6 months) or future_date == 1
+   - Checks older than 180 days are considered stale-dated per banking practice
+   - Future-dated checks pose post-dating risk
+
+**FRAUD TYPE USAGE RULES:**
+- For REJECT recommendations: You MUST provide fraud_types and fraud_explanations
+- For ESCALATE recommendations: Leave fraud_types empty (escalation is for review, not confirmed fraud)
+- For APPROVE recommendations: Leave fraud_types empty (no fraud detected)
+- Each fraud type in fraud_types MUST have a corresponding explanation in fraud_explanations
+- Explanations MUST reference specific document data (amounts, fields, ML scores)
+
+**FRAUD TYPE PRIORITIZATION (CRITICAL):**
+When multiple fraud indicators are present, list fraud types in order of severity and confidence:
+1. **SIGNATURE_FORGERY** - Missing signature (highest priority)
+2. **STALE_CHECK** - Date issues (old or future-dated)
+3. **AMOUNT_ALTERATION** - Amount mismatch is concrete evidence of tampering
+4. **COUNTERFEIT_CHECK** - Invalid bank/routing is strong evidence of counterfeit
+5. **REPEAT_OFFENDER** - Always include if fraud_count > 0, but typically as secondary fraud type
+
+**EXAMPLE PRIORITIZATION:**
+- If missing signature AND amount mismatch:
+  → fraud_types: ['SIGNATURE_FORGERY', 'AMOUNT_ALTERATION']
+  → Primary fraud: SIGNATURE_FORGERY (critical)
+- If invalid bank AND old check:
+  → fraud_types: ['COUNTERFEIT_CHECK', 'STALE_CHECK']
+  → Primary fraud: COUNTERFEIT_CHECK
+
 CRITICAL: You MUST follow the Decision Guidelines below STRICTLY. These are RULES, not suggestions.
 The decision rules provided are MANDATORY and take precedence over subjective judgment.
 
@@ -29,6 +84,8 @@ Always provide:
 3. reasoning: List of specific factors that led to your decision
 4. key_indicators: Critical fraud indicators or validation points
 5. actionable_recommendations: Next steps or actions to take
+6. **FRAUD_TYPES**: Comma-separated list of fraud type IDs (ONLY for REJECT, not ESCALATE or APPROVE)
+7. **FRAUD_EXPLANATIONS**: Structured explanations for each fraud type with specific reasons (ONLY for REJECT)
 """
 
 # Template for check fraud analysis
@@ -72,43 +129,62 @@ Return your analysis in the following JSON format:
   "summary": "Brief summary of your decision",
   "reasoning": ["reason 1", "reason 2", ...],
   "key_indicators": ["indicator 1", "indicator 2", ...],
-  "actionable_recommendations": ["action 1", "action 2", ...]
+  "actionable_recommendations": ["action 1", "action 2", ...],
+  "fraud_types": ["FRAUD_TYPE_1", "FRAUD_TYPE_2", ...],
+  "fraud_explanations": [
+    {{
+      "type": "FRAUD_TYPE_1",
+      "explanation": "Detailed explanation with specific data references"
+    }},
+    {{
+      "type": "FRAUD_TYPE_2",
+      "explanation": "Detailed explanation with specific data references"
+    }}
+  ]
 }}
+
+**IMPORTANT NOTES ON FRAUD TYPES:**
+- fraud_types should be an empty array [] for APPROVE and ESCALATE recommendations
+- fraud_types MUST be populated ONLY for REJECT recommendations (confirmed fraud)
+- Each fraud type in fraud_types MUST have a corresponding entry in fraud_explanations
+- Fraud types should be listed in priority order (most severe first)
+- **CRITICAL**: When REJECT is due to missing signature, you MUST include "SIGNATURE_FORGERY" in fraud_types
+- **CRITICAL**: When REJECT is due to stale/future date, you MUST include "STALE_CHECK" in fraud_types
 """
 
 # Decision guidelines based on customer type and ML scores
 RECOMMENDATION_GUIDELINES = """
 ## MANDATORY DECISION TABLE FOR CHECK FRAUD ANALYSIS
 
-**CRITICAL: Repeat offenders (escalate_count > 0) are auto-rejected BEFORE LLM processes the check.**
+**CRITICAL: Repeat offenders (fraud_count > 0) are auto-rejected BEFORE LLM processes the check.**
 **The LLM must strictly follow this decision table for all other cases. NO EXCEPTIONS.**
+
+**ABSOLUTE RULE: First-time customers (escalate_count = 0) with fraud_score ≥ 30% MUST be ESCALATE, NEVER REJECT.**
+**This rule applies even if fraud_score is 100%. First-time customers are ALWAYS escalated for manual review.**
 
 ### DECISION MATRIX
 | Customer Type | Risk Score | Decision |
 |---|---|---|
-| New Customer | < 30% | APPROVE |
-| New Customer | 30–95% | ESCALATE |
-| New Customer | ≥ 95% | ESCALATE |
-| Clean History | < 30% | APPROVE |
-| Clean History | 30–85% | ESCALATE |
-| Clean History | > 85% | REJECT |
-| Fraud History | < 30% | APPROVE |
-| Fraud History | ≥ 30% | REJECT |
-| Repeat Offender (escalate_count > 0) | Any | REJECT (auto, before LLM) |
+| First Time (escalate_count = 0) | < 30% | APPROVE |
+| First Time (escalate_count = 0) | ≥ 30% | **ESCALATE** (MANDATORY - never REJECT) |
+| Previously Escalated (escalate_count > 0, fraud_count = 0) | < 30% | APPROVE |
+| Previously Escalated (escalate_count > 0, fraud_count = 0) | ≥ 30% | REJECT |
+| Repeat Offender (fraud_count > 0) | Any | REJECT (auto, before LLM) |
 
 ### CUSTOMER CLASSIFICATION
-**New Customer:**
-- No record in check_customers table, OR
+**First Time:**
 - escalate_count = 0 AND fraud_count = 0
+- First submission from this payer
+- ESCALATE for manual review if fraud_score ≥ 30%
 
-**Clean History:**
-- fraud_count = 0 AND escalate_count = 0
-
-**Fraud History:**
-- fraud_count > 0 AND escalate_count = 0
+**Previously Escalated:**
+- escalate_count > 0 AND fraud_count = 0
+- Was escalated before but no confirmed fraud yet
+- REJECT if fraud_score ≥ 30% (second chance failed)
 
 **Repeat Offender:**
-- escalate_count > 0
+- fraud_count > 0
+- Has confirmed fraud history
 - ALWAYS REJECTED before LLM processes the check
 - LLM is skipped entirely for these cases
 
@@ -130,6 +206,25 @@ RECOMMENDATION_GUIDELINES = """
 - ML score determines the risk_score bucket only
 - LLM must follow the decision table exactly - no special cases
 - No interpretation or override of the decision matrix is permitted
+
+### EXPLICIT EXAMPLES (MANDATORY TO FOLLOW):
+**Example 1: First-time customer with missing signature**
+- Customer Type: First Time (escalate_count = 0)
+- Fraud Score: 100%
+- Missing Signature: Yes
+- **DECISION: ESCALATE** (NOT REJECT - first-time customers are ALWAYS escalated)
+
+**Example 2: First-time customer with stale check**
+- Customer Type: First Time (escalate_count = 0)
+- Fraud Score: 100%
+- Stale Check: Yes (2018 date)
+- **DECISION: ESCALATE** (NOT REJECT - first-time customers are ALWAYS escalated)
+
+**Example 3: Previously escalated customer with missing signature**
+- Customer Type: Previously Escalated (escalate_count = 1, fraud_count = 0)
+- Fraud Score: 100%
+- Missing Signature: Yes
+- **DECISION: REJECT** with fraud_type: SIGNATURE_FORGERY
 """
 
 # Prompt for customer history analysis
@@ -139,7 +234,6 @@ Analyze this customer's transaction history:
 Customer ID: {customer_id}
 Total Transactions: {total_transactions}
 Fraud Count: {fraud_count}
-Escalation Count: {escalate_count}
 Last Transaction Date: {last_transaction_date}
 Last Recommendation: {last_recommendation}
 
@@ -209,11 +303,21 @@ def format_analysis_template(check_data: dict, ml_analysis: dict, customer_info:
     risk_factors_str = '\n'.join([f"- {factor}" for factor in risk_factors]) if risk_factors else "None"
 
     # Extract customer info
-    customer_type = "NEW" if not customer_info.get('customer_id') else "REPEAT"
-    customer_id = customer_info.get('customer_id', 'NEW_CUSTOMER')
-    has_fraud_history = customer_info.get('has_fraud_history', False)
     fraud_count = customer_info.get('fraud_count', 0)
     escalate_count = customer_info.get('escalate_count', 0)
+    
+    # Determine customer type based on escalation history
+    if escalate_count == 0 and fraud_count == 0:
+        customer_type = "First Time"
+    elif escalate_count > 0 and fraud_count == 0:
+        customer_type = "Previously Escalated"
+    elif fraud_count > 0:
+        customer_type = "Repeat Offender"
+    else:
+        customer_type = "First Time"
+    
+    customer_id = customer_info.get('customer_id', 'NEW_CUSTOMER')
+    has_fraud_history = customer_info.get('has_fraud_history', False)
     last_recommendation = customer_info.get('last_recommendation', 'None')
 
     # Get current date for analysis

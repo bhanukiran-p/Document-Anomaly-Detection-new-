@@ -145,7 +145,7 @@ class MoneyOrderFraudDetector:
             (feature_dict.get('date_age_days', 0) > 90, 0.10),
             (feature_dict.get('amount_category', 0) >= 3.0, 0.10),
             (feature_dict.get('text_quality_score', 1.0) < 0.5, 0.15),
-            (feature_dict.get('signature_present', 0) == 0, 0.10),
+            (feature_dict.get('signature_present', 0) == 0, 0.50),  # CRITICAL: Missing signature now 50% penalty
         ]
 
         for condition, weight in rules:
@@ -183,6 +183,7 @@ class MoneyOrderFraudDetector:
                 'ensemble': round(risk_score, 3)
             },
             'feature_importance': fraud_indicators,
+            'fraud_indicators': fraud_indicators,  # Also store as fraud_indicators for AI agent
             'prediction_type': 'mock'
         }
 
@@ -199,12 +200,24 @@ class MoneyOrderFraudDetector:
         xgb_score = 0.0
 
         if self.rf_model:
-            rf_proba = self.rf_model.predict_proba(X_scaled)[0][1]
-            rf_score = rf_proba
+            try:
+                # Try predict_proba first (if classifier)
+                rf_proba = self.rf_model.predict_proba(X_scaled)[0]
+                rf_score = rf_proba[1] if len(rf_proba) > 1 else rf_proba[0]
+            except AttributeError:
+                # Use predict() for regressors and normalize (0-100 -> 0-1)
+                rf_pred = self.rf_model.predict(X_scaled)[0]
+                rf_score = max(0.0, min(1.0, rf_pred / 100.0))
 
         if self.xgb_model:
-            xgb_proba = self.xgb_model.predict_proba(X_scaled)[0][1]
-            xgb_score = xgb_proba
+            try:
+                # Try predict_proba first (if classifier)
+                xgb_proba = self.xgb_model.predict_proba(X_scaled)[0]
+                xgb_score = xgb_proba[1] if len(xgb_proba) > 1 else xgb_proba[0]
+            except AttributeError:
+                # Use predict() for regressors and normalize (0-100 -> 0-1)
+                xgb_pred = self.xgb_model.predict(X_scaled)[0]
+                xgb_score = max(0.0, min(1.0, xgb_pred / 100.0))
 
         if self.rf_model and self.xgb_model:
             base_fraud_score = 0.4 * rf_score + 0.6 * xgb_score
@@ -241,6 +254,7 @@ class MoneyOrderFraudDetector:
                 'adjusted': round(final_fraud_score, 3)
             },
             'feature_importance': fraud_indicators,
+            'fraud_indicators': fraud_indicators,  # Also store as fraud_indicators for AI agent
             'prediction_type': 'model'
         }
 
@@ -270,11 +284,44 @@ class MoneyOrderFraudDetector:
             0.40,
             "CRITICAL: Future date detected (+0.40)"
         )
+        
+        # CRITICAL: Validate written amount spelling
+        amount_in_words = extracted_data.get('amount_in_words', '')
+        if amount_in_words and isinstance(amount_in_words, str):
+            # Valid English number words
+            valid_number_words = {
+                'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+                'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen',
+                'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety',
+                'hundred', 'thousand', 'million', 'billion',
+                'and', 'dollars', 'cents', 'only'
+            }
+            
+            # Extract words from written amount (lowercase, remove punctuation)
+            import re
+            words = re.findall(r'\b[a-zA-Z]+\b', amount_in_words.lower())
+            
+            # Check for invalid/misspelled number words
+            invalid_words = [w for w in words if w not in valid_number_words and len(w) > 2]
+            
+            if invalid_words:
+                apply(
+                    True,
+                    0.50,
+                    f"CRITICAL: Invalid/misspelled words in written amount: {invalid_words} (+0.50)"
+                )
 
         critical_missing_score = feature_dict.get('critical_missing_score', 0.0)
         apply(critical_missing_score >= 0.30, 0.30, "HIGH: Critical field missing - amount (+0.30)")
         apply(0.25 <= critical_missing_score < 0.30, 0.25, "HIGH: Critical field missing - serial (+0.25)")
         apply(0.20 <= critical_missing_score < 0.25, 0.20, "HIGH: Critical field missing - recipient (+0.20)")
+
+        # CRITICAL: Mandatory signature validation - strict enforcement
+        apply(
+            feature_dict.get('signature_present', 0) == 0,
+            0.60,
+            "CRITICAL: Missing signature - mandatory field, document will be rejected (+0.60)"
+        )
 
         date_age_days = feature_dict.get('date_age_days', 0)
         apply(date_age_days > 180 and not is_paystub, 0.20, f"HIGH: Very old date ({int(date_age_days)} days) (+0.20)")
@@ -290,7 +337,6 @@ class MoneyOrderFraudDetector:
         )
         apply(feature_dict.get('serial_format_valid', 1.0) == 0.0, 0.15, "MEDIUM: Invalid serial format (+0.15)")
         apply(feature_dict.get('field_quality_score', 1.0) < 0.5, 0.10, "LOW: Poor field quality (+0.10)")
-        apply(feature_dict.get('signature_required_score', 0.5) == 0.0, 0.10, "LOW: Missing required signature (+0.10)")
 
         final_score = min(1.0, adjusted_score)
         if final_score != base_score:
@@ -351,8 +397,8 @@ class MoneyOrderFraudDetector:
         if name_consistency < 0.5:
             add(f"Name format inconsistent (score: {name_consistency:.2f})")
 
-        if feature_dict.get('signature_required_score', 0.5) == 0.0:
-            add("Missing required signature")
+        if feature_dict.get('signature_present', 0) == 0:
+            add("CRITICAL: Missing signature - document rejected per mandatory validation policy")
 
         if feature_dict.get('serial_format_valid', 1.0) == 0.0:
             add(f"Invalid serial format: '{ctx['serial_value']}'")

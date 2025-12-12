@@ -22,7 +22,7 @@ const LoginPage = () => {
 
     try {
       await login(email, password);
-      navigate('/transaction-type');
+      navigate('/industry-selection');
     } catch (err) {
       setError(err.message);
     } finally {

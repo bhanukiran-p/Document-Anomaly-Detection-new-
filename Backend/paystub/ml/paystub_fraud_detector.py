@@ -1,6 +1,6 @@
 """
 Paystub Fraud Detection ML Model
-Uses trained Random Forest model for paystub fraud detection
+Uses ensemble of Random Forest + XGBoost models for paystub fraud detection
 Completely independent from other document type fraud detection
 """
 
@@ -33,7 +33,7 @@ FRAUD_TYPE_LABELS = {
 class PaystubFraudDetector:
     """
     ML-based fraud detector for paystubs
-    Uses trained Random Forest model
+    Uses ensemble of Random Forest + XGBoost models
     """
 
     def __init__(self, model_dir: str = 'models'):
@@ -46,6 +46,11 @@ class PaystubFraudDetector:
         self.model_dir = model_dir
         self.feature_extractor = PaystubFeatureExtractor()
         self.models_loaded = False
+        
+        # Initialize model attributes
+        self.rf_model = None
+        self.xgb_model = None
+        self.scaler = None
 
         # Model paths - use paystub/ml/models directory (self-contained, NO FALLBACK)
         ml_dir = os.path.dirname(__file__)
@@ -53,15 +58,21 @@ class PaystubFraudDetector:
         os.makedirs(models_dir, exist_ok=True)
         
         # Self-contained: Only check in paystub/ml/models
-        self.model_path = os.path.join(models_dir, 'paystub_risk_model_latest.pkl')
-        self.scaler_path = os.path.join(models_dir, 'paystub_scaler_latest.pkl')
+        self.rf_model_path = os.path.join(models_dir, 'paystub_random_forest.pkl')
+        self.xgb_model_path = os.path.join(models_dir, 'paystub_xgboost.pkl')
+        self.scaler_path = os.path.join(models_dir, 'paystub_feature_scaler.pkl')
         self.metadata_path = os.path.join(models_dir, 'paystub_model_metadata_latest.json')
         
         # Log paths
-        if os.path.exists(self.model_path):
-            logger.info(f"Using model at: {self.model_path}")
+        if os.path.exists(self.rf_model_path):
+            logger.info(f"Using RF model at: {self.rf_model_path}")
         else:
-            logger.error(f"Model not found at: {self.model_path} - ML model is required")
+            logger.error(f"RF model not found at: {self.rf_model_path} - ML model is required")
+        
+        if os.path.exists(self.xgb_model_path):
+            logger.info(f"Using XGBoost model at: {self.xgb_model_path}")
+        else:
+            logger.error(f"XGBoost model not found at: {self.xgb_model_path} - ML model is required")
 
         # Load models
         self._load_models()
@@ -72,6 +83,7 @@ class PaystubFraudDetector:
             import joblib
             import json
 
+            metadata = None
             # Load metadata to verify feature names
             if os.path.exists(self.metadata_path):
                 with open(self.metadata_path, 'r') as f:
@@ -79,13 +91,21 @@ class PaystubFraudDetector:
                     logger.info(f"Model metadata: {metadata.get('model_type')}, trained at {metadata.get('trained_at')}")
                     logger.info(f"Expected features: {metadata.get('feature_names', [])}")
 
-            # Load model
-            if os.path.exists(self.model_path):
-                self.model = joblib.load(self.model_path)
+            # Load Random Forest model
+            if os.path.exists(self.rf_model_path):
+                self.rf_model = joblib.load(self.rf_model_path)
                 logger.info("Loaded Random Forest model for paystubs")
             else:
-                logger.error(f"Random Forest model not found at {self.model_path} - ML model is required")
-                self.model = None
+                logger.error(f"Random Forest model not found at {self.rf_model_path} - ML model is required")
+                self.rf_model = None
+
+            # Load XGBoost model
+            if os.path.exists(self.xgb_model_path):
+                self.xgb_model = joblib.load(self.xgb_model_path)
+                logger.info("Loaded XGBoost model for paystubs")
+            else:
+                logger.error(f"XGBoost model not found at {self.xgb_model_path} - ML model is required")
+                self.xgb_model = None
 
             # Load scaler
             if os.path.exists(self.scaler_path):
@@ -94,7 +114,7 @@ class PaystubFraudDetector:
             else:
                 raise RuntimeError(
                     f"Feature scaler not found at {self.scaler_path}. "
-                    f"Please train the model using: python training/train_risk_model.py"
+                    f"Please train the model using: python training/train_paystub_models.py"
                 )
 
             # Verify model expects 18 features
@@ -103,10 +123,22 @@ class PaystubFraudDetector:
                 if expected_features != 18:
                     raise RuntimeError(
                         f"Model was trained with {expected_features} features, but system expects 18 features. "
-                        f"Please retrain the model using: python training/train_risk_model.py"
+                        f"Please retrain the model using: python training/train_paystub_models.py"
                     )
 
-            self.models_loaded = (self.model is not None and self.scaler is not None)
+            # Both models are REQUIRED - no fallback
+            if self.rf_model is None or self.xgb_model is None:
+                missing_models = []
+                if self.rf_model is None:
+                    missing_models.append("Random Forest")
+                if self.xgb_model is None:
+                    missing_models.append("XGBoost")
+                raise RuntimeError(
+                    f"Required ML models are missing: {', '.join(missing_models)}. "
+                    f"Please train the models using: python training/train_paystub_models.py"
+                )
+
+            self.models_loaded = (self.rf_model is not None and self.xgb_model is not None and self.scaler is not None)
 
         except ImportError:
             raise RuntimeError(
@@ -119,7 +151,7 @@ class PaystubFraudDetector:
         except Exception as e:
             raise RuntimeError(
                 f"Error loading models: {e}. "
-                f"Please ensure models are trained using: python training/train_risk_model.py"
+                f"Please ensure models are trained using: python training/train_paystub_models.py"
             )
 
     def predict_fraud(self, paystub_data: Dict, raw_text: str = "") -> Dict:
@@ -148,44 +180,82 @@ class PaystubFraudDetector:
         # Models must be loaded - no fallback
         if not self.models_loaded:
             raise RuntimeError(
-                f"ML model not loaded. Model file not found at: {self.model_path}. "
-                f"Please train the model using: python training/train_risk_model.py"
+                f"ML models not loaded. Model files not found at: {self.rf_model_path} and {self.xgb_model_path}. "
+                f"Please train the models using: python training/train_paystub_models.py"
             )
         
         return self._predict_with_model(features, feature_names, paystub_data)
 
     def _predict_with_model(self, features: List[float], feature_names: List[str], paystub_data: Dict) -> Dict:
-        """Predict using trained model"""
+        """Predict using trained ensemble models"""
         try:
             # Convert to numpy array
             X = np.array([features])
 
             # Scale features if scaler available
             if self.scaler:
-                X = self.scaler.transform(X)
+                X_scaled = self.scaler.transform(X)
+            else:
+                X_scaled = X
 
-            # Get prediction from model - NO FALLBACKS
-            if not self.model:
-                raise RuntimeError(
-                    "ML model is None. This should never happen if models_loaded is True. "
-                    "Please retrain the model using: python training/train_risk_model.py"
-                )
-            
             # Validate feature count matches model expectations
             if len(features) != 18:
                 raise RuntimeError(
                     f"Feature count mismatch: Expected 18 features, got {len(features)}. "
                     "This is a critical error - no fallback available."
                 )
+
+            # Get predictions from both models
+            rf_score = 0.0
+            xgb_score = 0.0
+
+            if self.rf_model:
+                try:
+                    # Try predict_proba first (if classifier)
+                    rf_proba = self.rf_model.predict_proba(X_scaled)[0]
+                    rf_score = rf_proba[1] if len(rf_proba) > 1 else rf_proba[0]
+                except AttributeError:
+                    # Use predict() for regressors and normalize (0-100 -> 0-1)
+                    rf_pred = self.rf_model.predict(X_scaled)[0]
+                    rf_score = max(0.0, min(1.0, rf_pred / 100.0))
+
+            if self.xgb_model:
+                try:
+                    # Try predict_proba first (if classifier)
+                    xgb_proba = self.xgb_model.predict_proba(X_scaled)[0]
+                    xgb_score = xgb_proba[1] if len(xgb_proba) > 1 else xgb_proba[0]
+                except AttributeError:
+                    # Use predict() for regressors and normalize (0-100 -> 0-1)
+                    xgb_pred = self.xgb_model.predict(X_scaled)[0]
+                    xgb_score = max(0.0, min(1.0, xgb_pred / 100.0))
+
+            # Ensemble prediction (40% RF, 60% XGB - same as other document types)
+            if self.rf_model and self.xgb_model:
+                base_fraud_score = 0.4 * rf_score + 0.6 * xgb_score
+            elif self.rf_model:
+                base_fraud_score = rf_score
+            elif self.xgb_model:
+                base_fraud_score = xgb_score
+            else:
+                raise RuntimeError(
+                    "Both RF and XGBoost models are None. This should never happen if models_loaded is True. "
+                    "Please retrain the models using: python training/train_paystub_models.py"
+                )
+
+            # Use ensemble score directly (no additional validation rules)
+            final_fraud_score = base_fraud_score
             
-            # Model predicts risk score (0-100), convert to 0-1
-            risk_score_raw = self.model.predict(X)[0]
-            fraud_risk_score = min(1.0, max(0.0, risk_score_raw / 100.0))  # Convert 0-100 to 0-1
+            # Calculate confidence from model variance
+            if self.rf_model and self.xgb_model:
+                model_variance = abs(rf_score - xgb_score)
+                confidence = max(0.7, 1.0 - (model_variance * 2))
+            else:
+                confidence = 0.85
             
-            # Get feature importance if available
+            # Get feature importance from RF model if available
             feature_importance = []
-            if hasattr(self.model, 'feature_importances_'):
-                importances = self.model.feature_importances_
+            if self.rf_model and hasattr(self.rf_model, 'feature_importances_'):
+                importances = self.rf_model.feature_importances_
                 # Get top 5 most important features (for 18 features)
                 top_indices = np.argsort(importances)[-5:][::-1]
                 for idx in top_indices:
@@ -193,11 +263,11 @@ class PaystubFraudDetector:
                         feature_importance.append(f"{feature_names[idx]}: {importances[idx]:.3f}")
 
             # Determine risk level
-            if fraud_risk_score < 0.3:
+            if final_fraud_score < 0.3:
                 risk_level = 'LOW'
-            elif fraud_risk_score < 0.7:
+            elif final_fraud_score < 0.7:
                 risk_level = 'MEDIUM'
-            elif fraud_risk_score < 0.9:
+            elif final_fraud_score < 0.9:
                 risk_level = 'HIGH'
             else:
                 risk_level = 'CRITICAL'
@@ -209,11 +279,14 @@ class PaystubFraudDetector:
             fraud_classification = self._classify_fraud_types(features, feature_names, paystub_data, indicators)
 
             return {
-                'fraud_risk_score': round(fraud_risk_score, 2),
+                'fraud_risk_score': round(final_fraud_score, 4),
                 'risk_level': risk_level,
-                'model_confidence': 0.90,  # High confidence for trained model
+                'model_confidence': round(confidence, 4),
                 'model_scores': {
-                    'random_forest': round(fraud_risk_score, 2)
+                    'random_forest': round(rf_score, 4),
+                    'xgboost': round(xgb_score, 4),
+                    'ensemble': round(base_fraud_score, 4),
+                    'adjusted': round(final_fraud_score, 4)
                 },
                 'feature_importance': feature_importance,
                 'anomalies': indicators,
@@ -225,7 +298,8 @@ class PaystubFraudDetector:
             logger.error(f"Error in model prediction: {e}", exc_info=True)
             raise RuntimeError(
                 f"ML model prediction failed: {str(e)}. "
-                f"Please ensure the model file is valid and all dependencies are installed."
+                f"Please ensure the model files are valid and all dependencies are installed. "
+                f"Train models using: python training/train_paystub_models.py"
             ) from e
 
 

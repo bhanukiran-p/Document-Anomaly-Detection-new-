@@ -1,0 +1,127 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "MoneyGram",
+    "serial_number": "9021056789",
+    "serial_secondary": "9835647821",
+    "amount": "$450.00",
+    "amount_in_words": null,
+    "payee": "SARAH CHEN",
+    "purchaser": "MICHAEL LEE",
+    "sender_address": "456 PINE ST, ANYTOWN, CA 91234",
+    "date": "10/26/2024",
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "high",
+      "type": "fraud_risk_high",
+      "message": "[ESCALATE] Missing signature detected on first upload. Escalating for human review per signature validation policy."
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Missing signature"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Money order is 409 days old (stale)"
+    },
+    {
+      "severity": "high",
+      "type": "ai_indicator",
+      "message": "ML fraud detector flagged missing signature"
+    },
+    {
+      "severity": "high",
+      "type": "ai_indicator",
+      "message": "First-time payer"
+    },
+    {
+      "severity": "high",
+      "type": "ai_indicator",
+      "message": "Mandatory signature policy - requires human verification"
+    }
+  ],
+  "confidence_score": 85,
+  "raw_text": "MoneyGram\nPAY TO: SARAH CHEN\nMONEYGRAM\u00ae\nMONEY ORDER\n9021056789\nAMOUNT:\n$450.00\nDATE:\nOCTOBER 26, 2024\nFOUN HUNDRED FISTY AND 00//100 DOLLARS\nFROM: MICHAEL LEE\n456 PINE ST, ANYTOWN, CA 91234\n9835647821\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-12-09T11:33:11.584893",
+  "normalized_data": {
+    "issuer_name": "MoneyGram",
+    "serial_primary": "9021056789",
+    "serial_secondary": "9835647821",
+    "recipient": "SARAH CHEN",
+    "sender_name": "MICHAEL LEE",
+    "sender_address": "456 PINE ST, ANYTOWN, CA 91234",
+    "amount_numeric": {
+      "value": 450.0,
+      "currency": "USD"
+    },
+    "amount_written": null,
+    "date": "10-26-2024",
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 0.9,
+  "ml_analysis": {
+    "fraud_risk_score": 0.77,
+    "risk_level": "HIGH",
+    "model_confidence": 0.967,
+    "model_scores": {
+      "random_forest": 0.76,
+      "xgboost": 0.744,
+      "ensemble": 0.77
+    },
+    "feature_importance": [
+      "Missing signature",
+      "Money order is 409 days old (stale)"
+    ],
+    "fraud_indicators": [
+      "Missing signature",
+      "Money order is 409 days old (stale)"
+    ],
+    "prediction_type": "mock"
+  },
+  "ai_analysis": {
+    "recommendation": "ESCALATE",
+    "confidence_score": 1.0,
+    "summary": "Missing signature detected on first upload. Escalating for human review per signature validation policy.",
+    "reasoning": [
+      "ML fraud detector identified missing signature",
+      "This is the first upload from this payer (escalate_count=0)",
+      "Per system policy: First missing signature \u2192 ESCALATE for human review",
+      "Escalation allows verification of potential OCR error or legitimate missing signature"
+    ],
+    "key_indicators": [
+      "ML fraud detector flagged missing signature",
+      "First-time payer",
+      "Mandatory signature policy - requires human verification"
+    ],
+    "verification_notes": "Document escalated due to missing signature on first upload. Verify if signature is truly missing or if OCR failed to detect it.",
+    "actionable_recommendations": [
+      "Manually verify if signature is present on the physical document",
+      "If signature is present, approve and note OCR limitation",
+      "If signature is truly missing, reject and flag customer for future uploads"
+    ],
+    "fraud_types": [
+      "SIGNATURE_FORGERY"
+    ],
+    "fraud_explanations": [
+      {
+        "type": "SIGNATURE_FORGERY",
+        "reasons": [
+          "ML fraud detector identified missing signature",
+          "Mandatory signature validation failed",
+          "First-time upload requires human verification to rule out OCR error"
+        ]
+      }
+    ],
+    "training_insights": "First-time missing signatures may be OCR errors or legitimate issues requiring human judgment",
+    "historical_comparison": "Consistent with first-time escalation policy",
+    "analysis_type": "policy_enforcement",
+    "model_used": "mandatory_signature_policy"
+  },
+  "analysis_id": "analysis_20251209_113311_585_9021056789",
+  "saved_timestamp": "2025-12-09T11:33:11.585124"
+}

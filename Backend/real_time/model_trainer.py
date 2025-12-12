@@ -1,18 +1,23 @@
 """
 Automatic ML Model Trainer for Transaction Fraud Detection
 Uses ensemble of Random Forest and XGBoost with automatic retraining
+Supports training from Supabase database or uploaded CSV files
 """
 import pandas as pd
 import numpy as np
 import logging
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
 from datetime import datetime
 import os
+import sys
 import joblib
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, roc_auc_score, precision_recall_fscore_support
+
+# Add parent directory to path for database imports
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +27,55 @@ os.makedirs(MODEL_DIR, exist_ok=True)
 
 TRANSACTION_MODEL_PATH = os.path.join(MODEL_DIR, 'transaction_fraud_model.pkl')
 SCALER_PATH = os.path.join(MODEL_DIR, 'transaction_scaler.pkl')
-TRAINING_DATA_PATH = os.path.join(MODEL_DIR, 'training_data.csv')
 MODEL_METADATA_PATH = os.path.join(MODEL_DIR, 'model_metadata.json')
+# Note: Training data is stored in Supabase database (analyzed_real_time_trn table), not in local CSV
+
+
+def fetch_from_database(min_samples: int = 100) -> Optional[pd.DataFrame]:
+    """
+    Fetch analyzed transactions from Supabase database
+
+    Args:
+        min_samples: Minimum number of samples required for training
+
+    Returns:
+        DataFrame with transaction data or None if insufficient data
+    """
+    try:
+        from database.supabase_client import get_supabase
+
+        logger.info("Fetching analyzed transactions from Supabase database...")
+        supabase = get_supabase()
+
+        # Fetch all analyzed transactions
+        response = supabase.table('analyzed_real_time_trn').select('*').execute()
+
+        if not response.data:
+            logger.warning("No data found in analyzed_real_time_trn table")
+            return None
+
+        df = pd.DataFrame(response.data)
+
+        logger.info(f"Fetched {len(df)} transactions from database")
+
+        # Check if we have is_fraud column
+        if 'is_fraud' in df.columns:
+            fraud_count = df['is_fraud'].sum()
+            legit_count = (df['is_fraud'] == 0).sum()
+            logger.info(f"Fraud transactions: {fraud_count}, Legitimate: {legit_count}")
+
+        if len(df) < min_samples:
+            logger.warning(f"Insufficient data: {len(df)} samples (minimum: {min_samples})")
+            return None
+
+        return df
+
+    except ImportError as e:
+        logger.error(f"Could not import database client: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Failed to fetch from database: {e}")
+        return None
 
 
 # Define EnsembleModel at module level so it can be pickled
@@ -47,19 +99,43 @@ class EnsembleModel:
         return ensemble_proba
 
 
-def auto_train_model(transactions_df: pd.DataFrame, labels: np.ndarray = None) -> Dict[str, Any]:
+def auto_train_model(transactions_df: Optional[pd.DataFrame] = None, labels: np.ndarray = None,
+                     use_database: bool = True, min_samples: int = 100) -> Dict[str, Any]:
     """
     Automatically train fraud detection model on new data.
+    If transactions_df is not provided and use_database is True, fetches data from Supabase.
     If labels are not provided, uses intelligent labeling based on anomaly patterns.
 
     Args:
-        transactions_df: DataFrame with transaction data
+        transactions_df: DataFrame with transaction data (optional if use_database=True)
         labels: Optional fraud labels (1 = fraud, 0 = legitimate)
+        use_database: If True and transactions_df is None, fetch data from Supabase
+        min_samples: Minimum number of samples required for training
 
     Returns:
         Training results dictionary
     """
     try:
+        # If no DataFrame provided, try to fetch from database
+        if transactions_df is None and use_database:
+            logger.info("No transactions provided, fetching from database...")
+            transactions_df = fetch_from_database(min_samples=min_samples)
+
+            if transactions_df is None:
+                return {
+                    'success': False,
+                    'error': 'No training data available',
+                    'message': f'Could not fetch sufficient data from database (minimum: {min_samples} samples)'
+                }
+
+        # If still no data, return error
+        if transactions_df is None:
+            return {
+                'success': False,
+                'error': 'No training data provided',
+                'message': 'Please provide transaction data or enable database fetching'
+            }
+
         logger.info(f"Starting automatic model training with {len(transactions_df)} transactions")
 
         # Check if dataset has 'is_fraud' column with actual labels
@@ -91,8 +167,8 @@ def auto_train_model(transactions_df: pd.DataFrame, labels: np.ndarray = None) -
         # Train model
         model, scaler, metrics = train_fraud_model(features_df, labels)
 
-        # Save training data for incremental learning
-        _save_training_data(transactions_df, labels)
+        # Note: Training data is already stored in Supabase database (analyzed_real_time_trn table)
+        # No need to save to local CSV - database is the source of truth
 
         # Save metadata
         _save_model_metadata(metrics, len(transactions_df))
@@ -426,23 +502,9 @@ def _generate_labels_from_anomalies(df: pd.DataFrame) -> np.ndarray:
     return fraud_labels
 
 
-def _save_training_data(df: pd.DataFrame, labels: np.ndarray):
-    """Save training data for incremental learning."""
-    df_copy = df.copy()
-    df_copy['is_fraud'] = labels
-    df_copy['added_at'] = datetime.now().isoformat()
-
-    # Append to existing data
-    if os.path.exists(TRAINING_DATA_PATH):
-        existing_df = pd.read_csv(TRAINING_DATA_PATH)
-        combined_df = pd.concat([existing_df, df_copy], ignore_index=True)
-        # Keep only last 10000 records
-        combined_df = combined_df.tail(10000)
-        combined_df.to_csv(TRAINING_DATA_PATH, index=False)
-    else:
-        df_copy.to_csv(TRAINING_DATA_PATH, index=False)
-
-    logger.info(f"Saved {len(df_copy)} training samples")
+# Removed _save_training_data() function - training data is stored in Supabase database
+# All analyzed transactions with fraud labels are already saved in analyzed_real_time_trn table
+# The database is the source of truth and provides unlimited storage (vs CSV limited to 10k records)
 
 
 def _save_model_metadata(metrics: Dict, sample_count: int):

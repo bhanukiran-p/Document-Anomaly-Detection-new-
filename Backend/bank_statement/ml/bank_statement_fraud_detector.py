@@ -12,6 +12,24 @@ from .bank_statement_feature_extractor import BankStatementFeatureExtractor
 
 logger = logging.getLogger(__name__)
 
+# Fraud Type Taxonomy - 6 fraud types (5 document-level + 1 history-based)
+FABRICATED_DOCUMENT = "FABRICATED_DOCUMENT"
+ALTERED_LEGITIMATE_DOCUMENT = "ALTERED_LEGITIMATE_DOCUMENT"
+SUSPICIOUS_TRANSACTION_PATTERNS = "SUSPICIOUS_TRANSACTION_PATTERNS"
+BALANCE_CONSISTENCY_VIOLATION = "BALANCE_CONSISTENCY_VIOLATION"
+UNREALISTIC_FINANCIAL_PROPORTIONS = "UNREALISTIC_FINANCIAL_PROPORTIONS"
+REPEAT_OFFENDER = "REPEAT_OFFENDER"
+
+# Human-readable labels (optional, for UI display)
+FRAUD_TYPE_LABELS = {
+    FABRICATED_DOCUMENT: "Completely fake bank statement with non-existent bank or synthetic account",
+    ALTERED_LEGITIMATE_DOCUMENT: "Real bank statement that has been manually edited or tampered with",
+    SUSPICIOUS_TRANSACTION_PATTERNS: "Unusual transaction patterns (duplicates, round numbers, timing anomalies)",
+    BALANCE_CONSISTENCY_VIOLATION: "Balance calculations don't match (ending ≠ beginning + credits - debits)",
+    UNREALISTIC_FINANCIAL_PROPORTIONS: "Unrealistic credit/debit ratios or extreme balance volatility",
+    REPEAT_OFFENDER: "Customer with history of fraudulent submissions and escalations",
+}
+
 
 class BankStatementFraudDetector:
     """
@@ -50,27 +68,37 @@ class BankStatementFraudDetector:
                 self.rf_model = joblib.load(self.rf_model_path)
                 logger.info("Loaded Random Forest model for bank statements")
             else:
-                logger.warning("Random Forest model not found, using mock scoring")
+                logger.error(f"Random Forest model not found at {self.rf_model_path}")
                 self.rf_model = None
 
             if os.path.exists(self.xgb_model_path):
                 self.xgb_model = joblib.load(self.xgb_model_path)
                 logger.info("Loaded XGBoost model for bank statements")
             else:
-                logger.warning("XGBoost model not found, using mock scoring")
+                logger.error(f"XGBoost model not found at {self.xgb_model_path}")
                 self.xgb_model = None
 
             if os.path.exists(self.scaler_path):
                 self.scaler = joblib.load(self.scaler_path)
                 logger.info("Loaded feature scaler for bank statements")
             else:
-                logger.warning("Feature scaler not found")
+                logger.error(f"Feature scaler not found at {self.scaler_path}")
                 self.scaler = None
 
-            self.models_loaded = (self.rf_model is not None or self.xgb_model is not None)
+            # Both models are REQUIRED - no fallback
+            if self.rf_model is None or self.xgb_model is None:
+                missing_models = []
+                if self.rf_model is None:
+                    missing_models.append("Random Forest")
+                if self.xgb_model is None:
+                    missing_models.append("XGBoost")
+                logger.error(f"Required ML models are missing: {', '.join(missing_models)}")
+                self.models_loaded = False
+            else:
+                self.models_loaded = True
 
         except ImportError:
-            logger.warning("joblib not available, using mock scoring")
+            logger.error("joblib is required for ML models but not available. Install with: pip install joblib")
             self.rf_model = None
             self.xgb_model = None
             self.scaler = None
@@ -105,12 +133,16 @@ class BankStatementFraudDetector:
 
         logger.info(f"Extracted {len(features)} features for bank statement fraud detection")
 
-        # If models are loaded, use them
-        if self.models_loaded:
-            return self._predict_with_models(features, feature_names, bank_statement_data)
-        else:
-            # Use mock/heuristic scoring
-            return self._predict_mock(features, feature_names, bank_statement_data)
+        # Models are REQUIRED - no fallback
+        if not self.models_loaded:
+            raise RuntimeError(
+                "ML models are not loaded. Bank statement fraud detection requires trained models. "
+                f"Expected models at: {self.rf_model_path} and {self.xgb_model_path}. "
+                "Please ensure models are trained and available."
+            )
+        
+        # Use models - no fallback
+        return self._predict_with_models(features, feature_names, bank_statement_data)
 
     def _predict_with_models(self, features: List[float], feature_names: List[str], bank_statement_data: Dict) -> Dict:
         """Predict using trained models"""
@@ -122,173 +154,72 @@ class BankStatementFraudDetector:
             if self.scaler:
                 X = self.scaler.transform(X)
 
-            # Get predictions from each model
+            # Get predictions from each model (regressors return risk scores 0-100, normalize to 0-1)
             rf_score = 0.0
             xgb_score = 0.0
 
             if self.rf_model:
-                rf_proba = self.rf_model.predict_proba(X)[0]
-                rf_score = rf_proba[1] if len(rf_proba) > 1 else rf_proba[0]
+                try:
+                    # Try predict_proba first (if classifier)
+                    rf_proba = self.rf_model.predict_proba(X)[0]
+                    rf_score = rf_proba[1] if len(rf_proba) > 1 else rf_proba[0]
+                except AttributeError:
+                    # Use predict() for regressors and normalize (0-100 -> 0-1)
+                    rf_pred = self.rf_model.predict(X)[0]
+                    rf_score = max(0.0, min(1.0, rf_pred / 100.0))
 
             if self.xgb_model:
-                xgb_proba = self.xgb_model.predict_proba(X)[0]
-                xgb_score = xgb_proba[1] if len(xgb_proba) > 1 else xgb_proba[0]
+                try:
+                    # Try predict_proba first (if classifier)
+                    xgb_proba = self.xgb_model.predict_proba(X)[0]
+                    xgb_score = xgb_proba[1] if len(xgb_proba) > 1 else xgb_proba[0]
+                except AttributeError:
+                    # Use predict() for regressors and normalize (0-100 -> 0-1)
+                    xgb_pred = self.xgb_model.predict(X)[0]
+                    xgb_score = max(0.0, min(1.0, xgb_pred / 100.0))
 
             # Ensemble prediction (40% RF, 60% XGB)
             ensemble_score = (0.4 * rf_score) + (0.6 * xgb_score)
 
-            # Apply strict validation rules
-            adjusted_score = self._apply_validation_rules(ensemble_score, bank_statement_data, features)
+            # Use ensemble score directly (no validation rules applied)
+            final_score = ensemble_score
 
             # Get feature importance
             feature_importance = self._get_feature_importance(features, feature_names)
 
             # Determine risk level
-            risk_level = self._determine_risk_level(adjusted_score)
+            risk_level = self._determine_risk_level(final_score)
 
             # Generate anomalies
-            anomalies = self._generate_anomalies(bank_statement_data, features, feature_names, adjusted_score)
+            anomalies = self._generate_anomalies(bank_statement_data, features, feature_names, final_score)
+
+            # Classify fraud types
+            fraud_classification = self._classify_fraud_types(
+                features, feature_names, bank_statement_data, anomalies
+            )
 
             return {
-                'fraud_risk_score': round(adjusted_score, 4),
+                'fraud_risk_score': round(final_score, 4),
                 'risk_level': risk_level,
                 'model_confidence': round(max(rf_score, xgb_score), 4),
                 'model_scores': {
                     'random_forest': round(rf_score, 4),
                     'xgboost': round(xgb_score, 4),
                     'ensemble': round(ensemble_score, 4),
-                    'adjusted': round(adjusted_score, 4)
+                    'adjusted': round(final_score, 4)
                 },
                 'feature_importance': feature_importance,
-                'anomalies': anomalies
+                'anomalies': anomalies,
+                'fraud_types': fraud_classification.get('fraud_types', []),
+                'fraud_reasons': fraud_classification.get('fraud_reasons', [])
             }
 
         except Exception as e:
-            logger.error(f"Error in model prediction: {e}")
-            return self._predict_mock(features, feature_names, bank_statement_data)
-
-    def _predict_mock(self, features: List[float], feature_names: List[str], bank_statement_data: Dict) -> Dict:
-        """Mock/heuristic-based fraud detection when models aren't available"""
-        logger.info("Using mock fraud detection for bank statements")
-
-        # Calculate base score from features
-        base_score = 0.0
-        risk_factors = []
-
-        # Critical checks
-        bank_valid = features[0]  # Feature 1: bank_validity
-        account_present = features[1]  # Feature 2: account_number_present
-        account_holder_present = features[2]  # Feature 3: account_holder_present
-        future_period = features[11]  # Feature 12: future_period
-        negative_balance = features[17]  # Feature 18: negative_ending_balance
-        balance_consistency = features[18]  # Feature 19: balance_consistency
-        critical_missing = features[25]  # Feature 26: critical_missing_count
-        duplicate_txns = features[28]  # Feature 29: duplicate_transactions
-
-        # Unsupported bank
-        if bank_valid == 0.0:
-            base_score += 0.50
-            risk_factors.append("Unsupported bank detected")
-
-        # Missing account number
-        if account_present == 0.0:
-            base_score += 0.30
-            risk_factors.append("Missing account number")
-
-        # Missing account holder
-        if account_holder_present == 0.0:
-            base_score += 0.30
-            risk_factors.append("Missing account holder name")
-
-        # Future period
-        if future_period == 1.0:
-            base_score += 0.40
-            risk_factors.append("Statement period is in the future")
-
-        # Negative balance
-        if negative_balance == 1.0:
-            base_score += 0.35
-            risk_factors.append("Negative ending balance detected")
-
-        # Balance inconsistency
-        if balance_consistency < 0.5:
-            base_score += 0.40
-            risk_factors.append("Balance inconsistency detected")
-
-        # Critical missing fields
-        if critical_missing >= 3:
-            base_score += 0.40
-            risk_factors.append(f"{int(critical_missing)} critical fields missing")
-
-        # Duplicate transactions
-        if duplicate_txns == 1.0:
-            base_score += 0.30
-            risk_factors.append("Duplicate transactions detected")
-
-        # Balance checks
-        ending_balance = features[5]  # Feature 6: ending_balance
-        if ending_balance < 0:
-            base_score += 0.25
-            risk_factors.append(f"Negative balance: ${ending_balance:,.2f}")
-
-        # Transaction count
-        txn_count = features[13]  # Feature 14: transaction_count
-        if txn_count == 0:
-            base_score += 0.30
-            risk_factors.append("No transactions found in statement")
-
-        # Cap score at 1.0
-        fraud_score = min(base_score, 1.0)
-
-        # Determine risk level
-        risk_level = self._determine_risk_level(fraud_score)
-
-        # Feature importance (mock)
-        feature_importance = self._get_feature_importance(features, feature_names)
-
-        return {
-            'fraud_risk_score': round(fraud_score, 4),
-            'risk_level': risk_level,
-            'model_confidence': 0.75,  # Mock confidence
-            'model_scores': {
-                'random_forest': round(fraud_score * 0.9, 4),
-                'xgboost': round(fraud_score * 1.1, 4),
-                'ensemble': round(fraud_score, 4),
-                'adjusted': round(fraud_score, 4)
-            },
-            'feature_importance': feature_importance[:10],  # Top 10
-            'anomalies': risk_factors
-        }
-
-    def _apply_validation_rules(self, base_score: float, bank_statement_data: Dict, features: List[float]) -> float:
-        """Apply strict validation rules and adjust score"""
-        adjusted_score = base_score
-
-        # Extract key data points
-        bank_valid = features[0]
-        future_period = features[11]
-        negative_balance = features[17]
-        balance_consistency = features[18]
-        critical_missing = features[25]
-
-        # Strict rules
-        if bank_valid == 0.0:  # Unsupported bank
-            adjusted_score = max(adjusted_score, 0.50)
-
-        if future_period == 1.0:  # Future period
-            adjusted_score += 0.40
-
-        if negative_balance == 1.0:  # Negative balance
-            adjusted_score += 0.35
-
-        if balance_consistency < 0.5:  # Balance inconsistency
-            adjusted_score += 0.40
-
-        if critical_missing >= 4:  # Too many missing fields
-            adjusted_score += 0.30
-
-        # Cap at 1.0
-        return min(adjusted_score, 1.0)
+            logger.error(f"Error in model prediction: {e}", exc_info=True)
+            raise RuntimeError(
+                f"ML model prediction failed. Models are required for bank statement fraud detection. "
+                f"Error: {str(e)}"
+            ) from e
 
     def _determine_risk_level(self, score: float) -> str:
         """Determine risk level from score"""
@@ -343,4 +274,210 @@ class BankStatementFraudDetector:
             anomalies.append("HIGH fraud risk detected")
 
         return anomalies if anomalies else []
+
+    def _classify_fraud_types(
+        self,
+        features: List[float],
+        feature_names: List[str],
+        normalized_data: Dict,
+        anomalies: List[str] = None
+    ) -> Dict:
+        """
+        Classify fraud types and generate machine-readable reasons based on features and anomalies.
+        Uses all 35 features - NO FALLBACKS.
+        
+        Args:
+            features: List of 35 feature values
+            feature_names: List of feature names (35 features)
+            normalized_data: Normalized bank statement data dictionary
+            anomalies: List of anomaly strings from ML analysis
+            
+        Returns:
+            Dictionary with 'fraud_types' (list[str]) and 'fraud_reasons' (list[str])
+        """
+        fraud_types = []
+        fraud_reasons = []
+        anomalies = anomalies or []
+
+        # Build feature dictionary for easier access
+        feature_dict = dict(zip(feature_names, features))
+        
+        # Extract feature values - NO FALLBACKS, use 0.0 if missing
+        bank_valid = feature_dict.get('bank_validity', 0.0) == 1.0
+        account_present = feature_dict.get('account_number_present', 0.0) == 1.0
+        account_holder_present = feature_dict.get('account_holder_present', 0.0) == 1.0
+        account_type_present = feature_dict.get('account_type_present', 0.0) == 1.0
+        future_period = feature_dict.get('future_period', 0.0) == 1.0
+        negative_ending_balance = feature_dict.get('negative_ending_balance', 0.0) == 1.0
+        balance_consistency = feature_dict.get('balance_consistency', 1.0)
+        suspicious_transaction_pattern = feature_dict.get('suspicious_transaction_pattern', 0.0) == 1.0
+        duplicate_transactions = feature_dict.get('duplicate_transactions', 0.0) >= 0.5  # Now can be 0.5 (single) or 1.0 (multiple)
+        unusual_timing = feature_dict.get('unusual_timing', 0.0)
+        critical_missing_count = int(feature_dict.get('critical_missing_count', 0.0))
+        field_quality = feature_dict.get('field_quality', 1.0)
+        text_quality = feature_dict.get('text_quality', 1.0)
+        credit_debit_ratio = feature_dict.get('credit_debit_ratio', 0.0)
+        balance_volatility = feature_dict.get('balance_volatility', 0.0)
+        large_transaction_count = int(feature_dict.get('large_transaction_count', 0.0))
+        round_number_transactions = int(feature_dict.get('round_number_transactions', 0.0))
+        
+        # Extract additional data from normalized_data
+        bank_name = normalized_data.get('bank_name', '')
+        account_number = normalized_data.get('account_number', '')
+        account_holder_name = normalized_data.get('account_holder_name', '')
+        beginning_balance = normalized_data.get('beginning_balance', {})
+        ending_balance = normalized_data.get('ending_balance', {})
+        total_credits = normalized_data.get('total_credits', {})
+        total_debits = normalized_data.get('total_debits', {})
+
+        # Helper to extract numeric value
+        def get_numeric(val):
+            if isinstance(val, (int, float)):
+                return float(val)
+            if isinstance(val, dict):
+                return float(val.get('value', 0.0))
+            if isinstance(val, str):
+                try:
+                    return float(val.replace(',', '').replace('$', '').strip())
+                except:
+                    return 0.0
+            return 0.0
+
+        beginning_balance_val = get_numeric(beginning_balance)
+        ending_balance_val = get_numeric(ending_balance)
+        total_credits_val = get_numeric(total_credits)
+        total_debits_val = get_numeric(total_debits)
+
+        # ===== ONLY THE 5 DOCUMENT-LEVEL FRAUD TYPES =====
+        # (REPEAT_OFFENDER is added by AI agent, not ML)
+        
+        # 1. FABRICATED_DOCUMENT
+        # Missing bank name + missing account holder + low text quality + 3+ critical fields missing
+        if not bank_valid and not account_holder_present and text_quality < 0.6:
+            if FABRICATED_DOCUMENT not in fraud_types:
+                fraud_types.append(FABRICATED_DOCUMENT)
+                fraud_reasons.append(
+                    "Missing bank name combined with missing account holder and low extraction quality suggests this may be a fabricated document."
+                )
+        if not bank_valid and not account_holder_present and critical_missing_count >= 3:
+            if FABRICATED_DOCUMENT not in fraud_types:
+                fraud_types.append(FABRICATED_DOCUMENT)
+                fraud_reasons.append(
+                    "Missing critical identifying information (bank name and account holder) suggests a fabricated document."
+                )
+
+        # 2. ALTERED_LEGITIMATE_DOCUMENT
+        # Low text quality + suspicious ratios suggests tampering
+        if text_quality < 0.6 and (balance_consistency < 0.5 or field_quality < 0.7):
+            if ALTERED_LEGITIMATE_DOCUMENT not in fraud_types:
+                fraud_types.append(ALTERED_LEGITIMATE_DOCUMENT)
+                fraud_reasons.append(
+                    "Low extraction quality combined with balance inconsistencies suggests this legitimate bank statement may have been altered or tampered with."
+                )
+        
+        # Suspicious patterns that suggest manual editing
+        if text_quality < 0.7 and critical_missing_count > 0 and balance_consistency < 0.5:
+            if ALTERED_LEGITIMATE_DOCUMENT not in fraud_types:
+                fraud_types.append(ALTERED_LEGITIMATE_DOCUMENT)
+                fraud_reasons.append(
+                    "Multiple indicators (low quality, missing fields, balance inconsistencies) suggest this document may have been manually edited."
+                )
+
+        # 3. SUSPICIOUS_TRANSACTION_PATTERNS
+        # Many small transactions, duplicates, round numbers, or unusual timing patterns
+        if suspicious_transaction_pattern:
+            if SUSPICIOUS_TRANSACTION_PATTERNS not in fraud_types:
+                fraud_types.append(SUSPICIOUS_TRANSACTION_PATTERNS)
+                fraud_reasons.append(
+                    "Detected suspicious transaction patterns (many small transactions, unusual frequency)."
+                )
+        # Duplicate transactions - MEDIUM impact (reduced threshold)
+        # Only flag if duplicates are combined with other suspicious patterns
+        if duplicate_transactions and (round_number_transactions > 15 or balance_volatility > 0.5 or credit_debit_ratio > 1.5):
+            if SUSPICIOUS_TRANSACTION_PATTERNS not in fraud_types:
+                fraud_types.append(SUSPICIOUS_TRANSACTION_PATTERNS)
+                fraud_reasons.append(
+                    "Duplicate transactions detected in combination with other suspicious patterns."
+                )
+        # Round number transactions - MEDIUM impact (increased threshold from 10 to 20)
+        # Only flag if there are many round numbers (20+) or combined with other patterns
+        if round_number_transactions > 20 or (round_number_transactions > 15 and (duplicate_transactions or balance_volatility > 0.5)):
+            if SUSPICIOUS_TRANSACTION_PATTERNS not in fraud_types:
+                fraud_types.append(SUSPICIOUS_TRANSACTION_PATTERNS)
+                fraud_reasons.append(
+                    f"High number of round-number transactions ({round_number_transactions}) detected, which may indicate fabricated transactions."
+                )
+        if unusual_timing > 0.3:
+            if SUSPICIOUS_TRANSACTION_PATTERNS not in fraud_types:
+                fraud_types.append(SUSPICIOUS_TRANSACTION_PATTERNS)
+                fraud_reasons.append(
+                    f"Unusual transaction timing detected ({unusual_timing*100:.1f}% on weekends/holidays), which may indicate suspicious activity."
+                )
+
+        # 4. BALANCE_CONSISTENCY_VIOLATION
+        # Ending balance ≠ (beginning + credits - debits) OR negative balance
+        if balance_consistency < 0.5:
+            if BALANCE_CONSISTENCY_VIOLATION not in fraud_types:
+                fraud_types.append(BALANCE_CONSISTENCY_VIOLATION)
+                expected_ending = beginning_balance_val + total_credits_val - total_debits_val
+                difference = abs(ending_balance_val - expected_ending)
+                fraud_reasons.append(
+                    f"Balance inconsistency detected: ending balance (${ending_balance_val:,.2f}) does not match expected balance "
+                    f"(${expected_ending:,.2f}) based on beginning balance and transactions (difference: ${difference:,.2f})."
+                )
+        if negative_ending_balance:
+            if BALANCE_CONSISTENCY_VIOLATION not in fraud_types:
+                fraud_types.append(BALANCE_CONSISTENCY_VIOLATION)
+                fraud_reasons.append(
+                    f"Negative ending balance detected (${ending_balance_val:,.2f}), which is unusual for legitimate bank statements."
+                )
+
+        # 5. UNREALISTIC_FINANCIAL_PROPORTIONS
+        # Unrealistic credit/debit ratios, extreme balance swings, or too many large transactions
+        if credit_debit_ratio > 100 or (credit_debit_ratio < 0.01 and total_credits_val > 0):
+            if UNREALISTIC_FINANCIAL_PROPORTIONS not in fraud_types:
+                fraud_types.append(UNREALISTIC_FINANCIAL_PROPORTIONS)
+                fraud_reasons.append(
+                    f"Unrealistic credit/debit ratio ({credit_debit_ratio:.2f}), which is unusual for legitimate bank statements."
+                )
+        if balance_volatility > 5.0 and beginning_balance_val > 0:
+            if UNREALISTIC_FINANCIAL_PROPORTIONS not in fraud_types:
+                fraud_types.append(UNREALISTIC_FINANCIAL_PROPORTIONS)
+                fraud_reasons.append(
+                    f"Extreme balance volatility detected ({balance_volatility:.2f}x beginning balance), indicating unrealistic financial activity."
+                )
+        if large_transaction_count > 10:
+            if UNREALISTIC_FINANCIAL_PROPORTIONS not in fraud_types:
+                fraud_types.append(UNREALISTIC_FINANCIAL_PROPORTIONS)
+                fraud_reasons.append(
+                    f"Unusually high number of large transactions ({large_transaction_count} transactions > $10,000), which may indicate fabricated activity."
+                )
+
+        # Select only the primary (most severe) fraud type
+        # Severity order: FABRICATED_DOCUMENT > BALANCE_CONSISTENCY_VIOLATION > SUSPICIOUS_TRANSACTION_PATTERNS > UNREALISTIC_FINANCIAL_PROPORTIONS > ALTERED_LEGITIMATE_DOCUMENT
+        severity_order = {
+            FABRICATED_DOCUMENT: 5,
+            BALANCE_CONSISTENCY_VIOLATION: 4,
+            SUSPICIOUS_TRANSACTION_PATTERNS: 3,
+            UNREALISTIC_FINANCIAL_PROPORTIONS: 2,
+            ALTERED_LEGITIMATE_DOCUMENT: 1,
+        }
+
+        if fraud_types:
+            # Get the most severe fraud type
+            primary_fraud_type = max(fraud_types, key=lambda x: severity_order.get(x, 0))
+            fraud_types = [primary_fraud_type]
+
+            # Keep only the reason for the primary fraud type
+            fraud_reasons = [reason for reason in fraud_reasons if primary_fraud_type.lower().replace('_', '') in reason.lower().replace('_', '') or len(fraud_reasons) == 1]
+            if not fraud_reasons:
+                fraud_reasons = [f"Detected as {primary_fraud_type.replace('_', ' ').title()}"]
+
+        logger.info(f"Classified fraud type: {fraud_types}")
+        logger.debug(f"Generated fraud reasons: {fraud_reasons}")
+
+        return {
+            "fraud_types": fraud_types,
+            "fraud_reasons": fraud_reasons
+        }
 

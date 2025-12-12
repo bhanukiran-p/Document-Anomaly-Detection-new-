@@ -5,6 +5,21 @@ Defines the normalized data structure for checks across all banks
 
 from typing import Dict, Optional
 from dataclasses import dataclass, asdict
+import sys
+import os
+
+# Add parent directories to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+
+try:
+    from bank_statement.utils.bank_list_loader import is_supported_bank as check_bank_support
+except ImportError:
+    # Fallback if import fails
+    def check_bank_support(bank_name):
+        if not bank_name:
+            return False
+        # Minimal fallback - should not be reached in production
+        return bank_name.upper().strip() in {'BANK OF AMERICA', 'CHASE', 'WELLS FARGO'}
 
 
 @dataclass
@@ -106,7 +121,7 @@ class NormalizedCheck:
 
     def is_supported_bank(self) -> bool:
         """
-        Check if bank is supported (Bank of America or Chase)
+        Check if bank is supported (checks against database bank_dictionary table)
+        Uses case-insensitive matching with flexible name variations
         """
-        supported_banks = ['Bank of America', 'Chase', 'BANK OF AMERICA', 'CHASE']
-        return self.bank_name in supported_banks if self.bank_name else False
+        return check_bank_support(self.bank_name)

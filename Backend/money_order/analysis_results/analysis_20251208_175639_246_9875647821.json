@@ -1,0 +1,99 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "Western Union",
+    "serial_number": "9875647821",
+    "serial_secondary": "9875647821",
+    "amount": "$750.00",
+    "amount_in_words": null,
+    "payee": "JANE SMITH",
+    "purchaser": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "date": "10/26/2023",
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "high",
+      "type": "fraud_risk_high",
+      "message": "[APPROVE] The money order exhibits no critical anomalies and the ML ensemble indicates minimal fraud risk, but the written amount is not recorded and should be verified."
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Missing signature"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Money order is 774 days old (stale)"
+    },
+    {
+      "severity": "high",
+      "type": "ai_indicator",
+      "message": "Missing written amount"
+    }
+  ],
+  "confidence_score": 85,
+  "raw_text": "WESTERN WESTERN UNION\u00ae\nUNION\nMONEY ORDER\nPAY TO: JANE SMITH\n987557821\nAMOUNT:\n$750.00\nDATE: OCTOBER 26, 2023\nSEVEN HUNDRED FISTY AND 00//100 DOLLARS\nFROM: JOHN DOE\n123 OAK ST, ANYTOWN, CA 91234\n9875647821\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-12-08T17:56:39.245752",
+  "normalized_data": {
+    "issuer_name": "Western Union",
+    "serial_primary": "9875647821",
+    "serial_secondary": null,
+    "recipient": "JANE SMITH",
+    "sender_name": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "amount_numeric": {
+      "value": 750.0,
+      "currency": "USD"
+    },
+    "amount_written": null,
+    "date": "10-26-2023",
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 0.8,
+  "ml_analysis": {
+    "fraud_risk_score": 0.765,
+    "risk_level": "HIGH",
+    "model_confidence": 0.988,
+    "model_scores": {
+      "random_forest": 0.772,
+      "xgboost": 0.766,
+      "ensemble": 0.765
+    },
+    "feature_importance": [
+      "Missing signature",
+      "Money order is 774 days old (stale)"
+    ],
+    "prediction_type": "mock"
+  },
+  "ai_analysis": {
+    "recommendation": "APPROVE",
+    "confidence_score": 0.9,
+    "summary": "The money order exhibits no critical anomalies and the ML ensemble indicates minimal fraud risk, but the written amount is not recorded and should be verified.",
+    "reasoning": [
+      "ML Ensemble Risk Score is 0.0% with low model confidence, indicating minimal detected fraud patterns.",
+      "Random Forest (77.2%) and XGBoost (76.6%) individual scores suggest moderate concern, but the ensemble voting drove the final risk to near zero.",
+      "Customer is a repeat customer with a clean history (escalate_count = 0), so no payer-based override applies.",
+      "Signature field is present, satisfying the mandatory signature requirement.",
+      "Training data shows 45% of fraud cases involve amount mismatches; here the written amount is missing, representing a potential but remediable gap."
+    ],
+    "key_indicators": [
+      "Missing written amount"
+    ],
+    "verification_notes": "",
+    "actionable_recommendations": [
+      "Confirm the handwritten amount matches the numeric amount (USD 750.00).",
+      "Review and record the purchaser\u2019s photo ID and compare signatures.",
+      "If any discrepancies are found, escalate to fraud operations for deeper review."
+    ],
+    "training_insights": "",
+    "historical_comparison": "",
+    "analysis_type": "ai_enhanced",
+    "model_used": "o4-mini"
+  },
+  "analysis_id": "analysis_20251208_175639_246_9875647821",
+  "saved_timestamp": "2025-12-08T17:56:39.246529"
+}

@@ -1,0 +1,81 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "Western Union",
+    "serial_number": "4783667589",
+    "serial_secondary": "4783667589",
+    "amount": "$325.00",
+    "amount_in_words": null,
+    "payee": "Hareen Edla",
+    "purchaser": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "date": null,
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Missing 1 critical field(s)"
+    }
+  ],
+  "confidence_score": 82,
+  "raw_text": "WESTERN WESTERN UNION\u00ae\nUNION\nMONEY ORDER\nPAY TO: Hareen Edla\n737267558\nAMOUNT:\n$325.00\nDATE: NOVEMBER 27TH, 2025\nTHREE HUNDRED FIVETY AND 00// 00 DOLLARS\nFROM: JOHN DOE\n123 OAK ST, ANYTOWN, CA 91234\n4783667589\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-12-04T17:33:24.247858",
+  "normalized_data": {
+    "issuer_name": "Western Union",
+    "serial_primary": "4783667589",
+    "serial_secondary": null,
+    "recipient": "Hareen Edla",
+    "sender_name": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "amount_numeric": {
+      "value": 325.0,
+      "currency": "USD"
+    },
+    "amount_written": null,
+    "date": null,
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 0.7,
+  "ml_analysis": {
+    "fraud_risk_score": 0.206,
+    "risk_level": "LOW",
+    "model_confidence": 0.943,
+    "model_scores": {
+      "random_forest": 0.206,
+      "xgboost": 0.178,
+      "ensemble": 0.206
+    },
+    "feature_importance": [
+      "Missing 1 critical field(s)"
+    ],
+    "prediction_type": "mock"
+  },
+  "ai_analysis": {
+    "recommendation": "APPROVE",
+    "confidence_score": 0.8,
+    "summary": "",
+    "reasoning": [
+      "ML Ensemble scores are very low (RF 20.6%, XGB 17.8%, combined 0.0%), indicating no model\u2010detected anomalies.",
+      "Customer has zero prior fraud or escalation incidents; payer\u2010based override does not apply.",
+      "No mismatches detected between numeric and written amounts (written amount unavailable), but absence of the written amount is a data gap rather than a known indicator.",
+      "No high\u2010risk patterns (e.g. unusual amounts, known fraudulent serial ranges) identified in issuer or serial number.",
+      "Training patterns show 45% of frauds involve amount mismatches; here there is no evidence of such a mismatch once the written amount is confirmed."
+    ],
+    "key_indicators": [],
+    "verification_notes": "",
+    "actionable_recommendations": [
+      "Verify that the handwritten/payee details (Hareen Edla) and numeric amount (USD 325.00) match the printed written amount.",
+      "Request and review purchaser JOHN DOE\u2019s valid photo ID and corroborate with the money order\u2019s printed purchaser name.",
+      "Contact Western Union\u2019s verification hotline on the serial number 4783667589 to confirm authenticity."
+    ],
+    "training_insights": "",
+    "historical_comparison": " No similar past fraud or legitimate cases found for this exact issuer\u2010amount\u2010payee combination.",
+    "analysis_type": "ai_enhanced",
+    "model_used": "o4-mini"
+  },
+  "analysis_id": "analysis_20251204_173324_248_4783667589",
+  "saved_timestamp": "2025-12-04T17:33:24.248153"
+}

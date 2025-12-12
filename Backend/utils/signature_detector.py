@@ -92,7 +92,7 @@ class SignatureDetector:
 
         detection_method = "+".join(methods_detected)
 
-        is_present = avg_confidence >= 0.3  # Threshold for detection
+        is_present = avg_confidence >= 0.65  # Compromise threshold - balances false positives/negatives, relies on escalate-then-reject for error handling
 
         logger.info(
             f"Signature detection: present={is_present}, "
@@ -188,25 +188,17 @@ class SignatureDetector:
     def _check_signer_name(self, data: Dict[str, Any]) -> Tuple[bool, float]:
         """
         Check if signer/payer name is present (indirect signature indicator).
+        
+        DISABLED: This heuristic causes false positives.
+        Payer name presence does NOT mean signature is present.
+        Only actual signature field detection should be trusted.
 
         Returns:
-            Tuple of (detected, confidence)
+            Tuple of (detected, confidence) - always returns False
         """
-        signer_fields = [
-            'payer_name',
-            'purchaser',
-            'drawer',
-            'signer_name',
-            'account_holder'
-        ]
-
-        for field in signer_fields:
-            value = data.get(field)
-            if value and isinstance(value, str) and len(value.strip()) > 2:
-                # Signer name present - likely signed
-                # Lower confidence as this is indirect evidence
-                return True, 0.5
-
+        # DISABLED: Payer name does not indicate signature presence
+        # This was causing false positives where documents with payer names
+        # but no actual signatures were incorrectly marked as signed
         return False, 0.0
 
     def _check_signature_location(self, data: Dict[str, Any], raw_text: str) -> Tuple[bool, float]:

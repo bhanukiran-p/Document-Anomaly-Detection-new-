@@ -4,12 +4,20 @@ Extracts key information from money order documents and provides fraud risk asse
 """
 
 import os
+import sys
 import io
 import re
 from typing import Dict, Optional
 from datetime import datetime
 from google.cloud import vision
 from google.oauth2 import service_account
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+# Import centralized config and logging
+from config import Config
+logger = Config.get_logger(__name__)
 
 # Import ML models and AI agent
 try:
@@ -49,32 +57,15 @@ class MoneyOrderExtractor:
             credentials_path: Path to Google Cloud service account JSON file
         """
         # Set up Google Vision API credentials
-        # Get the directory where this script is located
-        backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        
         if credentials_path and os.path.exists(credentials_path):
             credentials = service_account.Credentials.from_service_account_file(
                 credentials_path
             )
             self.client = vision.ImageAnnotatorClient(credentials=credentials)
+        elif 'GOOGLE_APPLICATION_CREDENTIALS' in os.environ:
+            self.client = vision.ImageAnnotatorClient()
         else:
-            # Try default location in Backend folder
-            default_path = os.path.join(backend_dir, 'google-credentials.json')
-            if os.path.exists(default_path):
-                credentials = service_account.Credentials.from_service_account_file(
-                    default_path
-                )
-                self.client = vision.ImageAnnotatorClient(credentials=credentials)
-            elif 'GOOGLE_APPLICATION_CREDENTIALS' in os.environ:
-                env_path = os.environ['GOOGLE_APPLICATION_CREDENTIALS']
-                # Only use if file exists
-                if os.path.exists(env_path):
-                    self.client = vision.ImageAnnotatorClient()
-                else:
-                    # Fallback
-                    self.client = vision.ImageAnnotatorClient()
-            else:
-                self.client = vision.ImageAnnotatorClient()
+            self.client = vision.ImageAnnotatorClient()
 
         # Initialize ML fraud detector and AI agent
         if ML_AVAILABLE:
@@ -576,7 +567,9 @@ class MoneyOrderExtractor:
             is_repeat_customer = False
 
         # Pass customer info to AI analysis
-        ai_analysis = self.ai_agent.analyze_fraud(ml_analysis, data, customer_id, is_repeat_customer, customer_fraud_history)
+        # CRITICAL: Add raw_text to data so AI can detect spelling errors in amount field
+        data_with_raw_text = {**data, 'raw_text': text}
+        ai_analysis = self.ai_agent.analyze_fraud(ml_analysis, data_with_raw_text, customer_id, is_repeat_customer, customer_fraud_history)
 
         # Convert ML fraud indicators into anomalies format for frontend
         anomalies = self._convert_to_anomalies(ml_analysis, ai_analysis)
