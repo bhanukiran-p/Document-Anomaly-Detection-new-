@@ -256,13 +256,6 @@ const RealTimeAnalysis = () => {
       .join(' ');
   };
 
-  const topFraudCases = analysisResult?.transactions
-    ? [...analysisResult.transactions]
-        .filter((t) => t.is_fraud === 1)
-        .sort((a, b) => (b.fraud_probability || 0) - (a.fraud_probability || 0))
-        .slice(0, 4)
-    : [];
-
   const fraudReasonBreakdown =
     analysisResult?.fraud_detection?.fraud_reason_breakdown ||
     analysisResult?.fraud_detection?.fraud_type_breakdown ||
@@ -1955,32 +1948,6 @@ const RealTimeAnalysis = () => {
             </div>
           </div>
 
-          {topFraudCases.length > 0 && (
-            <div style={styles.topFraudList}>
-              <h3 style={styles.fraudTypeTitle}>Top ML-Flagged Transactions</h3>
-              {topFraudCases.map((txn, idx) => {
-                const txnAmount = typeof txn.amount === 'number' ? txn.amount : parseFloat(txn.amount || 0);
-                return (
-                  <div key={txn.transaction_id || `${txn.merchant}-${idx}`} style={styles.topFraudItem}>
-                    <div>
-                      <div style={styles.topFraudLabel}>{txn.merchant || txn.category || 'Unknown Merchant'}</div>
-                      <div style={styles.topFraudMeta}>
-                        {formatFraudReason(txn.fraud_reason)} • {((txn.fraud_probability || 0) * 100).toFixed(0)}% risk
-                      </div>
-                      {txn.fraud_reason_detail && (
-                        <div style={{ fontSize: '0.75rem', color: colors.mutedForeground, marginTop: '0.25rem' }}>
-                          {txn.fraud_reason_detail}
-                        </div>
-                      )}
-                    </div>
-                    <div style={styles.topFraudAmount}>
-                      ${txnAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
 
           {/* Action Buttons */}
           <div style={styles.buttonGroup}>

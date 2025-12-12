@@ -754,6 +754,125 @@ For questions or issues:
 
 ---
 
+---
+
+## Model Training from Database
+
+### Overview
+
+The Real-Time fraud detection system now supports **automatic training from analyzed transaction data** stored in the Supabase database. This enables continuous model improvement using actual production data instead of static datasets.
+
+### Training Data Sources
+
+**1. Database Training (Default & Recommended)**
+- **Source**: `analyzed_real_time_trn` table in Supabase
+- **Advantage**: Uses real analyzed transactions from production
+- **Automatic**: No file upload required
+- **Continuous Learning**: Models improve as more data is analyzed
+
+**2. Manual CSV Upload**
+- **Source**: User-uploaded CSV file
+- **Use Case**: Testing with specific datasets
+- **Requirement**: CSV must have `is_fraud` column
+
+### How to Retrain Models
+
+**Via API (Database Training):**
+```bash
+curl -X POST http://localhost:5000/api/real-time/retrain-model \
+  -F "min_samples=100"
+```
+
+**Via API (CSV Upload):**
+```bash
+curl -X POST http://localhost:5000/api/real-time/retrain-model \
+  -F "file=@training_data.csv"
+```
+
+### Model Architecture
+
+**Ensemble Model**: 60% Random Forest + 40% Gradient Boosting
+- **Random Forest**: 100 estimators, max_depth=10
+- **Gradient Boosting**: 100 estimators, learning_rate=0.1
+- **Features**: 47 engineered features
+- **Output**: Fraud probability + classification
+
+### Training Files Location
+
+**Models Directory**: `Backend/real_time/models/`
+```
+├── transaction_fraud_model.pkl      # Ensemble model
+├── transaction_scaler.pkl           # Feature scaler
+├── model_metadata.json              # Training metadata
+└── training_data.csv                # Last training dataset
+```
+
+### Standalone Training Script
+
+For batch/scheduled training:
+```bash
+cd Backend
+python training/train_realtime_from_db.py --min-samples 100
+```
+
+**Options**:
+- `--min-samples N` - Minimum samples required (default: 100)
+- `--fraud-only` - Only train on confirmed fraud cases
+- `--output-dir PATH` - Custom output directory
+
+### When to Retrain
+
+Retrain the model when:
+1. Weekly/monthly schedule - Regular updates with new data
+2. Performance degradation - Metrics drop below threshold
+3. Data drift - Transaction patterns change
+4. New fraud patterns - Emerging fraud types detected
+5. Sufficient new data - At least 100+ new analyzed transactions
+
+### API Response Example
+
+**Success Response:**
+```json
+{
+  "success": true,
+  "message": "Model retrained successfully",
+  "training_results": {
+    "samples": 5000,
+    "fraud_samples": 500,
+    "legitimate_samples": 4500,
+    "fraud_percentage": 10.0,
+    "metrics": {
+      "accuracy": 0.985,
+      "precision": 0.92,
+      "recall": 0.88,
+      "f1_score": 0.90,
+      "auc": 0.995
+    },
+    "trained_at": "2025-12-11T15:30:00"
+  }
+}
+```
+
+**Error Response (Insufficient Data):**
+```json
+{
+  "success": false,
+  "error": "No training data available",
+  "message": "Could not fetch sufficient data from database (minimum: 100 samples)"
+}
+```
+
+### Best Practices
+
+1. **Regular Retraining**: Schedule weekly/monthly retraining
+2. **Monitor Metrics**: Track precision/recall trends
+3. **Validate Data Quality**: Ensure `is_fraud` labels are accurate
+4. **Maintain Balance**: Aim for 5-20% fraud ratio in training data
+5. **Version Control**: Keep historical model files for rollback
+6. **Test Before Deploy**: Validate new models on held-out data
+
+---
+
 **Last Updated**: December 2024
-**Version**: 2.0
+**Version**: 2.1
 **Author**: DAD Fraud Detection Team
