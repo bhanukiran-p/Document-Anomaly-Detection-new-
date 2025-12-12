@@ -185,6 +185,20 @@ export const regeneratePlotsWithFilters = async (transactions, filters) => {
   }
 };
 
+// Get available filter options from transactions
+export const getFilterOptions = async (transactions) => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/real-time/filter-options`, {
+      transactions
+    });
+    return response.data;
+  } catch (error) {
+    const errorData = error.response?.data || { error: 'Failed to get filter options', message: error.message || 'Network error' };
+    console.error('Get filter options API error:', errorData);
+    throw errorData;
+  }
+};
+
 // Retrain fraud detection model
 export const retrainFraudModel = async (file) => {
   const formData = new FormData();

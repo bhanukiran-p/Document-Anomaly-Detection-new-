@@ -1,25 +1,25 @@
 """
 Flask API Server for XFORIA DAD
-Handles Check, Paystub, Money Order, and Bank Statement Analysis
+Handles Real-Time Transaction Analysis
 """
 
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, Response
 from flask_cors import CORS
 import os
 import sys
+import json
 import logging
 from logging.handlers import RotatingFileHandler
 from werkzeug.utils import secure_filename
-import importlib.util
+from pathlib import Path
 import re
-import fitz
 import uuid
 from datetime import datetime
-from google.cloud import vision
+# Google Vision API removed - only used for on-demand document analysis
 from auth import login_user, register_user
 from database.supabase_client import get_supabase, check_connection as check_supabase_connection
 from auth.supabase_auth import login_user_supabase, register_user_supabase, verify_token
-from database.document_storage import store_money_order_analysis, store_bank_statement_analysis, store_paystub_analysis, store_check_analysis
+# On-demand document analysis removed - only real-time transaction analysis supported
 
 # Import centralized configuration
 from config import Config
@@ -49,27 +49,18 @@ else:
 
 if Config.GOOGLE_APPLICATION_CREDENTIALS:
     logger.info(f"Google Credentials path: {Config.GOOGLE_APPLICATION_CREDENTIALS}")
+# Check for GOOGLE_APPLICATION_CREDENTIALS but validate file exists
+google_app_creds = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+if google_app_creds:
+    if os.path.exists(google_app_creds):
+        logger.info(f" Google Credentials path (from env): {google_app_creds}")
+    else:
+        logger.warning(f" GOOGLE_APPLICATION_CREDENTIALS points to non-existent file: {google_app_creds}")
+        logger.info(" Will use default location in Backend folder instead")
 else:
-    logger.warning("GOOGLE_APPLICATION_CREDENTIALS not set")
+    logger.info(" GOOGLE_APPLICATION_CREDENTIALS not set, will use default location in Backend folder")
 
-# Load the production extractor
-try:
-    spec = importlib.util.spec_from_file_location(
-        "production_extractor", 
-        "production_google_vision-extractor.py"
-    )
-    production_extractor = importlib.util.module_from_spec(spec)
-    sys.modules["production_extractor"] = production_extractor
-    spec.loader.exec_module(production_extractor)
-    ProductionCheckExtractor = production_extractor.ProductionCheckExtractor
-    PRODUCTION_EXTRACTOR_AVAILABLE = True
-except Exception as e:
-    logger.warning(f"Production extractor not available: {e}. Using Mindee extractor instead.")
-    ProductionCheckExtractor = None
-    PRODUCTION_EXTRACTOR_AVAILABLE = False
-
-# Legacy import removed - using check.CheckExtractor instead
-# from check_analysis.orchestrator import CheckAnalysisOrchestrator
+# On-demand document extractors removed - only real-time transaction analysis supported
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = Config.SECRET_KEY
@@ -77,19 +68,14 @@ app.config['MAX_CONTENT_LENGTH'] = Config.MAX_CONTENT_LENGTH
 
 # Enable CORS with configured origins
 CORS(app, origins=Config.CORS_ORIGINS)
+# Configuration
+UPLOAD_FOLDER = 'temp_uploads'
+# Google Vision API removed - only used for on-demand document analysis
 
 # Configuration from centralized config
 UPLOAD_FOLDER = Config.UPLOAD_FOLDER
 ALLOWED_EXTENSIONS = Config.ALLOWED_EXTENSIONS
 CREDENTIALS_PATH = Config.GOOGLE_APPLICATION_CREDENTIALS or 'google-credentials.json'
-
-# Initialize Vision API client once
-try:
-    vision_client = vision.ImageAnnotatorClient.from_service_account_file(CREDENTIALS_PATH)
-    logger.info(f"Successfully loaded Google Cloud Vision credentials from {CREDENTIALS_PATH}")
-except Exception as e:
-    logger.warning(f"Failed to load Vision API credentials: {e}")
-    vision_client = None
 
 # Initialize Supabase client
 try:
@@ -100,66 +86,7 @@ except Exception as e:
     logger.warning(f"Failed to initialize Supabase: {e}")
     supabase = None
 
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-def detect_document_type(text):
-    """
-    Detect document type based on text content
-    Returns: 'check', 'paystub', 'money_order', 'bank_statement', or 'unknown'
-    """
-    text_lower = text.lower()
-
-    # Priority check: Strong identifiers that definitively indicate document type
-    # Check for money order FIRST with strong keywords
-    if 'money order' in text_lower or 'western union' in text_lower or 'moneygram' in text_lower:
-        return 'money_order'
-
-    # Check for bank statement strong indicators
-    if ('statement period' in text_lower or 'account summary' in text_lower or
-        'beginning balance' in text_lower or 'transaction detail' in text_lower):
-        return 'bank_statement'
-
-    # Check for paystub strong indicators
-    if ('gross pay' in text_lower or 'net pay' in text_lower or
-        ('ytd' in text_lower and 'earnings' in text_lower)):
-        return 'paystub'
-
-    # Check for check strong indicators
-    if 'routing number' in text_lower or 'micr' in text_lower or 'check number' in text_lower:
-        return 'check'
-
-    # Fallback: Use keyword counting for less obvious cases
-    # Check for check-specific keywords
-    check_keywords = ['pay to the order of', 'account number', 'memo', 'void', 'dollars']
-    check_count = sum(1 for keyword in check_keywords if keyword in text_lower)
-
-    # Check for paystub-specific keywords
-    paystub_keywords = ['earnings', 'deductions', 'federal tax', 'state tax', 'social security', 'medicare', 'employee', 'employer', 'pay period', 'paycheck']
-    paystub_count = sum(1 for keyword in paystub_keywords if keyword in text_lower)
-
-    # Check for money order keywords
-    money_order_keywords = ['purchaser', 'serial number', 'receipt', 'remitter']
-    money_order_count = sum(1 for keyword in money_order_keywords if keyword in text_lower)
-
-    # Check for bank statement keywords
-    bank_statement_keywords = ['ending balance', 'checking summary', 'deposits', 'withdrawals', 'daily balance']
-    bank_statement_count = sum(1 for keyword in bank_statement_keywords if keyword in text_lower)
-
-    # Determine document type based on keyword matches
-    max_count = max(check_count, paystub_count, money_order_count, bank_statement_count)
-
-    if max_count == 0:
-        return 'unknown'
-
-    if check_count == max_count:
-        return 'check'
-    elif paystub_count == max_count:
-        return 'paystub'
-    elif bank_statement_count == max_count:
-        return 'bank_statement'
-    else:
-        return 'money_order'
+# allowed_file and detect_document_type functions removed - only CSV files for real-time analysis
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -1877,8 +1804,40 @@ def regenerate_plots_with_filters():
         # Category filter
         if 'category' in filters and filters['category']:
             before = len(filtered_transactions)
-            filtered_transactions = [t for t in filtered_transactions if filters['category'].lower() in str(t.get('category', '')).lower()]
+            filtered_transactions = [t for t in filtered_transactions if t.get('category') == filters['category']]
             logger.info(f"Category filter ({filters['category']}): {before} → {len(filtered_transactions)}")
+
+        # Merchant filter
+        if 'merchant' in filters and filters['merchant']:
+            before = len(filtered_transactions)
+            filtered_transactions = [t for t in filtered_transactions if t.get('merchant') == filters['merchant']]
+            logger.info(f"Merchant filter ({filters['merchant']}): {before} → {len(filtered_transactions)}")
+
+        # City filter
+        if 'city' in filters and filters['city']:
+            before = len(filtered_transactions)
+            filtered_transactions = [t for t in filtered_transactions if (
+                t.get('transaction_city') == filters['city'] or
+                t.get('transaction_location_city') == filters['city'] or
+                t.get('transactionlocationcity') == filters['city']
+            )]
+            logger.info(f"City filter ({filters['city']}): {before} → {len(filtered_transactions)}")
+
+        # Country filter
+        if 'country' in filters and filters['country']:
+            before = len(filtered_transactions)
+            filtered_transactions = [t for t in filtered_transactions if (
+                t.get('transaction_country') == filters['country'] or
+                t.get('transaction_location_country') == filters['country'] or
+                t.get('transactionlocationcountry') == filters['country']
+            )]
+            logger.info(f"Country filter ({filters['country']}): {before} → {len(filtered_transactions)}")
+
+        # Fraud reason filter
+        if 'fraud_reason' in filters and filters['fraud_reason']:
+            before = len(filtered_transactions)
+            filtered_transactions = [t for t in filtered_transactions if t.get('fraud_reason') == filters['fraud_reason']]
+            logger.info(f"Fraud reason filter ({filters['fraud_reason']}): {before} → {len(filtered_transactions)}")
 
         # Date filters
         from datetime import datetime
@@ -1963,71 +1922,195 @@ def regenerate_plots_with_filters():
         }), 500
 
 
+@app.route('/api/real-time/filter-options', methods=['POST'])
+def get_filter_options():
+    """
+    Extract available filter options from the transaction dataset.
+    Returns dropdown options for categories, merchants, cities, etc.
+    """
+    try:
+        data = request.get_json()
+
+        if not data or 'transactions' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'Transactions data required'
+            }), 400
+
+        transactions = data['transactions']
+
+        if not transactions:
+            return jsonify({
+                'success': False,
+                'error': 'Empty transactions list'
+            }), 400
+
+        logger.info(f"Extracting filter options from {len(transactions)} transactions")
+
+        # Extract unique values for each filterable field
+        categories = set()
+        merchants = set()
+        cities = set()
+        countries = set()
+        fraud_reasons = set()
+
+        # Amount statistics for bucketing
+        amounts = []
+        fraud_probabilities = []
+
+        for txn in transactions:
+            # Categories
+            if txn.get('category'):
+                categories.add(str(txn['category']))
+
+            # Merchants
+            if txn.get('merchant'):
+                merchants.add(str(txn['merchant']))
+
+            # Cities (try multiple field variations)
+            city = (txn.get('transaction_city') or
+                   txn.get('transaction_location_city') or
+                   txn.get('transactionlocationcity'))
+            if city:
+                cities.add(str(city))
+
+            # Countries
+            country = (txn.get('transaction_country') or
+                      txn.get('transaction_location_country') or
+                      txn.get('transactionlocationcountry'))
+            if country:
+                countries.add(str(country))
+
+            # Fraud reasons
+            if txn.get('fraud_reason') and txn.get('is_fraud') == 1:
+                fraud_reasons.add(str(txn['fraud_reason']))
+
+            # Amount
+            if txn.get('amount'):
+                amounts.append(float(txn['amount']))
+
+            # Fraud probability
+            if txn.get('fraud_probability') is not None:
+                fraud_probabilities.append(float(txn['fraud_probability']))
+
+        # Calculate amount ranges
+        amount_ranges = []
+        if amounts:
+            min_amount = min(amounts)
+            max_amount = max(amounts)
+
+            # Create 5 buckets
+            if max_amount > min_amount:
+                step = (max_amount - min_amount) / 5
+                for i in range(5):
+                    range_start = min_amount + (i * step)
+                    range_end = min_amount + ((i + 1) * step)
+                    amount_ranges.append({
+                        'label': f"${range_start:.2f} - ${range_end:.2f}",
+                        'min': round(range_start, 2),
+                        'max': round(range_end, 2)
+                    })
+
+        # Sort and clean up options
+        filter_options = {
+            'categories': sorted([c for c in categories if c and c != 'N/A']),
+            'merchants': sorted([m for m in merchants if m and m != 'Unknown Merchant'])[:50],  # Limit to top 50
+            'cities': sorted([c for c in cities if c])[:50],  # Limit to top 50
+            'countries': sorted([c for c in countries if c]),
+            'fraud_reasons': sorted([fr for fr in fraud_reasons if fr]),
+            'amount_ranges': amount_ranges,
+            'fraud_probability_ranges': [
+                {'label': '0% - 20%', 'min': 0, 'max': 0.2},
+                {'label': '20% - 40%', 'min': 0.2, 'max': 0.4},
+                {'label': '40% - 60%', 'min': 0.4, 'max': 0.6},
+                {'label': '60% - 80%', 'min': 0.6, 'max': 0.8},
+                {'label': '80% - 100%', 'min': 0.8, 'max': 1.0}
+            ]
+        }
+
+        logger.info(f"Extracted filter options: {len(filter_options['categories'])} categories, "
+                   f"{len(filter_options['merchants'])} merchants, {len(filter_options['cities'])} cities")
+
+        return jsonify({
+            'success': True,
+            'filter_options': filter_options
+        })
+
+    except Exception as e:
+        logger.error(f"Error extracting filter options: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to extract filter options'
+        }), 500
+
+
 @app.route('/api/real-time/retrain-model', methods=['POST'])
 def retrain_fraud_model():
     """
-    Retrain the fraud detection model on uploaded data
-    Useful when the current model's training data doesn't match your actual data distribution
+    Retrain the fraud detection model.
+    Can use data from:
+    1. Supabase database (analyzed_real_time_trn table) - Default
+    2. Uploaded CSV file (if provided)
     """
     try:
         logger.info("Model retraining requested")
 
-        # Check if file is uploaded
-        if 'file' not in request.files:
-            return jsonify({
-                'success': False,
-                'error': 'No file provided',
-                'message': 'Please upload a CSV file with labeled fraud data'
-            }), 400
-
-        file = request.files['file']
-
-        if file.filename == '':
-            return jsonify({
-                'success': False,
-                'error': 'Empty filename',
-                'message': 'Please select a file to upload'
-            }), 400
-
-        # Read CSV
         import pandas as pd
         from real_time.model_trainer import auto_train_model
 
-        df = pd.read_csv(file)
+        df = None
+        use_database = True
 
-        # Verify required columns
-        if 'amount' not in df.columns:
-            return jsonify({
-                'success': False,
-                'error': 'Missing required column: amount'
-            }), 400
+        # Check if file is uploaded
+        if 'file' in request.files and request.files['file'].filename != '':
+            logger.info("Training from uploaded CSV file")
+            file = request.files['file']
+            df = pd.read_csv(file)
+            use_database = False
 
-        # Check if dataset has fraud labels
-        if 'is_fraud' not in df.columns:
-            return jsonify({
-                'success': False,
-                'error': 'Missing fraud labels',
-                'message': 'Dataset must have an "is_fraud" column with 0/1 labels'
-            }), 400
+            # Verify required columns
+            if 'amount' not in df.columns:
+                return jsonify({
+                    'success': False,
+                    'error': 'Missing required column: amount'
+                }), 400
 
-        logger.info(f"Retraining model on {len(df)} transactions")
+            # Check if dataset has fraud labels
+            if 'is_fraud' not in df.columns:
+                return jsonify({
+                    'success': False,
+                    'error': 'Missing fraud labels',
+                    'message': 'Dataset must have an "is_fraud" column with 0/1 labels'
+                }), 400
 
-        # Calculate current fraud distribution
-        fraud_count = df['is_fraud'].sum()
-        fraud_percentage = (fraud_count / len(df)) * 100
+            logger.info(f"Retraining model on {len(df)} uploaded transactions")
+        else:
+            logger.info("No file uploaded, will fetch data from Supabase database")
 
-        logger.info(f"Training data has {fraud_count} fraud cases ({fraud_percentage:.1f}%)")
+        # Get minimum samples parameter (default 100)
+        min_samples = request.form.get('min_samples', 100, type=int)
 
-        # Train model
-        training_result = auto_train_model(df)
+        # Train model (will fetch from database if df is None)
+        training_result = auto_train_model(
+            transactions_df=df,
+            use_database=use_database,
+            min_samples=min_samples
+        )
 
         if not training_result.get('success'):
             return jsonify({
                 'success': False,
                 'error': training_result.get('error'),
-                'message': 'Failed to retrain model'
+                'message': training_result.get('message', 'Failed to retrain model')
             }), 500
 
+        # Calculate fraud percentage
+        fraud_count = training_result.get('fraud_samples', 0)
+        total_samples = training_result.get('training_samples', 1)
+        fraud_percentage = (fraud_count / total_samples) * 100 if total_samples > 0 else 0
+
+        logger.info(f"Training data has {fraud_count} fraud cases ({fraud_percentage:.1f}%)")
         logger.info("Model retraining completed successfully")
 
         return jsonify({
@@ -2086,10 +2169,6 @@ if __name__ == '__main__':
     print(f"Server running on: http://localhost:5001")
     print(f"API Endpoints:")
     print(f"  - GET  /api/health")
-    print(f"  - POST /api/check/analyze")
-    print(f"  - POST /api/paystub/analyze")
-    print(f"  - POST /api/money-order/analyze")
-    print(f"  - POST /api/bank-statement/analyze")
     print(f"  - POST /api/real-time/analyze")
     print(f"  - GET  /api/checks/list")
     print(f"  - GET  /api/checks/search")
@@ -2102,6 +2181,9 @@ if __name__ == '__main__':
     print(f"  - GET  /api/documents/list")
     print(f"  - GET  /api/documents/search")
     print(f"  - GET  /api/paystubs/insights")
+    print(f"  - POST /api/real-time/regenerate-plots")
+    print(f"  - POST /api/real-time/filter-options")
+    print(f"  - POST /api/real-time/retrain-model")
     print("=" * 60)
 
     app.run(debug=False, host='0.0.0.0', port=5001, use_reloader=False)
