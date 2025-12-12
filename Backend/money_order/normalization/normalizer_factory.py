@@ -55,17 +55,16 @@ class MoneyOrderNormalizerFactory:
         """
         Check if an issuer is supported
 
+        Since we now use generic normalizer, ALL issuers are supported.
+
         Args:
             issuer: Name of the money order issuer
 
         Returns:
-            True if issuer is supported, False otherwise
+            Always True (generic normalizer works for all issuers)
         """
-        if not issuer:
-            return False
-
-        issuer_key = issuer.lower().strip()
-        return issuer_key in cls.NORMALIZERS
+        # Generic normalizer supports all issuers
+        return True
 
     @classmethod
     def get_supported_issuers(cls) -> list:
@@ -73,14 +72,16 @@ class MoneyOrderNormalizerFactory:
         Get list of all supported issuers
 
         Returns:
-            List of supported issuer names
+            List indicating all issuers are supported via generic normalizer
         """
-        return list(set(cls.NORMALIZERS.keys()))
+        return ['All Issuers (using generic normalizer)']
 
     @classmethod
     def register_normalizer(cls, issuer: str, normalizer_class):
         """
-        Register a new normalizer for an issuer
+        Register an issuer-specific normalizer for an issuer (optional)
+
+        Only needed if an issuer requires special handling beyond generic normalization.
 
         Args:
             issuer: Issuer name (will be lowercased)
@@ -90,7 +91,7 @@ class MoneyOrderNormalizerFactory:
             raise ValueError(f"{normalizer_class} must inherit from BaseNormalizer")
 
         issuer_key = issuer.lower().strip()
-        cls.NORMALIZERS[issuer_key] = normalizer_class
+        cls.ISSUER_SPECIFIC_NORMALIZERS[issuer_key] = normalizer_class
 
     @classmethod
     def normalize_data(cls, issuer: str, ocr_data: dict):

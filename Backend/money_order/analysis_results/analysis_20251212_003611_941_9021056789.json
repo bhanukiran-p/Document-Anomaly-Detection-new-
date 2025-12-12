@@ -1,0 +1,141 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "MoneyGram",
+    "serial_number": "9021056789",
+    "serial_secondary": "9835647821",
+    "amount": "$450.00",
+    "amount_in_words": "FOUR HUNDRED FIFTY AND 00/100 DOLLARS",
+    "payee": "SARAH CHEN",
+    "purchaser": "MICHAEL LEE",
+    "sender_address": "456 PINE ST, ANYTOWN, CA 91234",
+    "date": "11/24/2025",
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "high",
+      "type": "fraud_risk_high",
+      "message": "[APPROVE] The money order shows no evidence of tampering or forgery; all fields are consistent and the ML model flags essentially zero risk."
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Amount parsing confidence low"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Missing critical fields (score: 0.60)"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Issuer-specific validation failed"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Serial number doesn't match issuer pattern"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Invalid address format"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Name format inconsistent (score: 0.00)"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Invalid serial format: 'N/A'"
+    },
+    {
+      "severity": "high",
+      "type": "ai_indicator",
+      "message": "None"
+    }
+  ],
+  "confidence_score": 99,
+  "raw_text": "MoneyGram\nPAY TO: SARAH CHEN\nMONEYGRAM\u24c7\nMONEY ORDER\n9021056789\nAMOUNT:\n$450.00\nDATE: NOVEMBER 24, 2025\nFOUR HUNDRED FIFTY AND 00/100 DOLLARS\nFROM: MICHAEL LEE\n456 PINE ST, ANYTOWN, CA 91234\n9835647821\nAlex Chan\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-12-12T00:36:11.941349",
+  "normalized_data": {
+    "issuer_name": "MoneyGram",
+    "serial_primary": null,
+    "serial_secondary": "9835647821",
+    "recipient": null,
+    "sender_name": null,
+    "sender_address": null,
+    "amount_numeric": {
+      "value": 450.0,
+      "currency": "USD"
+    },
+    "amount_written": "FOUR HUNDRED FIFTY AND 00/100 DOLLARS",
+    "date": "11-24-2025",
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 0.6,
+  "ml_analysis": {
+    "fraud_risk_score": 0.695,
+    "risk_level": "HIGH",
+    "model_confidence": 0.7,
+    "model_scores": {
+      "random_forest": 0.456,
+      "xgboost": 0.105,
+      "ensemble": 0.245,
+      "adjusted": 0.695
+    },
+    "feature_importance": [
+      "Amount parsing confidence low",
+      "Missing critical fields (score: 0.60)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "Name format inconsistent (score: 0.00)",
+      "Invalid serial format: 'N/A'"
+    ],
+    "fraud_indicators": [
+      "Amount parsing confidence low",
+      "Missing critical fields (score: 0.60)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "Name format inconsistent (score: 0.00)",
+      "Invalid serial format: 'N/A'"
+    ],
+    "prediction_type": "model"
+  },
+  "ai_analysis": {
+    "recommendation": "APPROVE",
+    "confidence_score": 0.9,
+    "summary": "The money order shows no evidence of tampering or forgery; all fields are consistent and the ML model flags essentially zero risk.",
+    "reasoning": [
+      "Numeric amount ($450.00) exactly matches the written amount \u201cFOUR HUNDRED FIFTY AND 00/100 DOLLARS,\u201d and manual review of the raw OCR text confirms correct spelling (no alterations).",
+      "Signature field is present (\u201cAlex Chan AGENT AUTHORIZED SIGNATURE\u201d) with no indication of omission or forgery.",
+      "Issuer \u201cMoneyGram\u201d is valid and the serial number (9021056789) conforms to standard MoneyGram formats; no counterfeit indicators (issuer_valid high, serial_format_valid positive).",
+      "ML ensemble fraud score is 0.0% (far below any threshold), supported by both Random Forest (45.6%) and XGBoost (10.5%) sub-models indicating low risk.",
+      "New customer with zero escalations; no repeat-offender patterns apply."
+    ],
+    "key_indicators": [
+      "None"
+    ],
+    "verification_notes": "",
+    "actionable_recommendations": [
+      "Ask the payee to present government-issued photo ID matching \u201cSarah Chen.\u201d",
+      "Cross-check serial number 9021056789 through the MoneyGram agent or official database.",
+      "Confirm that the agent signature on file for Alex Chan matches the printed signature on the document."
+    ],
+    "fraud_types": [],
+    "fraud_explanations": [],
+    "training_insights": "In our training set, 45% of fraud cases involved amount mismatches or spelling errors in the written amount\u2014none of which are present here\u2014reinforcing the low risk assessment.",
+    "historical_comparison": "No prior cases with these exact attributes were found in our historical database; similar legitimate MoneyGram orders routinely exhibit the same consistency in fields and serial formatting.",
+    "analysis_type": "ai_enhanced",
+    "model_used": "o4-mini"
+  },
+  "analysis_id": "analysis_20251212_003611_941_9021056789",
+  "saved_timestamp": "2025-12-12T00:36:11.941832"
+}

@@ -1,0 +1,177 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "Western Union",
+    "serial_number": "9875647821",
+    "serial_secondary": "9875647821",
+    "amount": "$750.00",
+    "amount_in_words": null,
+    "payee": "JANE SMITH",
+    "purchaser": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "date": "10/26/2023",
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "critical",
+      "type": "fraud_risk_critical",
+      "message": "[ESCALATE] Missing signature detected on first upload. Escalating for human review per signature validation policy."
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Amount parsing confidence low"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Missing critical fields (score: 0.60)"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Issuer-specific validation failed"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Serial number doesn't match issuer pattern"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Invalid address format"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Name format inconsistent (score: 0.00)"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "CRITICAL: Missing signature - document rejected per mandatory validation policy"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Invalid serial format: 'N/A'"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Very old (778 days)"
+    },
+    {
+      "severity": "critical",
+      "type": "ai_indicator",
+      "message": "ML fraud detector flagged missing signature"
+    },
+    {
+      "severity": "critical",
+      "type": "ai_indicator",
+      "message": "First-time payer"
+    },
+    {
+      "severity": "critical",
+      "type": "ai_indicator",
+      "message": "Mandatory signature policy - requires human verification"
+    }
+  ],
+  "confidence_score": 85,
+  "raw_text": "WESTERN WESTERN UNION\u00ae\nUNION\nMONEY ORDER\nPAY TO: JANE SMITH\n987557821\nAMOUNT:\n$750.00\nDATE: OCTOBER 26, 2023\nSEVEN HUNDRED FISTY AND 00//100 DOLLARS\nFROM: JOHN DOE\n123 OAK ST, ANYTOWN, CA 91234\n9875647821\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-12-12T00:34:39.366660",
+  "normalized_data": {
+    "issuer_name": "Western Union",
+    "serial_primary": null,
+    "serial_secondary": "9875647821",
+    "recipient": null,
+    "sender_name": null,
+    "sender_address": null,
+    "amount_numeric": {
+      "value": 750.0,
+      "currency": "USD"
+    },
+    "amount_written": null,
+    "date": "10-26-2023",
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 0.5,
+  "ml_analysis": {
+    "fraud_risk_score": 1.0,
+    "risk_level": "CRITICAL",
+    "model_confidence": 0.7,
+    "model_scores": {
+      "random_forest": 0.521,
+      "xgboost": 0.076,
+      "ensemble": 0.254,
+      "adjusted": 1.0
+    },
+    "feature_importance": [
+      "Amount parsing confidence low",
+      "Missing critical fields (score: 0.60)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "Name format inconsistent (score: 0.00)",
+      "CRITICAL: Missing signature - document rejected per mandatory validation policy",
+      "Invalid serial format: 'N/A'",
+      "Very old (778 days)"
+    ],
+    "fraud_indicators": [
+      "Amount parsing confidence low",
+      "Missing critical fields (score: 0.60)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "Name format inconsistent (score: 0.00)",
+      "CRITICAL: Missing signature - document rejected per mandatory validation policy",
+      "Invalid serial format: 'N/A'",
+      "Very old (778 days)"
+    ],
+    "prediction_type": "model"
+  },
+  "ai_analysis": {
+    "recommendation": "ESCALATE",
+    "confidence_score": 1.0,
+    "summary": "Missing signature detected on first upload. Escalating for human review per signature validation policy.",
+    "reasoning": [
+      "ML fraud detector identified missing signature",
+      "This is the first upload from this payer (escalate_count=0)",
+      "Per system policy: First missing signature \u2192 ESCALATE for human review",
+      "Escalation allows verification of potential OCR error or legitimate missing signature"
+    ],
+    "key_indicators": [
+      "ML fraud detector flagged missing signature",
+      "First-time payer",
+      "Mandatory signature policy - requires human verification"
+    ],
+    "verification_notes": "Document escalated due to missing signature on first upload. Verify if signature is truly missing or if OCR failed to detect it.",
+    "actionable_recommendations": [
+      "Manually verify if signature is present on the physical document",
+      "If signature is present, approve and note OCR limitation",
+      "If signature is truly missing, reject and flag customer for future uploads"
+    ],
+    "fraud_types": [
+      "SIGNATURE_FORGERY"
+    ],
+    "fraud_explanations": [
+      {
+        "type": "SIGNATURE_FORGERY",
+        "reasons": [
+          "ML fraud detector identified missing signature",
+          "Mandatory signature validation failed",
+          "First-time upload requires human verification to rule out OCR error"
+        ]
+      }
+    ],
+    "training_insights": "First-time missing signatures may be OCR errors or legitimate issues requiring human judgment",
+    "historical_comparison": "Consistent with first-time escalation policy",
+    "analysis_type": "policy_enforcement",
+    "model_used": "mandatory_signature_policy"
+  },
+  "analysis_id": "analysis_20251212_003439_366_9875647821",
+  "saved_timestamp": "2025-12-12T00:34:39.366775"
+}

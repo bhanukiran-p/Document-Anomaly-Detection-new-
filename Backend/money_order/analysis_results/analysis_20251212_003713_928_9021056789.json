@@ -1,0 +1,164 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "MoneyGram",
+    "serial_number": "9021056789",
+    "serial_secondary": "9835647821",
+    "amount": "$450.00",
+    "amount_in_words": null,
+    "payee": "SARAH CHEN",
+    "purchaser": "MICHAEL LEE",
+    "sender_address": "456 PINE ST, ANYTOWN, CA 91234",
+    "date": "10/26/2024",
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "critical",
+      "type": "fraud_risk_critical",
+      "message": "[REJECT] Written amount contains spelling errors (\u201cFOUN HUNDRED FISTY\u2026\u201d) indicating document tampering."
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Amount parsing confidence low"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Issued on weekend/holiday"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Missing critical fields (score: 0.60)"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Issuer-specific validation failed"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Serial number doesn't match issuer pattern"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Invalid address format"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Name format inconsistent (score: 0.00)"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Invalid serial format: 'N/A'"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Very old (412 days)"
+    },
+    {
+      "severity": "critical",
+      "type": "ai_indicator",
+      "message": "Amount spelling errors (\u201cFOUN\u201d vs FOUR; \u201cFISTY\u201d vs FIFTY)"
+    }
+  ],
+  "confidence_score": 85,
+  "raw_text": "MoneyGram\nPAY TO: SARAH CHEN\nMONEYGRAM\u24c7\nMONEY ORDER\n9021056789\nAMOUNT:\n$450.00\nDATE:\nOCTOBER 26, 2024\nFOUN HUNDRED FISTY AND 00//100 DOLLARS\nFROM: MICHAEL LEE\n456 PINE ST, ANYTOWN, CA 91234\n9835647821\nMichael Lee\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-12-12T00:37:13.928342",
+  "normalized_data": {
+    "issuer_name": "MoneyGram",
+    "serial_primary": null,
+    "serial_secondary": "9835647821",
+    "recipient": null,
+    "sender_name": null,
+    "sender_address": null,
+    "amount_numeric": {
+      "value": 450.0,
+      "currency": "USD"
+    },
+    "amount_written": null,
+    "date": "10-26-2024",
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 0.5,
+  "ml_analysis": {
+    "fraud_risk_score": 0.88,
+    "risk_level": "CRITICAL",
+    "model_confidence": 0.7,
+    "model_scores": {
+      "random_forest": 0.411,
+      "xgboost": 0.109,
+      "ensemble": 0.23,
+      "adjusted": 0.88
+    },
+    "feature_importance": [
+      "Amount parsing confidence low",
+      "Issued on weekend/holiday",
+      "Missing critical fields (score: 0.60)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "Name format inconsistent (score: 0.00)",
+      "Invalid serial format: 'N/A'",
+      "Very old (412 days)"
+    ],
+    "fraud_indicators": [
+      "Amount parsing confidence low",
+      "Issued on weekend/holiday",
+      "Missing critical fields (score: 0.60)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "Name format inconsistent (score: 0.00)",
+      "Invalid serial format: 'N/A'",
+      "Very old (412 days)"
+    ],
+    "prediction_type": "model"
+  },
+  "ai_analysis": {
+    "recommendation": "REJECT",
+    "confidence_score": 0.95,
+    "summary": "Written amount contains spelling errors (\u201cFOUN HUNDRED FISTY\u2026\u201d) indicating document tampering.",
+    "reasoning": [
+      "OCR raw text shows \u201cFOUN HUNDRED FISTY AND 00//100 DOLLARS\u201d instead of \u201cFOUR HUNDRED FIFTY\u2026\u201d, a strong sign of alteration.",
+      "Training data indicates ~45% of fraud cases involve amount mismatches or alterations.",
+      "ML model scored 0%, but spelling errors in the written amount are definitive fraud markers that override low model risk.",
+      "No evidence of previous customer history or serial number validation, heightening risk."
+    ],
+    "key_indicators": [
+      "Amount spelling errors (\u201cFOUN\u201d vs FOUR; \u201cFISTY\u201d vs FIFTY)"
+    ],
+    "verification_notes": "",
+    "actionable_recommendations": [
+      "Verify purchaser and payee identities with government-issued IDs.",
+      "Call MoneyGram fraud hotline to authenticate the money order\u2019s serial number and issuance date.",
+      "Inspect the physical document for other signs of tampering (e.g., altered print quality or erasures)."
+    ],
+    "fraud_types": [
+      "AMOUNT_ALTERATION"
+    ],
+    "fraud_explanations": [
+      {
+        "type": "AMOUNT_ALTERATION",
+        "reasons": [
+          "Raw OCR text shows \u201cFOUN HUNDRED FISTY AND 00//100 DOLLARS\u201d which contains two misspellings in the written amount line.",
+          "Such spelling errors are inconsistent with professionally printed money orders and indicate manual alteration."
+        ]
+      }
+    ],
+    "training_insights": "",
+    "historical_comparison": "",
+    "analysis_type": "ai_enhanced",
+    "model_used": "o4-mini"
+  },
+  "analysis_id": "analysis_20251212_003713_928_9021056789",
+  "saved_timestamp": "2025-12-12T00:37:13.928948"
+}

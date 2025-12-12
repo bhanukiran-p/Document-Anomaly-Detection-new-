@@ -1,0 +1,157 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "Western Union",
+    "serial_number": "4783667589",
+    "serial_secondary": "4783667589",
+    "amount": "$325.00",
+    "amount_in_words": null,
+    "payee": "Hareen Edla",
+    "purchaser": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "date": null,
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "critical",
+      "type": "fraud_risk_critical",
+      "message": "[REJECT] Written amount contains a spelling error (\u201cFIVETY\u201d instead of \u201cFIFTY\u201d), indicating document tampering."
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Amount parsing confidence low"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Invalid date format"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Missing critical fields (score: 0.70)"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Issuer-specific validation failed"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Serial number doesn't match issuer pattern"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Invalid address format"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Name format inconsistent (score: 0.00)"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Invalid serial format: 'N/A'"
+    },
+    {
+      "severity": "critical",
+      "type": "ai_indicator",
+      "message": "Amount alteration: spelling error in written amount"
+    }
+  ],
+  "confidence_score": 82,
+  "raw_text": "WESTERN WESTERN UNION\u00ae\nUNION\nMONEY ORDER\nPAY TO: Hareen Edla\n737267558\nAMOUNT:\n$325.00\nDATE: NOVEMBER 27TH, 2025\nTHREE HUNDRED FIVETY AND 00// 00 DOLLARS\nFROM: JOHN DOE\n123 OAK ST, ANYTOWN, CA 91234\n4783667589\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-12-12T00:37:30.862166",
+  "normalized_data": {
+    "issuer_name": "Western Union",
+    "serial_primary": null,
+    "serial_secondary": "4783667589",
+    "recipient": null,
+    "sender_name": null,
+    "sender_address": null,
+    "amount_numeric": {
+      "value": 325.0,
+      "currency": "USD"
+    },
+    "amount_written": null,
+    "date": null,
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 0.4,
+  "ml_analysis": {
+    "fraud_risk_score": 0.87,
+    "risk_level": "CRITICAL",
+    "model_confidence": 0.7,
+    "model_scores": {
+      "random_forest": 0.515,
+      "xgboost": 0.106,
+      "ensemble": 0.27,
+      "adjusted": 0.87
+    },
+    "feature_importance": [
+      "Amount parsing confidence low",
+      "Invalid date format",
+      "Missing critical fields (score: 0.70)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "Name format inconsistent (score: 0.00)",
+      "Invalid serial format: 'N/A'"
+    ],
+    "fraud_indicators": [
+      "Amount parsing confidence low",
+      "Invalid date format",
+      "Missing critical fields (score: 0.70)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "Name format inconsistent (score: 0.00)",
+      "Invalid serial format: 'N/A'"
+    ],
+    "prediction_type": "model"
+  },
+  "ai_analysis": {
+    "recommendation": "REJECT",
+    "confidence_score": 0.5,
+    "summary": "Written amount contains a spelling error (\u201cFIVETY\u201d instead of \u201cFIFTY\u201d), indicating document tampering.",
+    "reasoning": [
+      "Raw OCR text of the amount reads \u201cTHREE HUNDRED FIVETY AND 00// 00 DOLLARS\u201d with \u201cFIVETY\u201d misspelled.",
+      "Per policy, any spelling error in the written amount is a strong indicator of AMOUNT_ALTERATION fraud.",
+      "Training data shows 45% of fraud cases involve amount mismatches or tampering.",
+      "Although the ML score is low (0.0%), manual inspection of raw text overrides and identifies clear alteration."
+    ],
+    "key_indicators": [
+      "Amount alteration: spelling error in written amount"
+    ],
+    "verification_notes": "N/A",
+    "actionable_recommendations": [
+      "Verify the correct printed wording format against an authentic Western Union money order sample.",
+      "Contact Western Union to confirm validity of serial number 737267558.",
+      "Request purchaser identity verification and a reissued money order with correct print."
+    ],
+    "fraud_types": [
+      "AMOUNT_ALTERATION"
+    ],
+    "fraud_explanations": [
+      {
+        "type": "AMOUNT_ALTERATION",
+        "reasons": [
+          "Raw OCR shows \u201cFIVETY\u201d instead of \u201cFIFTY,\u201d a clear spelling error in the written amount line.",
+          "Such errors strongly correlate with tampering, per internal training patterns."
+        ]
+      }
+    ],
+    "training_insights": "In our 2,000-case dataset, 45% of confirmed frauds featured altered or mismatched amounts.",
+    "historical_comparison": "No directly similar past cases, but consistent with high-risk amount alteration patterns.",
+    "analysis_type": "ai_enhanced",
+    "model_used": "o4-mini"
+  },
+  "analysis_id": "analysis_20251212_003730_862_4783667589",
+  "saved_timestamp": "2025-12-12T00:37:30.862591"
+}
