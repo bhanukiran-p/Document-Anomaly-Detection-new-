@@ -1,0 +1,8 @@
+{
+  "trained_at": "2025-12-11T17:05:12.029789",
+  "n_features": 30,
+  "model_types": {
+    "random_forest": "RandomForestRegressor",
+    "xgboost": "XGBRegressor"
+  }
+}

@@ -443,7 +443,7 @@ def analyze_paystub():
                     'success': False,
                     'error': 'ML_MODEL_ERROR',
                     'message': f'ML model error: {error_msg}',
-                    'details': 'The ML fraud detection model is not available. Please train the model using: python training/train_risk_model.py'
+                    'details': 'The ML fraud detection model is not available. Please train the model using: python training/train_paystub_models.py'
                 }), 500
             elif "AI" in error_msg or "OpenAI" in error_msg:
                 return jsonify({
