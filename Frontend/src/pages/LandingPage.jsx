@@ -27,6 +27,7 @@ import {
   FaEye,
   FaTrendingUp,
   FaCheck,
+  FaBolt,
 } from 'react-icons/fa';
 
 const LandingPage = () => {
@@ -637,6 +638,150 @@ const LandingPage = () => {
           <p style={{ fontSize: '0.875rem', color: colors.mutedForeground, marginTop: '1rem' }}>
             Detect fraud with <span style={{ color: primary, fontWeight: '600' }}>XX%</span> accuracy • No AI expertise required
           </p>
+        </div>
+      </section>
+
+      {/* DAD Section - Document, Anomaly, Detection */}
+      <section style={{ padding: '4rem 1.5rem', backgroundColor: colors.background }}>
+        <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
+          <p style={{
+            fontSize: '1.5rem',
+            fontWeight: '600',
+            color: colors.foreground,
+            textAlign: 'center',
+            marginBottom: '3rem',
+          }}>
+            The Intelligence That Safeguards Your Next Move
+          </p>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+            gap: '2rem',
+          }}>
+            {/* Document Card */}
+            <div
+              style={{
+                ...cardStyle,
+                textAlign: 'center',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-8px)';
+                e.currentTarget.style.boxShadow = '0 20px 60px rgba(0,0,0,0.7)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 10px 40px rgba(0, 0, 0, 0.5)';
+              }}
+            >
+              <FaFileAlt style={{ fontSize: '3rem', color: '#FFFFFF', marginBottom: '1rem' }} />
+              <h2 style={{
+                fontSize: '1.5rem',
+                fontWeight: '700',
+                color: colors.foreground,
+                marginBottom: '0.5rem',
+              }}>
+                <span style={{ fontSize: '2rem', color: primary, fontWeight: '800' }}>D</span>OCUMENT
+              </h2>
+              <h3 style={{
+                fontSize: '1rem',
+                fontWeight: '600',
+                color: primary,
+                marginBottom: '1rem',
+              }}>
+                Trusted document screening
+              </h3>
+              <p style={{
+                fontSize: '1rem',
+                color: colors.mutedForeground,
+                lineHeight: '1.6',
+              }}>
+                Automatically perform KYC checks to screen every document and validate both its format and content to ensure compliance and authenticity.
+              </p>
+            </div>
+
+            {/* Anomaly Card */}
+            <div
+              style={{
+                ...cardStyle,
+                textAlign: 'center',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-8px)';
+                e.currentTarget.style.boxShadow = '0 20px 60px rgba(0,0,0,0.7)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 10px 40px rgba(0, 0, 0, 0.5)';
+              }}
+            >
+              <FaBolt style={{ fontSize: '3rem', color: '#FFFFFF', marginBottom: '1rem' }} />
+              <h2 style={{
+                fontSize: '1.5rem',
+                fontWeight: '700',
+                color: colors.foreground,
+                marginBottom: '0.5rem',
+              }}>
+                <span style={{ fontSize: '2rem', color: primary, fontWeight: '800' }}>A</span>NOMALY
+              </h2>
+              <h3 style={{
+                fontSize: '1rem',
+                fontWeight: '600',
+                color: primary,
+                marginBottom: '1rem',
+              }}>
+                Behavior-aware risk detection
+              </h3>
+              <p style={{
+                fontSize: '1rem',
+                color: colors.mutedForeground,
+                lineHeight: '1.6',
+              }}>
+                The Anomaly Engine detects suspicious patterns and applies behavioral analysis to identify Anti-Money Laundering (AML) risks that humans might miss.
+              </p>
+            </div>
+
+            {/* Detection Card */}
+            <div
+              style={{
+                ...cardStyle,
+                textAlign: 'center',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-8px)';
+                e.currentTarget.style.boxShadow = '0 20px 60px rgba(0,0,0,0.7)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 10px 40px rgba(0, 0, 0, 0.5)';
+              }}
+            >
+              <FaSearch style={{ fontSize: '3rem', color: '#FFFFFF', marginBottom: '1rem' }} />
+              <h2 style={{
+                fontSize: '1.5rem',
+                fontWeight: '700',
+                color: colors.foreground,
+                marginBottom: '0.5rem',
+              }}>
+                <span style={{ fontSize: '2rem', color: primary, fontWeight: '800' }}>D</span>ETECTION
+              </h2>
+              <h3 style={{
+                fontSize: '1rem',
+                fontWeight: '600',
+                color: primary,
+                marginBottom: '1rem',
+              }}>
+                Real-time fraud scoring
+              </h3>
+              <p style={{
+                fontSize: '1rem',
+                color: colors.mutedForeground,
+                lineHeight: '1.6',
+              }}>
+                Provides accurate, real-time monitoring with instant scoring so threats are flagged before they cause damage.
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 
