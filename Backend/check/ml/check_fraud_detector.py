@@ -128,17 +128,29 @@ class CheckFraudDetector:
             if self.scaler:
                 X = self.scaler.transform(X)
 
-            # Get predictions from each model
+            # Get predictions from each model (support both Classifiers and Regressors)
             rf_score = 0.0
             xgb_score = 0.0
 
             if self.rf_model:
-                rf_proba = self.rf_model.predict_proba(X)[0]
-                rf_score = rf_proba[1] if len(rf_proba) > 1 else rf_proba[0]
+                try:
+                    # Try predict_proba first (if classifier)
+                    rf_proba = self.rf_model.predict_proba(X)[0]
+                    rf_score = rf_proba[1] if len(rf_proba) > 1 else rf_proba[0]
+                except AttributeError:
+                    # Use predict() for regressors and normalize (0-100 -> 0-1)
+                    rf_pred = self.rf_model.predict(X)[0]
+                    rf_score = max(0.0, min(1.0, rf_pred / 100.0))
 
             if self.xgb_model:
-                xgb_proba = self.xgb_model.predict_proba(X)[0]
-                xgb_score = xgb_proba[1] if len(xgb_proba) > 1 else xgb_proba[0]
+                try:
+                    # Try predict_proba first (if classifier)
+                    xgb_proba = self.xgb_model.predict_proba(X)[0]
+                    xgb_score = xgb_proba[1] if len(xgb_proba) > 1 else xgb_proba[0]
+                except AttributeError:
+                    # Use predict() for regressors and normalize (0-100 -> 0-1)
+                    xgb_pred = self.xgb_model.predict(X)[0]
+                    xgb_score = max(0.0, min(1.0, xgb_pred / 100.0))
 
             # Ensemble prediction (40% RF, 60% XGB - same as money order)
             ensemble_score = (0.4 * rf_score) + (0.6 * xgb_score)

@@ -200,12 +200,24 @@ class MoneyOrderFraudDetector:
         xgb_score = 0.0
 
         if self.rf_model:
-            rf_proba = self.rf_model.predict_proba(X_scaled)[0][1]
-            rf_score = rf_proba
+            try:
+                # Try predict_proba first (if classifier)
+                rf_proba = self.rf_model.predict_proba(X_scaled)[0]
+                rf_score = rf_proba[1] if len(rf_proba) > 1 else rf_proba[0]
+            except AttributeError:
+                # Use predict() for regressors and normalize (0-100 -> 0-1)
+                rf_pred = self.rf_model.predict(X_scaled)[0]
+                rf_score = max(0.0, min(1.0, rf_pred / 100.0))
 
         if self.xgb_model:
-            xgb_proba = self.xgb_model.predict_proba(X_scaled)[0][1]
-            xgb_score = xgb_proba
+            try:
+                # Try predict_proba first (if classifier)
+                xgb_proba = self.xgb_model.predict_proba(X_scaled)[0]
+                xgb_score = xgb_proba[1] if len(xgb_proba) > 1 else xgb_proba[0]
+            except AttributeError:
+                # Use predict() for regressors and normalize (0-100 -> 0-1)
+                xgb_pred = self.xgb_model.predict(X_scaled)[0]
+                xgb_score = max(0.0, min(1.0, xgb_pred / 100.0))
 
         if self.rf_model and self.xgb_model:
             base_fraud_score = 0.4 * rf_score + 0.6 * xgb_score

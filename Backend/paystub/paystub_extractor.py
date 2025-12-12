@@ -72,9 +72,16 @@ class PaystubExtractor:
             model_dir = os.getenv("ML_MODEL_DIR", "models")
             self.ml_detector = PaystubFraudDetector(model_dir=model_dir)
             logger.info("Initialized PaystubFraudDetector")
-        except ImportError:
-            logger.warning("ML fraud detector not available - ML analysis will be skipped")
+        except (ImportError, RuntimeError) as e:
+            logger.error(f"ML fraud detector initialization failed: {e}")
+            logger.error("Paystub analysis requires ML models. Please train models using: python training/train_paystub_models.py")
             self.ml_detector = None
+            # Raise RuntimeError to fail fast - paystub analysis requires ML models
+            raise RuntimeError(
+                f"Paystub ML fraud detector not available: {str(e)}. "
+                "Paystub analysis requires trained ML models. "
+                "Please train the model using: python training/train_paystub_models.py"
+            ) from e
 
         # AI Agent
         try:
