@@ -1,6 +1,6 @@
 """
 Real-Time Fraud Detector - Pure ML Implementation
-Uses only machine learning models, no rule-based fallbacks
+Uses only machine learning models
 """
 import pandas as pd
 import numpy as np

@@ -15,11 +15,15 @@ from pathlib import Path
 import re
 import uuid
 from datetime import datetime
-# Google Vision API removed - only used for on-demand document analysis
 from auth import login_user, register_user
 from database.supabase_client import get_supabase, check_connection as check_supabase_connection
 from auth.supabase_auth import login_user_supabase, register_user_supabase, verify_token
-# On-demand document analysis removed - only real-time transaction analysis supported
+from database.document_storage import (
+    store_check_analysis,
+    store_paystub_analysis,
+    store_money_order_analysis,
+    store_bank_statement_analysis
+)
 
 # Create logs directory if it doesn't exist
 log_dir = os.path.join(os.path.dirname(__file__), 'logs')
@@ -54,6 +58,22 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.info(f"Logging configured. Log file: {log_file}")
 
+# Google Vision API and PyMuPDF imports (after logger is initialized)
+try:
+    from google.cloud import vision
+    vision_client = vision.ImageAnnotatorClient()
+    logger.info("Google Vision API initialized successfully")
+except Exception as e:
+    logger.warning(f"Google Vision API not initialized: {e}")
+    vision_client = None
+
+try:
+    import fitz  # PyMuPDF for PDF processing
+    logger.info("PyMuPDF (fitz) loaded successfully")
+except ImportError:
+    logger.warning("PyMuPDF (fitz) not available - PDF conversion will not work")
+    fitz = None
+
 # Load environment variables explicitly
 from dotenv import load_dotenv
 load_dotenv()
@@ -82,7 +102,7 @@ CORS(app)  # Enable CORS for React frontend
 
 # Configuration
 UPLOAD_FOLDER = 'temp_uploads'
-# Google Vision API removed - only used for on-demand document analysis
+ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png', 'pdf'}
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -95,7 +115,53 @@ except Exception as e:
     logger.warning(f"Failed to initialize Supabase: {e}")
     supabase = None
 
-# allowed_file and detect_document_type functions removed - only CSV files for real-time analysis
+# Helper functions for file validation and document type detection
+def allowed_file(filename):
+    """Check if file extension is allowed"""
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def detect_document_type(text):
+    """
+    Detect document type from OCR text.
+    Returns: 'check', 'money_order', 'bank_statement', 'paystub', or 'unknown'
+    """
+    text_lower = text.lower()
+
+    # Check for check-specific keywords
+    check_keywords = ['pay to the order of', 'check number', 'routing number', 'account number', 'memo']
+    check_score = sum(1 for keyword in check_keywords if keyword in text_lower)
+
+    # Check for money order keywords
+    mo_keywords = ['money order', 'purchaser', 'sender', 'receiver', 'serial number']
+    mo_score = sum(1 for keyword in mo_keywords if keyword in text_lower)
+
+    # Check for bank statement keywords
+    bs_keywords = ['bank statement', 'statement period', 'beginning balance', 'ending balance', 'account summary']
+    bs_score = sum(1 for keyword in bs_keywords if keyword in text_lower)
+
+    # Check for paystub keywords
+    ps_keywords = ['pay stub', 'paystub', 'earnings', 'deductions', 'gross pay', 'net pay', 'year to date']
+    ps_score = sum(1 for keyword in ps_keywords if keyword in text_lower)
+
+    # Determine document type based on highest score
+    scores = {
+        'check': check_score,
+        'money_order': mo_score,
+        'bank_statement': bs_score,
+        'paystub': ps_score
+    }
+
+    max_score = max(scores.values())
+    if max_score == 0:
+        return 'unknown'
+
+    # Return the document type with the highest score
+    for doc_type, score in scores.items():
+        if score == max_score:
+            return doc_type
+
+    return 'unknown'
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -168,7 +234,91 @@ def api_register():
             'message': str(e)
         }), 500
 
-# On-demand document analysis endpoints removed - only real-time transaction analysis supported
+@app.route('/api/check/analyze', methods=['POST'])
+def analyze_check():
+    """Analyze check image endpoint using new isolated check pipeline"""
+    try:
+        # Check if file is in request
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+
+        file = request.files['file']
+
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+
+        if not allowed_file(file.filename):
+            return jsonify({'error': 'Invalid file type. Allowed: JPG, JPEG, PNG, PDF'}), 400
+
+        # Save file temporarily
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(filepath)
+
+        try:
+            # Use new CheckExtractor (Mindee-only, with normalization, ML, AI)
+            from check.check_extractor import CheckExtractor
+
+            logger.info(f"Analyzing check using new CheckExtractor: {filename}")
+            extractor = CheckExtractor()
+            analysis_results = extractor.extract_and_analyze(filepath)
+
+            # Clean up temp file
+            if os.path.exists(filepath):
+                os.remove(filepath)
+
+            # Store to database
+            user_id = request.form.get('user_id', 'public')
+            document_id = store_check_analysis(user_id, filename, analysis_results)
+            logger.info(f"Check analysis stored to database: {document_id}")
+
+            # Update customer fraud status if AI analysis available
+            ai_analysis = analysis_results.get('ai_analysis')
+            if ai_analysis:
+                recommendation = ai_analysis.get('recommendation')
+                normalized_data = analysis_results.get('normalized_data', {})
+                payer_name = normalized_data.get('payer_name')
+
+                if payer_name and recommendation:
+                    try:
+                        from check.database.check_customer_storage import CheckCustomerStorage
+                        customer_storage = CheckCustomerStorage()
+
+                        # Get or create customer
+                        customer_id = customer_storage.get_or_create_customer(
+                            payer_name=payer_name,
+                            payee_name=normalized_data.get('payee_name'),
+                            address=normalized_data.get('payer_address')
+                        )
+
+                        # Update fraud status
+                        if customer_id:
+                            customer_storage.update_customer_fraud_status(customer_id, recommendation)
+                            logger.info(f"Updated customer {customer_id} fraud status: {recommendation}")
+                    except Exception as e:
+                        logger.error(f"Failed to update customer fraud status: {e}")
+
+            return jsonify({
+                'success': True,
+                'data': analysis_results,
+                'document_id': document_id,
+                'message': 'Check analyzed successfully'
+            })
+
+        except Exception as e:
+            # Clean up on error
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            raise e
+
+    except Exception as e:
+        logger.error(f"Check analysis failed: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to analyze check'
+        }), 500
+
 @app.route('/api/real-time/analyze', methods=['POST'])
 def analyze_real_time_transactions():
     """Analyze real-time transaction CSV file endpoint"""
