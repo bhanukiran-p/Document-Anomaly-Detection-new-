@@ -3,8 +3,7 @@ import { useDropzone } from 'react-dropzone';
 import { colors } from '../styles/colors';
 import {
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, AreaChart, Area,
-  ComposedChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine,
-  ScatterChart, Scatter, ZAxis, Sector
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 import { FaUpload, FaCog, FaRedo } from 'react-icons/fa';
 
@@ -1003,220 +1002,62 @@ const PaystubInsights = () => {
                 </ResponsiveContainer>
               </div>
 
-              {/* AI Recommendation Distribution */}
-              <div style={styles.chartBox}>
-                <h3 style={styles.chartTitle}>AI Recommendation Breakdown</h3>
-                {/* Centered Donut Chart */}
-                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '320px' }}>
-                  <ResponsiveContainer width="100%" height={320}>
-                    <PieChart
-                      onMouseLeave={() => setActivePieIndex(null)}
-                    >
-                      <Pie
-                        data={displayData.recommendationData}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={false}
-                        outerRadius={120}
-                        innerRadius={60}
-                        fill="#8884d8"
-                        dataKey="value"
-                        stroke={colors.card}
-                        strokeWidth={3}
-                        startAngle={90}
-                        endAngle={-270}
-                        activeIndex={activePieIndex}
-                        activeShape={(props) => {
-                          const {
-                            cx, cy, innerRadius, outerRadius, startAngle, endAngle,
-                            fill
-                          } = props;
-                          return (
-                            <g>
-                              <Sector
-                                cx={cx}
-                                cy={cy}
-                                innerRadius={innerRadius - 5}
-                                outerRadius={outerRadius + 20}
-                                startAngle={startAngle}
-                                endAngle={endAngle}
-                                fill={fill}
-                                stroke={colors.card}
-                                strokeWidth={3}
-                              />
-                            </g>
-                          );
-                        }}
-                        onMouseEnter={(_, index) => setActivePieIndex(index)}
-                        onMouseLeave={() => setActivePieIndex(null)}
-                      >
-                        {displayData.recommendationData.map((entry, index) => {
-                          const colorMap = {
-                            'APPROVE': colors.status.success || '#4CAF50',
-                            'REJECT': primary,
-                            'ESCALATE': colors.status.warning || '#FFA726'
-                          };
-                          const baseColor = colorMap[entry.name] || COLORS[index % COLORS.length];
-                          const isActive = activePieIndex === index;
-
-                          return (
-                            <Cell
-                              key={`cell-${index}`}
-                              fill={baseColor}
-                              style={{
-                                filter: isActive ? 'brightness(1.2)' : 'brightness(1)',
-                                transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                                cursor: 'pointer'
-                              }}
-                            />
-                          );
-                        })}
-                      </Pie>
-                      <Tooltip
-                        content={({ active, payload }) => {
-                          if (active && payload && payload.length) {
-                            const data = payload[0];
-                            const total = displayData.recommendationData.reduce((sum, item) => sum + item.value, 0);
-                            const percentage = total > 0 ? ((data.payload.value / total) * 100).toFixed(2) : 0;
-                            return (
-                              <div style={{
-                                backgroundColor: colors.card,
-                                border: `1px solid ${colors.border}`,
-                                borderRadius: '8px',
-                                padding: '12px',
-                                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
-                              }}>
-                                <p style={{ margin: '0 0 8px 0', fontWeight: '600', color: colors.foreground }}>
-                                  {data.name}
-                                </p>
-                                <p style={{ margin: '4px 0', color: data.color }}>
-                                  <span style={{ fontWeight: '600' }}>Count:</span> {data.payload.value}
-                                </p>
-                                <p style={{ margin: '4px 0', color: data.color }}>
-                                  <span style={{ fontWeight: '600' }}>Percentage:</span> {percentage}%
-                                </p>
-                              </div>
-                            );
-                          }
-                          return null;
-                        }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-
-                {/* Legend below the chart */}
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'center',
-                  gap: '2rem',
-                  marginTop: '1.5rem',
-                  padding: '1rem',
-                  flexWrap: 'wrap'
-                }}>
-                  {displayData.recommendationData.map((entry, index) => {
-                    const colorMap = {
-                      'APPROVE': colors.status.success || '#4CAF50',
-                      'REJECT': primary,
-                      'ESCALATE': colors.status.warning || '#FFA726'
-                    };
-                    const total = displayData.recommendationData.reduce((sum, item) => sum + item.value, 0);
-                    const percentage = total > 0 ? ((entry.value / total) * 100).toFixed(2) : 0;
-
-                    return (
-                      <div
-                        key={`legend-${index}`}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.75rem'
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: '16px',
-                            height: '16px',
-                            borderRadius: '50%',
-                            backgroundColor: colorMap[entry.name] || primary,
-                            flexShrink: 0,
-                            border: `2px solid ${colors.card}`
-                          }}
-                        />
-                        <span style={{
-                          color: colors.foreground,
-                          fontSize: '14px',
-                          fontWeight: '500'
-                        }}>
-                          {entry.name}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
               {/* Risk by Employer - Converted to Area Chart with Data Points */}
-              {/* Hide this chart when filtering by a single employer - it becomes useless */}
-              {!displayData.isSingleEmployerView && (
-                <div style={styles.chartBox}>
-                  <h3 style={styles.chartTitle}>Risk by Employer (Top 10)</h3>
-                  <ResponsiveContainer width="100%" height={350}>
-                    <AreaChart
-                      data={displayData.riskByEmployerData}
-                      margin={{ top: 20, right: 30, left: 30, bottom: 80 }}
-                    >
-                      <defs>
-                        <linearGradient id="employerAreaGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor={primary} stopOpacity={0.8} />
-                          <stop offset="100%" stopColor={primary} stopOpacity={0.1} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.3} />
-                      <XAxis
-                        dataKey="name"
-                        angle={-45}
-                        textAnchor="end"
-                        height={100}
-                        interval={0}
-                        tick={{ fill: colors.foreground, fontSize: 11 }}
-                        stroke={colors.border}
-                        dx={-5}
-                        dy={5}
-                      />
-                      <YAxis
-                        tick={{ fill: colors.foreground, fontSize: 12 }}
-                        stroke={colors.border}
-                        label={{ value: 'Risk %', angle: -90, position: 'insideLeft', fill: colors.foreground }}
-                      />
-                      <Tooltip content={<CustomTooltip />} />
-                      <Area
-                        type="monotone"
-                        dataKey="avgRisk"
-                        stroke={primary}
-                        strokeWidth={3}
-                        fill="url(#employerAreaGradient)"
-                        name="Avg Risk %"
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="avgRisk"
-                        stroke={primary}
-                        strokeWidth={3}
-                        dot={{ fill: primary, r: 6, strokeWidth: 2, stroke: colors.card }}
-                        activeDot={{ r: 8, strokeWidth: 2, stroke: colors.card }}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
+              <div style={styles.chartBox}>
+                <h3 style={styles.chartTitle}>Risk by Employer (Top 10)</h3>
+                <ResponsiveContainer width="100%" height={350}>
+                  <AreaChart
+                    data={displayData.riskByEmployerData}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 80 }}
+                  >
+                    <defs>
+                      <linearGradient id="employerAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={primary} stopOpacity={0.8} />
+                        <stop offset="100%" stopColor={primary} stopOpacity={0.1} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.3} />
+                    <XAxis
+                      dataKey="name"
+                      angle={-45}
+                      textAnchor="end"
+                      height={100}
+                      interval={0}
+                      tick={{ fill: colors.foreground, fontSize: 11 }}
+                      stroke={colors.border}
+                    />
+                    <YAxis 
+                      tick={{ fill: colors.foreground, fontSize: 12 }}
+                      stroke={colors.border}
+                      label={{ value: 'Risk %', angle: -90, position: 'insideLeft', fill: colors.foreground }}
+                    />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Area
+                      type="monotone"
+                      dataKey="avgRisk"
+                      stroke={primary}
+                      strokeWidth={3}
+                      fill="url(#employerAreaGradient)"
+                      name="Avg Risk %"
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="avgRisk"
+                      stroke={primary}
+                      strokeWidth={3}
+                      dot={{ fill: primary, r: 6, strokeWidth: 2, stroke: colors.card }}
+                      activeDot={{ r: 8, strokeWidth: 2, stroke: colors.card }}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
 
               {/* Risk Level Distribution - Converted to Heatmap */}
               <div style={styles.chartBox}>
                 <h3 style={styles.chartTitle}>Risk Level Distribution</h3>
                 <div style={{ padding: '1rem', minHeight: '280px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                  <div style={{
-                    display: 'grid',
+                  <div style={{ 
+                    display: 'grid', 
                     gridTemplateColumns: displayData.riskLevelData.length === 3 ? 'repeat(3, 1fr)' : `repeat(${displayData.riskLevelData.length}, 1fr)`,
                     gap: '1rem',
                     flex: 1,
@@ -1225,44 +1066,45 @@ const PaystubInsights = () => {
                     {displayData.riskLevelData.map((entry, index) => {
                       const total = displayData.riskLevelData.reduce((sum, item) => sum + item.value, 0);
                       const percentage = total > 0 ? ((entry.value / total) * 100).toFixed(1) : 0;
-
-                      // Use brighter opacity for all cards (0.9 for vibrant, bright appearance)
+                      
+                      // Use even opacity for all cards (0.6 for bright, vibrant appearance)
                       // MEDIUM already uses colors.status.warning (#f59e0b - yellow)
                       const cardColor = entry.color;
-
+                      
                       return (
                         <div
                           key={`heatmap-cell-${index}`}
                           style={{
                             backgroundColor: cardColor,
-                            opacity: 0.9,
+                            opacity: 0.6,
                             padding: '1.25rem',
                             borderRadius: '8px',
                             border: `2px solid ${cardColor}`,
                             textAlign: 'center',
-                            transition: 'transform 0.2s',
+                            transition: 'transform 0.2s, box-shadow 0.2s',
                             cursor: 'pointer',
+                            boxShadow: `0 4px 12px ${cardColor}60`,
                             display: 'flex',
                             flexDirection: 'column',
                             justifyContent: 'center',
                             minHeight: '180px'
                           }}
                           onMouseEnter={(e) => {
-                            e.currentTarget.style.transform = 'scale(1.02)';
-                            e.currentTarget.style.opacity = '1';
+                            e.currentTarget.style.transform = 'scale(1.05)';
+                            e.currentTarget.style.boxShadow = `0 8px 20px ${cardColor}60`;
                           }}
                           onMouseLeave={(e) => {
                             e.currentTarget.style.transform = 'scale(1)';
-                            e.currentTarget.style.opacity = '0.9';
+                            e.currentTarget.style.boxShadow = `0 4px 12px ${cardColor}40`;
                           }}
                         >
                           <div style={{ fontSize: '2rem', fontWeight: 'bold', color: colors.foreground, marginBottom: '0.75rem' }}>
                             {entry.value}
                           </div>
-                          <div style={{ fontSize: '0.85rem', color: colors.foreground, marginBottom: '0.5rem', fontWeight: '600', whiteSpace: 'nowrap' }}>
+                          <div style={{ fontSize: '0.95rem', color: colors.foreground, marginBottom: '0.5rem', fontWeight: '600' }}>
                             {entry.name}
                           </div>
-                          <div style={{ fontSize: '1rem', color: colors.foreground, fontWeight: '600' }}>
+                          <div style={{ fontSize: '0.9rem', color: colors.mutedForeground }}>
                             {percentage}%
                           </div>
                         </div>
@@ -1270,16 +1112,16 @@ const PaystubInsights = () => {
                     })}
                   </div>
                   {displayData.riskLevelData.length > 0 && (
-                    <div style={{
-                      marginTop: '1rem',
-                      padding: '0.75rem 1rem',
-                      backgroundColor: colors.secondary,
+                    <div style={{ 
+                      marginTop: '1rem', 
+                      padding: '0.75rem 1rem', 
+                      backgroundColor: colors.secondary, 
                       borderRadius: '8px',
                       border: `1px solid ${colors.border}`
                     }}>
-                      <div style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
+                      <div style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
                         alignItems: 'center',
                         fontSize: '0.9rem',
                         color: colors.foreground
@@ -1425,217 +1267,83 @@ const PaystubInsights = () => {
                 )}
               </div>
 
-              {/* Fraud Type Distribution - Scatter Plot */}
+              {/* Fraud Type Distribution - Converted to Horizontal Bar Chart */}
               {displayData.fraudTypeData && displayData.fraudTypeData.length > 0 && (
                 <div style={styles.chartBox}>
                   <h3 style={styles.chartTitle}>Fraud Type Distribution</h3>
-                  {(() => {
-                    const total = displayData.fraudTypeData.reduce((sum, item) => sum + item.value, 0);
-                    const maxValue = Math.max(...displayData.fraudTypeData.map(e => e.value));
-                    const percentages = displayData.fraudTypeData.map(e => (e.value / total) * 100);
-                    const minPercentage = Math.min(...percentages);
-                    const maxPercentage = Math.max(...percentages);
-
-                    // Colors that complement DAD color scheme (red/navy theme)
-                    // Using complementary colors: teal, coral, amber, purple, cyan
-                    const COMPLEMENTARY_COLORS = [
-                      '#E53935', // Primary red (DAD)
-                      '#14B8A6', // Teal (complements red)
-                      '#F97316', // Orange/coral (warm complement)
-                      '#8B5CF6', // Purple (complements navy)
-                      '#06B6D4', // Cyan (bright complement)
-                      '#F59E0B', // Amber (warm accent)
-                      '#EC4899', // Pink (vibrant complement)
-                      '#10B981'  // Green (fresh complement)
-                    ];
-
-                    // Prepare scatter plot data with complementary colors and jitter to prevent overlapping
-                    const scatterData = displayData.fraudTypeData.map((entry, index) => {
-                      const percentage = total > 0 ? ((entry.value / total) * 100) : 0;
-                      return {
-                        name: entry.name,
-                        count: entry.value,
-                        percentage: parseFloat(percentage.toFixed(1)),
-                        size: entry.value, // For Z-axis (bubble size)
-                        color: COMPLEMENTARY_COLORS[index % COMPLEMENTARY_COLORS.length],
-                        index: index
-                      };
-                    });
-
-                    // Add jitter to prevent overlapping points
-                    const processedData = scatterData.map((entry, index) => {
-                      // Find other entries with same count and percentage
-                      const duplicates = scatterData.filter((e, i) =>
-                        i !== index &&
-                        e.count === entry.count &&
-                        Math.abs(e.percentage - entry.percentage) < 0.1
-                      );
-
-                      // Calculate jitter offset based on position among duplicates
-                      const duplicateIndex = scatterData.slice(0, index).filter((e) =>
-                        e.count === entry.count &&
-                        Math.abs(e.percentage - entry.percentage) < 0.1
-                      ).length;
-
-                      // Add small offset to prevent overlap (spread in a circle pattern)
-                      const jitterRadius = 0.8; // percentage points
-                      const angle = (duplicateIndex * (2 * Math.PI)) / (duplicates.length + 1);
-                      const jitterX = duplicateIndex > 0 ? Math.cos(angle) * jitterRadius : 0;
-                      const jitterY = duplicateIndex > 0 ? Math.sin(angle) * (jitterRadius * 2) : 0;
-
-                      return {
-                        ...entry,
-                        percentage: entry.percentage + jitterX,
-                        count: entry.count + jitterY
-                      };
-                    });
-
-                    return (
-                      <>
-                        <ResponsiveContainer width="100%" height={400}>
-                          <ScatterChart
-                            margin={{ top: 20, right: 30, bottom: 20, left: 20 }}
-                          >
-                            <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.3} />
-                            <XAxis
-                              type="number"
-                              dataKey="percentage"
-                              name="Percentage"
-                              domain={[minPercentage - 2, maxPercentage + 2]}
-                              tick={{ fill: colors.foreground, fontSize: 12 }}
-                              tickFormatter={(value) => `${value.toFixed(1)}%`}
-                              tickCount={8}
-                              allowDecimals={true}
-                              stroke={colors.border}
-                              label={{ value: 'Percentage (%)', position: 'insideBottom', offset: -5, fill: colors.foreground, fontSize: 12 }}
-                            />
-                            <YAxis
-                              type="number"
-                              dataKey="count"
-                              name="Count"
-                              domain={[0, 'dataMax + 5']}
-                              tick={{ fill: colors.foreground, fontSize: 12 }}
-                              stroke={colors.border}
-                              label={{ value: 'Count', angle: -90, position: 'insideLeft', fill: colors.foreground, fontSize: 12 }}
-                            />
-                            <ZAxis
-                              type="number"
-                              dataKey="size"
-                              range={[50, 300]}
-                              name="Size"
-                            />
-                            <Tooltip
-                              content={({ active, payload }) => {
-                                if (active && payload && payload.length) {
-                                  const data = payload[0].payload;
-                                  return (
-                                    <div style={{
-                                      backgroundColor: colors.card,
-                                      border: `2px solid ${primary}`,
-                                      borderRadius: '8px',
-                                      padding: '12px',
-                                      boxShadow: `0 4px 20px rgba(0, 0, 0, 0.8)`,
-                                      color: colors.foreground
-                                    }}>
-                                      <div style={{ fontWeight: 'bold', fontSize: '14px', marginBottom: '8px', borderBottom: `1px solid ${colors.border}`, paddingBottom: '4px' }}>
-                                        {data.name}
-                                      </div>
-                                      <div style={{ fontSize: '13px', marginTop: '4px' }}>
-                                        <span style={{ color: primary, fontWeight: 'bold' }}>Count:</span> {data.count}
-                                      </div>
-                                      <div style={{ fontSize: '13px', marginTop: '4px' }}>
-                                        <span style={{ color: primary, fontWeight: 'bold' }}>Percentage:</span> {data.percentage}%
-                                      </div>
-                                    </div>
-                                  );
-                                }
-                                return null;
-                              }}
-                            />
-                            <Scatter
-                              name="Fraud Types"
-                              data={processedData}
-                              fill={primary}
-                            >
-                              {processedData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={entry.color} />
-                              ))}
-                            </Scatter>
-                          </ScatterChart>
-                        </ResponsiveContainer>
-
-                        {/* Custom Legend */}
-                        <div style={{
-                          display: 'grid',
-                          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                          gap: '1rem',
-                          marginTop: '1rem',
-                          padding: '1rem',
-                          backgroundColor: colors.card,
-                          borderRadius: '8px',
-                          border: `1px solid ${colors.border}`
-                        }}>
-                          {scatterData.map((entry, index) => (
-                            <div
-                              key={`legend-${index}`}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'flex-start',
-                                gap: '0.75rem',
-                                padding: '0.5rem',
-                                borderRadius: '6px',
-                                transition: 'all 0.2s ease',
-                                cursor: 'pointer'
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.backgroundColor = colors.secondary;
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.backgroundColor = 'transparent';
-                              }}
-                            >
-                              <div
-                                style={{
-                                  width: '14px',
-                                  height: '14px',
-                                  borderRadius: '50%',
-                                  backgroundColor: entry.color,
-                                  border: `2px solid ${colors.border}`,
-                                  flexShrink: 0,
-                                  marginTop: '2px'
-                                }}
-                              />
-                              <div style={{
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '0.25rem',
-                                flex: 1,
-                                minWidth: 0
-                              }}>
-                                <span style={{
-                                  color: colors.foreground,
-                                  fontSize: '13px',
-                                  fontWeight: '600',
-                                  lineHeight: '1.4',
-                                  wordBreak: 'break-word'
-                                }}>
-                                  {entry.name}
-                                </span>
-                                <span style={{
-                                  color: colors.mutedForeground,
-                                  fontSize: '11px',
-                                  fontWeight: '500',
-                                  lineHeight: '1.4'
-                                }}>
-                                  {entry.count} cases ({entry.percentage}%)
-                                </span>
-                              </div>
-                            </div>
+                  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', minHeight: '320px' }}>
+                    <ResponsiveContainer width="100%" height={Math.max(320, displayData.fraudTypeData.length * 55)}>
+                      <BarChart 
+                        data={displayData.fraudTypeData} 
+                        layout="vertical"
+                        margin={{ top: 10, right: 40, left: 120, bottom: 10 }}
+                      >
+                        <defs>
+                          {displayData.fraudTypeData.map((entry, index) => (
+                            <linearGradient key={`fraudGradient-${index}`} id={`fraudGradient-${index}`} x1="0" y1="0" x2="1" y2="0">
+                              <stop offset="0%" stopColor={COLORS[index % COLORS.length]} stopOpacity={1} />
+                              <stop offset="100%" stopColor={COLORS[index % COLORS.length]} stopOpacity={0.7} />
+                            </linearGradient>
                           ))}
-                        </div>
-                      </>
-                    );
-                  })()}
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.3} horizontal={true} vertical={false} />
+                        <XAxis 
+                          type="number"
+                          tick={{ fill: colors.foreground, fontSize: 12 }}
+                          stroke={colors.border}
+                          label={{ value: 'Count', position: 'insideBottom', offset: -5, fill: colors.foreground }}
+                        />
+                        <YAxis 
+                          type="category"
+                          dataKey="name"
+                          tick={{ fill: colors.foreground, fontSize: 12 }}
+                          stroke={colors.border}
+                          width={115}
+                        />
+                        <Tooltip 
+                          content={({ active, payload }) => {
+                            if (active && payload && payload.length) {
+                              const data = payload[0].payload;
+                              const total = displayData.fraudTypeData.reduce((sum, item) => sum + item.value, 0);
+                              const percentage = total > 0 ? ((data.value / total) * 100).toFixed(1) : 0;
+                              return (
+                                <div style={{
+                                  backgroundColor: colors.card,
+                                  border: `1px solid ${colors.border}`,
+                                  borderRadius: '6px',
+                                  padding: '10px',
+                                  boxShadow: `0 4px 12px ${colors.background}80`
+                                }}>
+                                  <p style={{ margin: '0 0 5px 0', fontWeight: 'bold', color: colors.foreground }}>
+                                    {data.name}
+                                  </p>
+                                  <p style={{ margin: '0', color: colors.foreground }}>
+                                    Count: <span style={{ fontWeight: 'bold', color: primary }}>{data.value}</span>
+                                  </p>
+                                  <p style={{ margin: '5px 0 0 0', color: colors.mutedForeground }}>
+                                    Percentage: {percentage}%
+                                  </p>
+                                </div>
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+                        <Bar 
+                          dataKey="value" 
+                          radius={[0, 8, 8, 0]}
+                          name="Count"
+                        >
+                          {displayData.fraudTypeData.map((entry, index) => (
+                            <Cell 
+                              key={`cell-${index}`} 
+                              fill={`url(#fraudGradient-${index})`}
+                            />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
               )}
             </>
