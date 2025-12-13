@@ -1011,7 +1011,7 @@ const CheckInsights = () => {
           <div style={chartsContainerStyle}>
             {/* Row 1: Risk Score Distribution & AI Recommendation Breakdown */}
             <div style={chartBoxStyle}>
-              <h3 style={chartTitleStyle}>Risk Score Distribution by Range</h3>
+              <h3 style={chartTitleStyle}>Risk Score Distribution (All Checks)</h3>
               <ResponsiveContainer width="100%" height={320}>
                 <BarChart
                   data={csvData.riskDistribution}
@@ -1245,7 +1245,7 @@ const CheckInsights = () => {
             {!bankFilter && csvData.riskByBankData && csvData.riskByBankData.length > 0 && (
               <div style={chartBoxStyle}>
                 <h3 style={chartTitleStyle}>Risk Level by Bank</h3>
-                <ResponsiveContainer width="100%" height={320}>
+                <ResponsiveContainer width="100%" height={480}>
                   <ComposedChart
                     data={csvData.riskByBankData.map(bank => ({
                       ...bank,
@@ -1269,7 +1269,7 @@ const CheckInsights = () => {
                         return bank.name.length > 15 ? bank.name.substring(0, 15) + '...' : bank.name;
                       })()
                     }))}
-                    margin={{ top: 10, right: 30, left: 10, bottom: 60 }}
+                    margin={{ top: 60, right: 30, left: 20, bottom: 120 }}
                     onMouseLeave={() => setActiveBankBarIndex({ bankIndex: null, series: null })}
                   >
                     <defs>
@@ -1334,7 +1334,11 @@ const CheckInsights = () => {
                       }}
                       cursor={{ fill: 'transparent' }}
                     />
-                    <Legend />
+                    <Legend 
+                      verticalAlign="bottom" 
+                      height={36}
+                      wrapperStyle={{ paddingTop: '30px' }}
+                    />
                     <Bar
                       yAxisId="left"
                       dataKey="count"
