@@ -718,22 +718,38 @@ const CheckInsights = () => {
       fontSize: '12px',
       color: colors.mutedForeground,
       whiteSpace: 'nowrap'
+    },
+    kpiContainer: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+      gap: '15px',
+      marginBottom: '30px'
+    },
+    kpiCard: {
+      backgroundColor: colors.card,
+      padding: '20px',
+      borderRadius: '8px',
+      border: `1px solid ${colors.border}`,
+      textAlign: 'center'
+    },
+    kpiValue: {
+      fontSize: '24px',
+      fontWeight: 'bold',
+      color: colors.accent.red,
+      marginBottom: '8px'
+    },
+    kpiLabel: {
+      fontSize: '12px',
+      color: colors.mutedForeground,
+      textTransform: 'uppercase'
     }
   };
 
   return (
     <div style={containerStyle}>
-      <div style={cardStyle}>
-        <h2 style={{ color: colors.foreground, marginBottom: '1.5rem' }}>
-          {inputMode === 'upload' ? 'Check Insights from CSV' : 'Check Insights from Database'}
-        </h2>
-
-
-
-        {inputMode === 'api' && csvData && (
-          <>
-            {/* Filters Section - Matching PaystubInsights Style */}
-            <div style={filterStyles.filtersSection}>
+      {/* Filters Section - Matching PaystubInsights Style */}
+      {inputMode === 'api' && csvData && (
+        <div style={filterStyles.filtersSection}>
               <input
                 type="text"
                 placeholder="Search by payer name..."
@@ -939,71 +955,50 @@ const CheckInsights = () => {
               <span style={filterStyles.recordCount}>
                 Showing {filteredData.length} of {totalRecords} checks
               </span>
-            </div>
-          </>
-        )}
+        </div>
+      )}
 
-        {inputMode === 'api' && error && (
+      {inputMode === 'api' && error && (
           <div style={{
             backgroundColor: colors.accent.redLight,
             color: colors.accent.red,
             padding: '1rem',
             borderRadius: '8px',
             marginTop: '1rem',
+            marginBottom: '1rem',
             fontWeight: '500',
           }}>
             {error}
           </div>
         )}
-      </div>
 
       {csvData && (
         <div data-metrics-section>
-          {/* Summary Metrics */}
-          <div style={cardStyle}>
-            <h2 style={{ color: colors.foreground, marginBottom: '1.5rem' }}>Summary Metrics</h2>
-            <div style={metricsGridStyle}>
-              <div style={metricCardStyle}>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: primary, marginBottom: '0.5rem' }}>
-                  {csvData.metrics.totalChecks}
-                </div>
-                <div style={{ color: colors.mutedForeground }}>Total Checks</div>
-              </div>
-
-              <div style={metricCardStyle}>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: primary, marginBottom: '0.5rem' }}>
-                  {csvData.metrics.avgRiskScore}%
-                </div>
-                <div style={{ color: colors.mutedForeground }}>Avg Risk Score</div>
-              </div>
-
-              <div style={metricCardStyle}>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#10b981', marginBottom: '0.5rem' }}>
-                  {csvData.metrics.approveCount}
-                </div>
-                <div style={{ color: colors.mutedForeground }}>Approve</div>
-              </div>
-
-              <div style={metricCardStyle}>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#ef4444', marginBottom: '0.5rem' }}>
-                  {csvData.metrics.rejectCount}
-                </div>
-                <div style={{ color: colors.mutedForeground }}>Reject</div>
-              </div>
-
-              <div style={metricCardStyle}>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#f59e0b', marginBottom: '0.5rem' }}>
-                  {csvData.metrics.escalateCount}
-                </div>
-                <div style={{ color: colors.mutedForeground }}>Escalate</div>
-              </div>
-
-              <div style={metricCardStyle}>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: primary, marginBottom: '0.5rem' }}>
-                  {csvData.metrics.highRiskCount || 0}
-                </div>
-                <div style={{ color: colors.mutedForeground }}>High-Risk Count (&gt;75%)</div>
-              </div>
+          {/* Summary KPI Cards */}
+          <div style={filterStyles.kpiContainer}>
+            <div style={filterStyles.kpiCard}>
+              <div style={filterStyles.kpiValue}>{csvData.metrics.totalChecks}</div>
+              <div style={filterStyles.kpiLabel}>Total Checks</div>
+            </div>
+            <div style={filterStyles.kpiCard}>
+              <div style={filterStyles.kpiValue}>{csvData.metrics.avgRiskScore}%</div>
+              <div style={filterStyles.kpiLabel}>Avg Risk Score</div>
+            </div>
+            <div style={filterStyles.kpiCard}>
+              <div style={{ ...filterStyles.kpiValue, color: '#10b981' }}>{csvData.metrics.approveCount}</div>
+              <div style={filterStyles.kpiLabel}>Approve</div>
+            </div>
+            <div style={filterStyles.kpiCard}>
+              <div style={{ ...filterStyles.kpiValue, color: '#ef4444' }}>{csvData.metrics.rejectCount}</div>
+              <div style={filterStyles.kpiLabel}>Reject</div>
+            </div>
+            <div style={filterStyles.kpiCard}>
+              <div style={{ ...filterStyles.kpiValue, color: '#f59e0b' }}>{csvData.metrics.escalateCount}</div>
+              <div style={filterStyles.kpiLabel}>Escalate</div>
+            </div>
+            <div style={filterStyles.kpiCard}>
+              <div style={filterStyles.kpiValue}>{csvData.metrics.highRiskCount || 0}</div>
+              <div style={filterStyles.kpiLabel}>High-Risk Count (&gt;75%)</div>
             </div>
           </div>
 
