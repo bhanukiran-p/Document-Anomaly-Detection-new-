@@ -225,32 +225,74 @@ const CheckInsights = () => {
       .filter(item => item.name && item.name !== 'Unknown Fraud Type' || item.value > 0)
       .sort((a, b) => b.value - a.value);
 
-    // 7. Fraud Over Time (High-Risk Count and Avg Risk)
-    const fraudOverTime = {};
+    // 7. Weekly Trend Data (High-Risk Activity and Average Risk Score)
+    const weeklyData = {};
+    
+    // Helper function to get week start date (Monday)
+    const getWeekStart = (date) => {
+      const d = new Date(date);
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
+      return new Date(d.setDate(diff));
+    };
+    
+    // Helper function to format week label
+    const formatWeekLabel = (weekStart) => {
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      const monthStart = weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const monthEnd = weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      return `${monthStart} - ${monthEnd}`;
+    };
+    
     rows.forEach(r => {
       const dateStr = r['CheckDate'] || r['check_date'] || r['created_at'] || '';
       if (dateStr) {
-        const date = dateStr.split('T')[0];
-        if (!fraudOverTime[date]) {
-          fraudOverTime[date] = { count: 0, highRiskCount: 0, totalRisk: 0 };
+        const date = new Date(dateStr.split('T')[0]);
+        if (isNaN(date.getTime())) return;
+        
+        const weekStart = getWeekStart(date);
+        const weekKey = weekStart.toISOString().split('T')[0];
+        
+        if (!weeklyData[weekKey]) {
+          weeklyData[weekKey] = {
+            weekStart: weekStart,
+            count: 0,
+            highRiskCount: 0,
+            rejectCount: 0,
+            totalRisk: 0
+          };
         }
+        
         const risk = parseFloat_(r['RiskScore'] || r['fraud_risk_score'] || 0) * 100;
-        fraudOverTime[date].count++;
-        fraudOverTime[date].totalRisk += risk;
-        if (risk >= 75) {
-          fraudOverTime[date].highRiskCount++;
+        const recommendation = (r['Decision'] || r['ai_recommendation'] || '').toUpperCase();
+        
+        weeklyData[weekKey].count++;
+        weeklyData[weekKey].totalRisk += risk;
+        
+        // Count high-risk: REJECT recommendation OR risk >= 75%
+        if (recommendation === 'REJECT' || risk >= 75) {
+          weeklyData[weekKey].highRiskCount++;
+        }
+        
+        if (recommendation === 'REJECT') {
+          weeklyData[weekKey].rejectCount++;
         }
       }
     });
-    const fraudTrendData = Object.entries(fraudOverTime)
-      .map(([date, data]) => ({
-        date,
-        avgRisk: (data.totalRisk / data.count).toFixed(1),
+    
+    // Process weekly data into arrays for charts
+    const weeklyTrendData = Object.entries(weeklyData)
+      .map(([weekKey, data]) => ({
+        weekKey,
+        weekLabel: formatWeekLabel(data.weekStart),
+        avgRisk: data.count > 0 ? parseFloat((data.totalRisk / data.count).toFixed(1)) : 0,
         highRiskCount: data.highRiskCount,
+        rejectCount: data.rejectCount,
         totalCount: data.count
       }))
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .slice(-30);
+      .sort((a, b) => a.weekKey.localeCompare(b.weekKey))
+      .slice(-12); // Last 12 weeks
 
     // 11. High-Risk Count (>75%)
     const highRiskCount = riskScoresPercent.filter(s => s >= 75).length;
@@ -271,7 +313,7 @@ const CheckInsights = () => {
       topHighRiskPayers,
       topFraudIncidentPayees, // Payees with highest fraud incidents
       fraudTypeData,
-      fraudTrendData,
+      weeklyTrendData,
       metrics: {
         totalChecks,
         avgRiskScore,
@@ -1713,65 +1755,93 @@ const CheckInsights = () => {
             )}
           </div>
 
-          {/* Fraud Trend Over Time - Full Width */}
-          {csvData.fraudTrendData && csvData.fraudTrendData.length > 0 && (
-            <div style={cardStyle}>
-              <h3 style={chartTitleStyle}>Fraud Trend Over Time</h3>
-              <ResponsiveContainer width="100%" height={400}>
-                <LineChart data={csvData.fraudTrendData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                  <XAxis 
-                    dataKey="date" 
-                    stroke={colors.mutedForeground}
-                    tick={{ fill: colors.foreground, fontSize: 12 }}
-                    angle={-45}
-                    textAnchor="end"
-                    height={80}
-                  />
-                  <YAxis 
-                    yAxisId="left" 
-                    stroke={colors.mutedForeground}
-                    tick={{ fill: colors.foreground, fontSize: 12 }}
-                    label={{ value: 'Avg Risk Score %', angle: -90, position: 'insideLeft', fill: colors.foreground, fontSize: 12 }}
-                  />
-                  <YAxis 
-                    yAxisId="right" 
-                    orientation="right" 
-                    stroke={colors.mutedForeground}
-                    tick={{ fill: colors.foreground, fontSize: 12 }}
-                    label={{ value: 'High-Risk Count', angle: 90, position: 'insideRight', fill: colors.foreground, fontSize: 12 }}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: colors.card,
-                      border: `1px solid ${colors.border}`,
-                      color: colors.foreground
-                    }}
-                  />
-                  <Legend />
-                  <Line 
-                    yAxisId="left" 
-                    type="monotone" 
-                    dataKey="avgRisk" 
-                    stroke={primary} 
-                    strokeWidth={2} 
-                    name="Avg Risk Score %"
-                    dot={{ fill: primary, r: 4 }}
-                    activeDot={{ r: 6 }}
-                  />
-                  <Line 
-                    yAxisId="right" 
-                    type="monotone" 
-                    dataKey="highRiskCount" 
-                    stroke="#ef4444" 
-                    strokeWidth={2} 
-                    name="High-Risk Count"
-                    dot={{ fill: '#ef4444', r: 4 }}
-                    activeDot={{ r: 6 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
+          {/* Weekly Trend Charts - Full Width */}
+          {csvData.weeklyTrendData && csvData.weeklyTrendData.length > 0 && (
+            <>
+              {/* 1. High-Risk Activity Over Time - Bar Chart */}
+              <div style={cardStyle}>
+                <h3 style={chartTitleStyle}>High-Risk Activity Over Time</h3>
+                <ResponsiveContainer width="100%" height={350}>
+                  <BarChart data={csvData.weeklyTrendData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.3} />
+                    <XAxis 
+                      dataKey="weekLabel" 
+                      stroke={colors.mutedForeground}
+                      tick={{ fill: colors.foreground, fontSize: 11 }}
+                      angle={-45}
+                      textAnchor="end"
+                      height={100}
+                      interval={0}
+                    />
+                    <YAxis 
+                      stroke={colors.mutedForeground}
+                      tick={{ fill: colors.foreground, fontSize: 12 }}
+                      label={{ value: 'Count', angle: -90, position: 'insideLeft', fill: colors.foreground, fontSize: 12 }}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: colors.card,
+                        border: `1px solid ${colors.border}`,
+                        color: colors.foreground,
+                        borderRadius: '8px'
+                      }}
+                      formatter={(value) => [value, 'High-Risk Count']}
+                      labelFormatter={(label) => `Week: ${label}`}
+                    />
+                    <Bar 
+                      dataKey="highRiskCount" 
+                      fill={primary}
+                      name="High-Risk Count (REJECT or HIGH)"
+                      radius={[4, 4, 0, 0]}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* 2. Average Risk Score Trend - Line Chart */}
+              <div style={cardStyle}>
+                <h3 style={chartTitleStyle}>Average Risk Score Trend</h3>
+                <ResponsiveContainer width="100%" height={350}>
+                  <LineChart data={csvData.weeklyTrendData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.3} />
+                    <XAxis 
+                      dataKey="weekLabel" 
+                      stroke={colors.mutedForeground}
+                      tick={{ fill: colors.foreground, fontSize: 11 }}
+                      angle={-45}
+                      textAnchor="end"
+                      height={100}
+                      interval={0}
+                    />
+                    <YAxis 
+                      stroke={colors.mutedForeground}
+                      tick={{ fill: colors.foreground, fontSize: 12 }}
+                      label={{ value: 'Average Risk Score (%)', angle: -90, position: 'insideLeft', fill: colors.foreground, fontSize: 12 }}
+                      domain={[0, 100]}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: colors.card,
+                        border: `1px solid ${colors.border}`,
+                        color: colors.foreground,
+                        borderRadius: '8px'
+                      }}
+                      formatter={(value) => [`${value}%`, 'Average Risk Score']}
+                      labelFormatter={(label) => `Week: ${label}`}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="avgRisk" 
+                      stroke={primary} 
+                      strokeWidth={3} 
+                      name="Average Risk Score"
+                      dot={{ fill: primary, r: 5, strokeWidth: 2, stroke: colors.card }}
+                      activeDot={{ r: 7, strokeWidth: 2, stroke: primary }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </>
           )}
 
         </div>
