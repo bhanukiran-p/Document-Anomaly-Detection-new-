@@ -888,6 +888,7 @@ const RealTimeAnalysis = () => {
         setAnalysisResult(result);
         setShowInsights(false);
 
+<<<<<<< Updated upstream
         // Fetch filter options from the transactions
         try {
           const filterOptionsResult = await getFilterOptions(result.transactions);
@@ -898,6 +899,18 @@ const RealTimeAnalysis = () => {
         } catch (filterErr) {
           console.warn('Failed to load filter options:', filterErr);
           // Don't fail the whole analysis if filter options fail
+=======
+        // Extract filter options from the transactions directly
+        if (result.transactions && result.transactions.length > 0) {
+          const extractedFilterOptions = {
+            categories: [...new Set(result.transactions.map(t => t.category).filter(Boolean))],
+            merchants: [...new Set(result.transactions.map(t => t.merchant).filter(Boolean))],
+            locations: [...new Set(result.transactions.map(t => t.location).filter(Boolean))],
+            fraud_reasons: [...new Set(result.transactions.filter(t => t.is_fraud === 1).map(t => t.fraud_reason).filter(Boolean))]
+          };
+          setFilterOptions(extractedFilterOptions);
+          console.log('Filter options extracted:', extractedFilterOptions);
+>>>>>>> Stashed changes
         }
       } else {
         setError(result.error || 'Analysis failed');

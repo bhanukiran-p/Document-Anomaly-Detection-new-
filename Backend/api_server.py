@@ -7,7 +7,17 @@ from flask import Flask, request, jsonify, send_file, Response
 from flask_cors import CORS
 import os
 import sys
+<<<<<<< Updated upstream
 import json
+=======
+
+# Set UTF-8 encoding for stdout/stderr to handle Unicode characters (emojis, special chars)
+if sys.platform == 'win32':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
+>>>>>>> Stashed changes
 import logging
 from logging.handlers import RotatingFileHandler
 from werkzeug.utils import secure_filename
@@ -949,6 +959,127 @@ def retrain_fraud_model():
         }), 500
 
 
+@app.route('/api/real-time/retrain-from-database', methods=['POST'])
+def retrain_from_database():
+    """
+    Retrain the fraud detection model using data from Supabase database
+    Fetches all labeled transactions from analyzed_real_time_trn table
+    """
+    try:
+        logger.info("Database-based model retraining requested")
+
+        # Import training function
+        from real_time.model_trainer import auto_train_model
+
+        # Train using database data
+        training_result = auto_train_model(
+            transactions_df=None,  # Will fetch from database
+            labels=None,  # Will use labels from database
+            use_database=True,
+            min_samples=100
+        )
+
+        if not training_result.get('success'):
+            return jsonify({
+                'success': False,
+                'error': training_result.get('error'),
+                'message': training_result.get('message', 'Failed to retrain model from database')
+            }), 500
+
+        logger.info("Database-based model retraining completed successfully")
+
+        return jsonify({
+            'success': True,
+            'message': 'Model retrained successfully from database',
+            'training_results': {
+                'samples': training_result.get('training_samples'),
+                'fraud_samples': training_result.get('fraud_samples'),
+                'legitimate_samples': training_result.get('legitimate_samples'),
+                'fraud_percentage': round((training_result.get('fraud_samples', 0) / training_result.get('training_samples', 1)) * 100, 2),
+                'metrics': training_result.get('metrics'),
+                'trained_at': training_result.get('trained_at')
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Database-based model retraining failed: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to retrain fraud detection model from database'
+        }), 500
+
+
+@app.route('/api/real-time/auto-retrain/status', methods=['GET'])
+def get_auto_retrain_status():
+    """Get status of automatic retraining system"""
+    try:
+        from real_time.auto_retrainer import get_retraining_status
+        status = get_retraining_status()
+        return jsonify({
+            'success': True,
+            'status': status
+        })
+    except Exception as e:
+        logger.error(f"Error getting auto-retrain status: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/real-time/auto-retrain/start', methods=['POST'])
+def start_auto_retrain():
+    """Start automatic retraining scheduler"""
+    try:
+        from real_time.auto_retrainer import start_auto_retraining
+        retrainer = start_auto_retraining()
+        return jsonify({
+            'success': True,
+            'message': 'Automatic retraining started',
+            'status': retrainer.get_status()
+        })
+    except Exception as e:
+        logger.error(f"Error starting auto-retrain: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/real-time/auto-retrain/stop', methods=['POST'])
+def stop_auto_retrain():
+    """Stop automatic retraining scheduler"""
+    try:
+        from real_time.auto_retrainer import stop_auto_retraining
+        stop_auto_retraining()
+        return jsonify({
+            'success': True,
+            'message': 'Automatic retraining stopped'
+        })
+    except Exception as e:
+        logger.error(f"Error stopping auto-retrain: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/real-time/auto-retrain/trigger', methods=['POST'])
+def trigger_manual_retrain_check():
+    """Manually trigger a retraining check"""
+    try:
+        from real_time.auto_retrainer import trigger_manual_retraining_check
+        result = trigger_manual_retraining_check()
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Error triggering manual retrain check: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @app.route('/custom.geo.json', methods=['GET'])
 def serve_geo_json():
     """Serve the custom geo JSON file for map visualizations"""
@@ -980,13 +1111,46 @@ if __name__ == '__main__':
     print("=" * 60)
     print("XFORIA DAD API Server")
     print("=" * 60)
-    print(f"Server running on: http://localhost:5001")
+    print(f"Server running on: http://localhost:3002")
     print(f"API Endpoints:")
     print(f"  - GET  /api/health")
     print(f"  - POST /api/real-time/analyze")
+<<<<<<< Updated upstream
     print(f"  - POST /api/real-time/regenerate-plots")
     print(f"  - POST /api/real-time/filter-options")
     print(f"  - POST /api/real-time/retrain-model")
+=======
+    print(f"  - POST /api/real-time/retrain-model")
+    print(f"  - POST /api/real-time/retrain-from-database")
+    print(f"  - POST /api/real-time/regenerate-plots")
+    print(f"  - GET  /api/real-time/auto-retrain/status")
+    print(f"  - POST /api/real-time/auto-retrain/start")
+    print(f"  - POST /api/real-time/auto-retrain/stop")
+    print(f"  - POST /api/real-time/auto-retrain/trigger")
+    print(f"  - GET  /api/checks/list")
+    print(f"  - GET  /api/checks/search")
+    print(f"  - GET  /api/checks/<check_id>")
+    print(f"  - GET  /api/money-orders/list")
+    print(f"  - GET  /api/money-orders/search")
+    print(f"  - GET  /api/money-orders/<money_order_id>")
+    print(f"  - GET  /api/bank-statements/list")
+    print(f"  - GET  /api/bank-statements/search")
+    print(f"  - GET  /api/documents/list")
+    print(f"  - GET  /api/documents/search")
+    print(f"  - GET  /api/paystubs/insights")
+>>>>>>> Stashed changes
+    print("=" * 60)
+
+    # Start automatic model retraining scheduler
+    try:
+        from real_time.auto_retrainer import start_auto_retraining
+        print("\nStarting automatic model retraining scheduler...")
+        start_auto_retraining()
+        print("Automatic retraining scheduler started successfully")
+    except Exception as e:
+        print(f"Warning: Could not start automatic retraining: {e}")
+        print("Manual retraining via API endpoints is still available")
+
     print("=" * 60)
 
     app.run(debug=False, host='0.0.0.0', port=5001, use_reloader=False)

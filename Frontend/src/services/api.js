@@ -218,5 +218,65 @@ export const retrainFraudModel = async (file) => {
   }
 };
 
+// Retrain fraud detection model from database
+export const retrainFromDatabase = async () => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/real-time/retrain-from-database`);
+    return response.data;
+  } catch (error) {
+    const errorData = error.response?.data || { error: 'Failed to retrain from database', message: error.message || 'Network error' };
+    console.error('Database retraining API error:', errorData);
+    throw errorData;
+  }
+};
+
+// Get automatic retraining status
+export const getAutoRetrainingStatus = async () => {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/real-time/auto-retrain/status`);
+    return response.data;
+  } catch (error) {
+    const errorData = error.response?.data || { error: 'Failed to get auto-retrain status', message: error.message || 'Network error' };
+    console.error('Auto-retrain status API error:', errorData);
+    throw errorData;
+  }
+};
+
+// Start automatic retraining
+export const startAutoRetraining = async () => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/real-time/auto-retrain/start`);
+    return response.data;
+  } catch (error) {
+    const errorData = error.response?.data || { error: 'Failed to start auto-retrain', message: error.message || 'Network error' };
+    console.error('Start auto-retrain API error:', errorData);
+    throw errorData;
+  }
+};
+
+// Stop automatic retraining
+export const stopAutoRetraining = async () => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/real-time/auto-retrain/stop`);
+    return response.data;
+  } catch (error) {
+    const errorData = error.response?.data || { error: 'Failed to stop auto-retrain', message: error.message || 'Network error' };
+    console.error('Stop auto-retrain API error:', errorData);
+    throw errorData;
+  }
+};
+
+// Trigger manual retraining check
+export const triggerManualRetrainingCheck = async () => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/real-time/auto-retrain/trigger`);
+    return response.data;
+  } catch (error) {
+    const errorData = error.response?.data || { error: 'Failed to trigger retrain check', message: error.message || 'Network error' };
+    console.error('Trigger retrain check API error:', errorData);
+    throw errorData;
+  }
+};
+
 export default api;
 

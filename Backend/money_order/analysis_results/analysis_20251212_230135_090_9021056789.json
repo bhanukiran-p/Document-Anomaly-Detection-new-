@@ -1,0 +1,94 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "MoneyGram",
+    "serial_number": "9021056789",
+    "serial_secondary": "9835647821",
+    "amount": "$450.00",
+    "amount_in_words": "FOUR HUNDRED FIFTY AND 00/100 DOLLARS",
+    "payee": "SARAH CHEN",
+    "purchaser": "MICHAEL LEE",
+    "sender_address": "456 PINE ST, ANYTOWN, CA 91234",
+    "date": "11/24/2025",
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "low",
+      "type": "ml_indicator",
+      "message": "Amount parsing confidence low"
+    },
+    {
+      "severity": "low",
+      "type": "ai_indicator",
+      "message": "None"
+    }
+  ],
+  "confidence_score": 99,
+  "raw_text": "MoneyGram\nPAY TO: SARAH CHEN\nMONEYGRAMⓇ\nMONEY ORDER\n9021056789\nAMOUNT:\n$450.00\nDATE: NOVEMBER 24, 2025\nFOUR HUNDRED FIFTY AND 00/100 DOLLARS\nFROM: MICHAEL LEE\n456 PINE ST, ANYTOWN, CA 91234\n9835647821\nAlex Chan\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-12-12T23:01:35.090827",
+  "normalized_data": {
+    "issuer_name": "MoneyGram",
+    "serial_primary": "9021056789",
+    "serial_secondary": "9835647821",
+    "recipient": "SARAH CHEN",
+    "sender_name": "MICHAEL LEE",
+    "sender_address": "456 PINE ST, ANYTOWN, CA 91234",
+    "amount_numeric": {
+      "value": 450.0,
+      "currency": "USD"
+    },
+    "amount_written": "FOUR HUNDRED FIFTY AND 00/100 DOLLARS",
+    "date": "11-24-2025",
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 1.0,
+  "ml_analysis": {
+    "fraud_risk_score": 0.133,
+    "risk_level": "LOW",
+    "model_confidence": 0.7,
+    "model_scores": {
+      "random_forest": 0.332,
+      "xgboost": 0.0,
+      "ensemble": 0.133,
+      "adjusted": 0.133
+    },
+    "feature_importance": [
+      "Amount parsing confidence low"
+    ],
+    "fraud_indicators": [
+      "Amount parsing confidence low"
+    ],
+    "prediction_type": "model"
+  },
+  "ai_analysis": {
+    "recommendation": "APPROVE",
+    "confidence_score": 0.9,
+    "summary": "All authenticity checks passed, with a matching numeric and written amount, valid issuer and serial number, and a present signature.",
+    "reasoning": [
+      "The numeric amount ($450.00) matches the written amount (“FOUR HUNDRED FIFTY AND 00/100 DOLLARS”) with no spelling errors detected in the raw OCR text.",
+      "Issuer “MoneyGram” is valid and the serial number format (9021056789) conforms to MoneyGram’s pattern.",
+      "Signature field is present and appears intact; signature_confidence is adequate.",
+      "ML ensemble fraud risk is 0.0% (Random Forest 33.2%, XGBoost 0.0%), indicating no learned fraud patterns.",
+      "Customer is a repeat customer with a clean history and no prior escalations or fraud incidents."
+    ],
+    "key_indicators": [
+      "None"
+    ],
+    "verification_notes": "N/A",
+    "actionable_recommendations": [
+      "Verify purchaser’s government-issued ID to confirm identity.",
+      "Cross-check the agent’s authorized signature on file with the signature on the money order.",
+      "Retain a copy of this money order in the customer’s transaction record for audit purposes."
+    ],
+    "fraud_types": [],
+    "fraud_explanations": [],
+    "training_insights": "Training data shows 45% of fraud cases involve amount mismatches; here, no discrepancy exists, reinforcing approval.",
+    "historical_comparison": "No similar past fraud cases found for this customer or transaction profile—consistent with low-risk patterns.",
+    "analysis_type": "ai_enhanced",
+    "model_used": "o4-mini"
+  },
+  "analysis_id": "analysis_20251212_230135_090_9021056789",
+  "saved_timestamp": "2025-12-12T23:01:35.091002"
+}
