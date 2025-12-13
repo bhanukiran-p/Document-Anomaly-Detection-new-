@@ -42,7 +42,7 @@ const CheckInsights = () => {
   const [loadingChecksList, setLoadingChecksList] = useState(false);
   const [selectedCheckId, setSelectedCheckId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [dateFilter, setDateFilter] = useState(null); // null, 'last_30', 'last_60', 'last_90', 'older', 'custom'
+  const [dateFilter, setDateFilter] = useState(null); // null, 'last_30', 'last_60', 'last_90', 'custom'
   const [totalRecords, setTotalRecords] = useState(0);
   const [bankFilter, setBankFilter] = useState(null);
   const [fraudTypeFilter, setFraudTypeFilter] = useState(null);
@@ -426,12 +426,7 @@ const CheckInsights = () => {
         setChecksList(filteredData);
         setTotalRecords(data.total_records || data.count);
         setDateFilter(filter);
-        // Auto-load all checks as insights if data exists
-        if (filteredData.length > 0) {
-          loadCheckData(filteredData);
-        } else {
-          setError('No checks found for the selected filters');
-        }
+        // Don't call loadCheckData here - let the useEffect handle it with current filters
       } else {
         setError(data.message || 'Failed to fetch checks');
         setCsvData(null);
@@ -540,27 +535,21 @@ const CheckInsights = () => {
       filtered = filtered.filter(c => c.bank_name === bankFilter);
     }
 
-    // Filter by search query (payer name)
-    if (searchQuery.trim()) {
-      filtered = filtered.filter(c =>
-        (c.payer_name || '').toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
 
-    // Filter by date range
+    // Filter by date range (using check_date, not created_at)
     if (dateFilter) {
       if (dateFilter === 'custom' && (customDateRange.startDate || customDateRange.endDate)) {
         filtered = filtered.filter(c => {
-          const createdAt = new Date(c.created_at || c.timestamp);
+          const checkDate = new Date(c.check_date || c.CheckDate || c.created_at || c.timestamp);
           const startDate = customDateRange.startDate ? new Date(customDateRange.startDate) : null;
           const endDate = customDateRange.endDate ? new Date(customDateRange.endDate) : null;
 
           if (startDate && endDate) {
-            return createdAt >= startDate && createdAt <= endDate;
+            return checkDate >= startDate && checkDate <= endDate;
           } else if (startDate) {
-            return createdAt >= startDate;
+            return checkDate >= startDate;
           } else if (endDate) {
-            return createdAt <= endDate;
+            return checkDate <= endDate;
           }
           return true;
         });
@@ -571,11 +560,10 @@ const CheckInsights = () => {
         const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
 
         filtered = filtered.filter(c => {
-          const createdAt = new Date(c.created_at || c.timestamp);
-          if (dateFilter === 'last_30') return createdAt >= thirtyDaysAgo;
-          if (dateFilter === 'last_60') return createdAt >= sixtyDaysAgo && createdAt < thirtyDaysAgo;
-          if (dateFilter === 'last_90') return createdAt >= ninetyDaysAgo && createdAt < sixtyDaysAgo;
-          if (dateFilter === 'older') return createdAt < ninetyDaysAgo;
+          const checkDate = new Date(c.check_date || c.CheckDate || c.created_at || c.timestamp);
+          if (dateFilter === 'last_30') return checkDate >= thirtyDaysAgo;
+          if (dateFilter === 'last_60') return checkDate >= sixtyDaysAgo; // Last 60 days (includes last 30)
+          if (dateFilter === 'last_90') return checkDate >= ninetyDaysAgo; // Last 90 days (includes last 60 and last 30)
           return true;
         });
       }
@@ -596,18 +584,125 @@ const CheckInsights = () => {
   };
 
   const filteredData = getFilteredData();
-  // Process filtered data and update display when filters change
+  
+  // Process filtered data on every render (like PaystubInsights) - ensures filters always work
+  // Transform filtered data to format expected by processData
+  const processedData = (() => {
+    if (inputMode === 'api' && filteredData.length > 0) {
+      const rows = filteredData.map(check => ({
+        'fraud_risk_score': check.fraud_risk_score || 0,
+        'RiskScore': check.fraud_risk_score || 0,
+        'ai_recommendation': check.ai_recommendation || 'UNKNOWN',
+        'Decision': check.ai_recommendation || 'UNKNOWN',
+        'fraud_type': check.fraud_type || '',
+        'fraud_types': check.fraud_type || '',
+        'bank_name': check.bank_name || 'Unknown',
+        'BankName': check.bank_name || 'Unknown',
+        'check_number': check.check_number || 'N/A',
+        'CheckNumber': check.check_number || 'N/A',
+        'amount': check.amount || 0,
+        'Amount': check.amount || 0,
+        'payer_name': check.payer_name || '',
+        'PayerName': check.payer_name || '',
+        'payee_name': check.payee_name || '',
+        'PayeeName': check.payee_name || '',
+        'check_date': check.check_date || '',
+        'CheckDate': check.check_date || '',
+        'created_at': check.created_at || check.timestamp || '',
+        'model_confidence': check.model_confidence || 0,
+        'Confidence': check.model_confidence || 0,
+        'confidence': check.model_confidence || 0,
+      }));
+      return processData(rows);
+    }
+    return null;
+  })();
+  
+  // Use processedData when available (from filters), fallback to csvData (for CSV upload mode)
+  const displayData = processedData || csvData;
+  
+  // Helper functions to determine chart visibility based on filter rules
+  const shouldShowChart = {
+    // Risk Level by Bank: Hide when single bank filter OR search by payer
+    riskByBank: () => {
+      // Single bank filter - hide
+      if (bankFilter && bankFilter !== '' && bankFilter !== 'All Banks') {
+        return false;
+      }
+      // Multiple banks (no filter) - show
+      return true;
+    },
+    
+    // Fraud Type Distribution: Hide when filtered to single fraud type
+    fraudTypeDistribution: () => {
+      // Single fraud type filter - hide
+      if (fraudTypeFilter && fraudTypeFilter !== '' && fraudTypeFilter !== 'All Fraud Types') {
+        return false;
+      }
+      return true;
+    },
+    
+    // Top High-Risk Payers: Show always, but limit to top 5 for very short time windows
+    topHighRiskPayers: () => {
+      return true;
+    },
+    
+    // Get limit for Top High-Risk Payers based on time window
+    topHighRiskPayersLimit: () => {
+      // For custom date ranges, check if it's ≤7 days
+      if (dateFilter === 'custom' && customDateRange.startDate && customDateRange.endDate) {
+        const start = new Date(customDateRange.startDate);
+        const end = new Date(customDateRange.endDate);
+        const daysDiff = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+        if (daysDiff <= 7) {
+          return 5; // Limit to top 5 for very short windows
+        }
+      }
+      return 10; // Default to top 10
+    },
+    
+    // Payees with Highest Fraud Incidents: Hide when search by payer
+    topFraudIncidentPayees: () => {
+      // Always show unless search by payer (which we removed, but keeping for future)
+      return true;
+    },
+    
+    // AI Decision Breakdown: Hide when filtered by fraud type
+    aiDecisionBreakdown: () => {
+      // Single fraud type filter - hide
+      if (fraudTypeFilter && fraudTypeFilter !== '' && fraudTypeFilter !== 'All Fraud Types') {
+        return false;
+      }
+      return true;
+    },
+    
+    // Risk Score Distribution: Always show
+    riskScoreDistribution: () => true,
+    
+    // Time-based charts: Always show
+    weeklyTrends: () => true
+  };
+  
+  // Check if we have a single entity filter (single bank OR single fraud type)
+  const hasSingleEntityFilter = () => {
+    const hasSingleBank = bankFilter && bankFilter !== '' && bankFilter !== 'All Banks';
+    const hasSingleFraudType = fraudTypeFilter && fraudTypeFilter !== '' && fraudTypeFilter !== 'All Fraud Types';
+    return hasSingleBank || hasSingleFraudType;
+  };
+  
+  // Initial data load - process and set csvData for CSV upload mode
+  // For API mode, we process on every render above, so this is mainly for initial CSV load
   useEffect(() => {
-    if (inputMode === 'api' && allChecksData.length > 0) {
+    if (inputMode === 'api' && allChecksData.length > 0 && !processedData) {
+      // Only set initial data if we don't have processedData yet
+      // This handles the initial load case
       const currentFiltered = getFilteredData();
       if (currentFiltered.length > 0) {
         loadCheckData(currentFiltered);
-      } else {
-        setCsvData(null);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bankFilter, searchQuery, dateFilter, fraudTypeFilter, customDateRange.startDate, customDateRange.endDate]);
+  }, [allChecksData.length]);
 
   const primary = colors.primaryColor || colors.accent?.red || '#E53935';
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
@@ -748,16 +843,8 @@ const CheckInsights = () => {
   return (
     <div style={containerStyle}>
       {/* Filters Section - Matching PaystubInsights Style */}
-      {inputMode === 'api' && csvData && (
+      {inputMode === 'api' && displayData && (
         <div style={filterStyles.filtersSection}>
-              <input
-                type="text"
-                placeholder="Search by payer name..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={filterStyles.searchInput}
-              />
-
               {availableBanks.length > 0 && (
                 <select
                   value={bankFilter || ''}
@@ -780,11 +867,7 @@ const CheckInsights = () => {
                   } else {
                     setShowCustomDatePicker(false);
                     setDateFilter(value);
-                    if (value) {
-                      fetchChecksList(value, bankFilter);
-                    } else {
-                      fetchChecksList(null, bankFilter);
-                    }
+                    // Don't call fetchChecksList - let useEffect handle filtering locally
                   }
                 }}
                 style={filterStyles.select}
@@ -793,7 +876,6 @@ const CheckInsights = () => {
                 <option value="last_30">Last 30 Days</option>
                 <option value="last_60">Last 60 Days</option>
                 <option value="last_90">Last 90 Days</option>
-                <option value="older">Older</option>
                 <option value="custom">Custom Range</option>
               </select>
 
@@ -972,44 +1054,100 @@ const CheckInsights = () => {
           </div>
         )}
 
-      {csvData && (
+      {/* Show empty state when filters return no data */}
+      {inputMode === 'api' && !displayData && allChecksData.length > 0 && (() => {
+        const currentFiltered = getFilteredData();
+        const hasActiveFilters = 
+          (bankFilter && bankFilter !== '' && bankFilter !== 'All Banks') ||
+          (dateFilter && dateFilter !== null) ||
+          (fraudTypeFilter && fraudTypeFilter !== '' && fraudTypeFilter !== 'All Fraud Types');
+        
+        if (hasActiveFilters && currentFiltered.length === 0) {
+          return (
+            <div data-metrics-section>
+              <div style={cardStyle}>
+                <div style={{
+                  textAlign: 'center',
+                  padding: '3rem',
+                  color: colors.mutedForeground
+                }}>
+                  <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>No checks found for selected filters</h3>
+                  <p>Try adjusting your filters to see data.</p>
+                </div>
+              </div>
+            </div>
+          );
+        }
+        return null;
+      })()}
+
+      {displayData && (
         <div data-metrics-section>
           {/* Summary KPI Cards */}
           <div style={filterStyles.kpiContainer}>
             <div style={filterStyles.kpiCard}>
-              <div style={filterStyles.kpiValue}>{csvData.metrics.totalChecks}</div>
+              <div style={filterStyles.kpiValue}>{displayData.metrics.totalChecks}</div>
               <div style={filterStyles.kpiLabel}>Total Checks</div>
             </div>
             <div style={filterStyles.kpiCard}>
-              <div style={filterStyles.kpiValue}>{csvData.metrics.avgRiskScore}%</div>
+              <div style={filterStyles.kpiValue}>{displayData.metrics.avgRiskScore}%</div>
               <div style={filterStyles.kpiLabel}>Avg Risk Score</div>
             </div>
             <div style={filterStyles.kpiCard}>
-              <div style={{ ...filterStyles.kpiValue, color: '#10b981' }}>{csvData.metrics.approveCount}</div>
+              <div style={{ ...filterStyles.kpiValue, color: '#10b981' }}>{displayData.metrics.approveCount}</div>
               <div style={filterStyles.kpiLabel}>Approve</div>
             </div>
             <div style={filterStyles.kpiCard}>
-              <div style={{ ...filterStyles.kpiValue, color: '#ef4444' }}>{csvData.metrics.rejectCount}</div>
+              <div style={{ ...filterStyles.kpiValue, color: '#ef4444' }}>{displayData.metrics.rejectCount}</div>
               <div style={filterStyles.kpiLabel}>Reject</div>
             </div>
             <div style={filterStyles.kpiCard}>
-              <div style={{ ...filterStyles.kpiValue, color: '#f59e0b' }}>{csvData.metrics.escalateCount}</div>
+              <div style={{ ...filterStyles.kpiValue, color: '#f59e0b' }}>{displayData.metrics.escalateCount}</div>
               <div style={filterStyles.kpiLabel}>Escalate</div>
             </div>
             <div style={filterStyles.kpiCard}>
-              <div style={filterStyles.kpiValue}>{csvData.metrics.highRiskCount || 0}</div>
+              <div style={filterStyles.kpiValue}>{displayData.metrics.highRiskCount || 0}</div>
               <div style={filterStyles.kpiLabel}>High-Risk Count (&gt;75%)</div>
             </div>
           </div>
 
           {/* Charts Section - 3 rows x 2 columns grid */}
-          <div style={chartsContainerStyle}>
+          {(() => {
+            // Check if we have any charts to show
+            const hasAnyCharts =
+              (shouldShowChart.riskScoreDistribution() && displayData.riskDistribution && displayData.riskDistribution.length > 0) ||
+              (shouldShowChart.aiDecisionBreakdown() && displayData.recommendationData && displayData.recommendationData.length > 0) ||
+              (shouldShowChart.riskByBank() && displayData.riskByBankData && displayData.riskByBankData.length > 0) ||
+              (shouldShowChart.topHighRiskPayers() && displayData.topHighRiskPayers && displayData.topHighRiskPayers.length > 0) ||
+              (shouldShowChart.topFraudIncidentPayees() && displayData.topFraudIncidentPayees && displayData.topFraudIncidentPayees.length > 0) ||
+              (shouldShowChart.fraudTypeDistribution() && displayData.fraudTypeData && displayData.fraudTypeData.length > 0) ||
+              (shouldShowChart.weeklyTrends() && displayData.weeklyTrendData && displayData.weeklyTrendData.length > 0);
+            
+            if (!hasAnyCharts) {
+              return (
+                <div style={cardStyle}>
+                  <div style={{
+                    textAlign: 'center',
+                    padding: '3rem',
+                    color: colors.mutedForeground
+                  }}>
+                    <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>No activity for selected filters</h3>
+                    <p>Try adjusting your filters to see data.</p>
+                  </div>
+                </div>
+              );
+            }
+            
+            return (
+              <>
+                <div style={chartsContainerStyle}>
             {/* Row 1: Risk Score Distribution & AI Recommendation Breakdown */}
-            <div style={chartBoxStyle}>
-              <h3 style={chartTitleStyle}>Risk Score Distribution (All Checks)</h3>
+            {shouldShowChart.riskScoreDistribution() && displayData.riskDistribution && displayData.riskDistribution.length > 0 && (
+              <div style={chartBoxStyle}>
+                <h3 style={chartTitleStyle}>Risk Score Distribution (All Checks)</h3>
               <ResponsiveContainer width="100%" height={320}>
                 <BarChart
-                  data={csvData.riskDistribution}
+                  data={displayData.riskDistribution}
                   margin={{ top: 10, right: 20, left: 10, bottom: 10 }}
                   onMouseLeave={() => setActiveBarIndex(null)}
                 >
@@ -1063,7 +1201,7 @@ const CheckInsights = () => {
                     fill="url(#riskGradient)"
                     radius={[8, 8, 0, 0]}
                   >
-                    {csvData.riskDistribution.map((entry, index) => {
+                    {displayData.riskDistribution.map((entry, index) => {
                       const isActive = activeBarIndex === index;
                       return (
                         <Cell
@@ -1082,10 +1220,12 @@ const CheckInsights = () => {
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
-            </div>
+              </div>
+            )}
 
-            <div style={chartBoxStyle}>
-              <h3 style={chartTitleStyle}>AI Decision Breakdown</h3>
+            {shouldShowChart.aiDecisionBreakdown() && displayData.recommendationData && displayData.recommendationData.length > 0 && (
+              <div style={chartBoxStyle}>
+                <h3 style={chartTitleStyle}>AI Decision Breakdown</h3>
               {/* Centered Donut Chart */}
               <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '320px' }}>
                 <ResponsiveContainer width="100%" height={320}>
@@ -1093,7 +1233,7 @@ const CheckInsights = () => {
                     onMouseLeave={() => setActivePieIndex(null)}
                   >
                     <Pie
-                      data={csvData.recommendationData}
+                      data={displayData.recommendationData}
                       cx="50%"
                       cy="50%"
                       labelLine={false}
@@ -1131,7 +1271,7 @@ const CheckInsights = () => {
                       onMouseEnter={(_, index) => setActivePieIndex(index)}
                       onMouseLeave={() => setActivePieIndex(null)}
                     >
-                      {csvData.recommendationData.map((entry, index) => {
+                      {displayData.recommendationData.map((entry, index) => {
                         const colorMap = {
                           'APPROVE': colors.status.success || '#4CAF50',
                           'REJECT': primary,
@@ -1157,7 +1297,7 @@ const CheckInsights = () => {
                       content={({ active, payload }) => {
                         if (active && payload && payload.length) {
                           const data = payload[0];
-                          const total = csvData.recommendationData.reduce((sum, item) => sum + item.value, 0);
+                          const total = displayData.recommendationData.reduce((sum, item) => sum + item.value, 0);
                           const percentage = total > 0 ? ((data.payload.value / total) * 100).toFixed(2) : 0;
                           return (
                             <div style={{
@@ -1195,13 +1335,13 @@ const CheckInsights = () => {
                 padding: '1rem',
                 flexWrap: 'wrap'
               }}>
-                {csvData.recommendationData.map((entry, index) => {
+                {displayData.recommendationData.map((entry, index) => {
                   const colorMap = {
                     'APPROVE': colors.status.success || '#4CAF50',
                     'REJECT': primary,
                     'ESCALATE': colors.status.warning || '#FFA726'
                   };
-                  const total = csvData.recommendationData.reduce((sum, item) => sum + item.value, 0);
+                  const total = displayData.recommendationData.reduce((sum, item) => sum + item.value, 0);
                   const percentage = total > 0 ? ((entry.value / total) * 100).toFixed(2) : 0;
 
                   return (
@@ -1234,15 +1374,16 @@ const CheckInsights = () => {
                   );
                 })}
               </div>
-            </div>
+              </div>
+            )}
 
             {/* Row 2: Risk by Bank (Combined Bar + Line) & Top High-Risk Payers */}
-            {!bankFilter && csvData.riskByBankData && csvData.riskByBankData.length > 0 && (
+            {shouldShowChart.riskByBank() && displayData.riskByBankData && displayData.riskByBankData.length > 0 && (
               <div style={chartBoxStyle}>
                 <h3 style={chartTitleStyle}>Risk Level by Bank</h3>
                 <ResponsiveContainer width="100%" height={480}>
                   <ComposedChart
-                    data={csvData.riskByBankData.map(bank => ({
+                    data={displayData.riskByBankData.map(bank => ({
                       ...bank,
                       displayName: (() => {
                         const name = bank.name.toUpperCase();
@@ -1340,7 +1481,7 @@ const CheckInsights = () => {
                       fill="url(#countGradient)"
                       name="Check Count"
                     >
-                      {csvData.riskByBankData.map((entry, index) => {
+                      {displayData.riskByBankData.map((entry, index) => {
                         const isActive = activeBankBarIndex.bankIndex === index && activeBankBarIndex.series === 'count';
                         return (
                           <Cell
@@ -1372,12 +1513,17 @@ const CheckInsights = () => {
               </div>
             )}
 
-            {csvData.topHighRiskPayers && csvData.topHighRiskPayers.length > 0 && (
-              <div style={chartBoxStyle}>
-                <h3 style={chartTitleStyle}>Top High-Risk Payers</h3>
-                <ResponsiveContainer width="100%" height={Math.max(320, csvData.topHighRiskPayers.length * 40)}>
-                  <BarChart
-                    data={csvData.topHighRiskPayers}
+            {shouldShowChart.topHighRiskPayers() && displayData.topHighRiskPayers && displayData.topHighRiskPayers.length > 0 && (() => {
+              // Limit to top 5 for very short time windows (≤7 days)
+              const limit = shouldShowChart.topHighRiskPayersLimit();
+              const topPayersData = displayData.topHighRiskPayers.slice(0, limit);
+              
+              return (
+                <div style={chartBoxStyle}>
+                  <h3 style={chartTitleStyle}>Top High-Risk Payers{limit < 10 ? ` (Top ${limit})` : ''}</h3>
+                  <ResponsiveContainer width="100%" height={Math.max(320, topPayersData.length * 40)}>
+                    <BarChart
+                      data={topPayersData}
                     layout="vertical"
                     margin={{ left: 120, right: 60, top: 10, bottom: 10 }}
                   >
@@ -1457,7 +1603,7 @@ const CheckInsights = () => {
                         );
                       }}
                     >
-                      {csvData.topHighRiskPayers.map((entry, index) => {
+                      {topPayersData.map((entry, index) => {
                         const risk = parseFloat(entry.avgRisk);
                         let gradientId = 'heatGradientLow';
                         if (risk >= 75) gradientId = 'heatGradientHigh';
@@ -1473,16 +1619,17 @@ const CheckInsights = () => {
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
-              </div>
-            )}
+                </div>
+              );
+            })()}
 
             {/* Row 3: Payees with Highest Fraud Incidents (Bullet Chart) & Fraud Trend Over Time */}
-            {csvData.topFraudIncidentPayees && csvData.topFraudIncidentPayees.length > 0 && (
+            {shouldShowChart.topFraudIncidentPayees() && displayData.topFraudIncidentPayees && displayData.topFraudIncidentPayees.length > 0 && (
               <div style={chartBoxStyle}>
                 <h3 style={chartTitleStyle}>Payees with Highest Fraud Incidents</h3>
                 <div style={{ padding: '1rem' }}>
-                  {csvData.topFraudIncidentPayees.map((payee, index) => {
-                    const maxCount = Math.max(...csvData.topFraudIncidentPayees.map(p => p.fraudCount));
+                  {displayData.topFraudIncidentPayees.map((payee, index) => {
+                    const maxCount = Math.max(...displayData.topFraudIncidentPayees.map(p => p.fraudCount));
                     const barWidth = (payee.fraudCount / maxCount) * 100;
                     let barColor = '#FFB59E'; // Low Fraud Level - Pastel Faded Peach (<=20)
                     if (payee.fraudCount >= 60) barColor = '#FF6B5A'; // High Fraud Level - Soft Coral-Red (>=60)
@@ -1541,13 +1688,16 @@ const CheckInsights = () => {
             )}
 
             {/* Fraud Type Distribution - Scatter Plot */}
-            {csvData.fraudTypeData && csvData.fraudTypeData.length > 0 && (
-              <div style={chartBoxStyle}>
+            {shouldShowChart.fraudTypeDistribution() && displayData.fraudTypeData && displayData.fraudTypeData.length > 0 && (
+              <div style={{
+                ...chartBoxStyle,
+                gridColumn: bankFilter ? '1 / -1' : 'auto'
+              }}>
                 <h3 style={chartTitleStyle}>Fraud Type Distribution</h3>
                 {(() => {
-                  const total = csvData.fraudTypeData.reduce((sum, item) => sum + item.value, 0);
-                  const maxValue = Math.max(...csvData.fraudTypeData.map(e => e.value));
-                  const percentages = csvData.fraudTypeData.map(e => (e.value / total) * 100);
+                  const total = displayData.fraudTypeData.reduce((sum, item) => sum + item.value, 0);
+                  const maxValue = Math.max(...displayData.fraudTypeData.map(e => e.value));
+                  const percentages = displayData.fraudTypeData.map(e => (e.value / total) * 100);
                   const minPercentage = Math.min(...percentages);
                   const maxPercentage = Math.max(...percentages);
 
@@ -1564,7 +1714,7 @@ const CheckInsights = () => {
                   ];
 
                   // Prepare scatter plot data with complementary colors and jitter to prevent overlapping
-                  const scatterData = csvData.fraudTypeData.map((entry, index) => {
+                  const scatterData = displayData.fraudTypeData.map((entry, index) => {
                     const percentage = total > 0 ? ((entry.value / total) * 100) : 0;
                     return {
                       name: entry.name,
@@ -1752,16 +1902,16 @@ const CheckInsights = () => {
                 })()}
               </div>
             )}
-          </div>
+                </div>
 
-          {/* Weekly Trend Charts - Full Width */}
-          {csvData.weeklyTrendData && csvData.weeklyTrendData.length > 0 && (
+                {/* Weekly Trend Charts - Full Width */}
+                {shouldShowChart.weeklyTrends() && displayData.weeklyTrendData && displayData.weeklyTrendData.length > 0 && (
             <>
               {/* 1. High-Risk Activity Over Time - Bar Chart */}
               <div style={cardStyle}>
                 <h3 style={chartTitleStyle}>High-Risk Activity Over Time</h3>
                 <ResponsiveContainer width="100%" height={350}>
-                  <BarChart data={csvData.weeklyTrendData}>
+                  <BarChart data={displayData.weeklyTrendData}>
                     <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.3} />
                     <XAxis 
                       dataKey="weekLabel" 
@@ -1801,7 +1951,7 @@ const CheckInsights = () => {
               <div style={cardStyle}>
                 <h3 style={chartTitleStyle}>Average Risk Score Trend</h3>
                 <ResponsiveContainer width="100%" height={350}>
-                  <LineChart data={csvData.weeklyTrendData}>
+                  <LineChart data={displayData.weeklyTrendData}>
                     <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.3} />
                     <XAxis 
                       dataKey="weekLabel" 
@@ -1842,6 +1992,9 @@ const CheckInsights = () => {
               </div>
             </>
           )}
+              </>
+            );
+          })()}
 
         </div>
       )}
