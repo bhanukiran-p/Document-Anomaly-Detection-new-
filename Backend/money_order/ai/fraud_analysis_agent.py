@@ -135,7 +135,7 @@ class FraudAnalysisAgent:
         
         # Check if signature is missing (either field is empty OR ML detected it)
         if (not signature or signature == '' or signature is None) or ml_detected_missing_sig:
-            logger.warning(f"[FRAUD_ANALYSIS] ⚠️ MISSING SIGNATURE DETECTED")
+            logger.warning(f"[FRAUD_ANALYSIS] [WARNING] MISSING SIGNATURE DETECTED")
             logger.warning(f"[FRAUD_ANALYSIS] Signature field: {signature}, ML detected: {ml_detected_missing_sig}")
             
             # Check if this is a repeat customer with previous escalations
@@ -148,7 +148,7 @@ class FraudAnalysisAgent:
             # FIRST TIME (escalate_count == 0): ESCALATE for human review
             # SECOND TIME (escalate_count > 0): REJECT automatically
             if escalate_count > 0:
-                logger.warning(f"[FRAUD_ANALYSIS] ⚠️ REPEAT OFFENDER: REJECT triggered (escalate_count={escalate_count})")
+                logger.warning(f"[FRAUD_ANALYSIS] [WARNING] REPEAT OFFENDER: REJECT triggered (escalate_count={escalate_count})")
                 
                 # Repeat attempt with missing signature - force REJECT
                 reject_result = {
@@ -207,7 +207,7 @@ class FraudAnalysisAgent:
                 logger.info(f"[FRAUD_ANALYSIS] Returning REJECT result: {reject_result}")
                 return reject_result
             else:
-                logger.warning(f"[FRAUD_ANALYSIS] ⚠️ FIRST TIME OFFENDER: ESCALATE triggered")
+                logger.warning(f"[FRAUD_ANALYSIS] [WARNING] FIRST TIME OFFENDER: ESCALATE triggered")
                 
                 # First time missing signature - force ESCALATE for human review
                 escalate_result = {
@@ -287,7 +287,7 @@ class FraudAnalysisAgent:
             
             # Check if fraud score warrants rejection
             if fraud_risk_score >= 0.30:
-                logger.warning(f"[FRAUD_ANALYSIS] ⚠️ MANDATORY REJECT TRIGGERED: escalate_count={escalate_count} > 0 AND fraud_risk_score={fraud_risk_score:.1%} >= 30%")
+                logger.warning(f"[FRAUD_ANALYSIS] [WARNING] MANDATORY REJECT TRIGGERED: escalate_count={escalate_count} > 0 AND fraud_risk_score={fraud_risk_score:.1%} >= 30%")
                 logger.warning(f"[FRAUD_ANALYSIS] Customer has previous ESCALATE records AND high fraud score - forcing REJECT recommendation")
                 
                 # Customer has previous ESCALATE records AND high fraud score - force REJECT recommendation
@@ -432,7 +432,7 @@ class FraudAnalysisAgent:
             # High fraud score - show full escalation details
             escalation_status = f"Escalate Count: {escalate_count} | Fraud Count: {fraud_count}"
             if escalate_count > 0:
-                escalation_status += " | ⚠️ PAYER HAS BEEN ESCALATED BEFORE - MUST REJECT"
+                escalation_status += " | [WARNING] PAYER HAS BEEN ESCALATED BEFORE - MUST REJECT"
 
         prompt_vars = {
             "fraud_risk_score": ml_analysis.get('fraud_score', 0),

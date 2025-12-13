@@ -52,12 +52,12 @@ class ResultStorage:
 
         # Save to file
         try:
-            with open(filepath, 'w') as f:
-                json.dump(analysis_data, f, indent=2)
-            print(f"✅ Analysis saved: {filepath}")
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(analysis_data, f, indent=2, ensure_ascii=False)
+            print(f"[SUCCESS] Analysis saved: {filepath}")
             return analysis_id
         except Exception as e:
-            print(f"❌ Error saving analysis: {e}")
+            print(f"[ERROR] Error saving analysis: {e}")
             return None
 
     def get_analysis_by_id(self, analysis_id: str) -> Optional[Dict]:
@@ -76,7 +76,7 @@ class ResultStorage:
             return None
 
         try:
-            with open(filepath, 'r') as f:
+            with open(filepath, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except Exception as e:
             print(f"Error loading analysis {analysis_id}: {e}")
@@ -98,7 +98,7 @@ class ResultStorage:
             if filename.endswith('.json'):
                 filepath = os.path.join(self.storage_dir, filename)
                 try:
-                    with open(filepath, 'r') as f:
+                    with open(filepath, 'r', encoding='utf-8') as f:
                         data = json.load(f)
                         results.append(data)
                 except Exception as e:

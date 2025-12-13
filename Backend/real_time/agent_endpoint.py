@@ -143,56 +143,8 @@ class AgentAnalysisService:
             logger.error(f"CSV features analysis failed: {e}")
             return {'total_columns': 0, 'columns': [], 'key_features': []}
 
-    def _generate_recommendations(self, tools: TransactionAnalysisTools,
-                                  analysis_result: Dict[str, Any]) -> List[str]:
-        """Generate actionable recommendations"""
-        try:
-            stats = tools.get_transaction_statistics()
-            patterns = tools.get_fraud_patterns()
-
-            recommendations = []
-
-            # Based on fraud rate
-            fraud_pct = stats.get('fraud_percentage', 0)
-            if fraud_pct > 20:
-                recommendations.append("CRITICAL: Immediate security review required - fraud rate exceeds 20%")
-                recommendations.append("SECURITY: Implement additional transaction verification for all high-value transactions")
-            elif fraud_pct > 10:
-                recommendations.append("HIGH RISK: Enhanced monitoring and fraud detection rules needed")
-                recommendations.append("ACTION: Review and update fraud detection thresholds")
-            elif fraud_pct > 5:
-                recommendations.append("MODERATE RISK: Continue monitoring with current protocols")
-
-            # Based on fraud amount
-            fraud_amount = stats.get('fraud_amount', 0)
-            total_amount = stats.get('total_amount', 1)
-            if fraud_amount / total_amount > 0.15:
-                recommendations.append(f"FINANCIAL IMPACT: {(fraud_amount/total_amount*100):.1f}% of total value is at risk - prioritize high-value transaction reviews")
-
-            # Based on patterns
-            if patterns['total_patterns'] > 0:
-                recommendations.append(f"PATTERNS: {patterns['total_patterns']} fraud pattern(s) detected - implement targeted countermeasures")
-
-                for pattern in patterns['patterns']:
-                    if pattern['type'] == 'high_value_transactions':
-                        recommendations.append("ALERT SETUP: Set up alerts for transactions exceeding historical averages")
-                    elif pattern['type'] == 'night_time_fraud':
-                        recommendations.append("ENHANCED AUTH: Enable enhanced authentication for off-hours transactions")
-                    elif pattern['type'] == 'category_concentration':
-                        recommendations.append(f"CATEGORY REVIEW: Review and strengthen controls for '{pattern.get('category', 'identified')}' category")
-
-            # General recommendations
-            if len(recommendations) == 0:
-                recommendations.append("STATUS: Fraud levels are within acceptable ranges - maintain current monitoring")
-
-            recommendations.append("DATA COLLECTION: Continue collecting transaction data to improve ML model accuracy")
-            recommendations.append("REVIEW SCHEDULE: Schedule regular fraud pattern reviews (weekly/monthly)")
-
-            return recommendations
-
-        except Exception as e:
-            logger.error(f"Recommendations generation failed: {e}")
-            return ["WARNING: Unable to generate detailed recommendations - manual review advised"]
+    # REMOVED: _generate_recommendations - rule-based logic removed
+    # All recommendations now come from LLM only via agent.generate_recommendations()
 
     def explain_plot(self, plot_data: Dict[str, Any]) -> str:
         """

@@ -6,8 +6,8 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from agent_endpoint import AgentAnalysisService
-from agent_tools import TransactionAnalysisTools
+from real_time.agent_endpoint import AgentAnalysisService
+from real_time.agent_tools import TransactionAnalysisTools
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -154,9 +154,9 @@ def test_agent_with_mock_data():
                 ]
             },
             'recommendations': [
-                '⚠️ MEDIUM ALERT: 15% fraud rate detected',
-                '💰 Enhanced monitoring recommended for high-value transactions',
-                '🔍 Review gambling and cryptocurrency categories'
+                '[WARNING] MEDIUM ALERT: 15% fraud rate detected',
+                '[ACTION] Enhanced monitoring recommended for high-value transactions',
+                '[REVIEW] Review gambling and cryptocurrency categories'
             ]
         }
     }
@@ -169,17 +169,17 @@ def test_agent_with_mock_data():
         # Test 1: Create agent service
         print("\n[TEST 1] Creating agent service...")
         agent_service = AgentAnalysisService()
-        print("✓ Agent service created successfully")
+        print("[SUCCESS] Agent service created successfully")
 
         # Test 2: Create analysis tools
         print("\n[TEST 2] Creating analysis tools...")
         tools = TransactionAnalysisTools(mock_analysis_result)
-        print("✓ Analysis tools created successfully")
+        print("[SUCCESS] Analysis tools created successfully")
 
         # Test 3: Get transaction statistics
         print("\n[TEST 3] Getting transaction statistics...")
         stats = tools.get_transaction_statistics()
-        print(f"✓ Statistics retrieved:")
+        print(f"[SUCCESS] Statistics retrieved:")
         print(f"  - Total: {stats['total_transactions']}")
         print(f"  - Fraud: {stats['fraud_count']} ({stats['fraud_percentage']:.2f}%)")
         print(f"  - Fraud Amount: ${stats['fraud_amount']:,.2f}")
@@ -187,28 +187,28 @@ def test_agent_with_mock_data():
         # Test 4: Get top transactions
         print("\n[TEST 4] Getting top fraudulent transactions...")
         top_txns = tools.get_top_transactions(limit=3, fraud_only=True)
-        print(f"✓ Retrieved {len(top_txns)} top fraudulent transactions")
+        print(f"[SUCCESS] Retrieved {len(top_txns)} top fraudulent transactions")
         for i, txn in enumerate(top_txns, 1):
             print(f"  {i}. ${txn['amount']:,.2f} - {txn['fraud_probability']*100:.1f}% probability")
 
         # Test 5: Get fraud patterns
         print("\n[TEST 5] Getting fraud patterns...")
         patterns = tools.get_fraud_patterns()
-        print(f"✓ Detected {patterns['total_patterns']} fraud patterns")
+        print(f"[SUCCESS] Detected {patterns['total_patterns']} fraud patterns")
         for pattern in patterns['patterns']:
             print(f"  - {pattern['description']}")
 
         # Test 6: Get CSV features
         print("\n[TEST 6] Getting CSV features...")
         csv_features = tools.get_csv_features()
-        print(f"✓ Dataset has {len(csv_features.get('columns', []))} columns")
+        print(f"[SUCCESS] Dataset has {len(csv_features.get('columns', []))} columns")
 
         # Test 7: Generate comprehensive analysis (without LLM)
         print("\n[TEST 7] Generating comprehensive analysis (fallback mode)...")
         analysis = agent_service.generate_comprehensive_analysis(mock_analysis_result)
 
         if analysis['success']:
-            print("✓ Comprehensive analysis generated successfully")
+            print("[SUCCESS] Comprehensive analysis generated successfully")
             agent_analysis = analysis['agent_analysis']
 
             print(f"\n  Top Transactions: {agent_analysis['top_transactions']['count']} analyzed")
@@ -217,10 +217,19 @@ def test_agent_with_mock_data():
             print(f"  Analysis Type: {agent_analysis['analysis_type']}")
 
             print("\n  Sample Recommendations:")
-            for rec in agent_analysis['recommendations'][:3]:
-                print(f"    • {rec}")
+            for i, rec in enumerate(agent_analysis['recommendations'][:3], 1):
+                # Check if structured recommendation
+                if isinstance(rec, dict):
+                    print(f"\n    [{i}] {rec.get('title', 'N/A')}")
+                    print(f"        Description: {rec.get('description', 'N/A')}")
+                    if rec.get('immediate_actions'):
+                        print(f"        Actions: {len(rec.get('immediate_actions', []))} items")
+                    if rec.get('prevention_steps'):
+                        print(f"        Prevention: {len(rec.get('prevention_steps', []))} steps")
+                else:
+                    print(f"    [{i}] {rec}")
         else:
-            print(f"✗ Analysis failed: {analysis.get('error')}")
+            print(f"[ERROR] Analysis failed: {analysis.get('error')}")
 
         print("\n" + "=" * 80)
         print("All tests completed successfully!")
@@ -232,7 +241,7 @@ def test_agent_with_mock_data():
         print("3. Rerun this test script")
 
     except Exception as e:
-        print(f"\n✗ Test failed with error: {e}")
+        print(f"\n[ERROR] Test failed with error: {e}")
         logger.error("Test failed", exc_info=True)
         return False
 

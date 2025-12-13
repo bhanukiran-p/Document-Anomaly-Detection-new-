@@ -237,3 +237,57 @@ def delete_analyzed_transactions(batch_id: str) -> Tuple[bool, Optional[str]]:
         error_msg = f"Error deleting analyzed transactions: {str(e)}"
         logger.error(error_msg)
         return False, error_msg
+
+
+def get_training_data_from_database(
+    limit: int = 10000,
+    min_samples: int = 100,
+    use_recent: bool = True
+) -> Tuple[Optional[List[Dict]], Optional[str]]:
+    """
+    Fetch transaction data from database for model training.
+    
+    Args:
+        limit: Maximum number of records to fetch (default: 10000)
+        min_samples: Minimum number of samples required (default: 100)
+        use_recent: If True, fetch most recent records first (default: True)
+    
+    Returns:
+        Tuple of (transactions: Optional[List[Dict]], error_message: Optional[str])
+    """
+    try:
+        supabase = get_supabase()
+        
+        query = supabase.table('analyzed_real_time_trn').select('*')
+        
+        # Order by most recent first if requested
+        if use_recent:
+            query = query.order('created_at', desc=True)
+        else:
+            query = query.order('created_at', desc=False)
+        
+        # Fetch data
+        response = query.limit(limit).execute()
+        
+        if not response.data:
+            logger.warning("No training data found in database")
+            return None, "No training data available in database"
+        
+        transactions = response.data
+        
+        if len(transactions) < min_samples:
+            logger.warning(f"Insufficient training data: {len(transactions)} samples (minimum: {min_samples})")
+            return None, f"Insufficient training data: {len(transactions)} samples (minimum: {min_samples})"
+        
+        # Check if we have fraud labels
+        fraud_count = sum(1 for t in transactions if t.get('is_fraud') == 1)
+        legitimate_count = len(transactions) - fraud_count
+        
+        logger.info(f"Fetched {len(transactions)} transactions for training: {fraud_count} fraud, {legitimate_count} legitimate")
+        
+        return transactions, None
+        
+    except Exception as e:
+        error_msg = f"Error fetching training data from database: {str(e)}"
+        logger.error(error_msg)
+        return None, error_msg

@@ -128,11 +128,18 @@ const RealTimeAnalysis = () => {
     fraudProbabilityMin: '',
     fraudProbabilityMax: '',
     category: '',
+    merchant: '',
+    transactionCountry: '',
+    loginCountry: '',
+    cardType: '',
+    transactionType: '',
+    currency: '',
     dateStart: '',
     dateEnd: '',
     fraudOnly: false,
     legitimateOnly: false,
   });
+  const [dateFilter, setDateFilter] = useState(null); // 'last_30', 'last_60', 'last_90', 'custom', or null
   const [showFilters, setShowFilters] = useState(false);
   const [filteredPlots, setFilteredPlots] = useState(null);
   const [regeneratingPlots, setRegeneratingPlots] = useState(false);
@@ -572,11 +579,42 @@ const RealTimeAnalysis = () => {
       fraudProbabilityMin: '',
       fraudProbabilityMax: '',
       category: '',
+      merchant: '',
+      transactionCountry: '',
+      loginCountry: '',
+      cardType: '',
+      transactionType: '',
+      currency: '',
       dateStart: '',
       dateEnd: '',
       fraudOnly: false,
       legitimateOnly: false,
     });
+    setDateFilter(null);
+  };
+
+  const handleDateFilterChange = (value) => {
+    setDateFilter(value);
+    if (value === null || value === '') {
+      setFilters(prev => ({ ...prev, dateStart: '', dateEnd: '' }));
+    } else if (value === 'custom') {
+      // Keep existing date inputs for custom
+    } else {
+      const endDate = new Date();
+      const startDate = new Date();
+      if (value === 'last_30') {
+        startDate.setDate(startDate.getDate() - 30);
+      } else if (value === 'last_60') {
+        startDate.setDate(startDate.getDate() - 60);
+      } else if (value === 'last_90') {
+        startDate.setDate(startDate.getDate() - 90);
+      }
+      setFilters(prev => ({
+        ...prev,
+        dateStart: startDate.toISOString().split('T')[0],
+        dateEnd: endDate.toISOString().split('T')[0]
+      }));
+    }
   };
 
   const getFilteredTransactions = () => {
@@ -604,6 +642,48 @@ const RealTimeAnalysis = () => {
     if (filters.category !== '') {
       filtered = filtered.filter(t =>
         t.category?.toLowerCase().includes(filters.category.toLowerCase())
+      );
+    }
+
+    // Merchant filter
+    if (filters.merchant !== '') {
+      filtered = filtered.filter(t =>
+        t.merchant?.toLowerCase().includes(filters.merchant.toLowerCase())
+      );
+    }
+
+    // Transaction Country filter
+    if (filters.transactionCountry !== '') {
+      filtered = filtered.filter(t =>
+        t.transaction_country === filters.transactionCountry
+      );
+    }
+
+    // Login Country filter
+    if (filters.loginCountry !== '') {
+      filtered = filtered.filter(t =>
+        t.login_country === filters.loginCountry
+      );
+    }
+
+    // Card Type filter
+    if (filters.cardType !== '') {
+      filtered = filtered.filter(t =>
+        t.card_type === filters.cardType
+      );
+    }
+
+    // Transaction Type filter
+    if (filters.transactionType !== '') {
+      filtered = filtered.filter(t =>
+        t.transaction_type === filters.transactionType
+      );
+    }
+
+    // Currency filter
+    if (filters.currency !== '') {
+      filtered = filtered.filter(t =>
+        t.currency === filters.currency
       );
     }
 
@@ -673,6 +753,76 @@ const RealTimeAnalysis = () => {
     return Array.from(categories).sort();
   };
 
+  const getAvailableMerchants = () => {
+    if (!analysisResult?.transactions) return [];
+    const merchants = new Set(
+      analysisResult.transactions
+        .map(t => t.merchant)
+        .filter(m => m && m !== 'N/A' && m !== 'Unknown')
+    );
+    return Array.from(merchants).sort();
+  };
+
+  const getAvailableTransactionCountries = () => {
+    if (!analysisResult?.transactions) return [];
+    const countries = new Set(
+      analysisResult.transactions
+        .map(t => t.transaction_country)
+        .filter(c => c && c !== 'N/A' && c !== 'Unknown')
+    );
+    return Array.from(countries).sort();
+  };
+
+  const getAvailableLoginCountries = () => {
+    if (!analysisResult?.transactions) return [];
+    const countries = new Set(
+      analysisResult.transactions
+        .map(t => t.login_country)
+        .filter(c => c && c !== 'N/A' && c !== 'Unknown')
+    );
+    return Array.from(countries).sort();
+  };
+
+  const getAvailableCardTypes = () => {
+    if (!analysisResult?.transactions) return [];
+    const cardTypes = new Set(
+      analysisResult.transactions
+        .map(t => t.card_type)
+        .filter(c => c && c !== 'N/A' && c !== 'Unknown')
+    );
+    return Array.from(cardTypes).sort();
+  };
+
+  const getAvailableTransactionTypes = () => {
+    if (!analysisResult?.transactions) return [];
+    const types = new Set(
+      analysisResult.transactions
+        .map(t => t.transaction_type)
+        .filter(t => t && t !== 'N/A' && t !== 'Unknown')
+    );
+    return Array.from(types).sort();
+  };
+
+  const getAvailableCurrencies = () => {
+    if (!analysisResult?.transactions) return [];
+    const currencies = new Set(
+      analysisResult.transactions
+        .map(t => t.currency)
+        .filter(c => c && c !== 'N/A' && c !== 'Unknown')
+    );
+    return Array.from(currencies).sort();
+  };
+
+  const getDatasetColumns = () => {
+    if (!analysisResult?.csv_info?.columns) return [];
+    return analysisResult.csv_info.columns.map(col => col.name);
+  };
+
+  const hasColumn = (columnName) => {
+    const columns = getDatasetColumns();
+    return columns.includes(columnName);
+  };
+
   const activeFilterCount = Object.entries(filters).filter(([key, value]) => {
     if (typeof value === 'boolean') return value;
     return value !== '';
@@ -690,6 +840,12 @@ const RealTimeAnalysis = () => {
         fraud_probability_min: filters.fraudProbabilityMin ? parseFloat(filters.fraudProbabilityMin) : null,
         fraud_probability_max: filters.fraudProbabilityMax ? parseFloat(filters.fraudProbabilityMax) : null,
         category: filters.category || null,
+        merchant: filters.merchant || null,
+        transaction_country: filters.transactionCountry || null,
+        login_country: filters.loginCountry || null,
+        card_type: filters.cardType || null,
+        transaction_type: filters.transactionType || null,
+        currency: filters.currency || null,
         date_start: filters.dateStart || null,
         date_end: filters.dateEnd || null,
         fraud_only: filters.fraudOnly || false,
@@ -1799,33 +1955,6 @@ const RealTimeAnalysis = () => {
             </div>
           </div>
 
-          {topFraudCases.length > 0 && (
-            <div style={styles.topFraudList}>
-              <h3 style={styles.fraudTypeTitle}>Top ML-Flagged Transactions</h3>
-              {topFraudCases.map((txn, idx) => {
-                const txnAmount = typeof txn.amount === 'number' ? txn.amount : parseFloat(txn.amount || 0);
-                return (
-                  <div key={txn.transaction_id || `${txn.merchant}-${idx}`} style={styles.topFraudItem}>
-                    <div>
-                      <div style={styles.topFraudLabel}>{txn.merchant || txn.category || 'Unknown Merchant'}</div>
-                      <div style={styles.topFraudMeta}>
-                        {formatFraudReason(txn.fraud_reason)} • {((txn.fraud_probability || 0) * 100).toFixed(0)}% risk
-                      </div>
-                      {txn.fraud_reason_detail && (
-                        <div style={{ fontSize: '0.75rem', color: colors.mutedForeground, marginTop: '0.25rem' }}>
-                          {txn.fraud_reason_detail}
-                        </div>
-                      )}
-                    </div>
-                    <div style={styles.topFraudAmount}>
-                      ${txnAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
           {/* Action Buttons */}
           <div style={styles.buttonGroup}>
             <button
@@ -1864,11 +1993,7 @@ const RealTimeAnalysis = () => {
             }}>
               <span style={{ fontSize: '1.2rem' }}>✓</span>
               <div>
-                <strong>Data saved to database</strong>
-                <div style={{ fontSize: '0.85rem', marginTop: '0.25rem', opacity: 0.8 }}>
-                  {analysisResult?.transactions?.length || 0} transactions stored in analyzed_real_time_trn table
-                  {analysisResult?.batch_id && <div style={{ marginTop: '0.25rem' }}>Batch ID: {analysisResult.batch_id.substring(0, 8)}...</div>}
-                </div>
+                <strong>Data Saved</strong>
               </div>
             </div>
           )}
@@ -1945,30 +2070,121 @@ const RealTimeAnalysis = () => {
                 </div>
               )}
 
-              {/* Recommendations - Condensed */}
+              {/* Fraud Prevention Recommendations - Rich Format */}
               {analysisResult.agent_analysis.recommendations?.length > 0 && (
                 <div>
-                  <h4 style={{ color: colors.foreground, fontSize: '0.95rem', marginBottom: '0.75rem', fontWeight: '600' }}>
-                    Recommendations
+                  <h4 style={{ color: colors.foreground, fontSize: '1rem', marginBottom: '0.75rem', fontWeight: '600' }}>
+                    Fraud Prevention Recommendations
                   </h4>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    {analysisResult.agent_analysis.recommendations.slice(0, 7).map((rec, idx) => {
-                      // Remove markdown bold syntax and bullet points from start
-                      const cleanRec = rec.replace(/\*\*/g, '').replace(/^[-•]\s*/, '').trim();
-                      return (
-                        <div key={idx} style={{
-                          backgroundColor: colors.muted,
-                          padding: '0.75rem 1rem',
-                          borderRadius: '0.5rem',
-                          border: `1px solid ${colors.border}`,
-                          borderLeft: `3px solid ${primary}`,
-                          fontSize: '0.85rem',
-                          color: colors.foreground,
-                          lineHeight: '1.5'
-                        }}>
-                          {cleanRec}
-                        </div>
-                      );
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    {analysisResult.agent_analysis.recommendations.slice(0, 5).map((rec, idx) => {
+                      // Check if this is a structured recommendation object
+                      const isStructured = typeof rec === 'object' && rec !== null && rec.title;
+
+                      if (isStructured) {
+                        // Determine severity color from title
+                        const title = rec.title || '';
+                        const isCritical = title.includes('CRITICAL');
+                        const isHigh = title.includes('HIGH');
+                        const borderColor = isCritical ? colors.error : isHigh ? colors.warning : colors.info;
+
+                        return (
+                          <div key={idx} style={{
+                            backgroundColor: colors.muted,
+                            borderRadius: '0.5rem',
+                            border: `1px solid ${colors.border}`,
+                            borderLeft: `4px solid ${borderColor}`,
+                            overflow: 'hidden'
+                          }}>
+                            {/* Header */}
+                            <div style={{
+                              padding: '0.75rem 1rem',
+                              backgroundColor: isCritical ? 'rgba(239, 68, 68, 0.1)' : isHigh ? 'rgba(245, 158, 11, 0.1)' : 'rgba(59, 130, 246, 0.1)'
+                            }}>
+                              <div style={{ fontWeight: '600', color: colors.foreground, marginBottom: '0.25rem', fontSize: '0.9rem' }}>
+                                {rec.title}
+                              </div>
+                              <div style={{ fontSize: '0.85rem', color: colors.mutedForeground }}>
+                                {rec.description}
+                              </div>
+                            </div>
+
+                            {/* Stats Row */}
+                            {(rec.fraud_rate || rec.case_count || rec.total_amount) && (
+                              <div style={{
+                                padding: '0.5rem 1rem',
+                                display: 'flex',
+                                gap: '1rem',
+                                fontSize: '0.8rem',
+                                color: colors.mutedForeground,
+                                borderTop: `1px solid ${colors.border}`
+                              }}>
+                                {rec.case_count && <span>{rec.case_count}</span>}
+                                {rec.fraud_rate && <span>{rec.fraud_rate}</span>}
+                                {rec.total_amount && <span>{rec.total_amount}</span>}
+                              </div>
+                            )}
+
+                            {/* Immediate Actions */}
+                            {rec.immediate_actions && rec.immediate_actions.length > 0 && (
+                              <div style={{ padding: '0.75rem 1rem', borderTop: `1px solid ${colors.border}` }}>
+                                <div style={{ fontWeight: '600', fontSize: '0.85rem', marginBottom: '0.5rem', color: colors.foreground }}>
+                                  Immediate Actions
+                                </div>
+                                <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.8rem', color: colors.foreground, lineHeight: '1.6' }}>
+                                  {rec.immediate_actions.map((action, i) => (
+                                    <li key={i} style={{ marginBottom: '0.25rem' }}>{action}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {/* Prevention Steps */}
+                            {rec.prevention_steps && rec.prevention_steps.length > 0 && (
+                              <div style={{ padding: '0.75rem 1rem', borderTop: `1px solid ${colors.border}` }}>
+                                <div style={{ fontWeight: '600', fontSize: '0.85rem', marginBottom: '0.5rem', color: colors.foreground }}>
+                                  Prevention Steps
+                                </div>
+                                <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.8rem', color: colors.foreground, lineHeight: '1.6' }}>
+                                  {rec.prevention_steps.map((step, i) => (
+                                    <li key={i} style={{ marginBottom: '0.25rem' }}>{step}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {/* Monitor */}
+                            {rec.monitor && (
+                              <div style={{
+                                padding: '0.5rem 1rem',
+                                borderTop: `1px solid ${colors.border}`,
+                                fontSize: '0.8rem',
+                                fontStyle: 'italic',
+                                color: colors.mutedForeground
+                              }}>
+                                <strong>Monitor:</strong> {rec.monitor}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      } else {
+                        // Fallback for simple string recommendations
+                        const displayText = typeof rec === 'string' ? rec.replace(/\*\*/g, '').replace(/^[-•]\s*/, '').trim() : '';
+                        return (
+                          <div key={idx} style={{
+                            backgroundColor: colors.muted,
+                            padding: '0.75rem 1rem',
+                            borderRadius: '0.5rem',
+                            border: `1px solid ${colors.border}`,
+                            borderLeft: `3px solid ${primary}`,
+                            fontSize: '0.85rem',
+                            color: colors.foreground,
+                            lineHeight: '1.5'
+                          }}>
+                            {displayText}
+                          </div>
+                        );
+                      }
                     })}
                   </div>
                 </div>
@@ -1976,48 +2192,344 @@ const RealTimeAnalysis = () => {
             </div>
           )}
 
-          {/* Filter Panel */}
-          <div style={{ marginBottom: '2rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ color: colors.foreground, fontSize: '1.1rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <FaFilter style={{ color: primary }} />
-                Plot Filters
-                {activeFilterCount > 0 && (
-                  <span style={{
-                    backgroundColor: primary,
-                    color: 'white',
-                    borderRadius: '9999px',
-                    padding: '0.25rem 0.75rem',
-                    fontSize: '0.75rem',
-                    fontWeight: '600',
-                    marginLeft: '0.5rem'
-                  }}>
-                    {activeFilterCount} active
-                  </span>
-                )}
-              </h3>
-              <button
-                onClick={() => setShowFilters(!showFilters)}
+          {/* Filter Bar - Matching CheckInsights Style */}
+          <div style={{
+            display: 'flex',
+            gap: '10px',
+            marginBottom: '20px',
+            alignItems: 'center',
+            flexWrap: 'wrap'
+          }}>
+            {/* Merchant/Bank Filter */}
+            {hasColumn('merchant') && getAvailableMerchants().length > 0 && (
+              <select
+                value={filters.merchant || ''}
+                onChange={(e) => handleFilterChange('merchant', e.target.value)}
                 style={{
-                  backgroundColor: 'transparent',
+                  padding: '8px 12px',
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  backgroundColor: colors.card || colors.background,
                   color: colors.foreground,
-                  border: `2px solid ${colors.border}`,
-                  padding: '0.5rem 1rem',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="">All Merchants</option>
+                {getAvailableMerchants().slice(0, 20).map((merchant) => (
+                  <option key={merchant} value={merchant}>
+                    {merchant}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {/* Time Filter */}
+            {hasColumn('timestamp') && (
+              <select
+                value={dateFilter || ''}
+                onChange={(e) => handleDateFilterChange(e.target.value || null)}
+                style={{
+                  padding: '8px 12px',
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  backgroundColor: colors.card || colors.background,
+                  color: colors.foreground,
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="">All Time</option>
+                <option value="last_30">Last 30 Days</option>
+                <option value="last_60">Last 60 Days</option>
+                <option value="last_90">Last 90 Days</option>
+                <option value="custom">Custom Range</option>
+              </select>
+            )}
+
+            {/* Custom Date Range - Show when custom is selected */}
+            {dateFilter === 'custom' && hasColumn('timestamp') && (
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <input
+                  type="date"
+                  value={filters.dateStart}
+                  onChange={(e) => handleFilterChange('dateStart', e.target.value)}
+                  style={{
+                    padding: '8px 12px',
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: '4px',
+                    fontSize: '14px',
+                    backgroundColor: colors.card || colors.background,
+                    color: colors.foreground
+                  }}
+                />
+                <span style={{ color: colors.mutedForeground }}>to</span>
+                <input
+                  type="date"
+                  value={filters.dateEnd}
+                  onChange={(e) => handleFilterChange('dateEnd', e.target.value)}
+                  style={{
+                    padding: '8px 12px',
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: '4px',
+                    fontSize: '14px',
+                    backgroundColor: colors.card || colors.background,
+                    color: colors.foreground
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Category Filter */}
+            {hasColumn('category') && getAvailableCategories().length > 0 && (
+              <select
+                value={filters.category || ''}
+                onChange={(e) => handleFilterChange('category', e.target.value)}
+                style={{
+                  padding: '8px 12px',
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  backgroundColor: colors.card || colors.background,
+                  color: colors.foreground,
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="">All Categories</option>
+                {getAvailableCategories().map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {/* Transaction Country Filter */}
+            {hasColumn('transaction_country') && getAvailableTransactionCountries().length > 0 && (
+              <select
+                value={filters.transactionCountry || ''}
+                onChange={(e) => handleFilterChange('transactionCountry', e.target.value)}
+                style={{
+                  padding: '8px 12px',
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  backgroundColor: colors.card || colors.background,
+                  color: colors.foreground,
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="">All Transaction Countries</option>
+                {getAvailableTransactionCountries().slice(0, 20).map((country) => (
+                  <option key={country} value={country}>
+                    {country}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {/* Login Country Filter */}
+            {hasColumn('login_country') && getAvailableLoginCountries().length > 0 && (
+              <select
+                value={filters.loginCountry || ''}
+                onChange={(e) => handleFilterChange('loginCountry', e.target.value)}
+                style={{
+                  padding: '8px 12px',
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  backgroundColor: colors.card || colors.background,
+                  color: colors.foreground,
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="">All Login Countries</option>
+                {getAvailableLoginCountries().slice(0, 20).map((country) => (
+                  <option key={country} value={country}>
+                    {country}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {/* Card Type Filter */}
+            {hasColumn('card_type') && getAvailableCardTypes().length > 0 && (
+              <select
+                value={filters.cardType || ''}
+                onChange={(e) => handleFilterChange('cardType', e.target.value)}
+                style={{
+                  padding: '8px 12px',
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  backgroundColor: colors.card || colors.background,
+                  color: colors.foreground,
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="">All Card Types</option>
+                {getAvailableCardTypes().map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {/* Transaction Type Filter */}
+            {hasColumn('transaction_type') && getAvailableTransactionTypes().length > 0 && (
+              <select
+                value={filters.transactionType || ''}
+                onChange={(e) => handleFilterChange('transactionType', e.target.value)}
+                style={{
+                  padding: '8px 12px',
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  backgroundColor: colors.card || colors.background,
+                  color: colors.foreground,
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="">All Transaction Types</option>
+                {getAvailableTransactionTypes().map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {/* Currency Filter */}
+            {hasColumn('currency') && getAvailableCurrencies().length > 0 && (
+              <select
+                value={filters.currency || ''}
+                onChange={(e) => handleFilterChange('currency', e.target.value)}
+                style={{
+                  padding: '8px 12px',
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  backgroundColor: colors.card || colors.background,
+                  color: colors.foreground,
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="">All Currencies</option>
+                {getAvailableCurrencies().map((curr) => (
+                  <option key={curr} value={curr}>
+                    {curr}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {/* Fraud Type Filter */}
+            {hasColumn('fraud_probability') && (
+              <select
+                value={filters.fraudOnly ? 'fraud' : filters.legitimateOnly ? 'legitimate' : ''}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value === 'fraud') {
+                    handleFilterChange('fraudOnly', true);
+                    handleFilterChange('legitimateOnly', false);
+                  } else if (value === 'legitimate') {
+                    handleFilterChange('fraudOnly', false);
+                    handleFilterChange('legitimateOnly', true);
+                  } else {
+                    handleFilterChange('fraudOnly', false);
+                    handleFilterChange('legitimateOnly', false);
+                  }
+                }}
+                style={{
+                  padding: '8px 12px',
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  backgroundColor: colors.card || colors.background,
+                  color: colors.foreground,
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="">All Fraud Types</option>
+                <option value="fraud">Fraud Only</option>
+                <option value="legitimate">Legitimate Only</option>
+              </select>
+            )}
+
+            {/* Reset Filters Button */}
+            <button
+              onClick={() => {
+                resetFilters();
+                setFilteredPlots(null);
+              }}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '4px',
+                border: `1px solid ${colors.border}`,
+                backgroundColor: colors.secondary || colors.card || colors.background,
+                color: colors.foreground,
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '600',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.backgroundColor = colors.muted;
+                e.target.style.borderColor = primary;
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.backgroundColor = colors.secondary || colors.card || colors.background;
+                e.target.style.borderColor = colors.border;
+              }}
+            >
+              <FaTimes style={{ fontSize: '0.85rem' }} />
+              Reset Filters
+            </button>
+
+            {/* Showing count - Always visible */}
+            <span style={{
+              fontSize: '12px',
+              color: colors.mutedForeground,
+              whiteSpace: 'nowrap',
+              marginLeft: 'auto'
+            }}>
+              Showing {getFilteredTransactions().length} of {analysisResult?.transactions?.length || 0} transactions
+            </span>
+          </div>
+
+          {/* Apply Filters Button */}
+          {activeFilterCount > 0 && (
+            <div style={{ marginBottom: '1rem' }}>
+              <button
+                onClick={handleRegeneratePlots}
+                disabled={regeneratingPlots}
+                style={{
+                  backgroundColor: primary,
+                  color: 'white',
+                  padding: '0.75rem 2rem',
                   borderRadius: '0.5rem',
-                  cursor: 'pointer',
-                  fontSize: '0.9rem',
+                  border: 'none',
+                  cursor: regeneratingPlots ? 'not-allowed' : 'pointer',
+                  fontSize: '0.95rem',
                   fontWeight: '600',
+                  opacity: regeneratingPlots ? 0.6 : 1,
                   display: 'flex',
                   alignItems: 'center',
                   gap: '0.5rem'
                 }}
               >
-                {showFilters ? <FaTimes /> : <FaFilter />}
-                {showFilters ? 'Hide Filters' : 'Show Filters'}
+                <FaFilter />
+                {regeneratingPlots ? 'Regenerating Plots...' : 'Apply Filters to Plots'}
               </button>
             </div>
-            
-            {showFilters && (
+          )}
+
+          {/* Old filter UI - Hidden */}
+          {false && (
               <div style={{
                 backgroundColor: colors.muted,
                 padding: '1.5rem',
@@ -2025,100 +2537,149 @@ const RealTimeAnalysis = () => {
                 border: `1px solid ${colors.border}`,
                 marginBottom: '1rem'
               }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-                  <div>
-                    <label style={styles.label}>Min Amount ($)</label>
-                    <input
-                      type="number"
-                      value={filters.amountMin}
-                      onChange={(e) => handleFilterChange('amountMin', e.target.value)}
-                      placeholder="0"
-                      style={styles.input}
-                    />
-                  </div>
-                  <div>
-                    <label style={styles.label}>Max Amount ($)</label>
-                    <input
-                      type="number"
-                      value={filters.amountMax}
-                      onChange={(e) => handleFilterChange('amountMax', e.target.value)}
-                      placeholder="∞"
-                      style={styles.input}
-                    />
-                  </div>
-                  <div>
-                    <label style={styles.label}>Min Fraud Probability</label>
-                    <select
-                      value={filters.fraudProbabilityMin}
-                      onChange={(e) => handleFilterChange('fraudProbabilityMin', e.target.value)}
-                      style={styles.input}
-                    >
-                      <option value="">-- Select Min --</option>
-                      <option value="0">0% (All)</option>
-                      <option value="0.1">10%</option>
-                      <option value="0.2">20%</option>
-                      <option value="0.3">30%</option>
-                      <option value="0.4">40%</option>
-                      <option value="0.5">50%</option>
-                      <option value="0.6">60%</option>
-                      <option value="0.7">70%</option>
-                      <option value="0.8">80%</option>
-                      <option value="0.9">90%</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={styles.label}>Max Fraud Probability</label>
-                    <select
-                      value={filters.fraudProbabilityMax}
-                      onChange={(e) => handleFilterChange('fraudProbabilityMax', e.target.value)}
-                      style={styles.input}
-                    >
-                      <option value="">-- Select Max --</option>
-                      <option value="0.1">10%</option>
-                      <option value="0.2">20%</option>
-                      <option value="0.3">30%</option>
-                      <option value="0.4">40%</option>
-                      <option value="0.5">50%</option>
-                      <option value="0.6">60%</option>
-                      <option value="0.7">70%</option>
-                      <option value="0.8">80%</option>
-                      <option value="0.9">90%</option>
-                      <option value="1">100%</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={styles.label}>Category</label>
-                    <select
-                      value={filters.category}
-                      onChange={(e) => handleFilterChange('category', e.target.value)}
-                      style={styles.input}
-                    >
-                      <option value="">-- All Categories --</option>
-                      {getAvailableCategories().map((cat) => (
-                        <option key={cat} value={cat}>
-                          {cat}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={styles.label}>Start Date</label>
-                    <input
-                      type="date"
-                      value={filters.dateStart}
-                      onChange={(e) => handleFilterChange('dateStart', e.target.value)}
-                      style={styles.input}
-                    />
-                  </div>
-                  <div>
-                    <label style={styles.label}>End Date</label>
-                    <input
-                      type="date"
-                      value={filters.dateEnd}
-                      onChange={(e) => handleFilterChange('dateEnd', e.target.value)}
-                      style={styles.input}
-                    />
-                  </div>
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <h4 style={{ color: colors.foreground, fontSize: '0.95rem', fontWeight: '600', marginBottom: '0.5rem', marginTop: 0 }}>
+                    Filter Plots by Dataset Columns
+                  </h4>
+                  <p style={{ color: colors.mutedForeground, fontSize: '0.85rem', margin: 0 }}>
+                    Available filters are based on your dataset columns: {getDatasetColumns().join(', ')}
+                  </p>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                  {/* Amount Filters - Always available */}
+                  {hasColumn('amount') && (
+                    <>
+                      <div>
+                        <label style={styles.label}>Min Amount ($)</label>
+                        <input
+                          type="number"
+                          value={filters.amountMin}
+                          onChange={(e) => handleFilterChange('amountMin', e.target.value)}
+                          placeholder="0"
+                          style={styles.input}
+                        />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Max Amount ($)</label>
+                        <input
+                          type="number"
+                          value={filters.amountMax}
+                          onChange={(e) => handleFilterChange('amountMax', e.target.value)}
+                          placeholder="∞"
+                          style={styles.input}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {/* Fraud Probability Filters */}
+                  {hasColumn('fraud_probability') && (
+                    <>
+                      <div>
+                        <label style={styles.label}>Min Fraud Probability</label>
+                        <select
+                          value={filters.fraudProbabilityMin}
+                          onChange={(e) => handleFilterChange('fraudProbabilityMin', e.target.value)}
+                          style={styles.input}
+                        >
+                          <option value="">-- All --</option>
+                          <option value="0">0% (All)</option>
+                          <option value="0.1">10%</option>
+                          <option value="0.2">20%</option>
+                          <option value="0.3">30%</option>
+                          <option value="0.4">40%</option>
+                          <option value="0.5">50%</option>
+                          <option value="0.6">60%</option>
+                          <option value="0.7">70%</option>
+                          <option value="0.8">80%</option>
+                          <option value="0.9">90%</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={styles.label}>Max Fraud Probability</label>
+                        <select
+                          value={filters.fraudProbabilityMax}
+                          onChange={(e) => handleFilterChange('fraudProbabilityMax', e.target.value)}
+                          style={styles.input}
+                        >
+                          <option value="">-- All --</option>
+                          <option value="0.1">10%</option>
+                          <option value="0.2">20%</option>
+                          <option value="0.3">30%</option>
+                          <option value="0.4">40%</option>
+                          <option value="0.5">50%</option>
+                          <option value="0.6">60%</option>
+                          <option value="0.7">70%</option>
+                          <option value="0.8">80%</option>
+                          <option value="0.9">90%</option>
+                          <option value="1">100%</option>
+                        </select>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Category Filter - Only if category column exists */}
+                  {hasColumn('category') && getAvailableCategories().length > 0 && (
+                    <div>
+                      <label style={styles.label}>Category</label>
+                      <select
+                        value={filters.category}
+                        onChange={(e) => handleFilterChange('category', e.target.value)}
+                        style={styles.input}
+                      >
+                        <option value="">-- All Categories --</option>
+                        {getAvailableCategories().map((cat) => (
+                          <option key={cat} value={cat}>
+                            {cat}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Merchant Filter - Only if merchant column exists */}
+                  {hasColumn('merchant') && getAvailableMerchants().length > 0 && (
+                    <div>
+                      <label style={styles.label}>Merchant</label>
+                      <select
+                        value={filters.merchant}
+                        onChange={(e) => handleFilterChange('merchant', e.target.value)}
+                        style={styles.input}
+                      >
+                        <option value="">-- All Merchants --</option>
+                        {getAvailableMerchants().map((merchant) => (
+                          <option key={merchant} value={merchant}>
+                            {merchant}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Date Filters - Only if timestamp column exists */}
+                  {hasColumn('timestamp') && (
+                    <>
+                      <div>
+                        <label style={styles.label}>Start Date</label>
+                        <input
+                          type="date"
+                          value={filters.dateStart}
+                          onChange={(e) => handleFilterChange('dateStart', e.target.value)}
+                          style={styles.input}
+                        />
+                      </div>
+                      <div>
+                        <label style={styles.label}>End Date</label>
+                        <input
+                          type="date"
+                          value={filters.dateEnd}
+                          onChange={(e) => handleFilterChange('dateEnd', e.target.value)}
+                          style={styles.input}
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
                 
                 <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
@@ -2196,7 +2757,6 @@ const RealTimeAnalysis = () => {
                 </div>
               </div>
             )}
-          </div>
 
           {/* Plots */}
           {(() => {

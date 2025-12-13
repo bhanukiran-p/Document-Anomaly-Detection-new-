@@ -1692,6 +1692,34 @@ def analyze_real_time_transactions():
 
             if db_save_success:
                 logger.info(f"Successfully saved {len(fraud_result.get('transactions', []))} transactions to database (batch: {batch_id})")
+                
+                # Trigger automatic model training from database (in background)
+                try:
+                    import threading
+                    from real_time.model_trainer import train_model_from_database
+                    
+                    def train_in_background():
+                        """Train model from database in background thread"""
+                        try:
+                            logger.info("Starting automatic model training from database...")
+                            training_result = train_model_from_database(
+                                limit=10000,
+                                min_samples=100,
+                                use_recent=True
+                            )
+                            if training_result.get('success'):
+                                logger.info(f"Automatic model training completed successfully. AUC: {training_result.get('metrics', {}).get('auc', 0):.3f}")
+                            else:
+                                logger.warning(f"Automatic model training failed: {training_result.get('error')}")
+                        except Exception as e:
+                            logger.error(f"Background model training error: {e}", exc_info=True)
+                    
+                    # Start training in background thread (non-blocking)
+                    training_thread = threading.Thread(target=train_in_background, daemon=True)
+                    training_thread.start()
+                    logger.info("Automatic model training triggered in background")
+                except Exception as e:
+                    logger.warning(f"Failed to trigger automatic model training: {e}")
             else:
                 logger.warning(f"Failed to save transactions to database: {db_error}")
 
@@ -2049,6 +2077,70 @@ def retrain_fraud_model():
             'success': False,
             'error': str(e),
             'message': 'Failed to retrain fraud detection model'
+        }), 500
+
+
+@app.route('/api/real-time/train-from-database', methods=['POST'])
+def train_model_from_database_endpoint():
+    """
+    Train the fraud detection model automatically from database data.
+    No CSV file required - uses all analyzed transactions stored in the database.
+    """
+    try:
+        logger.info("Model training from database requested")
+        
+        # Get optional parameters from request
+        data = request.get_json() or {}
+        limit = data.get('limit', 10000)
+        min_samples = data.get('min_samples', 100)
+        use_recent = data.get('use_recent', True)
+        
+        # Import training function
+        from real_time.model_trainer import train_model_from_database
+        
+        logger.info(f"Training model from database (limit: {limit}, min_samples: {min_samples})")
+        
+        # Train model from database
+        training_result = train_model_from_database(
+            limit=limit,
+            min_samples=min_samples,
+            use_recent=use_recent
+        )
+        
+        if not training_result.get('success'):
+            return jsonify({
+                'success': False,
+                'error': training_result.get('error'),
+                'message': training_result.get('message', 'Failed to train model from database')
+            }), 500
+        
+        logger.info("Model training from database completed successfully")
+        
+        # Calculate fraud percentage
+        fraud_samples = training_result.get('fraud_samples', 0)
+        total_samples = training_result.get('training_samples', 0)
+        fraud_percentage = (fraud_samples / total_samples * 100) if total_samples > 0 else 0
+        
+        return jsonify({
+            'success': True,
+            'message': 'Model trained successfully from database',
+            'training_results': {
+                'samples': training_result.get('training_samples'),
+                'fraud_samples': training_result.get('fraud_samples'),
+                'legitimate_samples': training_result.get('legitimate_samples'),
+                'fraud_percentage': round(fraud_percentage, 2),
+                'metrics': training_result.get('metrics'),
+                'trained_at': training_result.get('trained_at'),
+                'data_source': 'database'
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Model training from database failed: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to train model from database'
         }), 500
 
 
