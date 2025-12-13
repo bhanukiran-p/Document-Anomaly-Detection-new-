@@ -418,6 +418,9 @@ class CheckFraudAnalysisAgent:
         valid_fraud_types = ['SIGNATURE_FORGERY', 'AMOUNT_ALTERATION', 'COUNTERFEIT_CHECK', 'REPEAT_OFFENDER', 'STALE_CHECK']
         validated['fraud_types'] = [ft for ft in validated['fraud_types'] if ft in valid_fraud_types]
 
+        # Filter out routing number and unsupported bank reasons from fraud_explanations
+        validated['fraud_explanations'] = self._filter_fraud_explanations(validated['fraud_explanations'])
+
         # Add additional context
         validated['ml_fraud_score'] = ml_analysis.get('fraud_risk_score', 0.0)
         validated['ml_risk_level'] = ml_analysis.get('risk_level', 'UNKNOWN')
@@ -430,6 +433,72 @@ class CheckFraudAnalysisAgent:
             }
 
         return validated
+
+    def _filter_fraud_explanations(self, fraud_explanations: list) -> list:
+        """
+        Filter out routing number and unsupported bank reasons from fraud explanations
+        
+        Args:
+            fraud_explanations: List of fraud explanation dicts
+            
+        Returns:
+            Filtered list with routing number and unsupported bank reasons removed
+        """
+        if not isinstance(fraud_explanations, list):
+            return []
+        
+        filtered = []
+        excluded_keywords = [
+            'routing number',
+            'routing_number',
+            'routing_validity',
+            'unsupported bank',
+            'bank not supported',
+            'bank not in',
+            'not among the supported',
+            'not in the supported',
+            'not in the supported bank list',
+            'bank.*not.*support',
+            'routing.*missing',
+            'routing.*invalid',
+            'only bank of america',
+            'only chase',
+            'only bank of america or chase',
+            'bank of america or chase',
+            'counterfeit_check conditions',
+            'counterfeit check conditions',
+            'indicating counterfeit',
+            'indicating counterfeit_check',
+            'is not in the supported',
+            'not in supported bank',
+            'supported bank list'
+        ]
+        
+        for explanation in fraud_explanations:
+            if isinstance(explanation, dict):
+                explanation_text = explanation.get('explanation', '')
+                if isinstance(explanation_text, str):
+                    explanation_lower = explanation_text.lower()
+                    # Check if explanation contains any excluded keywords or patterns
+                    should_exclude = any(keyword in explanation_lower for keyword in excluded_keywords)
+                    
+                    # Also check for the specific pattern: "bank X is not in" or "not in the supported"
+                    if 'is not in' in explanation_lower and ('supported' in explanation_lower or 'bank' in explanation_lower):
+                        should_exclude = True
+                    
+                    # Check for routing number mentions combined with bank support issues
+                    if ('routing' in explanation_lower and 'missing' in explanation_lower) or \
+                       ('routing' in explanation_lower and 'invalid' in explanation_lower):
+                        should_exclude = True
+                    
+                    if not should_exclude:
+                        filtered.append(explanation)
+                else:
+                    filtered.append(explanation)
+            else:
+                filtered.append(explanation)
+        
+        return filtered
 
     def _create_fallback_decision(self, ml_analysis: Dict) -> Dict:
         """Create safe fallback decision if AI analysis fails"""

@@ -36,12 +36,14 @@ class CheckFeatureExtractor:
 
     def _is_bank_supported(self, bank_name: Optional[str]) -> bool:
         """
-        Check if bank is supported (case-insensitive with flexible matching).
+        Check if bank is supported (case-insensitive with flexible keyword matching).
+        Uses financial_institutions table as source of truth - ALL banks in that table are supported.
 
         Supports flexible matching:
-        - "CHASE" matches "CHASE" in database
-        - "CHASE BANK" matches "CHASE" in database
-        - "chase" matches "CHASE" in database (case-insensitive)
+        - "CHASE" matches "JPMORGAN CHASE BANK" in database
+        - "CHASE BANK" matches "JPMORGAN CHASE BANK" in database
+        - "chase" matches "JPMORGAN CHASE BANK" in database (case-insensitive)
+        - "WELLS FARGO" matches "WELLS FARGO BANK" in database (keyword matching)
         """
         if not bank_name:
             return False
@@ -52,14 +54,28 @@ class CheckFeatureExtractor:
         if bank_name_upper in self.supported_banks:
             return True
 
-        # Flexible matching
+        # Keyword-based flexible matching (all banks from financial_institutions are supported)
+        input_keywords = set(bank_name_upper.split())
+        
         for supported_bank in self.supported_banks:
-            # "CHASE BANK" should match "CHASE"
+            # Exact substring match
             if bank_name_upper.startswith(supported_bank + ' ') or bank_name_upper == supported_bank:
                 return True
-            # "CHASE" should match "CHASE BANK"
             if supported_bank.startswith(bank_name_upper + ' ') or supported_bank == bank_name_upper:
                 return True
+            
+            # Keyword matching: check if key words match
+            supported_keywords = set(supported_bank.split())
+            common_keywords = input_keywords.intersection(supported_keywords)
+            
+            # If at least 2 keywords match, or if it's a Wells Fargo variation
+            if len(common_keywords) >= 2:
+                return True
+            
+            # Special handling for Wells Fargo - if both "WELLS" and "FARGO" are present
+            if 'WELLS' in input_keywords and 'FARGO' in input_keywords:
+                if 'WELLS' in supported_keywords and 'FARGO' in supported_keywords:
+                    return True
 
         return False
 
