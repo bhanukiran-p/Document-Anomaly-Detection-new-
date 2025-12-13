@@ -56,6 +56,202 @@ class DocumentStorage:
             return stripped if stripped else None
         return str(value) if value else None
 
+    def _normalize_bank_name(self, bank_name: Optional[str]) -> Optional[str]:
+        """
+        Normalize bank name to match exact bank names from approved list.
+        Maps common variations (BOFA, Chase, etc.) to exact bank names.
+        
+        Args:
+            bank_name: Raw bank name from extraction
+            
+        Returns:
+            Normalized bank name matching approved list, or None if not found
+        """
+        if not bank_name:
+            return None
+        
+        # Approved bank names list (exact matches)
+        APPROVED_BANKS = [
+            "SYNCHRONY BANK",
+            "EAST WEST BANK",
+            "SILICON VALLEY BANK",
+            "BBVA USA",
+            "NAVY FEDERAL CREDIT UNION",
+            "FIRSTBANK",
+            "HSBC BANK USA",
+            "BMO HARRIS BANK",
+            "ZIONS BANK",
+            "M&T BANK",
+            "SIMMONS BANK",
+            "WESTERN ALLIANCE BANK",
+            "CITIBANK",
+            "CHARLES SCHWAB BANK",
+            "US BANK",
+            "FIFTH THIRD BANK",
+            "MORGAN STANLEY PRIVATE BANK",
+            "DISCOVER BANK",
+            "FLAGSTAR BANK",
+            "CITIZENS BANK",
+            "JPMORGAN CHASE BANK",
+            "ALLY BANK",
+            "USAA FEDERAL SAVINGS BANK",
+            "PROVIDENT BANK",
+            "OLD NATIONAL BANK",
+            "POPULAR BANK",
+            "CAPITAL ONE BANK",
+            "FIRST REPUBLIC BANK",
+            "WELLS FARGO BANK",
+            "BANK OF THE WEST",
+            "HUNTINGTON NATIONAL BANK",
+            "AMERICAN EXPRESS NATIONAL BANK",
+            "TD BANK USA",
+            "COMERICA BANK",
+            "FROST BANK",
+            "UMB BANK",
+            "PINNACLE BANK",
+            "FIRST HORIZON BANK",
+            "PNC BANK",
+            "TRUIST BANK",
+            "BANK OF AMERICA",
+            "SOUTH STATE BANK",
+            "BANKUNITED",
+            "GOLDMAN SACHS BANK USA",
+            "REGIONS BANK",
+            "VALLEY NATIONAL BANK",
+            "WEBSTER BANK",
+            "SUNTRUST BANK",
+            "KEYBANK"
+        ]
+        
+        bank_name_upper = bank_name.upper().strip()
+        
+        # First, check for exact match
+        if bank_name_upper in APPROVED_BANKS:
+            return bank_name_upper
+        
+        # Map common variations to exact bank names
+        bank_mappings = {
+            # Bank of America variations
+            "BOFA": "BANK OF AMERICA",
+            "B OF A": "BANK OF AMERICA",
+            "BANKOFAMERICA": "BANK OF AMERICA",
+            "BOA": "BANK OF AMERICA",
+            
+            # Chase variations
+            "CHASE": "JPMORGAN CHASE BANK",
+            "JPM": "JPMORGAN CHASE BANK",
+            "JPMORGAN": "JPMORGAN CHASE BANK",
+            "JP MORGAN": "JPMORGAN CHASE BANK",
+            "JP MORGAN CHASE": "JPMORGAN CHASE BANK",
+            
+            # Wells Fargo variations
+            "WELLS FARGO": "WELLS FARGO BANK",
+            "WELLS": "WELLS FARGO BANK",
+            "WF": "WELLS FARGO BANK",
+            
+            # Citibank variations
+            "CITI": "CITIBANK",
+            "CITI BANK": "CITIBANK",
+            
+            # US Bank variations
+            "USB": "US BANK",
+            "USBANK": "US BANK",
+            "U.S. BANK": "US BANK",
+            
+            # Capital One variations
+            "CAP ONE": "CAPITAL ONE BANK",
+            "CAPITALONE": "CAPITAL ONE BANK",
+            "CAPITAL ONE": "CAPITAL ONE BANK",
+            
+            # TD Bank variations
+            "TD": "TD BANK USA",
+            "TD BANK": "TD BANK USA",
+            "TORONTO DOMINION": "TD BANK USA",
+            
+            # Regions Bank variations
+            "REGIONS": "REGIONS BANK",
+            
+            # PNC Bank variations
+            "PNC": "PNC BANK",
+            
+            # Truist Bank variations
+            "TRUIST": "TRUIST BANK",
+            
+            # Ally Bank variations
+            "ALLY": "ALLY BANK",
+            
+            # USAA variations
+            "USAA": "USAA FEDERAL SAVINGS BANK",
+            "USAA FEDERAL": "USAA FEDERAL SAVINGS BANK",
+            
+            # BMO variations
+            "BMO": "BMO HARRIS BANK",
+            "BMO HARRIS": "BMO HARRIS BANK",
+            
+            # BBVA variations
+            "BBVA": "BBVA USA",
+            
+            # Navy Federal variations
+            "NAVY FEDERAL": "NAVY FEDERAL CREDIT UNION",
+            "NAVY FED": "NAVY FEDERAL CREDIT UNION",
+            "NFCU": "NAVY FEDERAL CREDIT UNION",
+            
+            # American Express variations
+            "AMEX": "AMERICAN EXPRESS NATIONAL BANK",
+            "AMERICAN EXPRESS": "AMERICAN EXPRESS NATIONAL BANK",
+            
+            # Discover variations
+            "DISCOVER": "DISCOVER BANK",
+            
+            # Citizens Bank variations
+            "CITIZENS": "CITIZENS BANK",
+            
+            # KeyBank variations
+            "KEY": "KEYBANK",
+            "KEY BANK": "KEYBANK",
+            
+            # Fifth Third variations
+            "FIFTH THIRD": "FIFTH THIRD BANK",
+            "53": "FIFTH THIRD BANK",
+            
+            # Huntington variations
+            "HUNTINGTON": "HUNTINGTON NATIONAL BANK",
+            
+            # Comerica variations
+            "COMERICA": "COMERICA BANK",
+            
+            # M&T variations
+            "M&T": "M&T BANK",
+            "MT BANK": "M&T BANK",
+            
+            # First Republic variations
+            "FIRST REPUBLIC": "FIRST REPUBLIC BANK",
+            
+            # Bank of the West variations
+            "BOTW": "BANK OF THE WEST",
+            
+            # SunTrust variations
+            "SUNTRUST": "SUNTRUST BANK",
+            "SUN TRUST": "SUNTRUST BANK",
+        }
+        
+        # Check mappings
+        if bank_name_upper in bank_mappings:
+            return bank_mappings[bank_name_upper]
+        
+        # Try partial matching for banks with "BANK" suffix
+        for approved_bank in APPROVED_BANKS:
+            # Remove common words for comparison
+            bank_clean = bank_name_upper.replace(" BANK", "").replace(" USA", "").replace(" NATIONAL", "")
+            approved_clean = approved_bank.replace(" BANK", "").replace(" USA", "").replace(" NATIONAL", "")
+            
+            if bank_clean == approved_clean or bank_clean in approved_clean or approved_clean in bank_clean:
+                return approved_bank
+        
+        # If no match found, log warning and return None (or original uppercase)
+        logger.warning(f"Bank name '{bank_name}' not found in approved list. Using as-is: {bank_name_upper}")
+        return bank_name_upper  # Return uppercase version if no match
+
     def _get_or_create_institution(self, institution_data: Optional[Dict]) -> Optional[str]:
         """Get or create financial institution, return institution_id"""
         if not institution_data:
@@ -482,9 +678,13 @@ class DocumentStorage:
                     logger.warning(f"Could not get or create customer: {e}")
                     # Continue without customer_id if lookup/creation fails
 
-            # Extract institution
+            # Normalize bank_name to match approved bank list
+            bank_name_raw = self._safe_string(extracted.get('bank_name'))
+            bank_name_normalized = self._normalize_bank_name(bank_name_raw)
+
+            # Extract institution (use normalized bank name)
             institution_data = {
-                'name': extracted.get('bank_name'),
+                'name': bank_name_normalized,
                 'routing_number': extracted.get('routing_number')
             }
             institution_id = self._get_or_create_institution(institution_data)
@@ -525,9 +725,9 @@ class DocumentStorage:
                 fraud_explanations = []
 
             # Prepare bank statement data
-            # Convert bank_name to UPPERCASE for consistent storage
+            # Normalize bank_name to match approved bank list
             bank_name_raw = self._safe_string(extracted.get('bank_name'))
-            bank_name_upper = bank_name_raw.upper() if bank_name_raw else None
+            bank_name_normalized = self._normalize_bank_name(bank_name_raw)
 
             statement_data = {
                 'statement_id': str(uuid.uuid4()),
@@ -540,7 +740,7 @@ class DocumentStorage:
                 'account_holder_city': None,
                 'account_holder_state': None,
                 'account_holder_zip': None,
-                'bank_name': bank_name_upper,
+                'bank_name': bank_name_normalized,
                 'institution_id': institution_id,
                 'bank_address': self._safe_string(extracted.get('bank_address')),
                 'bank_city': None,
@@ -741,24 +941,27 @@ class DocumentStorage:
             # Store document record
             document_id = self._store_document(user_id, 'check', file_name)
 
-            # Extract institution
+            # Normalize bank_name to match approved bank list
+            bank_name_raw = self._safe_string(extracted.get('bank_name'))
+            bank_name_normalized = self._normalize_bank_name(bank_name_raw)
+
+            # Extract institution (use normalized bank name)
             institution_data = {
-                'name': extracted.get('bank_name'),
+                'name': bank_name_normalized,
                 'routing_number': extracted.get('routing_number')
             }
             institution_id = self._get_or_create_institution(institution_data)
 
-            # Prepare check data
-            # Convert bank_name to UPPERCASE for consistent storage
-            bank_name_raw = self._safe_string(extracted.get('bank_name'))
-            bank_name_upper = bank_name_raw.upper() if bank_name_raw else None
-
             # Extract fraud_type from AI analysis (primary fraud type only)
             fraud_type = None
+            fraud_type_label = None
             if ai_analysis and ai_analysis.get('fraud_types'):
                 fraud_types = ai_analysis.get('fraud_types', [])
                 # Store only the primary (first) fraud type
                 fraud_type = fraud_types[0] if isinstance(fraud_types, list) and fraud_types else fraud_types
+                # Format fraud type: replace underscores with spaces and title case
+                if fraud_type:
+                    fraud_type_label = fraud_type.replace('_', ' ').title() if fraud_type else None
 
             check_data = {
                 'check_id': str(uuid.uuid4()),
@@ -769,7 +972,7 @@ class DocumentStorage:
                 'payer_name': self._safe_string(extracted.get('payer_name')),
                 'payer_address': self._safe_string(extracted.get('payer_address')),
                 'payee_name': self._safe_string(extracted.get('payee_name')),
-                'bank_name': bank_name_upper,
+                'bank_name': bank_name_normalized,
                 'institution_id': institution_id,
                 'account_number': self._safe_string(extracted.get('account_number')),
                 'routing_number': self._safe_string(extracted.get('routing_number')),
@@ -778,7 +981,7 @@ class DocumentStorage:
                 'model_confidence': self._parse_amount(ml_analysis.get('model_confidence')),
                 'ai_recommendation': self._safe_string(ai_analysis.get('recommendation')) if ai_analysis else None,
                 'signature_detected': extracted.get('signature_detected', False),
-                'fraud_type': self._safe_string(fraud_type),  # Add fraud_type
+                'fraud_type': self._safe_string(fraud_type_label),  # Format fraud_type with spaces instead of underscores
                 'anomaly_count': len(analysis_data.get('anomalies', [])),
                 'top_anomalies': json.dumps(analysis_data.get('anomalies', [])[:5]),
                 'timestamp': datetime.utcnow().isoformat()
@@ -786,7 +989,7 @@ class DocumentStorage:
 
             # Insert check record
             self.supabase.table('checks').insert([check_data]).execute()
-            logger.info(f"Stored check: {check_data['check_id']} with fraud_type: {fraud_type}")
+            logger.info(f"Stored check: {check_data['check_id']} with fraud_type: {fraud_type_label}")
 
             # Update document status
             self._update_document_status(document_id, 'success')

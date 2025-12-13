@@ -4,9 +4,9 @@ import { colors } from '../styles/colors';
 import {
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Sector,
-  ComposedChart
+  ComposedChart, ScatterChart, Scatter, ZAxis
 } from 'recharts';
-import { FaUpload, FaCog } from 'react-icons/fa';
+import { FaUpload, FaCog, FaRedo } from 'react-icons/fa';
 
 // Custom Tooltip Component
 const CustomTooltip = ({ active, payload, label }) => {
@@ -45,7 +45,9 @@ const CheckInsights = () => {
   const [dateFilter, setDateFilter] = useState(null); // null, 'last_30', 'last_60', 'last_90', 'older', 'custom'
   const [totalRecords, setTotalRecords] = useState(0);
   const [bankFilter, setBankFilter] = useState(null);
+  const [fraudTypeFilter, setFraudTypeFilter] = useState(null);
   const [availableBanks, setAvailableBanks] = useState([]);
+  const [availableFraudTypes, setAvailableFraudTypes] = useState([]);
   const [allChecksData, setAllChecksData] = useState([]);
   const [activePieIndex, setActivePieIndex] = useState(null);
   const [activeBarIndex, setActiveBarIndex] = useState(null);
@@ -128,13 +130,18 @@ const CheckInsights = () => {
       bankRisks[bank].count++;
       bankRisks[bank].totalRisk += parseFloat_(r['RiskScore'] || r['fraud_risk_score'] || 0);
     });
-    const riskByBankData = Object.entries(bankRisks)
+    
+    // Sort banks by count (most checks first), then limit to top 5
+    const allBanks = Object.entries(bankRisks)
       .map(([name, data]) => ({
         name,
-        avgRisk: parseFloat(((data.totalRisk / data.count) * 100).toFixed(1)), // Convert to number for line chart
+        avgRisk: parseFloat(((data.totalRisk / data.count) * 100).toFixed(1)),
         count: data.count
       }))
-      .sort((a, b) => b.avgRisk - a.avgRisk); // Sort by risk, but show all banks
+      .sort((a, b) => b.count - a.count); // Sort by count first
+    
+    const TOP_BANKS_LIMIT = 5;
+    const riskByBankData = allBanks.slice(0, TOP_BANKS_LIMIT);
 
     // 4. Top High-Risk Payers
     const payerRisks = {};
@@ -158,9 +165,8 @@ const CheckInsights = () => {
         count: data.count,
         maxRisk: data.maxRisk.toFixed(1)
       }))
-      .filter(item => parseFloat(item.avgRisk) >= 50)
       .sort((a, b) => parseFloat(b.avgRisk) - parseFloat(a.avgRisk))
-      .slice(0, 10);
+      .slice(0, 10); // Always show top 10 payers by risk, regardless of threshold
 
     // 5. Payees with Highest Fraud Incidents (Count of REJECT/ESCALATE or high risk >= 75%)
     const payeeFraudIncidents = {};
@@ -188,7 +194,38 @@ const CheckInsights = () => {
       .sort((a, b) => b.fraudCount - a.fraudCount)
       .slice(0, 10);
 
-    // 6. Fraud Over Time (High-Risk Count and Avg Risk)
+    // 6. Fraud Type Distribution
+    const fraudTypeCount = {};
+    rows.forEach(r => {
+      let fraudType = r['fraud_type'] || r['fraud_types'];
+      
+      // Handle different data formats: string, array, or null/undefined
+      if (Array.isArray(fraudType)) {
+        // If it's an array, process each element
+        fraudType.forEach(ft => {
+          const typeStr = String(ft || '').trim();
+          if (typeStr && typeStr !== 'No Flag' && typeStr !== 'null' && typeStr !== 'undefined') {
+            fraudTypeCount[typeStr] = (fraudTypeCount[typeStr] || 0) + 1;
+          }
+        });
+      } else {
+        // If it's a string or other type
+        const typeStr = String(fraudType || 'No Flag').trim();
+        if (typeStr && typeStr !== 'No Flag' && typeStr !== 'null' && typeStr !== 'undefined' && typeStr.length > 0) {
+          fraudTypeCount[typeStr] = (fraudTypeCount[typeStr] || 0) + 1;
+        }
+      }
+    });
+
+    const fraudTypeData = Object.entries(fraudTypeCount)
+      .map(([name, count]) => ({
+        name: name.replace(/_/g, ' ').trim() || 'Unknown Fraud Type',
+        value: count
+      }))
+      .filter(item => item.name && item.name !== 'Unknown Fraud Type' || item.value > 0)
+      .sort((a, b) => b.value - a.value);
+
+    // 7. Fraud Over Time (High-Risk Count and Avg Risk)
     const fraudOverTime = {};
     rows.forEach(r => {
       const dateStr = r['CheckDate'] || r['check_date'] || r['created_at'] || '';
@@ -215,14 +252,6 @@ const CheckInsights = () => {
       .sort((a, b) => a.date.localeCompare(b.date))
       .slice(-30);
 
-
-
-    // 9. Repeat Offenders (Payers with multiple high-risk checks)
-    const repeatOffenders = Object.entries(payerRisks)
-      .filter(([name, data]) => data.count > 1 && parseFloat((data.totalRisk / data.count).toFixed(1)) >= 50)
-      .length;
-
-
     // 11. High-Risk Count (>75%)
     const highRiskCount = riskScoresPercent.filter(s => s >= 75).length;
 
@@ -241,6 +270,7 @@ const CheckInsights = () => {
       riskByBankData,
       topHighRiskPayers,
       topFraudIncidentPayees, // Payees with highest fraud incidents
+      fraudTypeData,
       fraudTrendData,
       metrics: {
         totalChecks,
@@ -248,8 +278,7 @@ const CheckInsights = () => {
         approveCount,
         rejectCount,
         escalateCount,
-        highRiskCount,
-        repeatOffenders
+        highRiskCount
       }
     };
   };
@@ -334,6 +363,15 @@ const CheckInsights = () => {
         const uniqueBanks = [...new Set(fetchedData.map(check => check.bank_name).filter(Boolean))].sort();
         setAvailableBanks(uniqueBanks);
 
+        // Extract unique fraud types from the data
+        const uniqueFraudTypes = [...new Set(
+          fetchedData
+            .map(check => check.fraud_type)
+            .filter(Boolean)
+            .map(ft => ft.trim())
+        )].sort();
+        setAvailableFraudTypes(uniqueFraudTypes);
+
         // Apply bank filter if specified
         let filteredData = fetchedData;
         if (bank) {
@@ -412,6 +450,8 @@ const CheckInsights = () => {
         'RiskScore': check.fraud_risk_score || 0,
         'ai_recommendation': check.ai_recommendation || 'UNKNOWN',
         'Decision': check.ai_recommendation || 'UNKNOWN',
+        'fraud_type': check.fraud_type || '',
+        'fraud_types': check.fraud_type || '',
         'bank_name': check.bank_name || 'Unknown',
         'BankName': check.bank_name || 'Unknown',
         'check_number': check.check_number || 'N/A',
@@ -448,6 +488,84 @@ const CheckInsights = () => {
       fetchChecksList();
     }
   }, []); // Empty dependency array - only run on mount
+
+  // Filter data based on active filters (similar to PaystubInsights)
+  const getFilteredData = () => {
+    let filtered = allChecksData;
+
+    // Filter by bank
+    if (bankFilter && bankFilter !== '' && bankFilter !== 'All Banks') {
+      filtered = filtered.filter(c => c.bank_name === bankFilter);
+    }
+
+    // Filter by search query (payer name)
+    if (searchQuery.trim()) {
+      filtered = filtered.filter(c =>
+        (c.payer_name || '').toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    // Filter by date range
+    if (dateFilter) {
+      if (dateFilter === 'custom' && (customDateRange.startDate || customDateRange.endDate)) {
+        filtered = filtered.filter(c => {
+          const createdAt = new Date(c.created_at || c.timestamp);
+          const startDate = customDateRange.startDate ? new Date(customDateRange.startDate) : null;
+          const endDate = customDateRange.endDate ? new Date(customDateRange.endDate) : null;
+
+          if (startDate && endDate) {
+            return createdAt >= startDate && createdAt <= endDate;
+          } else if (startDate) {
+            return createdAt >= startDate;
+          } else if (endDate) {
+            return createdAt <= endDate;
+          }
+          return true;
+        });
+      } else {
+        const now = new Date();
+        const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+        const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+        filtered = filtered.filter(c => {
+          const createdAt = new Date(c.created_at || c.timestamp);
+          if (dateFilter === 'last_30') return createdAt >= thirtyDaysAgo;
+          if (dateFilter === 'last_60') return createdAt >= sixtyDaysAgo && createdAt < thirtyDaysAgo;
+          if (dateFilter === 'last_90') return createdAt >= ninetyDaysAgo && createdAt < sixtyDaysAgo;
+          if (dateFilter === 'older') return createdAt < ninetyDaysAgo;
+          return true;
+        });
+      }
+    }
+
+    // Filter by fraud type
+    if (fraudTypeFilter && fraudTypeFilter !== '' && fraudTypeFilter !== 'All Fraud Types') {
+      filtered = filtered.filter(c => {
+        const fraudType = c.fraud_type;
+        if (!fraudType) return false;
+        const normalizedFilter = fraudTypeFilter.toLowerCase().trim();
+        const typeStr = String(fraudType || '').trim().toLowerCase();
+        return typeStr === normalizedFilter;
+      });
+    }
+
+    return filtered;
+  };
+
+  const filteredData = getFilteredData();
+  // Process filtered data and update display when filters change
+  useEffect(() => {
+    if (inputMode === 'api' && allChecksData.length > 0) {
+      const currentFiltered = getFilteredData();
+      if (currentFiltered.length > 0) {
+        loadCheckData(currentFiltered);
+      } else {
+        setCsvData(null);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bankFilter, searchQuery, dateFilter, fraudTypeFilter, customDateRange.startDate, customDateRange.endDate]);
 
   const primary = colors.primaryColor || colors.accent?.red || '#E53935';
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
@@ -526,6 +644,41 @@ const CheckInsights = () => {
     textAlign: 'center',
   };
 
+  // Styles matching PaystubInsights
+  const filterStyles = {
+    filtersSection: {
+      display: 'flex',
+      gap: '10px',
+      marginBottom: '20px',
+      alignItems: 'center',
+      flexWrap: 'wrap'
+    },
+    searchInput: {
+      padding: '8px 12px',
+      border: `1px solid ${colors.border}`,
+      borderRadius: '4px',
+      fontSize: '14px',
+      flex: 1,
+      minWidth: '200px',
+      backgroundColor: colors.card,
+      color: colors.foreground
+    },
+    select: {
+      padding: '8px 12px',
+      border: `1px solid ${colors.border}`,
+      borderRadius: '4px',
+      fontSize: '14px',
+      backgroundColor: colors.card,
+      color: colors.foreground,
+      cursor: 'pointer'
+    },
+    recordCount: {
+      fontSize: '12px',
+      color: colors.mutedForeground,
+      whiteSpace: 'nowrap'
+    }
+  };
+
   return (
     <div style={containerStyle}>
       <div style={cardStyle}>
@@ -535,158 +688,73 @@ const CheckInsights = () => {
 
 
 
-        {inputMode === 'api' && (
+        {inputMode === 'api' && csvData && (
           <>
-            <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ display: 'block', color: colors.foreground, marginBottom: '0.5rem', fontWeight: '500' }}>
-                Search by Payer Name:
-              </label>
+            {/* Filters Section - Matching PaystubInsights Style */}
+            <div style={filterStyles.filtersSection}>
               <input
                 type="text"
-                placeholder="Search checks by payer name..."
+                placeholder="Search by payer name..."
                 value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  handleSearchChecks(e.target.value);
-                }}
-                style={{
-                  width: '100%',
-                  padding: '0.75rem',
-                  borderRadius: '0.5rem',
-                  backgroundColor: colors.secondary,
-                  color: colors.foreground,
-                  border: `1px solid ${colors.border}`,
-                  fontSize: '1rem',
-                }}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={filterStyles.searchInput}
               />
-            </div>
 
-            {/* Date Filter Section */}
-            <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ display: 'block', color: colors.foreground, marginBottom: '0.75rem', fontWeight: '500' }}>
-                Filter by Created Date {totalRecords > 0 && <span style={{ color: colors.mutedForeground, fontWeight: '400', fontSize: '0.9rem' }}>({totalRecords} total records)</span>}
-              </label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.5rem' }}>
-                <button
-                  onClick={() => fetchChecksList(null, bankFilter)}
-                  style={{
-                    padding: '0.75rem',
-                    borderRadius: '0.5rem',
-                    backgroundColor: dateFilter === null ? primary : colors.secondary,
-                    color: dateFilter === null ? colors.primaryForeground : colors.foreground,
-                    border: `1px solid ${colors.border}`,
-                    cursor: 'pointer',
-                    fontWeight: dateFilter === null ? '600' : '500',
-                    transition: 'all 0.3s',
-                  }}
-                  onMouseEnter={(e) => !loadingChecksList && dateFilter !== null && (e.target.style.backgroundColor = colors.muted)}
-                  onMouseLeave={(e) => !loadingChecksList && dateFilter !== null && (e.target.style.backgroundColor = colors.secondary)}
+              {availableBanks.length > 0 && (
+                <select
+                  value={bankFilter || ''}
+                  onChange={(e) => setBankFilter(e.target.value || null)}
+                  style={filterStyles.select}
                 >
-                  All Records
-                </button>
-                <button
-                  onClick={() => fetchChecksList('last_30', bankFilter)}
-                  style={{
-                    padding: '0.75rem',
-                    borderRadius: '0.5rem',
-                    backgroundColor: dateFilter === 'last_30' ? primary : colors.secondary,
-                    color: dateFilter === 'last_30' ? colors.primaryForeground : colors.foreground,
-                    border: `1px solid ${colors.border}`,
-                    cursor: 'pointer',
-                    fontWeight: dateFilter === 'last_30' ? '600' : '500',
-                    transition: 'all 0.3s',
-                  }}
-                  onMouseEnter={(e) => !loadingChecksList && dateFilter !== 'last_30' && (e.target.style.backgroundColor = colors.muted)}
-                  onMouseLeave={(e) => !loadingChecksList && dateFilter !== 'last_30' && (e.target.style.backgroundColor = colors.secondary)}
-                >
-                  Last 30
-                </button>
-                <button
-                  onClick={() => fetchChecksList('last_60', bankFilter)}
-                  style={{
-                    padding: '0.75rem',
-                    borderRadius: '0.5rem',
-                    backgroundColor: dateFilter === 'last_60' ? primary : colors.secondary,
-                    color: dateFilter === 'last_60' ? colors.primaryForeground : colors.foreground,
-                    border: `1px solid ${colors.border}`,
-                    cursor: 'pointer',
-                    fontWeight: dateFilter === 'last_60' ? '600' : '500',
-                    transition: 'all 0.3s',
-                  }}
-                  onMouseEnter={(e) => !loadingChecksList && dateFilter !== 'last_60' && (e.target.style.backgroundColor = colors.muted)}
-                  onMouseLeave={(e) => !loadingChecksList && dateFilter !== 'last_60' && (e.target.style.backgroundColor = colors.secondary)}
-                >
-                  Last 60
-                </button>
-                <button
-                  onClick={() => fetchChecksList('last_90', bankFilter)}
-                  style={{
-                    padding: '0.75rem',
-                    borderRadius: '0.5rem',
-                    backgroundColor: dateFilter === 'last_90' ? primary : colors.secondary,
-                    color: dateFilter === 'last_90' ? colors.primaryForeground : colors.foreground,
-                    border: `1px solid ${colors.border}`,
-                    cursor: 'pointer',
-                    fontWeight: dateFilter === 'last_90' ? '600' : '500',
-                    transition: 'all 0.3s',
-                  }}
-                  onMouseEnter={(e) => !loadingChecksList && dateFilter !== 'last_90' && (e.target.style.backgroundColor = colors.muted)}
-                  onMouseLeave={(e) => !loadingChecksList && dateFilter !== 'last_90' && (e.target.style.backgroundColor = colors.secondary)}
-                >
-                  Last 90
-                </button>
-                <button
-                  onClick={() => fetchChecksList('older', bankFilter)}
-                  style={{
-                    padding: '0.75rem',
-                    borderRadius: '0.5rem',
-                    backgroundColor: dateFilter === 'older' ? primary : colors.secondary,
-                    color: dateFilter === 'older' ? colors.primaryForeground : colors.foreground,
-                    border: `1px solid ${colors.border}`,
-                    cursor: 'pointer',
-                    fontWeight: dateFilter === 'older' ? '600' : '500',
-                    transition: 'all 0.3s',
-                  }}
-                  onMouseEnter={(e) => !loadingChecksList && dateFilter !== 'older' && (e.target.style.backgroundColor = colors.muted)}
-                  onMouseLeave={(e) => !loadingChecksList && dateFilter !== 'older' && (e.target.style.backgroundColor = colors.secondary)}
-                >
-                  Older
-                </button>
-                <button
-                  onClick={() => setShowCustomDatePicker(!showCustomDatePicker)}
-                  style={{
-                    padding: '0.75rem',
-                    borderRadius: '0.5rem',
-                    backgroundColor: dateFilter === 'custom' ? primary : colors.secondary,
-                    color: dateFilter === 'custom' ? colors.primaryForeground : colors.foreground,
-                    border: `1px solid ${colors.border}`,
-                    cursor: 'pointer',
-                    fontWeight: dateFilter === 'custom' ? '600' : '500',
-                    transition: 'all 0.3s',
-                  }}
-                  onMouseEnter={(e) => !loadingChecksList && dateFilter !== 'custom' && (e.target.style.backgroundColor = colors.muted)}
-                  onMouseLeave={(e) => !loadingChecksList && dateFilter !== 'custom' && (e.target.style.backgroundColor = colors.secondary)}
-                >
-                  Custom Range
-                </button>
-              </div>
+                  <option value="">All Banks</option>
+                  {availableBanks.map(bank => (
+                    <option key={bank} value={bank}>{bank}</option>
+                  ))}
+                </select>
+              )}
+
+              <select
+                value={dateFilter || ''}
+                onChange={(e) => {
+                  const value = e.target.value || null;
+                  if (value === 'custom') {
+                    setShowCustomDatePicker(true);
+                  } else {
+                    setShowCustomDatePicker(false);
+                    setDateFilter(value);
+                    if (value) {
+                      fetchChecksList(value, bankFilter);
+                    } else {
+                      fetchChecksList(null, bankFilter);
+                    }
+                  }
+                }}
+                style={filterStyles.select}
+              >
+                <option value="">All Time</option>
+                <option value="last_30">Last 30 Days</option>
+                <option value="last_60">Last 60 Days</option>
+                <option value="last_90">Last 90 Days</option>
+                <option value="older">Older</option>
+                <option value="custom">Custom Range</option>
+              </select>
 
               {/* Custom Date Range Picker */}
               {showCustomDatePicker && (
                 <div style={{
-                  marginTop: '1rem',
-                  padding: '1.5rem',
+                  gridColumn: '1 / -1',
+                  padding: '16px',
                   backgroundColor: colors.card,
                   border: `1px solid ${colors.border}`,
-                  borderRadius: '0.5rem',
+                  borderRadius: '8px',
                   boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
                 }}>
-                  <div style={{ marginBottom: '1rem', fontWeight: '600', color: colors.foreground }}>
+                  <div style={{ marginBottom: '12px', fontWeight: '600', color: colors.foreground }}>
                     Select Custom Date Range
                   </div>
-                  <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                    <div style={{ flex: '1', minWidth: '200px' }}>
-                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '14px', color: colors.mutedForeground }}>
+                  <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                    <div style={{ flex: '1', minWidth: '180px' }}>
+                      <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: colors.mutedForeground }}>
                         Start Date
                       </label>
                       <input
@@ -695,17 +763,17 @@ const CheckInsights = () => {
                         onChange={(e) => setCustomDateRange({ ...customDateRange, startDate: e.target.value })}
                         style={{
                           width: '100%',
-                          padding: '0.75rem',
-                          borderRadius: '0.5rem',
+                          padding: '8px',
+                          borderRadius: '4px',
                           border: `1px solid ${colors.border}`,
-                          fontSize: '14px',
+                          fontSize: '13px',
                           backgroundColor: colors.secondary,
                           color: colors.foreground
                         }}
                       />
                     </div>
-                    <div style={{ flex: '1', minWidth: '200px' }}>
-                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '14px', color: colors.mutedForeground }}>
+                    <div style={{ flex: '1', minWidth: '180px' }}>
+                      <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: colors.mutedForeground }}>
                         End Date
                       </label>
                       <input
@@ -714,16 +782,16 @@ const CheckInsights = () => {
                         onChange={(e) => setCustomDateRange({ ...customDateRange, endDate: e.target.value })}
                         style={{
                           width: '100%',
-                          padding: '0.75rem',
-                          borderRadius: '0.5rem',
+                          padding: '8px',
+                          borderRadius: '4px',
                           border: `1px solid ${colors.border}`,
-                          fontSize: '14px',
+                          fontSize: '13px',
                           backgroundColor: colors.secondary,
                           color: colors.foreground
                         }}
                       />
                     </div>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', gap: '8px' }}>
                       <button
                         onClick={() => {
                           if (!customDateRange.startDate && !customDateRange.endDate) {
@@ -737,17 +805,18 @@ const CheckInsights = () => {
                           }
                           setDateFilter('custom');
                           setShowCustomDatePicker(false);
-                          fetchChecksList(null, bankFilter, customDateRange);
+                          fetchChecksList('custom', bankFilter, customDateRange);
                         }}
                         style={{
-                          padding: '0.75rem 1.5rem',
-                          borderRadius: '0.5rem',
+                          padding: '8px 20px',
+                          borderRadius: '4px',
                           backgroundColor: primary,
                           color: colors.primaryForeground,
                           border: 'none',
                           cursor: 'pointer',
                           fontWeight: '600',
-                          transition: 'all 0.3s',
+                          fontSize: '13px',
+                          transition: 'all 0.2s',
                         }}
                       >
                         Apply
@@ -756,16 +825,18 @@ const CheckInsights = () => {
                         onClick={() => {
                           setShowCustomDatePicker(false);
                           setCustomDateRange({ startDate: '', endDate: '' });
+                          setDateFilter(null);
                         }}
                         style={{
-                          padding: '0.75rem 1.5rem',
-                          borderRadius: '0.5rem',
+                          padding: '8px 20px',
+                          borderRadius: '4px',
                           backgroundColor: colors.secondary,
                           color: colors.foreground,
                           border: `1px solid ${colors.border}`,
                           cursor: 'pointer',
                           fontWeight: '600',
-                          transition: 'all 0.3s',
+                          fontSize: '13px',
+                          transition: 'all 0.2s',
                         }}
                       >
                         Cancel
@@ -774,146 +845,73 @@ const CheckInsights = () => {
                   </div>
                 </div>
               )}
-            </div>
 
-            {/* Bank Filter Section */}
-            {availableBanks.length > 0 && (
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', color: colors.foreground, marginBottom: '0.5rem', fontWeight: '500' }}>
-                  Filter by Bank:
-                </label>
+              {availableFraudTypes.length > 0 && (
                 <select
-                  value={bankFilter || ''}
-                  onChange={(e) => {
-                    const selectedBank = e.target.value || null;
-                    setBankFilter(selectedBank);
-                    // Filter from full dataset by bank
-                    if (selectedBank) {
-                      const filtered = allChecksData.filter(check => check.bank_name === selectedBank);
-                      setChecksList(filtered);
-                      if (filtered.length > 0) {
-                        loadCheckData(filtered);
-                      } else {
-                        setError('No checks found for this bank');
-                      }
-                    } else {
-                      // Show all data from current fetch
-                      setChecksList(allChecksData);
-                      if (allChecksData.length > 0) {
-                        loadCheckData(allChecksData);
-                      } else {
-                        fetchChecksList(dateFilter);
-                      }
-                    }
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    borderRadius: '0.5rem',
-                    backgroundColor: colors.secondary,
-                    color: colors.foreground,
-                    border: `1px solid ${colors.border}`,
-                    fontSize: '1rem',
-                    cursor: 'pointer',
-                    appearance: 'none',
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='${encodeURIComponent(colors.foreground)}' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
-                    backgroundRepeat: 'no-repeat',
-                    backgroundPosition: 'right 0.75rem center',
-                    paddingRight: '2.5rem',
-                  }}
+                  value={fraudTypeFilter || ''}
+                  onChange={(e) => setFraudTypeFilter(e.target.value || null)}
+                  style={filterStyles.select}
                 >
-                  <option value="">All Banks</option>
-                  {availableBanks.map((bank) => (
-                    <option key={bank} value={bank}>
-                      {bank}
-                    </option>
+                  <option value="">All Fraud Types</option>
+                  {availableFraudTypes.map(fraudType => (
+                    <option key={fraudType} value={fraudType}>{fraudType}</option>
                   ))}
                 </select>
-              </div>
-            )}
+              )}
 
-            {loadingChecksList ? (
-              <div style={{ textAlign: 'center', padding: '2rem' }}>
-                <FaCog className="spin" style={{ fontSize: '2rem', color: primary }} />
-                <p style={{ marginTop: '1rem', color: colors.mutedForeground }}>Loading checks...</p>
-              </div>
-            ) : checksList.length > 0 ? (
-              <div style={{
-                backgroundColor: colors.secondary,
-                borderRadius: '0.5rem',
-                border: `1px solid ${colors.border}`,
-                maxHeight: '400px',
-                overflowY: 'auto',
-                marginBottom: '1rem',
-              }}>
-                {checksList.map((check) => (
-                  <div
-                    key={check.check_id}
-                    onClick={() => {
-                      setSelectedCheckId(check.check_id);
-                      loadCheckData(checksList.filter(c => c.check_id === check.check_id));
-                    }}
-                    style={{
-                      padding: '1rem',
-                      borderBottom: `1px solid ${colors.border}`,
-                      cursor: 'pointer',
-                      transition: 'background-color 0.3s',
-                      backgroundColor: selectedCheckId === check.check_id ? colors.muted : 'transparent',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = colors.muted)}
-                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = selectedCheckId === check.check_id ? colors.muted : 'transparent')}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <p style={{ color: colors.foreground, fontWeight: '600', margin: '0 0 0.25rem 0' }}>
-                          {check.payer_name || 'Unknown Payer'}
-                        </p>
-                        <p style={{ color: colors.mutedForeground, fontSize: '0.875rem', margin: '0' }}>
-                          Check #{check.check_number || 'N/A'} • ${check.amount || 'N/A'}
-                        </p>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <span style={{
-                          backgroundColor: check.fraud_risk_score > 0.5 ? `${primary}20` : `${colors.status.success}20`,
-                          color: check.fraud_risk_score > 0.5 ? primary : colors.status.success,
-                          padding: '0.25rem 0.75rem',
-                          borderRadius: '0.25rem',
-                          fontSize: '0.875rem',
-                          fontWeight: '600',
-                        }}>
-                          {((check.fraud_risk_score || 0) * 100).toFixed(0)}% Risk
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div style={{
-                backgroundColor: colors.muted,
-                padding: '2rem',
-                borderRadius: '0.5rem',
-                textAlign: 'center',
-                color: colors.mutedForeground,
-                marginBottom: '1rem',
-              }}>
-                <p>No checks found in database</p>
-              </div>
-            )}
+              <button
+                onClick={() => {
+                  setSearchQuery('');
+                  setBankFilter(null);
+                  setDateFilter(null);
+                  setFraudTypeFilter(null);
+                  setCustomDateRange({ startDate: '', endDate: '' });
+                  setShowCustomDatePicker(false);
+                  fetchChecksList();
+                }}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '4px',
+                  border: `1px solid ${colors.border}`,
+                  backgroundColor: colors.secondary,
+                  color: colors.foreground,
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.backgroundColor = colors.muted;
+                  e.target.style.borderColor = primary;
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.backgroundColor = colors.secondary;
+                  e.target.style.borderColor = colors.border;
+                }}
+              >
+                <FaRedo /> Reset Filters
+              </button>
 
-            {error && inputMode === 'api' && (
-              <div style={{
-                backgroundColor: colors.accent.redLight,
-                color: colors.accent.red,
-                padding: '1rem',
-                borderRadius: '8px',
-                marginTop: '1rem',
-                fontWeight: '500',
-              }}>
-                {error}
-              </div>
-            )}
+              <span style={filterStyles.recordCount}>
+                Showing {filteredData.length} of {totalRecords} checks
+              </span>
+            </div>
           </>
+        )}
+
+        {inputMode === 'api' && error && (
+          <div style={{
+            backgroundColor: colors.accent.redLight,
+            color: colors.accent.red,
+            padding: '1rem',
+            borderRadius: '8px',
+            marginTop: '1rem',
+            fontWeight: '500',
+          }}>
+            {error}
+          </div>
         )}
       </div>
 
@@ -963,13 +961,6 @@ const CheckInsights = () => {
                   {csvData.metrics.highRiskCount || 0}
                 </div>
                 <div style={{ color: colors.mutedForeground }}>High-Risk Count (&gt;75%)</div>
-              </div>
-
-              <div style={metricCardStyle}>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: primary, marginBottom: '0.5rem' }}>
-                  {csvData.metrics.repeatOffenders || 0}
-                </div>
-                <div style={{ color: colors.mutedForeground }}>Repeat Offenders</div>
               </div>
             </div>
           </div>
@@ -1218,14 +1209,22 @@ const CheckInsights = () => {
                       ...bank,
                       displayName: (() => {
                         const name = bank.name.toUpperCase();
+                        // Common bank abbreviations
                         if (name.includes('BANK OF AMERICA') || name.includes('BOFA')) return 'BOFA';
                         if (name.includes('CHASE') || name.includes('JPM')) return 'JPMC';
                         if (name.includes('WELLS FARGO') || name.includes('WELLS')) return 'WF';
                         if (name.includes('CITIBANK') || name.includes('CITI')) return 'CITI';
                         if (name.includes('US BANK')) return 'USB';
                         if (name.includes('ALLY')) return 'ALLY';
+                        if (name.includes('CAPITAL ONE')) return 'CAP ONE';
+                        if (name.includes('REGIONS')) return 'REGIONS';
+                        if (name.includes('PNC')) return 'PNC';
+                        if (name.includes('TD BANK')) return 'TD';
+                        if (name.includes('USAA')) return 'USAA';
+                        if (name.includes('BMO')) return 'BMO';
+                        if (name.includes('BBVA')) return 'BBVA';
                         // Return shortened version if name is too long
-                        return bank.name.length > 10 ? bank.name.substring(0, 10) + '...' : bank.name;
+                        return bank.name.length > 15 ? bank.name.substring(0, 15) + '...' : bank.name;
                       })()
                     }))}
                     margin={{ top: 10, right: 30, left: 10, bottom: 60 }}
@@ -1250,6 +1249,7 @@ const CheckInsights = () => {
                       textAnchor="end"
                       height={80}
                       interval={0}
+                      tickMargin={8}
                     />
                     <YAxis
                       yAxisId="left"
@@ -1499,30 +1499,280 @@ const CheckInsights = () => {
               </div>
             )}
 
-            {csvData.fraudTrendData && csvData.fraudTrendData.length > 0 && (
+            {/* Fraud Type Distribution - Scatter Plot */}
+            {csvData.fraudTypeData && csvData.fraudTypeData.length > 0 && (
               <div style={chartBoxStyle}>
-                <h3 style={chartTitleStyle}>Fraud Trend Over Time</h3>
-                <ResponsiveContainer width="100%" height={320}>
-                  <LineChart data={csvData.fraudTrendData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                    <XAxis dataKey="date" stroke={colors.mutedForeground} />
-                    <YAxis yAxisId="left" stroke={colors.mutedForeground} />
-                    <YAxis yAxisId="right" orientation="right" stroke={colors.mutedForeground} />
-                    <Tooltip
-                      contentStyle={{
+                <h3 style={chartTitleStyle}>Fraud Type Distribution</h3>
+                {(() => {
+                  const total = csvData.fraudTypeData.reduce((sum, item) => sum + item.value, 0);
+                  const maxValue = Math.max(...csvData.fraudTypeData.map(e => e.value));
+                  const percentages = csvData.fraudTypeData.map(e => (e.value / total) * 100);
+                  const minPercentage = Math.min(...percentages);
+                  const maxPercentage = Math.max(...percentages);
+
+                  // Colors that complement DAD color scheme (red/navy theme)
+                  const COMPLEMENTARY_COLORS = [
+                    '#E53935', // Primary red (DAD)
+                    '#14B8A6', // Teal (complements red)
+                    '#F97316', // Orange/coral (warm complement)
+                    '#8B5CF6', // Purple (complements navy)
+                    '#06B6D4', // Cyan (bright complement)
+                    '#F59E0B', // Amber (warm accent)
+                    '#EC4899', // Pink (vibrant complement)
+                    '#10B981'  // Green (fresh complement)
+                  ];
+
+                  // Prepare scatter plot data with complementary colors and jitter to prevent overlapping
+                  const scatterData = csvData.fraudTypeData.map((entry, index) => {
+                    const percentage = total > 0 ? ((entry.value / total) * 100) : 0;
+                    return {
+                      name: entry.name,
+                      count: entry.value,
+                      percentage: parseFloat(percentage.toFixed(1)),
+                      size: entry.value, // For Z-axis (bubble size)
+                      color: COMPLEMENTARY_COLORS[index % COMPLEMENTARY_COLORS.length],
+                      index: index
+                    };
+                  });
+
+                  // Add jitter to prevent overlapping points
+                  const processedData = scatterData.map((entry, index) => {
+                    // Find other entries with same count and percentage
+                    const duplicates = scatterData.filter((e, i) =>
+                      i !== index &&
+                      e.count === entry.count &&
+                      Math.abs(e.percentage - entry.percentage) < 0.1
+                    );
+
+                    // Calculate jitter offset based on position among duplicates
+                    const duplicateIndex = scatterData.slice(0, index).filter((e) =>
+                      e.count === entry.count &&
+                      Math.abs(e.percentage - entry.percentage) < 0.1
+                    ).length;
+
+                    // Add small offset to prevent overlap (spread in a circle pattern)
+                    const jitterRadius = 0.8; // percentage points
+                    const angle = (duplicateIndex * (2 * Math.PI)) / (duplicates.length + 1);
+                    const jitterX = duplicateIndex > 0 ? Math.cos(angle) * jitterRadius : 0;
+                    const jitterY = duplicateIndex > 0 ? Math.sin(angle) * (jitterRadius * 2) : 0;
+
+                    return {
+                      ...entry,
+                      percentage: entry.percentage + jitterX,
+                      count: entry.count + jitterY
+                    };
+                  });
+
+                  return (
+                    <>
+                      <ResponsiveContainer width="100%" height={400}>
+                        <ScatterChart
+                          margin={{ top: 20, right: 30, bottom: 20, left: 20 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.3} />
+                          <XAxis
+                            type="number"
+                            dataKey="percentage"
+                            name="Percentage"
+                            domain={[minPercentage - 2, maxPercentage + 2]}
+                            tick={{ fill: colors.foreground, fontSize: 12 }}
+                            tickFormatter={(value) => `${value.toFixed(1)}%`}
+                            tickCount={8}
+                            allowDecimals={true}
+                            stroke={colors.border}
+                            label={{ value: 'Percentage (%)', position: 'insideBottom', offset: -5, fill: colors.foreground, fontSize: 12 }}
+                          />
+                          <YAxis
+                            type="number"
+                            dataKey="count"
+                            name="Count"
+                            domain={[0, 'dataMax + 5']}
+                            tick={{ fill: colors.foreground, fontSize: 12 }}
+                            stroke={colors.border}
+                            label={{ value: 'Count', angle: -90, position: 'insideLeft', fill: colors.foreground, fontSize: 12 }}
+                          />
+                          <ZAxis
+                            type="number"
+                            dataKey="size"
+                            range={[50, 300]}
+                            name="Size"
+                          />
+                          <Tooltip
+                            content={({ active, payload }) => {
+                              if (active && payload && payload.length) {
+                                const data = payload[0].payload;
+                                return (
+                                  <div style={{
+                                    backgroundColor: colors.card,
+                                    border: `2px solid ${primary}`,
+                                    borderRadius: '8px',
+                                    padding: '12px',
+                                    boxShadow: `0 4px 20px rgba(0, 0, 0, 0.8)`,
+                                    color: colors.foreground
+                                  }}>
+                                    <div style={{ fontWeight: 'bold', fontSize: '14px', marginBottom: '8px', borderBottom: `1px solid ${colors.border}`, paddingBottom: '4px' }}>
+                                      {data.name}
+                                    </div>
+                                    <div style={{ fontSize: '13px', marginTop: '4px' }}>
+                                      <span style={{ color: primary, fontWeight: 'bold' }}>Count:</span> {data.count}
+                                    </div>
+                                    <div style={{ fontSize: '13px', marginTop: '4px' }}>
+                                      <span style={{ color: primary, fontWeight: 'bold' }}>Percentage:</span> {data.percentage.toFixed(1)}%
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }}
+                          />
+                          <Scatter
+                            name="Fraud Types"
+                            data={processedData}
+                            fill={primary}
+                          >
+                            {processedData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Scatter>
+                        </ScatterChart>
+                      </ResponsiveContainer>
+
+                      {/* Custom Legend */}
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                        gap: '1rem',
+                        marginTop: '1rem',
+                        padding: '1rem',
                         backgroundColor: colors.card,
-                        border: `1px solid ${colors.border}`,
-                        color: colors.foreground
-                      }}
-                    />
-                    <Legend />
-                    <Line yAxisId="left" type="monotone" dataKey="avgRisk" stroke={primary} strokeWidth={2} name="Avg Risk Score %" />
-                    <Line yAxisId="right" type="monotone" dataKey="highRiskCount" stroke="#ef4444" strokeWidth={2} name="High-Risk Count" />
-                  </LineChart>
-                </ResponsiveContainer>
+                        borderRadius: '8px',
+                        border: `1px solid ${colors.border}`
+                      }}>
+                        {scatterData.map((entry, index) => (
+                          <div
+                            key={`legend-${index}`}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'flex-start',
+                              gap: '0.75rem',
+                              padding: '0.5rem',
+                              borderRadius: '6px',
+                              transition: 'all 0.2s ease',
+                              cursor: 'pointer'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = colors.secondary;
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = 'transparent';
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: '14px',
+                                height: '14px',
+                                borderRadius: '50%',
+                                backgroundColor: entry.color,
+                                border: `2px solid ${colors.border}`,
+                                flexShrink: 0,
+                                marginTop: '2px'
+                              }}
+                            />
+                            <div style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '0.25rem',
+                              flex: 1,
+                              minWidth: 0
+                            }}>
+                              <span style={{
+                                color: colors.foreground,
+                                fontSize: '13px',
+                                fontWeight: '600',
+                                lineHeight: '1.4',
+                                wordBreak: 'break-word'
+                              }}>
+                                {entry.name}
+                              </span>
+                              <span style={{
+                                color: colors.mutedForeground,
+                                fontSize: '11px',
+                                fontWeight: '500',
+                                lineHeight: '1.3'
+                              }}>
+                                {entry.count} cases ({entry.percentage.toFixed(1)}%)
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             )}
           </div>
+
+          {/* Fraud Trend Over Time - Full Width */}
+          {csvData.fraudTrendData && csvData.fraudTrendData.length > 0 && (
+            <div style={cardStyle}>
+              <h3 style={chartTitleStyle}>Fraud Trend Over Time</h3>
+              <ResponsiveContainer width="100%" height={400}>
+                <LineChart data={csvData.fraudTrendData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+                  <XAxis 
+                    dataKey="date" 
+                    stroke={colors.mutedForeground}
+                    tick={{ fill: colors.foreground, fontSize: 12 }}
+                    angle={-45}
+                    textAnchor="end"
+                    height={80}
+                  />
+                  <YAxis 
+                    yAxisId="left" 
+                    stroke={colors.mutedForeground}
+                    tick={{ fill: colors.foreground, fontSize: 12 }}
+                    label={{ value: 'Avg Risk Score %', angle: -90, position: 'insideLeft', fill: colors.foreground, fontSize: 12 }}
+                  />
+                  <YAxis 
+                    yAxisId="right" 
+                    orientation="right" 
+                    stroke={colors.mutedForeground}
+                    tick={{ fill: colors.foreground, fontSize: 12 }}
+                    label={{ value: 'High-Risk Count', angle: 90, position: 'insideRight', fill: colors.foreground, fontSize: 12 }}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: colors.card,
+                      border: `1px solid ${colors.border}`,
+                      color: colors.foreground
+                    }}
+                  />
+                  <Legend />
+                  <Line 
+                    yAxisId="left" 
+                    type="monotone" 
+                    dataKey="avgRisk" 
+                    stroke={primary} 
+                    strokeWidth={2} 
+                    name="Avg Risk Score %"
+                    dot={{ fill: primary, r: 4 }}
+                    activeDot={{ r: 6 }}
+                  />
+                  <Line 
+                    yAxisId="right" 
+                    type="monotone" 
+                    dataKey="highRiskCount" 
+                    stroke="#ef4444" 
+                    strokeWidth={2} 
+                    name="High-Risk Count"
+                    dot={{ fill: '#ef4444', r: 4 }}
+                    activeDot={{ r: 6 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
 
         </div>
       )}
