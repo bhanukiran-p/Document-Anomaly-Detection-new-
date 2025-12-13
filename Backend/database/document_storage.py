@@ -503,8 +503,12 @@ class DocumentStorage:
                 # AI Analysis results
                 'ai_recommendation': self._safe_string(ai_analysis.get('recommendation')) if ai_analysis else None,
                 'ai_confidence': self._parse_amount(ai_analysis.get('confidence_score')) if ai_analysis else None,
-                # Fraud type (primary fraud type from AI analysis)
-                'fraud_type': self._safe_string(ai_analysis.get('fraud_types', [None])[0]) if ai_analysis and ai_analysis.get('fraud_types') else None,
+                # Fraud type (primary fraud type from AI analysis) - convert underscores to spaces
+                'fraud_type': self._safe_string(
+                    ai_analysis.get('fraud_types', [None])[0].replace('_', ' ').title() 
+                    if ai_analysis and ai_analysis.get('fraud_types') and ai_analysis.get('fraud_types')[0] 
+                    else None
+                ),
                 # Anomaly data
                 'anomaly_count': len(analysis_data.get('anomalies', [])),
                 'top_anomalies': json.dumps(analysis_data.get('anomalies', [])[:5])
