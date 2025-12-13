@@ -4,9 +4,9 @@ import { colors } from '../styles/colors';
 import {
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Sector,
-  ComposedChart
+  ComposedChart, ScatterChart, Scatter, ZAxis
 } from 'recharts';
-import { FaUpload, FaCog } from 'react-icons/fa';
+import { FaUpload, FaCog, FaRedo } from 'react-icons/fa';
 
 // Custom Tooltip Component
 const CustomTooltip = ({ active, payload, label }) => {
@@ -42,10 +42,12 @@ const CheckInsights = () => {
   const [loadingChecksList, setLoadingChecksList] = useState(false);
   const [selectedCheckId, setSelectedCheckId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [dateFilter, setDateFilter] = useState(null); // null, 'last_30', 'last_60', 'last_90', 'older', 'custom'
+  const [dateFilter, setDateFilter] = useState(null); // null, 'last_30', 'last_60', 'last_90', 'custom'
   const [totalRecords, setTotalRecords] = useState(0);
   const [bankFilter, setBankFilter] = useState(null);
+  const [fraudTypeFilter, setFraudTypeFilter] = useState(null);
   const [availableBanks, setAvailableBanks] = useState([]);
+  const [availableFraudTypes, setAvailableFraudTypes] = useState([]);
   const [allChecksData, setAllChecksData] = useState([]);
   const [activePieIndex, setActivePieIndex] = useState(null);
   const [activeBarIndex, setActiveBarIndex] = useState(null);
@@ -128,13 +130,18 @@ const CheckInsights = () => {
       bankRisks[bank].count++;
       bankRisks[bank].totalRisk += parseFloat_(r['RiskScore'] || r['fraud_risk_score'] || 0);
     });
-    const riskByBankData = Object.entries(bankRisks)
+    
+    // Sort banks by count (most checks first), then limit to top 5
+    const allBanks = Object.entries(bankRisks)
       .map(([name, data]) => ({
         name,
-        avgRisk: parseFloat(((data.totalRisk / data.count) * 100).toFixed(1)), // Convert to number for line chart
+        avgRisk: parseFloat(((data.totalRisk / data.count) * 100).toFixed(1)),
         count: data.count
       }))
-      .sort((a, b) => b.avgRisk - a.avgRisk); // Sort by risk, but show all banks
+      .sort((a, b) => b.count - a.count); // Sort by count first
+    
+    const TOP_BANKS_LIMIT = 5;
+    const riskByBankData = allBanks.slice(0, TOP_BANKS_LIMIT);
 
     // 4. Top High-Risk Payers
     const payerRisks = {};
@@ -158,9 +165,8 @@ const CheckInsights = () => {
         count: data.count,
         maxRisk: data.maxRisk.toFixed(1)
       }))
-      .filter(item => parseFloat(item.avgRisk) >= 50)
       .sort((a, b) => parseFloat(b.avgRisk) - parseFloat(a.avgRisk))
-      .slice(0, 10);
+      .slice(0, 10); // Always show top 10 payers by risk, regardless of threshold
 
     // 5. Payees with Highest Fraud Incidents (Count of REJECT/ESCALATE or high risk >= 75%)
     const payeeFraudIncidents = {};
@@ -188,40 +194,105 @@ const CheckInsights = () => {
       .sort((a, b) => b.fraudCount - a.fraudCount)
       .slice(0, 10);
 
-    // 6. Fraud Over Time (High-Risk Count and Avg Risk)
-    const fraudOverTime = {};
+    // 6. Fraud Type Distribution
+    const fraudTypeCount = {};
     rows.forEach(r => {
-      const dateStr = r['CheckDate'] || r['check_date'] || r['created_at'] || '';
-      if (dateStr) {
-        const date = dateStr.split('T')[0];
-        if (!fraudOverTime[date]) {
-          fraudOverTime[date] = { count: 0, highRiskCount: 0, totalRisk: 0 };
-        }
-        const risk = parseFloat_(r['RiskScore'] || r['fraud_risk_score'] || 0) * 100;
-        fraudOverTime[date].count++;
-        fraudOverTime[date].totalRisk += risk;
-        if (risk >= 75) {
-          fraudOverTime[date].highRiskCount++;
+      let fraudType = r['fraud_type'] || r['fraud_types'];
+      
+      // Handle different data formats: string, array, or null/undefined
+      if (Array.isArray(fraudType)) {
+        // If it's an array, process each element
+        fraudType.forEach(ft => {
+          const typeStr = String(ft || '').trim();
+          if (typeStr && typeStr !== 'No Flag' && typeStr !== 'null' && typeStr !== 'undefined') {
+            fraudTypeCount[typeStr] = (fraudTypeCount[typeStr] || 0) + 1;
+          }
+        });
+      } else {
+        // If it's a string or other type
+        const typeStr = String(fraudType || 'No Flag').trim();
+        if (typeStr && typeStr !== 'No Flag' && typeStr !== 'null' && typeStr !== 'undefined' && typeStr.length > 0) {
+          fraudTypeCount[typeStr] = (fraudTypeCount[typeStr] || 0) + 1;
         }
       }
     });
-    const fraudTrendData = Object.entries(fraudOverTime)
-      .map(([date, data]) => ({
-        date,
-        avgRisk: (data.totalRisk / data.count).toFixed(1),
+
+    const fraudTypeData = Object.entries(fraudTypeCount)
+      .map(([name, count]) => ({
+        name: name.replace(/_/g, ' ').trim() || 'Unknown Fraud Type',
+        value: count
+      }))
+      .filter(item => item.name && item.name !== 'Unknown Fraud Type' || item.value > 0)
+      .sort((a, b) => b.value - a.value);
+
+    // 7. Weekly Trend Data (High-Risk Activity and Average Risk Score)
+    const weeklyData = {};
+    
+    // Helper function to get week start date (Monday)
+    const getWeekStart = (date) => {
+      const d = new Date(date);
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
+      return new Date(d.setDate(diff));
+    };
+    
+    // Helper function to format week label
+    const formatWeekLabel = (weekStart) => {
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      const monthStart = weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const monthEnd = weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      return `${monthStart} - ${monthEnd}`;
+    };
+    
+    rows.forEach(r => {
+      const dateStr = r['CheckDate'] || r['check_date'] || r['created_at'] || '';
+      if (dateStr) {
+        const date = new Date(dateStr.split('T')[0]);
+        if (isNaN(date.getTime())) return;
+        
+        const weekStart = getWeekStart(date);
+        const weekKey = weekStart.toISOString().split('T')[0];
+        
+        if (!weeklyData[weekKey]) {
+          weeklyData[weekKey] = {
+            weekStart: weekStart,
+            count: 0,
+            highRiskCount: 0,
+            rejectCount: 0,
+            totalRisk: 0
+          };
+        }
+        
+        const risk = parseFloat_(r['RiskScore'] || r['fraud_risk_score'] || 0) * 100;
+        const recommendation = (r['Decision'] || r['ai_recommendation'] || '').toUpperCase();
+        
+        weeklyData[weekKey].count++;
+        weeklyData[weekKey].totalRisk += risk;
+        
+        // Count high-risk: REJECT recommendation OR risk >= 75%
+        if (recommendation === 'REJECT' || risk >= 75) {
+          weeklyData[weekKey].highRiskCount++;
+        }
+        
+        if (recommendation === 'REJECT') {
+          weeklyData[weekKey].rejectCount++;
+        }
+      }
+    });
+    
+    // Process weekly data into arrays for charts
+    const weeklyTrendData = Object.entries(weeklyData)
+      .map(([weekKey, data]) => ({
+        weekKey,
+        weekLabel: formatWeekLabel(data.weekStart),
+        avgRisk: data.count > 0 ? parseFloat((data.totalRisk / data.count).toFixed(1)) : 0,
         highRiskCount: data.highRiskCount,
+        rejectCount: data.rejectCount,
         totalCount: data.count
       }))
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .slice(-30);
-
-
-
-    // 9. Repeat Offenders (Payers with multiple high-risk checks)
-    const repeatOffenders = Object.entries(payerRisks)
-      .filter(([name, data]) => data.count > 1 && parseFloat((data.totalRisk / data.count).toFixed(1)) >= 50)
-      .length;
-
+      .sort((a, b) => a.weekKey.localeCompare(b.weekKey))
+      .slice(-12); // Last 12 weeks
 
     // 11. High-Risk Count (>75%)
     const highRiskCount = riskScoresPercent.filter(s => s >= 75).length;
@@ -241,15 +312,15 @@ const CheckInsights = () => {
       riskByBankData,
       topHighRiskPayers,
       topFraudIncidentPayees, // Payees with highest fraud incidents
-      fraudTrendData,
+      fraudTypeData,
+      weeklyTrendData,
       metrics: {
         totalChecks,
         avgRiskScore,
         approveCount,
         rejectCount,
         escalateCount,
-        highRiskCount,
-        repeatOffenders
+        highRiskCount
       }
     };
   };
@@ -334,6 +405,15 @@ const CheckInsights = () => {
         const uniqueBanks = [...new Set(fetchedData.map(check => check.bank_name).filter(Boolean))].sort();
         setAvailableBanks(uniqueBanks);
 
+        // Extract unique fraud types from the data
+        const uniqueFraudTypes = [...new Set(
+          fetchedData
+            .map(check => check.fraud_type)
+            .filter(Boolean)
+            .map(ft => ft.trim())
+        )].sort();
+        setAvailableFraudTypes(uniqueFraudTypes);
+
         // Apply bank filter if specified
         let filteredData = fetchedData;
         if (bank) {
@@ -346,12 +426,7 @@ const CheckInsights = () => {
         setChecksList(filteredData);
         setTotalRecords(data.total_records || data.count);
         setDateFilter(filter);
-        // Auto-load all checks as insights if data exists
-        if (filteredData.length > 0) {
-          loadCheckData(filteredData);
-        } else {
-          setError('No checks found for the selected filters');
-        }
+        // Don't call loadCheckData here - let the useEffect handle it with current filters
       } else {
         setError(data.message || 'Failed to fetch checks');
         setCsvData(null);
@@ -412,6 +487,8 @@ const CheckInsights = () => {
         'RiskScore': check.fraud_risk_score || 0,
         'ai_recommendation': check.ai_recommendation || 'UNKNOWN',
         'Decision': check.ai_recommendation || 'UNKNOWN',
+        'fraud_type': check.fraud_type || '',
+        'fraud_types': check.fraud_type || '',
         'bank_name': check.bank_name || 'Unknown',
         'BankName': check.bank_name || 'Unknown',
         'check_number': check.check_number || 'N/A',
@@ -448,6 +525,184 @@ const CheckInsights = () => {
       fetchChecksList();
     }
   }, []); // Empty dependency array - only run on mount
+
+  // Filter data based on active filters (similar to PaystubInsights)
+  const getFilteredData = () => {
+    let filtered = allChecksData;
+
+    // Filter by bank
+    if (bankFilter && bankFilter !== '' && bankFilter !== 'All Banks') {
+      filtered = filtered.filter(c => c.bank_name === bankFilter);
+    }
+
+
+    // Filter by date range (using check_date, not created_at)
+    if (dateFilter) {
+      if (dateFilter === 'custom' && (customDateRange.startDate || customDateRange.endDate)) {
+        filtered = filtered.filter(c => {
+          const checkDate = new Date(c.check_date || c.CheckDate || c.created_at || c.timestamp);
+          const startDate = customDateRange.startDate ? new Date(customDateRange.startDate) : null;
+          const endDate = customDateRange.endDate ? new Date(customDateRange.endDate) : null;
+
+          if (startDate && endDate) {
+            return checkDate >= startDate && checkDate <= endDate;
+          } else if (startDate) {
+            return checkDate >= startDate;
+          } else if (endDate) {
+            return checkDate <= endDate;
+          }
+          return true;
+        });
+      } else {
+        const now = new Date();
+        const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+        const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+        filtered = filtered.filter(c => {
+          const checkDate = new Date(c.check_date || c.CheckDate || c.created_at || c.timestamp);
+          if (dateFilter === 'last_30') return checkDate >= thirtyDaysAgo;
+          if (dateFilter === 'last_60') return checkDate >= sixtyDaysAgo; // Last 60 days (includes last 30)
+          if (dateFilter === 'last_90') return checkDate >= ninetyDaysAgo; // Last 90 days (includes last 60 and last 30)
+          return true;
+        });
+      }
+    }
+
+    // Filter by fraud type
+    if (fraudTypeFilter && fraudTypeFilter !== '' && fraudTypeFilter !== 'All Fraud Types') {
+      filtered = filtered.filter(c => {
+        const fraudType = c.fraud_type;
+        if (!fraudType) return false;
+        const normalizedFilter = fraudTypeFilter.toLowerCase().trim();
+        const typeStr = String(fraudType || '').trim().toLowerCase();
+        return typeStr === normalizedFilter;
+      });
+    }
+
+    return filtered;
+  };
+
+  const filteredData = getFilteredData();
+  
+  // Process filtered data on every render (like PaystubInsights) - ensures filters always work
+  // Transform filtered data to format expected by processData
+  const processedData = (() => {
+    if (inputMode === 'api' && filteredData.length > 0) {
+      const rows = filteredData.map(check => ({
+        'fraud_risk_score': check.fraud_risk_score || 0,
+        'RiskScore': check.fraud_risk_score || 0,
+        'ai_recommendation': check.ai_recommendation || 'UNKNOWN',
+        'Decision': check.ai_recommendation || 'UNKNOWN',
+        'fraud_type': check.fraud_type || '',
+        'fraud_types': check.fraud_type || '',
+        'bank_name': check.bank_name || 'Unknown',
+        'BankName': check.bank_name || 'Unknown',
+        'check_number': check.check_number || 'N/A',
+        'CheckNumber': check.check_number || 'N/A',
+        'amount': check.amount || 0,
+        'Amount': check.amount || 0,
+        'payer_name': check.payer_name || '',
+        'PayerName': check.payer_name || '',
+        'payee_name': check.payee_name || '',
+        'PayeeName': check.payee_name || '',
+        'check_date': check.check_date || '',
+        'CheckDate': check.check_date || '',
+        'created_at': check.created_at || check.timestamp || '',
+        'model_confidence': check.model_confidence || 0,
+        'Confidence': check.model_confidence || 0,
+        'confidence': check.model_confidence || 0,
+      }));
+      return processData(rows);
+    }
+    return null;
+  })();
+  
+  // Use processedData when available (from filters), fallback to csvData (for CSV upload mode)
+  const displayData = processedData || csvData;
+  
+  // Helper functions to determine chart visibility based on filter rules
+  const shouldShowChart = {
+    // Risk Level by Bank: Hide when single bank filter OR search by payer
+    riskByBank: () => {
+      // Single bank filter - hide
+      if (bankFilter && bankFilter !== '' && bankFilter !== 'All Banks') {
+        return false;
+      }
+      // Multiple banks (no filter) - show
+      return true;
+    },
+    
+    // Fraud Type Distribution: Hide when filtered to single fraud type
+    fraudTypeDistribution: () => {
+      // Single fraud type filter - hide
+      if (fraudTypeFilter && fraudTypeFilter !== '' && fraudTypeFilter !== 'All Fraud Types') {
+        return false;
+      }
+      return true;
+    },
+    
+    // Top High-Risk Payers: Show always, but limit to top 5 for very short time windows
+    topHighRiskPayers: () => {
+      return true;
+    },
+    
+    // Get limit for Top High-Risk Payers based on time window
+    topHighRiskPayersLimit: () => {
+      // For custom date ranges, check if it's ≤7 days
+      if (dateFilter === 'custom' && customDateRange.startDate && customDateRange.endDate) {
+        const start = new Date(customDateRange.startDate);
+        const end = new Date(customDateRange.endDate);
+        const daysDiff = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+        if (daysDiff <= 7) {
+          return 5; // Limit to top 5 for very short windows
+        }
+      }
+      return 10; // Default to top 10
+    },
+    
+    // Payees with Highest Fraud Incidents: Hide when search by payer
+    topFraudIncidentPayees: () => {
+      // Always show unless search by payer (which we removed, but keeping for future)
+      return true;
+    },
+    
+    // AI Decision Breakdown: Hide when filtered by fraud type
+    aiDecisionBreakdown: () => {
+      // Single fraud type filter - hide
+      if (fraudTypeFilter && fraudTypeFilter !== '' && fraudTypeFilter !== 'All Fraud Types') {
+        return false;
+      }
+      return true;
+    },
+    
+    // Risk Score Distribution: Always show
+    riskScoreDistribution: () => true,
+    
+    // Time-based charts: Always show
+    weeklyTrends: () => true
+  };
+  
+  // Check if we have a single entity filter (single bank OR single fraud type)
+  const hasSingleEntityFilter = () => {
+    const hasSingleBank = bankFilter && bankFilter !== '' && bankFilter !== 'All Banks';
+    const hasSingleFraudType = fraudTypeFilter && fraudTypeFilter !== '' && fraudTypeFilter !== 'All Fraud Types';
+    return hasSingleBank || hasSingleFraudType;
+  };
+  
+  // Initial data load - process and set csvData for CSV upload mode
+  // For API mode, we process on every render above, so this is mainly for initial CSV load
+  useEffect(() => {
+    if (inputMode === 'api' && allChecksData.length > 0 && !processedData) {
+      // Only set initial data if we don't have processedData yet
+      // This handles the initial load case
+      const currentFiltered = getFilteredData();
+      if (currentFiltered.length > 0) {
+        loadCheckData(currentFiltered);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allChecksData.length]);
 
   const primary = colors.primaryColor || colors.accent?.red || '#E53935';
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
@@ -526,167 +781,120 @@ const CheckInsights = () => {
     textAlign: 'center',
   };
 
+  // Styles matching PaystubInsights
+  const filterStyles = {
+    filtersSection: {
+      display: 'flex',
+      gap: '10px',
+      marginBottom: '20px',
+      alignItems: 'center',
+      flexWrap: 'wrap'
+    },
+    searchInput: {
+      padding: '8px 12px',
+      border: `1px solid ${colors.border}`,
+      borderRadius: '4px',
+      fontSize: '14px',
+      flex: 1,
+      minWidth: '200px',
+      backgroundColor: colors.card,
+      color: colors.foreground
+    },
+    select: {
+      padding: '8px 12px',
+      border: `1px solid ${colors.border}`,
+      borderRadius: '4px',
+      fontSize: '14px',
+      backgroundColor: colors.card,
+      color: colors.foreground,
+      cursor: 'pointer'
+    },
+    recordCount: {
+      fontSize: '12px',
+      color: colors.mutedForeground,
+      whiteSpace: 'nowrap'
+    },
+    kpiContainer: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+      gap: '15px',
+      marginBottom: '30px'
+    },
+    kpiCard: {
+      backgroundColor: colors.card,
+      padding: '20px',
+      borderRadius: '8px',
+      border: `1px solid ${colors.border}`,
+      textAlign: 'center'
+    },
+    kpiValue: {
+      fontSize: '24px',
+      fontWeight: 'bold',
+      color: colors.accent.red,
+      marginBottom: '8px'
+    },
+    kpiLabel: {
+      fontSize: '12px',
+      color: colors.mutedForeground,
+      textTransform: 'uppercase'
+    }
+  };
+
   return (
     <div style={containerStyle}>
-      <div style={cardStyle}>
-        <h2 style={{ color: colors.foreground, marginBottom: '1.5rem' }}>
-          {inputMode === 'upload' ? 'Check Insights from CSV' : 'Check Insights from Database'}
-        </h2>
+      {/* Filters Section - Matching PaystubInsights Style */}
+      {inputMode === 'api' && displayData && (
+        <div style={filterStyles.filtersSection}>
+              {availableBanks.length > 0 && (
+                <select
+                  value={bankFilter || ''}
+                  onChange={(e) => setBankFilter(e.target.value || null)}
+                  style={filterStyles.select}
+                >
+                  <option value="">All Banks</option>
+                  {availableBanks.map(bank => (
+                    <option key={bank} value={bank}>{bank}</option>
+                  ))}
+                </select>
+              )}
 
-
-
-        {inputMode === 'api' && (
-          <>
-            <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ display: 'block', color: colors.foreground, marginBottom: '0.5rem', fontWeight: '500' }}>
-                Search by Payer Name:
-              </label>
-              <input
-                type="text"
-                placeholder="Search checks by payer name..."
-                value={searchQuery}
+              <select
+                value={dateFilter || ''}
                 onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  handleSearchChecks(e.target.value);
+                  const value = e.target.value || null;
+                  if (value === 'custom') {
+                    setShowCustomDatePicker(true);
+                  } else {
+                    setShowCustomDatePicker(false);
+                    setDateFilter(value);
+                    // Don't call fetchChecksList - let useEffect handle filtering locally
+                  }
                 }}
-                style={{
-                  width: '100%',
-                  padding: '0.75rem',
-                  borderRadius: '0.5rem',
-                  backgroundColor: colors.secondary,
-                  color: colors.foreground,
-                  border: `1px solid ${colors.border}`,
-                  fontSize: '1rem',
-                }}
-              />
-            </div>
-
-            {/* Date Filter Section */}
-            <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ display: 'block', color: colors.foreground, marginBottom: '0.75rem', fontWeight: '500' }}>
-                Filter by Created Date {totalRecords > 0 && <span style={{ color: colors.mutedForeground, fontWeight: '400', fontSize: '0.9rem' }}>({totalRecords} total records)</span>}
-              </label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.5rem' }}>
-                <button
-                  onClick={() => fetchChecksList(null, bankFilter)}
-                  style={{
-                    padding: '0.75rem',
-                    borderRadius: '0.5rem',
-                    backgroundColor: dateFilter === null ? primary : colors.secondary,
-                    color: dateFilter === null ? colors.primaryForeground : colors.foreground,
-                    border: `1px solid ${colors.border}`,
-                    cursor: 'pointer',
-                    fontWeight: dateFilter === null ? '600' : '500',
-                    transition: 'all 0.3s',
-                  }}
-                  onMouseEnter={(e) => !loadingChecksList && dateFilter !== null && (e.target.style.backgroundColor = colors.muted)}
-                  onMouseLeave={(e) => !loadingChecksList && dateFilter !== null && (e.target.style.backgroundColor = colors.secondary)}
-                >
-                  All Records
-                </button>
-                <button
-                  onClick={() => fetchChecksList('last_30', bankFilter)}
-                  style={{
-                    padding: '0.75rem',
-                    borderRadius: '0.5rem',
-                    backgroundColor: dateFilter === 'last_30' ? primary : colors.secondary,
-                    color: dateFilter === 'last_30' ? colors.primaryForeground : colors.foreground,
-                    border: `1px solid ${colors.border}`,
-                    cursor: 'pointer',
-                    fontWeight: dateFilter === 'last_30' ? '600' : '500',
-                    transition: 'all 0.3s',
-                  }}
-                  onMouseEnter={(e) => !loadingChecksList && dateFilter !== 'last_30' && (e.target.style.backgroundColor = colors.muted)}
-                  onMouseLeave={(e) => !loadingChecksList && dateFilter !== 'last_30' && (e.target.style.backgroundColor = colors.secondary)}
-                >
-                  Last 30
-                </button>
-                <button
-                  onClick={() => fetchChecksList('last_60', bankFilter)}
-                  style={{
-                    padding: '0.75rem',
-                    borderRadius: '0.5rem',
-                    backgroundColor: dateFilter === 'last_60' ? primary : colors.secondary,
-                    color: dateFilter === 'last_60' ? colors.primaryForeground : colors.foreground,
-                    border: `1px solid ${colors.border}`,
-                    cursor: 'pointer',
-                    fontWeight: dateFilter === 'last_60' ? '600' : '500',
-                    transition: 'all 0.3s',
-                  }}
-                  onMouseEnter={(e) => !loadingChecksList && dateFilter !== 'last_60' && (e.target.style.backgroundColor = colors.muted)}
-                  onMouseLeave={(e) => !loadingChecksList && dateFilter !== 'last_60' && (e.target.style.backgroundColor = colors.secondary)}
-                >
-                  Last 60
-                </button>
-                <button
-                  onClick={() => fetchChecksList('last_90', bankFilter)}
-                  style={{
-                    padding: '0.75rem',
-                    borderRadius: '0.5rem',
-                    backgroundColor: dateFilter === 'last_90' ? primary : colors.secondary,
-                    color: dateFilter === 'last_90' ? colors.primaryForeground : colors.foreground,
-                    border: `1px solid ${colors.border}`,
-                    cursor: 'pointer',
-                    fontWeight: dateFilter === 'last_90' ? '600' : '500',
-                    transition: 'all 0.3s',
-                  }}
-                  onMouseEnter={(e) => !loadingChecksList && dateFilter !== 'last_90' && (e.target.style.backgroundColor = colors.muted)}
-                  onMouseLeave={(e) => !loadingChecksList && dateFilter !== 'last_90' && (e.target.style.backgroundColor = colors.secondary)}
-                >
-                  Last 90
-                </button>
-                <button
-                  onClick={() => fetchChecksList('older', bankFilter)}
-                  style={{
-                    padding: '0.75rem',
-                    borderRadius: '0.5rem',
-                    backgroundColor: dateFilter === 'older' ? primary : colors.secondary,
-                    color: dateFilter === 'older' ? colors.primaryForeground : colors.foreground,
-                    border: `1px solid ${colors.border}`,
-                    cursor: 'pointer',
-                    fontWeight: dateFilter === 'older' ? '600' : '500',
-                    transition: 'all 0.3s',
-                  }}
-                  onMouseEnter={(e) => !loadingChecksList && dateFilter !== 'older' && (e.target.style.backgroundColor = colors.muted)}
-                  onMouseLeave={(e) => !loadingChecksList && dateFilter !== 'older' && (e.target.style.backgroundColor = colors.secondary)}
-                >
-                  Older
-                </button>
-                <button
-                  onClick={() => setShowCustomDatePicker(!showCustomDatePicker)}
-                  style={{
-                    padding: '0.75rem',
-                    borderRadius: '0.5rem',
-                    backgroundColor: dateFilter === 'custom' ? primary : colors.secondary,
-                    color: dateFilter === 'custom' ? colors.primaryForeground : colors.foreground,
-                    border: `1px solid ${colors.border}`,
-                    cursor: 'pointer',
-                    fontWeight: dateFilter === 'custom' ? '600' : '500',
-                    transition: 'all 0.3s',
-                  }}
-                  onMouseEnter={(e) => !loadingChecksList && dateFilter !== 'custom' && (e.target.style.backgroundColor = colors.muted)}
-                  onMouseLeave={(e) => !loadingChecksList && dateFilter !== 'custom' && (e.target.style.backgroundColor = colors.secondary)}
-                >
-                  Custom Range
-                </button>
-              </div>
+                style={filterStyles.select}
+              >
+                <option value="">All Time</option>
+                <option value="last_30">Last 30 Days</option>
+                <option value="last_60">Last 60 Days</option>
+                <option value="last_90">Last 90 Days</option>
+                <option value="custom">Custom Range</option>
+              </select>
 
               {/* Custom Date Range Picker */}
               {showCustomDatePicker && (
                 <div style={{
-                  marginTop: '1rem',
-                  padding: '1.5rem',
+                  gridColumn: '1 / -1',
+                  padding: '16px',
                   backgroundColor: colors.card,
                   border: `1px solid ${colors.border}`,
-                  borderRadius: '0.5rem',
+                  borderRadius: '8px',
                   boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
                 }}>
-                  <div style={{ marginBottom: '1rem', fontWeight: '600', color: colors.foreground }}>
+                  <div style={{ marginBottom: '12px', fontWeight: '600', color: colors.foreground }}>
                     Select Custom Date Range
                   </div>
-                  <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                    <div style={{ flex: '1', minWidth: '200px' }}>
-                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '14px', color: colors.mutedForeground }}>
+                  <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                    <div style={{ flex: '1', minWidth: '180px' }}>
+                      <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: colors.mutedForeground }}>
                         Start Date
                       </label>
                       <input
@@ -695,17 +903,17 @@ const CheckInsights = () => {
                         onChange={(e) => setCustomDateRange({ ...customDateRange, startDate: e.target.value })}
                         style={{
                           width: '100%',
-                          padding: '0.75rem',
-                          borderRadius: '0.5rem',
+                          padding: '8px',
+                          borderRadius: '4px',
                           border: `1px solid ${colors.border}`,
-                          fontSize: '14px',
+                          fontSize: '13px',
                           backgroundColor: colors.secondary,
                           color: colors.foreground
                         }}
                       />
                     </div>
-                    <div style={{ flex: '1', minWidth: '200px' }}>
-                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '14px', color: colors.mutedForeground }}>
+                    <div style={{ flex: '1', minWidth: '180px' }}>
+                      <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: colors.mutedForeground }}>
                         End Date
                       </label>
                       <input
@@ -714,16 +922,16 @@ const CheckInsights = () => {
                         onChange={(e) => setCustomDateRange({ ...customDateRange, endDate: e.target.value })}
                         style={{
                           width: '100%',
-                          padding: '0.75rem',
-                          borderRadius: '0.5rem',
+                          padding: '8px',
+                          borderRadius: '4px',
                           border: `1px solid ${colors.border}`,
-                          fontSize: '14px',
+                          fontSize: '13px',
                           backgroundColor: colors.secondary,
                           color: colors.foreground
                         }}
                       />
                     </div>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', gap: '8px' }}>
                       <button
                         onClick={() => {
                           if (!customDateRange.startDate && !customDateRange.endDate) {
@@ -737,17 +945,18 @@ const CheckInsights = () => {
                           }
                           setDateFilter('custom');
                           setShowCustomDatePicker(false);
-                          fetchChecksList(null, bankFilter, customDateRange);
+                          fetchChecksList('custom', bankFilter, customDateRange);
                         }}
                         style={{
-                          padding: '0.75rem 1.5rem',
-                          borderRadius: '0.5rem',
+                          padding: '8px 20px',
+                          borderRadius: '4px',
                           backgroundColor: primary,
                           color: colors.primaryForeground,
                           border: 'none',
                           cursor: 'pointer',
                           fontWeight: '600',
-                          transition: 'all 0.3s',
+                          fontSize: '13px',
+                          transition: 'all 0.2s',
                         }}
                       >
                         Apply
@@ -756,16 +965,18 @@ const CheckInsights = () => {
                         onClick={() => {
                           setShowCustomDatePicker(false);
                           setCustomDateRange({ startDate: '', endDate: '' });
+                          setDateFilter(null);
                         }}
                         style={{
-                          padding: '0.75rem 1.5rem',
-                          borderRadius: '0.5rem',
+                          padding: '8px 20px',
+                          borderRadius: '4px',
                           backgroundColor: colors.secondary,
                           color: colors.foreground,
                           border: `1px solid ${colors.border}`,
                           cursor: 'pointer',
                           fontWeight: '600',
-                          transition: 'all 0.3s',
+                          fontSize: '13px',
+                          transition: 'all 0.2s',
                         }}
                       >
                         Cancel
@@ -774,214 +985,169 @@ const CheckInsights = () => {
                   </div>
                 </div>
               )}
-            </div>
 
-            {/* Bank Filter Section */}
-            {availableBanks.length > 0 && (
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', color: colors.foreground, marginBottom: '0.5rem', fontWeight: '500' }}>
-                  Filter by Bank:
-                </label>
+              {availableFraudTypes.length > 0 && (
                 <select
-                  value={bankFilter || ''}
-                  onChange={(e) => {
-                    const selectedBank = e.target.value || null;
-                    setBankFilter(selectedBank);
-                    // Filter from full dataset by bank
-                    if (selectedBank) {
-                      const filtered = allChecksData.filter(check => check.bank_name === selectedBank);
-                      setChecksList(filtered);
-                      if (filtered.length > 0) {
-                        loadCheckData(filtered);
-                      } else {
-                        setError('No checks found for this bank');
-                      }
-                    } else {
-                      // Show all data from current fetch
-                      setChecksList(allChecksData);
-                      if (allChecksData.length > 0) {
-                        loadCheckData(allChecksData);
-                      } else {
-                        fetchChecksList(dateFilter);
-                      }
-                    }
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    borderRadius: '0.5rem',
-                    backgroundColor: colors.secondary,
-                    color: colors.foreground,
-                    border: `1px solid ${colors.border}`,
-                    fontSize: '1rem',
-                    cursor: 'pointer',
-                    appearance: 'none',
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='${encodeURIComponent(colors.foreground)}' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
-                    backgroundRepeat: 'no-repeat',
-                    backgroundPosition: 'right 0.75rem center',
-                    paddingRight: '2.5rem',
-                  }}
+                  value={fraudTypeFilter || ''}
+                  onChange={(e) => setFraudTypeFilter(e.target.value || null)}
+                  style={filterStyles.select}
                 >
-                  <option value="">All Banks</option>
-                  {availableBanks.map((bank) => (
-                    <option key={bank} value={bank}>
-                      {bank}
-                    </option>
+                  <option value="">All Fraud Types</option>
+                  {availableFraudTypes.map(fraudType => (
+                    <option key={fraudType} value={fraudType}>{fraudType}</option>
                   ))}
                 </select>
-              </div>
-            )}
+              )}
 
-            {loadingChecksList ? (
-              <div style={{ textAlign: 'center', padding: '2rem' }}>
-                <FaCog className="spin" style={{ fontSize: '2rem', color: primary }} />
-                <p style={{ marginTop: '1rem', color: colors.mutedForeground }}>Loading checks...</p>
-              </div>
-            ) : checksList.length > 0 ? (
-              <div style={{
-                backgroundColor: colors.secondary,
-                borderRadius: '0.5rem',
-                border: `1px solid ${colors.border}`,
-                maxHeight: '400px',
-                overflowY: 'auto',
-                marginBottom: '1rem',
-              }}>
-                {checksList.map((check) => (
-                  <div
-                    key={check.check_id}
-                    onClick={() => {
-                      setSelectedCheckId(check.check_id);
-                      loadCheckData(checksList.filter(c => c.check_id === check.check_id));
-                    }}
-                    style={{
-                      padding: '1rem',
-                      borderBottom: `1px solid ${colors.border}`,
-                      cursor: 'pointer',
-                      transition: 'background-color 0.3s',
-                      backgroundColor: selectedCheckId === check.check_id ? colors.muted : 'transparent',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = colors.muted)}
-                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = selectedCheckId === check.check_id ? colors.muted : 'transparent')}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <p style={{ color: colors.foreground, fontWeight: '600', margin: '0 0 0.25rem 0' }}>
-                          {check.payer_name || 'Unknown Payer'}
-                        </p>
-                        <p style={{ color: colors.mutedForeground, fontSize: '0.875rem', margin: '0' }}>
-                          Check #{check.check_number || 'N/A'} • ${check.amount || 'N/A'}
-                        </p>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <span style={{
-                          backgroundColor: check.fraud_risk_score > 0.5 ? `${primary}20` : `${colors.status.success}20`,
-                          color: check.fraud_risk_score > 0.5 ? primary : colors.status.success,
-                          padding: '0.25rem 0.75rem',
-                          borderRadius: '0.25rem',
-                          fontSize: '0.875rem',
-                          fontWeight: '600',
-                        }}>
-                          {((check.fraud_risk_score || 0) * 100).toFixed(0)}% Risk
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div style={{
-                backgroundColor: colors.muted,
-                padding: '2rem',
-                borderRadius: '0.5rem',
-                textAlign: 'center',
-                color: colors.mutedForeground,
-                marginBottom: '1rem',
-              }}>
-                <p>No checks found in database</p>
-              </div>
-            )}
+              <button
+                onClick={() => {
+                  setSearchQuery('');
+                  setBankFilter(null);
+                  setDateFilter(null);
+                  setFraudTypeFilter(null);
+                  setCustomDateRange({ startDate: '', endDate: '' });
+                  setShowCustomDatePicker(false);
+                  fetchChecksList();
+                }}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '4px',
+                  border: `1px solid ${colors.border}`,
+                  backgroundColor: colors.secondary,
+                  color: colors.foreground,
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.backgroundColor = colors.muted;
+                  e.target.style.borderColor = primary;
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.backgroundColor = colors.secondary;
+                  e.target.style.borderColor = colors.border;
+                }}
+              >
+                <FaRedo /> Reset Filters
+              </button>
 
-            {error && inputMode === 'api' && (
-              <div style={{
-                backgroundColor: colors.accent.redLight,
-                color: colors.accent.red,
-                padding: '1rem',
-                borderRadius: '8px',
-                marginTop: '1rem',
-                fontWeight: '500',
-              }}>
-                {error}
-              </div>
-            )}
-          </>
+              <span style={filterStyles.recordCount}>
+                Showing {filteredData.length} of {totalRecords} checks
+              </span>
+        </div>
+      )}
+
+      {inputMode === 'api' && error && (
+          <div style={{
+            backgroundColor: colors.accent.redLight,
+            color: colors.accent.red,
+            padding: '1rem',
+            borderRadius: '8px',
+            marginTop: '1rem',
+            marginBottom: '1rem',
+            fontWeight: '500',
+          }}>
+            {error}
+          </div>
         )}
-      </div>
 
-      {csvData && (
+      {/* Show empty state when filters return no data */}
+      {inputMode === 'api' && !displayData && allChecksData.length > 0 && (() => {
+        const currentFiltered = getFilteredData();
+        const hasActiveFilters = 
+          (bankFilter && bankFilter !== '' && bankFilter !== 'All Banks') ||
+          (dateFilter && dateFilter !== null) ||
+          (fraudTypeFilter && fraudTypeFilter !== '' && fraudTypeFilter !== 'All Fraud Types');
+        
+        if (hasActiveFilters && currentFiltered.length === 0) {
+          return (
+            <div data-metrics-section>
+              <div style={cardStyle}>
+                <div style={{
+                  textAlign: 'center',
+                  padding: '3rem',
+                  color: colors.mutedForeground
+                }}>
+                  <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>No checks found for selected filters</h3>
+                  <p>Try adjusting your filters to see data.</p>
+                </div>
+              </div>
+            </div>
+          );
+        }
+        return null;
+      })()}
+
+      {displayData && (
         <div data-metrics-section>
-          {/* Summary Metrics */}
-          <div style={cardStyle}>
-            <h2 style={{ color: colors.foreground, marginBottom: '1.5rem' }}>Summary Metrics</h2>
-            <div style={metricsGridStyle}>
-              <div style={metricCardStyle}>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: primary, marginBottom: '0.5rem' }}>
-                  {csvData.metrics.totalChecks}
-                </div>
-                <div style={{ color: colors.mutedForeground }}>Total Checks</div>
-              </div>
-
-              <div style={metricCardStyle}>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: primary, marginBottom: '0.5rem' }}>
-                  {csvData.metrics.avgRiskScore}%
-                </div>
-                <div style={{ color: colors.mutedForeground }}>Avg Risk Score</div>
-              </div>
-
-              <div style={metricCardStyle}>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#10b981', marginBottom: '0.5rem' }}>
-                  {csvData.metrics.approveCount}
-                </div>
-                <div style={{ color: colors.mutedForeground }}>Approve</div>
-              </div>
-
-              <div style={metricCardStyle}>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#ef4444', marginBottom: '0.5rem' }}>
-                  {csvData.metrics.rejectCount}
-                </div>
-                <div style={{ color: colors.mutedForeground }}>Reject</div>
-              </div>
-
-              <div style={metricCardStyle}>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#f59e0b', marginBottom: '0.5rem' }}>
-                  {csvData.metrics.escalateCount}
-                </div>
-                <div style={{ color: colors.mutedForeground }}>Escalate</div>
-              </div>
-
-              <div style={metricCardStyle}>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: primary, marginBottom: '0.5rem' }}>
-                  {csvData.metrics.highRiskCount || 0}
-                </div>
-                <div style={{ color: colors.mutedForeground }}>High-Risk Count (&gt;75%)</div>
-              </div>
-
-              <div style={metricCardStyle}>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: primary, marginBottom: '0.5rem' }}>
-                  {csvData.metrics.repeatOffenders || 0}
-                </div>
-                <div style={{ color: colors.mutedForeground }}>Repeat Offenders</div>
-              </div>
+          {/* Summary KPI Cards */}
+          <div style={filterStyles.kpiContainer}>
+            <div style={filterStyles.kpiCard}>
+              <div style={filterStyles.kpiValue}>{displayData.metrics.totalChecks}</div>
+              <div style={filterStyles.kpiLabel}>Total Checks</div>
+            </div>
+            <div style={filterStyles.kpiCard}>
+              <div style={filterStyles.kpiValue}>{displayData.metrics.avgRiskScore}%</div>
+              <div style={filterStyles.kpiLabel}>Avg Risk Score</div>
+            </div>
+            <div style={filterStyles.kpiCard}>
+              <div style={{ ...filterStyles.kpiValue, color: '#10b981' }}>{displayData.metrics.approveCount}</div>
+              <div style={filterStyles.kpiLabel}>Approve</div>
+            </div>
+            <div style={filterStyles.kpiCard}>
+              <div style={{ ...filterStyles.kpiValue, color: '#ef4444' }}>{displayData.metrics.rejectCount}</div>
+              <div style={filterStyles.kpiLabel}>Reject</div>
+            </div>
+            <div style={filterStyles.kpiCard}>
+              <div style={{ ...filterStyles.kpiValue, color: '#f59e0b' }}>{displayData.metrics.escalateCount}</div>
+              <div style={filterStyles.kpiLabel}>Escalate</div>
+            </div>
+            <div style={filterStyles.kpiCard}>
+              <div style={filterStyles.kpiValue}>{displayData.metrics.highRiskCount || 0}</div>
+              <div style={filterStyles.kpiLabel}>High-Risk Count (&gt;75%)</div>
             </div>
           </div>
 
           {/* Charts Section - 3 rows x 2 columns grid */}
-          <div style={chartsContainerStyle}>
+          {(() => {
+            // Check if we have any charts to show
+            const hasAnyCharts =
+              (shouldShowChart.riskScoreDistribution() && displayData.riskDistribution && displayData.riskDistribution.length > 0) ||
+              (shouldShowChart.aiDecisionBreakdown() && displayData.recommendationData && displayData.recommendationData.length > 0) ||
+              (shouldShowChart.riskByBank() && displayData.riskByBankData && displayData.riskByBankData.length > 0) ||
+              (shouldShowChart.topHighRiskPayers() && displayData.topHighRiskPayers && displayData.topHighRiskPayers.length > 0) ||
+              (shouldShowChart.topFraudIncidentPayees() && displayData.topFraudIncidentPayees && displayData.topFraudIncidentPayees.length > 0) ||
+              (shouldShowChart.fraudTypeDistribution() && displayData.fraudTypeData && displayData.fraudTypeData.length > 0) ||
+              (shouldShowChart.weeklyTrends() && displayData.weeklyTrendData && displayData.weeklyTrendData.length > 0);
+            
+            if (!hasAnyCharts) {
+              return (
+                <div style={cardStyle}>
+                  <div style={{
+                    textAlign: 'center',
+                    padding: '3rem',
+                    color: colors.mutedForeground
+                  }}>
+                    <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>No activity for selected filters</h3>
+                    <p>Try adjusting your filters to see data.</p>
+                  </div>
+                </div>
+              );
+            }
+            
+            return (
+              <>
+                <div style={chartsContainerStyle}>
             {/* Row 1: Risk Score Distribution & AI Recommendation Breakdown */}
-            <div style={chartBoxStyle}>
-              <h3 style={chartTitleStyle}>Risk Score Distribution by Range</h3>
+            {shouldShowChart.riskScoreDistribution() && displayData.riskDistribution && displayData.riskDistribution.length > 0 && (
+              <div style={chartBoxStyle}>
+                <h3 style={chartTitleStyle}>Risk Score Distribution (All Checks)</h3>
               <ResponsiveContainer width="100%" height={320}>
                 <BarChart
-                  data={csvData.riskDistribution}
+                  data={displayData.riskDistribution}
                   margin={{ top: 10, right: 20, left: 10, bottom: 10 }}
                   onMouseLeave={() => setActiveBarIndex(null)}
                 >
@@ -1035,7 +1201,7 @@ const CheckInsights = () => {
                     fill="url(#riskGradient)"
                     radius={[8, 8, 0, 0]}
                   >
-                    {csvData.riskDistribution.map((entry, index) => {
+                    {displayData.riskDistribution.map((entry, index) => {
                       const isActive = activeBarIndex === index;
                       return (
                         <Cell
@@ -1054,10 +1220,12 @@ const CheckInsights = () => {
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
-            </div>
+              </div>
+            )}
 
-            <div style={chartBoxStyle}>
-              <h3 style={chartTitleStyle}>AI Decision Breakdown</h3>
+            {shouldShowChart.aiDecisionBreakdown() && displayData.recommendationData && displayData.recommendationData.length > 0 && (
+              <div style={chartBoxStyle}>
+                <h3 style={chartTitleStyle}>AI Decision Breakdown</h3>
               {/* Centered Donut Chart */}
               <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '320px' }}>
                 <ResponsiveContainer width="100%" height={320}>
@@ -1065,7 +1233,7 @@ const CheckInsights = () => {
                     onMouseLeave={() => setActivePieIndex(null)}
                   >
                     <Pie
-                      data={csvData.recommendationData}
+                      data={displayData.recommendationData}
                       cx="50%"
                       cy="50%"
                       labelLine={false}
@@ -1103,7 +1271,7 @@ const CheckInsights = () => {
                       onMouseEnter={(_, index) => setActivePieIndex(index)}
                       onMouseLeave={() => setActivePieIndex(null)}
                     >
-                      {csvData.recommendationData.map((entry, index) => {
+                      {displayData.recommendationData.map((entry, index) => {
                         const colorMap = {
                           'APPROVE': colors.status.success || '#4CAF50',
                           'REJECT': primary,
@@ -1129,7 +1297,7 @@ const CheckInsights = () => {
                       content={({ active, payload }) => {
                         if (active && payload && payload.length) {
                           const data = payload[0];
-                          const total = csvData.recommendationData.reduce((sum, item) => sum + item.value, 0);
+                          const total = displayData.recommendationData.reduce((sum, item) => sum + item.value, 0);
                           const percentage = total > 0 ? ((data.payload.value / total) * 100).toFixed(2) : 0;
                           return (
                             <div style={{
@@ -1167,13 +1335,13 @@ const CheckInsights = () => {
                 padding: '1rem',
                 flexWrap: 'wrap'
               }}>
-                {csvData.recommendationData.map((entry, index) => {
+                {displayData.recommendationData.map((entry, index) => {
                   const colorMap = {
                     'APPROVE': colors.status.success || '#4CAF50',
                     'REJECT': primary,
                     'ESCALATE': colors.status.warning || '#FFA726'
                   };
-                  const total = csvData.recommendationData.reduce((sum, item) => sum + item.value, 0);
+                  const total = displayData.recommendationData.reduce((sum, item) => sum + item.value, 0);
                   const percentage = total > 0 ? ((entry.value / total) * 100).toFixed(2) : 0;
 
                   return (
@@ -1206,29 +1374,38 @@ const CheckInsights = () => {
                   );
                 })}
               </div>
-            </div>
+              </div>
+            )}
 
             {/* Row 2: Risk by Bank (Combined Bar + Line) & Top High-Risk Payers */}
-            {!bankFilter && csvData.riskByBankData && csvData.riskByBankData.length > 0 && (
+            {shouldShowChart.riskByBank() && displayData.riskByBankData && displayData.riskByBankData.length > 0 && (
               <div style={chartBoxStyle}>
                 <h3 style={chartTitleStyle}>Risk Level by Bank</h3>
-                <ResponsiveContainer width="100%" height={320}>
+                <ResponsiveContainer width="100%" height={480}>
                   <ComposedChart
-                    data={csvData.riskByBankData.map(bank => ({
+                    data={displayData.riskByBankData.map(bank => ({
                       ...bank,
                       displayName: (() => {
                         const name = bank.name.toUpperCase();
+                        // Common bank abbreviations
                         if (name.includes('BANK OF AMERICA') || name.includes('BOFA')) return 'BOFA';
                         if (name.includes('CHASE') || name.includes('JPM')) return 'JPMC';
                         if (name.includes('WELLS FARGO') || name.includes('WELLS')) return 'WF';
                         if (name.includes('CITIBANK') || name.includes('CITI')) return 'CITI';
                         if (name.includes('US BANK')) return 'USB';
                         if (name.includes('ALLY')) return 'ALLY';
+                        if (name.includes('CAPITAL ONE')) return 'CAP ONE';
+                        if (name.includes('REGIONS')) return 'REGIONS';
+                        if (name.includes('PNC')) return 'PNC';
+                        if (name.includes('TD BANK')) return 'TD';
+                        if (name.includes('USAA')) return 'USAA';
+                        if (name.includes('BMO')) return 'BMO';
+                        if (name.includes('BBVA')) return 'BBVA';
                         // Return shortened version if name is too long
-                        return bank.name.length > 10 ? bank.name.substring(0, 10) + '...' : bank.name;
+                        return bank.name.length > 15 ? bank.name.substring(0, 15) + '...' : bank.name;
                       })()
                     }))}
-                    margin={{ top: 10, right: 30, left: 10, bottom: 60 }}
+                    margin={{ top: 60, right: 30, left: 20, bottom: 120 }}
                     onMouseLeave={() => setActiveBankBarIndex({ bankIndex: null, series: null })}
                   >
                     <defs>
@@ -1250,6 +1427,7 @@ const CheckInsights = () => {
                       textAnchor="end"
                       height={80}
                       interval={0}
+                      tickMargin={8}
                     />
                     <YAxis
                       yAxisId="left"
@@ -1292,14 +1470,18 @@ const CheckInsights = () => {
                       }}
                       cursor={{ fill: 'transparent' }}
                     />
-                    <Legend />
+                    <Legend 
+                      verticalAlign="bottom" 
+                      height={36}
+                      wrapperStyle={{ paddingTop: '30px' }}
+                    />
                     <Bar
                       yAxisId="left"
                       dataKey="count"
                       fill="url(#countGradient)"
                       name="Check Count"
                     >
-                      {csvData.riskByBankData.map((entry, index) => {
+                      {displayData.riskByBankData.map((entry, index) => {
                         const isActive = activeBankBarIndex.bankIndex === index && activeBankBarIndex.series === 'count';
                         return (
                           <Cell
@@ -1331,12 +1513,17 @@ const CheckInsights = () => {
               </div>
             )}
 
-            {csvData.topHighRiskPayers && csvData.topHighRiskPayers.length > 0 && (
-              <div style={chartBoxStyle}>
-                <h3 style={chartTitleStyle}>Top High-Risk Payers</h3>
-                <ResponsiveContainer width="100%" height={Math.max(320, csvData.topHighRiskPayers.length * 40)}>
-                  <BarChart
-                    data={csvData.topHighRiskPayers}
+            {shouldShowChart.topHighRiskPayers() && displayData.topHighRiskPayers && displayData.topHighRiskPayers.length > 0 && (() => {
+              // Limit to top 5 for very short time windows (≤7 days)
+              const limit = shouldShowChart.topHighRiskPayersLimit();
+              const topPayersData = displayData.topHighRiskPayers.slice(0, limit);
+              
+              return (
+                <div style={chartBoxStyle}>
+                  <h3 style={chartTitleStyle}>Top High-Risk Payers{limit < 10 ? ` (Top ${limit})` : ''}</h3>
+                  <ResponsiveContainer width="100%" height={Math.max(320, topPayersData.length * 40)}>
+                    <BarChart
+                      data={topPayersData}
                     layout="vertical"
                     margin={{ left: 120, right: 60, top: 10, bottom: 10 }}
                   >
@@ -1416,7 +1603,7 @@ const CheckInsights = () => {
                         );
                       }}
                     >
-                      {csvData.topHighRiskPayers.map((entry, index) => {
+                      {topPayersData.map((entry, index) => {
                         const risk = parseFloat(entry.avgRisk);
                         let gradientId = 'heatGradientLow';
                         if (risk >= 75) gradientId = 'heatGradientHigh';
@@ -1432,16 +1619,26 @@ const CheckInsights = () => {
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
-              </div>
-            )}
+                </div>
+              );
+            })()}
 
             {/* Row 3: Payees with Highest Fraud Incidents (Bullet Chart) & Fraud Trend Over Time */}
-            {csvData.topFraudIncidentPayees && csvData.topFraudIncidentPayees.length > 0 && (
-              <div style={chartBoxStyle}>
+            {shouldShowChart.topFraudIncidentPayees() && displayData.topFraudIncidentPayees && displayData.topFraudIncidentPayees.length > 0 && (() => {
+              // Check if both bank and fraud type filters are active
+              const hasBankFilter = bankFilter && bankFilter !== '' && bankFilter !== 'All Banks';
+              const hasFraudTypeFilter = fraudTypeFilter && fraudTypeFilter !== '' && fraudTypeFilter !== 'All Fraud Types';
+              const bothFiltersActive = hasBankFilter && hasFraudTypeFilter;
+              
+              return (
+              <div style={{
+                ...chartBoxStyle,
+                gridColumn: bothFiltersActive ? '1 / -1' : 'auto'
+              }}>
                 <h3 style={chartTitleStyle}>Payees with Highest Fraud Incidents</h3>
                 <div style={{ padding: '1rem' }}>
-                  {csvData.topFraudIncidentPayees.map((payee, index) => {
-                    const maxCount = Math.max(...csvData.topFraudIncidentPayees.map(p => p.fraudCount));
+                  {displayData.topFraudIncidentPayees.map((payee, index) => {
+                    const maxCount = Math.max(...displayData.topFraudIncidentPayees.map(p => p.fraudCount));
                     const barWidth = (payee.fraudCount / maxCount) * 100;
                     let barColor = '#FFB59E'; // Low Fraud Level - Pastel Faded Peach (<=20)
                     if (payee.fraudCount >= 60) barColor = '#FF6B5A'; // High Fraud Level - Soft Coral-Red (>=60)
@@ -1497,32 +1694,317 @@ const CheckInsights = () => {
                   })}
                 </div>
               </div>
-            )}
+              );
+            })()}
 
-            {csvData.fraudTrendData && csvData.fraudTrendData.length > 0 && (
-              <div style={chartBoxStyle}>
-                <h3 style={chartTitleStyle}>Fraud Trend Over Time</h3>
-                <ResponsiveContainer width="100%" height={320}>
-                  <LineChart data={csvData.fraudTrendData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                    <XAxis dataKey="date" stroke={colors.mutedForeground} />
-                    <YAxis yAxisId="left" stroke={colors.mutedForeground} />
-                    <YAxis yAxisId="right" orientation="right" stroke={colors.mutedForeground} />
+            {/* Fraud Type Distribution - Scatter Plot */}
+            {shouldShowChart.fraudTypeDistribution() && displayData.fraudTypeData && displayData.fraudTypeData.length > 0 && (
+              <div style={{
+                ...chartBoxStyle,
+                gridColumn: bankFilter ? '1 / -1' : 'auto'
+              }}>
+                <h3 style={chartTitleStyle}>Fraud Type Distribution</h3>
+                {(() => {
+                  const total = displayData.fraudTypeData.reduce((sum, item) => sum + item.value, 0);
+                  const maxValue = Math.max(...displayData.fraudTypeData.map(e => e.value));
+                  const percentages = displayData.fraudTypeData.map(e => (e.value / total) * 100);
+                  const minPercentage = Math.min(...percentages);
+                  const maxPercentage = Math.max(...percentages);
+
+                  // Colors that complement DAD color scheme (red/navy theme)
+                  const COMPLEMENTARY_COLORS = [
+                    '#E53935', // Primary red (DAD)
+                    '#14B8A6', // Teal (complements red)
+                    '#F97316', // Orange/coral (warm complement)
+                    '#8B5CF6', // Purple (complements navy)
+                    '#06B6D4', // Cyan (bright complement)
+                    '#F59E0B', // Amber (warm accent)
+                    '#EC4899', // Pink (vibrant complement)
+                    '#10B981'  // Green (fresh complement)
+                  ];
+
+                  // Prepare scatter plot data with complementary colors and jitter to prevent overlapping
+                  const scatterData = displayData.fraudTypeData.map((entry, index) => {
+                    const percentage = total > 0 ? ((entry.value / total) * 100) : 0;
+                    return {
+                      name: entry.name,
+                      count: entry.value,
+                      percentage: parseFloat(percentage.toFixed(1)),
+                      size: entry.value, // For Z-axis (bubble size)
+                      color: COMPLEMENTARY_COLORS[index % COMPLEMENTARY_COLORS.length],
+                      index: index
+                    };
+                  });
+
+                  // Add jitter to prevent overlapping points
+                  const processedData = scatterData.map((entry, index) => {
+                    // Find other entries with same count and percentage
+                    const duplicates = scatterData.filter((e, i) =>
+                      i !== index &&
+                      e.count === entry.count &&
+                      Math.abs(e.percentage - entry.percentage) < 0.1
+                    );
+
+                    // Calculate jitter offset based on position among duplicates
+                    const duplicateIndex = scatterData.slice(0, index).filter((e) =>
+                      e.count === entry.count &&
+                      Math.abs(e.percentage - entry.percentage) < 0.1
+                    ).length;
+
+                    // Add small offset to prevent overlap (spread in a circle pattern)
+                    const jitterRadius = 0.8; // percentage points
+                    const angle = (duplicateIndex * (2 * Math.PI)) / (duplicates.length + 1);
+                    const jitterX = duplicateIndex > 0 ? Math.cos(angle) * jitterRadius : 0;
+                    const jitterY = duplicateIndex > 0 ? Math.sin(angle) * (jitterRadius * 2) : 0;
+
+                    return {
+                      ...entry,
+                      percentage: entry.percentage + jitterX,
+                      count: entry.count + jitterY
+                    };
+                  });
+
+                  return (
+                    <>
+                      <ResponsiveContainer width="100%" height={400}>
+                        <ScatterChart
+                          margin={{ top: 20, right: 30, bottom: 20, left: 20 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.3} />
+                          <XAxis
+                            type="number"
+                            dataKey="percentage"
+                            name="Percentage"
+                            domain={[minPercentage - 2, maxPercentage + 2]}
+                            tick={{ fill: colors.foreground, fontSize: 12 }}
+                            tickFormatter={(value) => `${value.toFixed(1)}%`}
+                            tickCount={8}
+                            allowDecimals={true}
+                            stroke={colors.border}
+                            label={{ value: 'Percentage (%)', position: 'insideBottom', offset: -5, fill: colors.foreground, fontSize: 12 }}
+                          />
+                          <YAxis
+                            type="number"
+                            dataKey="count"
+                            name="Count"
+                            domain={[0, 'dataMax + 5']}
+                            tick={{ fill: colors.foreground, fontSize: 12 }}
+                            stroke={colors.border}
+                            label={{ value: 'Count', angle: -90, position: 'insideLeft', fill: colors.foreground, fontSize: 12 }}
+                          />
+                          <ZAxis
+                            type="number"
+                            dataKey="size"
+                            range={[50, 300]}
+                            name="Size"
+                          />
+                          <Tooltip
+                            content={({ active, payload }) => {
+                              if (active && payload && payload.length) {
+                                const data = payload[0].payload;
+                                return (
+                                  <div style={{
+                                    backgroundColor: colors.card,
+                                    border: `2px solid ${primary}`,
+                                    borderRadius: '8px',
+                                    padding: '12px',
+                                    boxShadow: `0 4px 20px rgba(0, 0, 0, 0.8)`,
+                                    color: colors.foreground
+                                  }}>
+                                    <div style={{ fontWeight: 'bold', fontSize: '14px', marginBottom: '8px', borderBottom: `1px solid ${colors.border}`, paddingBottom: '4px' }}>
+                                      {data.name}
+                                    </div>
+                                    <div style={{ fontSize: '13px', marginTop: '4px' }}>
+                                      <span style={{ color: primary, fontWeight: 'bold' }}>Count:</span> {data.count}
+                                    </div>
+                                    <div style={{ fontSize: '13px', marginTop: '4px' }}>
+                                      <span style={{ color: primary, fontWeight: 'bold' }}>Percentage:</span> {data.percentage.toFixed(1)}%
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }}
+                          />
+                          <Scatter
+                            name="Fraud Types"
+                            data={processedData}
+                            fill={primary}
+                          >
+                            {processedData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Scatter>
+                        </ScatterChart>
+                      </ResponsiveContainer>
+
+                      {/* Custom Legend */}
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                        gap: '1rem',
+                        marginTop: '1rem',
+                        padding: '1rem',
+                        backgroundColor: colors.card,
+                        borderRadius: '8px',
+                        border: `1px solid ${colors.border}`
+                      }}>
+                        {scatterData.map((entry, index) => (
+                          <div
+                            key={`legend-${index}`}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'flex-start',
+                              gap: '0.75rem',
+                              padding: '0.5rem',
+                              borderRadius: '6px',
+                              transition: 'all 0.2s ease',
+                              cursor: 'pointer'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = colors.secondary;
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = 'transparent';
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: '14px',
+                                height: '14px',
+                                borderRadius: '50%',
+                                backgroundColor: entry.color,
+                                border: `2px solid ${colors.border}`,
+                                flexShrink: 0,
+                                marginTop: '2px'
+                              }}
+                            />
+                            <div style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '0.25rem',
+                              flex: 1,
+                              minWidth: 0
+                            }}>
+                              <span style={{
+                                color: colors.foreground,
+                                fontSize: '13px',
+                                fontWeight: '600',
+                                lineHeight: '1.4',
+                                wordBreak: 'break-word'
+                              }}>
+                                {entry.name}
+                              </span>
+                              <span style={{
+                                color: colors.mutedForeground,
+                                fontSize: '11px',
+                                fontWeight: '500',
+                                lineHeight: '1.3'
+                              }}>
+                                {entry.count} cases ({entry.percentage.toFixed(1)}%)
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+                </div>
+
+                {/* Weekly Trend Charts - Full Width */}
+                {shouldShowChart.weeklyTrends() && displayData.weeklyTrendData && displayData.weeklyTrendData.length > 0 && (
+            <>
+              {/* 1. High-Risk Activity Over Time - Bar Chart */}
+              <div style={cardStyle}>
+                <h3 style={chartTitleStyle}>High-Risk Activity Over Time</h3>
+                <ResponsiveContainer width="100%" height={350}>
+                  <BarChart data={displayData.weeklyTrendData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.3} />
+                    <XAxis 
+                      dataKey="weekLabel" 
+                      stroke={colors.mutedForeground}
+                      tick={{ fill: colors.foreground, fontSize: 11 }}
+                      angle={-45}
+                      textAnchor="end"
+                      height={100}
+                      interval={0}
+                    />
+                    <YAxis 
+                      stroke={colors.mutedForeground}
+                      tick={{ fill: colors.foreground, fontSize: 12 }}
+                      label={{ value: 'Count', angle: -90, position: 'insideLeft', fill: colors.foreground, fontSize: 12 }}
+                    />
                     <Tooltip
                       contentStyle={{
                         backgroundColor: colors.card,
                         border: `1px solid ${colors.border}`,
-                        color: colors.foreground
+                        color: colors.foreground,
+                        borderRadius: '8px'
                       }}
+                      formatter={(value) => [value, 'High-Risk Count']}
+                      labelFormatter={(label) => `Week: ${label}`}
                     />
-                    <Legend />
-                    <Line yAxisId="left" type="monotone" dataKey="avgRisk" stroke={primary} strokeWidth={2} name="Avg Risk Score %" />
-                    <Line yAxisId="right" type="monotone" dataKey="highRiskCount" stroke="#ef4444" strokeWidth={2} name="High-Risk Count" />
+                    <Bar 
+                      dataKey="highRiskCount" 
+                      fill={primary}
+                      name="High-Risk Count (REJECT or HIGH)"
+                      radius={[4, 4, 0, 0]}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* 2. Average Risk Score Trend - Line Chart */}
+              <div style={cardStyle}>
+                <h3 style={chartTitleStyle}>Average Risk Score Trend</h3>
+                <ResponsiveContainer width="100%" height={350}>
+                  <LineChart data={displayData.weeklyTrendData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={colors.border} opacity={0.3} />
+                    <XAxis 
+                      dataKey="weekLabel" 
+                      stroke={colors.mutedForeground}
+                      tick={{ fill: colors.foreground, fontSize: 11 }}
+                      angle={-45}
+                      textAnchor="end"
+                      height={100}
+                      interval={0}
+                    />
+                    <YAxis 
+                      stroke={colors.mutedForeground}
+                      tick={{ fill: colors.foreground, fontSize: 12 }}
+                      label={{ value: 'Average Risk Score (%)', angle: -90, position: 'insideLeft', fill: colors.foreground, fontSize: 12 }}
+                      domain={[0, 100]}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: colors.card,
+                        border: `1px solid ${colors.border}`,
+                        color: colors.foreground,
+                        borderRadius: '8px'
+                      }}
+                      formatter={(value) => [`${value}%`, 'Average Risk Score']}
+                      labelFormatter={(label) => `Week: ${label}`}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="avgRisk" 
+                      stroke={primary} 
+                      strokeWidth={3} 
+                      name="Average Risk Score"
+                      dot={{ fill: primary, r: 5, strokeWidth: 2, stroke: colors.card }}
+                      activeDot={{ r: 7, strokeWidth: 2, stroke: primary }}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
-            )}
-          </div>
+            </>
+          )}
+              </>
+            );
+          })()}
 
         </div>
       )}

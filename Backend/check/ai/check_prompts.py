@@ -32,10 +32,9 @@ The system uses ONLY the following 5 fraud types. You MUST use these exact fraud
    - Amount parsing confidence is low
 
 3. **COUNTERFEIT_CHECK** - Fake or counterfeit check
-   - Triggered when: bank_validity == 0, routing_validity == 0, bank_routing_match == 0
-   - Bank not in supported banks list
-   - Routing number doesn't match bank or invalid format
-   - Poor OCR quality suggesting tampering (text_quality < 0.5)
+   - Triggered when: Poor OCR quality suggesting tampering (text_quality < 0.5) OR clear evidence of document alteration
+   - **IMPORTANT**: Do NOT flag COUNTERFEIT_CHECK based on bank support status or routing number validity. All banks are considered valid. Only flag COUNTERFEIT_CHECK for clear evidence of document tampering or poor OCR quality.
+   - **CRITICAL**: Never mention "bank not supported", "unsupported bank", "only Bank of America or Chase", or routing number issues in fraud explanations.
 
 4. **REPEAT_OFFENDER** - Payer with history of fraudulent submissions
    - Triggered when: fraud_count > 0 (customer has previous fraud incidents)
@@ -56,18 +55,27 @@ The system uses ONLY the following 5 fraud types. You MUST use these exact fraud
 **FRAUD TYPE PRIORITIZATION (CRITICAL):**
 When multiple fraud indicators are present, list fraud types in order of severity and confidence:
 1. **SIGNATURE_FORGERY** - Missing signature (highest priority)
-2. **STALE_CHECK** - Date issues (old or future-dated)
+2. **STALE_CHECK** - Date issues (old or future-dated) - **PRIORITY for future-dated checks**
 3. **AMOUNT_ALTERATION** - Amount mismatch is concrete evidence of tampering
-4. **COUNTERFEIT_CHECK** - Invalid bank/routing is strong evidence of counterfeit
+4. **COUNTERFEIT_CHECK** - Clear evidence of document tampering or alteration (NOT bank/routing issues - ALL BANKS are valid)
 5. **REPEAT_OFFENDER** - Always include if fraud_count > 0, but typically as secondary fraud type
+
+**CRITICAL BANK SUPPORT RULES:**
+- ALL BANKS are considered valid and supported - never restrict to specific banks
+- Do NOT mention "Bank of America or Chase only" or similar restrictions
+- Do NOT flag COUNTERFEIT_CHECK based on bank name or routing number validity
+- Bank support status should NEVER appear in fraud explanations
 
 **EXAMPLE PRIORITIZATION:**
 - If missing signature AND amount mismatch:
   → fraud_types: ['SIGNATURE_FORGERY', 'AMOUNT_ALTERATION']
   → Primary fraud: SIGNATURE_FORGERY (critical)
-- If invalid bank AND old check:
-  → fraud_types: ['COUNTERFEIT_CHECK', 'STALE_CHECK']
-  → Primary fraud: COUNTERFEIT_CHECK
+- If check with future date:
+  → fraud_types: ['STALE_CHECK']
+  → Primary fraud: STALE_CHECK (do NOT include COUNTERFEIT_CHECK for bank/routing issues)
+- If clear document tampering detected:
+  → fraud_types: ['COUNTERFEIT_CHECK']
+  → Primary fraud: COUNTERFEIT_CHECK (only for actual tampering evidence, NOT bank/routing issues)
 
 CRITICAL: You MUST follow the Decision Guidelines below STRICTLY. These are RULES, not suggestions.
 The decision rules provided are MANDATORY and take precedence over subjective judgment.
@@ -150,6 +158,10 @@ Return your analysis in the following JSON format:
 - Fraud types should be listed in priority order (most severe first)
 - **CRITICAL**: When REJECT is due to missing signature, you MUST include "SIGNATURE_FORGERY" in fraud_types
 - **CRITICAL**: When REJECT is due to stale/future date, you MUST include "STALE_CHECK" in fraud_types
+- **CRITICAL**: Do NOT include routing number issues in fraud_explanations
+- **CRITICAL**: Do NOT include "bank not supported", "unsupported bank", "not in supported bank list", "only Bank of America or Chase", or any bank support restrictions in fraud_explanations
+- **CRITICAL**: ALL BANKS are considered valid - never mention bank support status in fraud explanations
+- **CRITICAL**: For checks with future dates, only include STALE_CHECK, never routing or bank support issues
 """
 
 # Decision guidelines based on customer type and ML scores
@@ -189,8 +201,7 @@ RECOMMENDATION_GUIDELINES = """
 - LLM is skipped entirely for these cases
 
 ### AUTOMATIC REJECTION CONDITIONS (Regardless of ML Score)
-1. Unsupported Bank (not Bank of America or Chase) → REJECT
-2. Missing Critical Fields:
+1. Missing Critical Fields:
    - Missing check number → REJECT
    - Missing payer name → REJECT
    - Missing payee name → REJECT

@@ -56,8 +56,103 @@ class DocumentStorage:
             return stripped if stripped else None
         return str(value) if value else None
 
+    def _normalize_bank_name(self, bank_name: Optional[str]) -> Optional[str]:
+        """
+        Normalize bank name to match exact bank names from financial_institutions table.
+        Uses keyword matching to find the best match from the database.
+        
+        Args:
+            bank_name: Raw bank name from extraction
+            
+        Returns:
+            Normalized bank name matching financial_institutions table, or original uppercase if not found
+        """
+        if not bank_name:
+            return None
+        
+        bank_name_upper = bank_name.upper().strip()
+        
+        try:
+            # Query financial_institutions table for all bank names
+            response = self.supabase.table('financial_institutions').select('name').execute()
+            
+            if not response.data:
+                logger.warning("No banks found in financial_institutions table, using original name")
+                return bank_name_upper
+            
+            # Get all bank names from database (stored in UPPERCASE)
+            db_bank_names = [inst.get('name', '').upper().strip() for inst in response.data if inst.get('name')]
+            
+            # Keyword matching: Check if input contains keywords from any bank name
+            # Split input into keywords (words)
+            input_keywords = set(bank_name_upper.split())
+            
+            best_match = None
+            best_match_score = 0
+            
+            # Sort db_bank_names by length (longer names first) to prefer more specific matches
+            # This ensures "WELLS FARGO BANK" is checked before "WELLS FARGO"
+            # Even if "WELLS FARGO" is an exact match, we prefer "WELLS FARGO BANK" if it exists
+            sorted_db_banks = sorted(db_bank_names, key=lambda x: (len(x), x), reverse=True)
+            
+            for db_bank in sorted_db_banks:
+                if not db_bank:
+                    continue
+                
+                # Split database bank name into keywords
+                db_keywords = set(db_bank.split())
+                
+                # Calculate match score based on keyword overlap
+                # Higher score = more keywords match
+                common_keywords = input_keywords.intersection(db_keywords)
+                match_score = len(common_keywords)
+                
+                # Bonus for exact match (but still prefer longer matches)
+                if bank_name_upper == db_bank:
+                    match_score += 10
+                # Bonus for substring match
+                elif bank_name_upper in db_bank or db_bank in bank_name_upper:
+                    match_score += 8
+                
+                # CRITICAL: Prefer longer/more specific matches (e.g., "WELLS FARGO BANK" over "WELLS FARGO")
+                # Add significant bonus based on length - longer names get much higher priority
+                # This ensures "WELLS FARGO BANK" (18 chars) beats "WELLS FARGO" (11 chars)
+                match_score += len(db_bank) * 0.5  # Increased from 0.2 to 0.5
+                
+                # Special handling for Wells Fargo - ALWAYS prefer "WELLS FARGO BANK" over "WELLS FARGO"
+                if 'WELLS' in input_keywords and 'FARGO' in input_keywords:
+                    if 'WELLS' in db_keywords and 'FARGO' in db_keywords:
+                        match_score += 5
+                        # CRITICAL: Extra large bonus if it contains "BANK" (prefer "WELLS FARGO BANK")
+                        if 'BANK' in db_keywords:
+                            match_score += 30  # Increased from 20 to 30 to ensure "WELLS FARGO BANK" always wins
+                
+                if match_score > best_match_score:
+                    best_match_score = match_score
+                    best_match = db_bank
+            
+            # If we found a good match (at least 1 keyword match), return it
+            if best_match and best_match_score > 0:
+                logger.info(f"Matched '{bank_name}' to '{best_match}' from financial_institutions table (score: {best_match_score:.1f})")
+                return best_match
+            
+            # If no match found, log and return original uppercase
+            logger.warning(f"Bank name '{bank_name}' not found in financial_institutions table. Using as-is: {bank_name_upper}")
+            return bank_name_upper
+            
+        except Exception as e:
+            logger.error(f"Error querying financial_institutions table: {e}")
+            # Fallback to original uppercase on error
+            return bank_name_upper
+
     def _get_or_create_institution(self, institution_data: Optional[Dict]) -> Optional[str]:
-        """Get or create financial institution, return institution_id"""
+        """
+        Get financial institution from database (match only, do not create new).
+        Uses normalized bank name that should already exist in financial_institutions table.
+        
+        Returns:
+            institution_id if found, None if not found (will not create new entries)
+        """
         if not institution_data:
             return None
 
@@ -73,7 +168,7 @@ class DocumentStorage:
             # Convert to UPPERCASE for consistent storage
             name = name.upper()
 
-            # Check if exists
+            # Check if exists in financial_institutions table
             response = self.supabase.table('financial_institutions').select('institution_id').eq(
                 'name', name
             ).execute()
@@ -82,25 +177,13 @@ class DocumentStorage:
                 logger.info(f"Found existing institution: {name}")
                 return response.data[0]['institution_id']
 
-            # Create new institution
-            institution_id = str(uuid.uuid4())
-            new_institution = {
-                'institution_id': institution_id,
-                'name': name,
-                'routing_number': self._safe_string(institution_data.get('routing_number')),
-                'address': self._safe_string(institution_data.get('address')),
-                'city': self._safe_string(institution_data.get('city')),
-                'state': self._safe_string(institution_data.get('state')),
-                'zip_code': self._safe_string(institution_data.get('zip')),
-                'country': self._safe_string(institution_data.get('country', 'USA'))
-            }
-
-            self.supabase.table('financial_institutions').insert([new_institution]).execute()
-            logger.info(f"Created new institution: {name} ({institution_id})")
-            return institution_id
+            # Do NOT create new institution - only match existing ones
+            # If bank name was normalized but still not found, log warning
+            logger.warning(f"Institution '{name}' not found in financial_institutions table. Bank name should be normalized to match existing entries.")
+            return None
 
         except Exception as e:
-            logger.warning(f"Error getting/creating institution: {e}")
+            logger.warning(f"Error getting institution: {e}")
             return None
 
     def _get_or_create_employer(self, employer_data: Optional[Dict]) -> Optional[str]:
@@ -420,8 +503,12 @@ class DocumentStorage:
                 # AI Analysis results
                 'ai_recommendation': self._safe_string(ai_analysis.get('recommendation')) if ai_analysis else None,
                 'ai_confidence': self._parse_amount(ai_analysis.get('confidence_score')) if ai_analysis else None,
-                # Fraud type (primary fraud type from AI analysis)
-                'fraud_type': self._safe_string(ai_analysis.get('fraud_types', [None])[0]) if ai_analysis and ai_analysis.get('fraud_types') else None,
+                # Fraud type (primary fraud type from AI analysis) - convert underscores to spaces
+                'fraud_type': self._safe_string(
+                    ai_analysis.get('fraud_types', [None])[0].replace('_', ' ').title() 
+                    if ai_analysis and ai_analysis.get('fraud_types') and ai_analysis.get('fraud_types')[0] 
+                    else None
+                ),
                 # Anomaly data
                 'anomaly_count': len(analysis_data.get('anomalies', [])),
                 'top_anomalies': json.dumps(analysis_data.get('anomalies', [])[:5])
@@ -482,9 +569,13 @@ class DocumentStorage:
                     logger.warning(f"Could not get or create customer: {e}")
                     # Continue without customer_id if lookup/creation fails
 
-            # Extract institution
+            # Normalize bank_name to match approved bank list
+            bank_name_raw = self._safe_string(extracted.get('bank_name'))
+            bank_name_normalized = self._normalize_bank_name(bank_name_raw)
+
+            # Extract institution (use normalized bank name)
             institution_data = {
-                'name': extracted.get('bank_name'),
+                'name': bank_name_normalized,
                 'routing_number': extracted.get('routing_number')
             }
             institution_id = self._get_or_create_institution(institution_data)
@@ -525,9 +616,9 @@ class DocumentStorage:
                 fraud_explanations = []
 
             # Prepare bank statement data
-            # Convert bank_name to UPPERCASE for consistent storage
+            # Normalize bank_name to match approved bank list
             bank_name_raw = self._safe_string(extracted.get('bank_name'))
-            bank_name_upper = bank_name_raw.upper() if bank_name_raw else None
+            bank_name_normalized = self._normalize_bank_name(bank_name_raw)
 
             statement_data = {
                 'statement_id': str(uuid.uuid4()),
@@ -540,7 +631,7 @@ class DocumentStorage:
                 'account_holder_city': None,
                 'account_holder_state': None,
                 'account_holder_zip': None,
-                'bank_name': bank_name_upper,
+                'bank_name': bank_name_normalized,
                 'institution_id': institution_id,
                 'bank_address': self._safe_string(extracted.get('bank_address')),
                 'bank_city': None,
@@ -741,24 +832,27 @@ class DocumentStorage:
             # Store document record
             document_id = self._store_document(user_id, 'check', file_name)
 
-            # Extract institution
+            # Normalize bank_name to match approved bank list
+            bank_name_raw = self._safe_string(extracted.get('bank_name'))
+            bank_name_normalized = self._normalize_bank_name(bank_name_raw)
+
+            # Extract institution (use normalized bank name)
             institution_data = {
-                'name': extracted.get('bank_name'),
+                'name': bank_name_normalized,
                 'routing_number': extracted.get('routing_number')
             }
             institution_id = self._get_or_create_institution(institution_data)
 
-            # Prepare check data
-            # Convert bank_name to UPPERCASE for consistent storage
-            bank_name_raw = self._safe_string(extracted.get('bank_name'))
-            bank_name_upper = bank_name_raw.upper() if bank_name_raw else None
-
             # Extract fraud_type from AI analysis (primary fraud type only)
             fraud_type = None
+            fraud_type_label = None
             if ai_analysis and ai_analysis.get('fraud_types'):
                 fraud_types = ai_analysis.get('fraud_types', [])
                 # Store only the primary (first) fraud type
                 fraud_type = fraud_types[0] if isinstance(fraud_types, list) and fraud_types else fraud_types
+                # Format fraud type: replace underscores with spaces and title case
+                if fraud_type:
+                    fraud_type_label = fraud_type.replace('_', ' ').title() if fraud_type else None
 
             check_data = {
                 'check_id': str(uuid.uuid4()),
@@ -769,7 +863,7 @@ class DocumentStorage:
                 'payer_name': self._safe_string(extracted.get('payer_name')),
                 'payer_address': self._safe_string(extracted.get('payer_address')),
                 'payee_name': self._safe_string(extracted.get('payee_name')),
-                'bank_name': bank_name_upper,
+                'bank_name': bank_name_normalized,
                 'institution_id': institution_id,
                 'account_number': self._safe_string(extracted.get('account_number')),
                 'routing_number': self._safe_string(extracted.get('routing_number')),
@@ -778,7 +872,7 @@ class DocumentStorage:
                 'model_confidence': self._parse_amount(ml_analysis.get('model_confidence')),
                 'ai_recommendation': self._safe_string(ai_analysis.get('recommendation')) if ai_analysis else None,
                 'signature_detected': extracted.get('signature_detected', False),
-                'fraud_type': self._safe_string(fraud_type),  # Add fraud_type
+                'fraud_type': self._safe_string(fraud_type_label),  # Format fraud_type with spaces instead of underscores
                 'anomaly_count': len(analysis_data.get('anomalies', [])),
                 'top_anomalies': json.dumps(analysis_data.get('anomalies', [])[:5]),
                 'timestamp': datetime.utcnow().isoformat()
@@ -786,7 +880,7 @@ class DocumentStorage:
 
             # Insert check record
             self.supabase.table('checks').insert([check_data]).execute()
-            logger.info(f"Stored check: {check_data['check_id']} with fraud_type: {fraud_type}")
+            logger.info(f"Stored check: {check_data['check_id']} with fraud_type: {fraud_type_label}")
 
             # Update document status
             self._update_document_status(document_id, 'success')
