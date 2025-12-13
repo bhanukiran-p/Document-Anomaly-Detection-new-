@@ -27,6 +27,12 @@ check-ocr-project-469619-d18e1cdc414d.json
 google-credentials.json
 !credentials.example.json
 
+# Environment variables - NEVER commit .env files with real API keys
+.env
+.env.local
+.env.*.local
+*.env
+
 # OS
 .DS_Store
 Thumbs.db

@@ -179,7 +179,7 @@ ANALYSIS_TEMPLATE = """Analyze this money order for fraud risk:
 - Purchaser: {purchaser}
 - Date: {date}
 - Location: {location}
-- **Signature: {signature}** ⚠️ CHECK THIS FIELD - If None/empty, MUST mention in summary
+- **Signature: {signature}** [WARNING] CHECK THIS FIELD - If None/empty, MUST mention in summary
 
 **ML-Identified Fraud Indicators:**
 {fraud_indicators}

@@ -194,14 +194,14 @@ class RealTimeAnalysisAgent:
                 return {
                     'success': False,
                     'error': str(e),
-                    'explanation': f'⚠️ AI Pattern Analysis unavailable: {str(e)}',
+                    'explanation': f'[WARNING] AI Pattern Analysis unavailable: {str(e)}',
                     'patterns_detected': 0
                 }
         else:
             return {
                 'success': False,
                 'error': 'OpenAI API key not configured',
-                'explanation': '⚠️ AI Pattern Analysis unavailable: OpenAI API key not configured',
+                'explanation': '[WARNING] AI Pattern Analysis unavailable: OpenAI API key not configured',
                 'patterns_detected': 0
             }
 
@@ -236,27 +236,69 @@ class RealTimeAnalysisAgent:
             'patterns_detected': len(fraud_transactions)
         }
 
-    def generate_recommendations(self, analysis_result: Dict[str, Any]) -> List[str]:
+    def generate_recommendations(self, analysis_result: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        Generate actionable recommendations using LLM
+        Generate actionable structured recommendations using OpenAI LLM ONLY
 
         Args:
             analysis_result: Complete analysis result
 
         Returns:
-            List of recommendations
+            List of structured recommendation objects from OpenAI
         """
         if self.llm is not None:
             try:
                 return self._llm_recommendations(analysis_result)
             except Exception as e:
                 logger.error(f"Error generating recommendations: {e}")
-                return [f"⚠️ AI Recommendations unavailable: {str(e)}", "Please check your OpenAI API key or usage limits."]
+                # Return error instead of fallback
+                return [{
+                    'title': 'ERROR: AI Recommendations Unavailable',
+                    'description': f'OpenAI API error: {str(e)}. Please check your API key, usage limits, or network connection.',
+                    'fraud_rate': 'N/A',
+                    'total_amount': 'N/A',
+                    'case_count': 'N/A',
+                    'immediate_actions': [
+                        'Verify OpenAI API key is valid and active',
+                        'Check OpenAI account has sufficient credits/quota',
+                        'Verify network connectivity to OpenAI services',
+                        'Review error logs for specific API error details'
+                    ],
+                    'prevention_steps': [
+                        'Add OpenAI API credits to your account',
+                        'Check API usage dashboard for rate limits',
+                        'Ensure OPENAI_API_KEY environment variable is set correctly',
+                        'Contact OpenAI support if issue persists'
+                    ],
+                    'monitor': 'OpenAI API status, account credits, rate limit quotas'
+                }]
         else:
-            return ["⚠️ AI Recommendations unavailable: OpenAI API key not configured"]
+            # No LLM configured - return error
+            return [{
+                'title': 'ERROR: OpenAI API Not Configured',
+                'description': 'OpenAI API key is required to generate AI-powered fraud prevention recommendations.',
+                'fraud_rate': 'N/A',
+                'total_amount': 'N/A',
+                'case_count': 'N/A',
+                'immediate_actions': [
+                    'Set OPENAI_API_KEY in your environment variables or .env file',
+                    'Obtain API key from https://platform.openai.com/api-keys',
+                    'Verify API key has proper permissions',
+                    'Restart backend server after adding API key'
+                ],
+                'prevention_steps': [
+                    'Sign up for OpenAI API access if not already registered',
+                    'Add payment method to OpenAI account',
+                    'Configure API key in Backend/.env file',
+                    'Install required packages: pip install langchain langchain-openai'
+                ],
+                'monitor': 'API key configuration, OpenAI account status'
+            }]
 
-    def _llm_recommendations(self, analysis_result: Dict[str, Any]) -> List[str]:
-        """Generate recommendations using LLM"""
+    def _llm_recommendations(self, analysis_result: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Generate structured recommendations using LLM based on TOP 3 fraud types"""
+        import json
+        import re
 
         # Extract key metrics
         fraud_count = analysis_result.get('fraud_detection', {}).get('fraud_count', 0)
@@ -264,76 +306,183 @@ class RealTimeAnalysisAgent:
         total_amount = analysis_result.get('fraud_detection', {}).get('total_amount', 0)
         fraud_amount = analysis_result.get('fraud_detection', {}).get('total_fraud_amount', 0)
 
-        # Get fraud patterns info
+        # Get fraud transactions and analyze TOP 3 fraud types
         transactions = analysis_result.get('transactions', [])
         fraud_transactions = [t for t in transactions if t.get('is_fraud') == 1]
-        patterns_text = self._analyze_patterns(fraud_transactions)
+        top_fraud_types = self._get_top_fraud_types(fraud_transactions)
 
-        # Create prompt
-        system_message = SystemMessagePromptTemplate.from_template(SYSTEM_PROMPT)
-        human_message = HumanMessagePromptTemplate.from_template(RECOMMENDATIONS_PROMPT)
+        # Enhanced prompt for structured recommendations based on TOP 3 fraud types
+        prompt = f"""Based on this fraud analysis, generate exactly 3 detailed fraud prevention recommendations in JSON format - ONE for EACH of the TOP 3 fraud types detected.
 
-        chat_prompt = ChatPromptTemplate.from_messages([
-            system_message,
-            human_message
-        ])
-
-        # Add context about the analysis
-        context = f"""
 **Fraud Overview:**
 - Fraud Rate: {fraud_percentage:.2f}%
 - Fraudulent Transactions: {fraud_count}
-- Fraudulent Amount: ${fraud_amount:,.2f} out of ${total_amount:,.2f} ({(fraud_amount/total_amount*100) if total_amount > 0 else 0:.1f}%)
+- Fraudulent Amount: ${fraud_amount:,.2f} out of ${total_amount:,.2f}
 
-**Detected Patterns:**
-{patterns_text}
+**TOP 3 Fraud Types Detected:**
+{top_fraud_types}
 
-Please provide 5-7 actionable recommendations prioritized by urgency and impact."""
+IMPORTANT: Generate exactly 3 recommendations - one focused on EACH of the top 3 fraud types listed above.
 
-        messages = chat_prompt.format_messages(context=context)
+Return a JSON array of exactly 3 recommendation objects. Each object MUST have this EXACT structure:
+{{
+  "title": "Severity: Fraud Type Name Detected" (e.g., 'CRITICAL: High Fraud Rate Detected in Entertainment Category' or 'HIGH: Unusually High Average Fraudulent Amount Detected'),
+  "description": "One sentence description including the fraud type percentage and case count",
+  "fraud_rate": "X.X% of fraud",
+  "total_amount": "$XXX,XXX.XX total",
+  "case_count": "XXX cases",
+  "immediate_actions": ["Action 1 specific to this fraud type", "Action 2", "Action 3", "Action 4"],
+  "prevention_steps": ["Step 1 specific to preventing this fraud type", "Step 2", "Step 3", "Step 4"],
+  "monitor": "What to monitor for this specific fraud type"
+}}
+
+IMPORTANT REQUIREMENTS:
+- Generate EXACTLY 3 recommendations - one for each of the TOP 3 fraud types
+- Each recommendation title MUST mention the specific fraud type (e.g., "Entertainment category", "High-value transactions", "Night-time fraud")
+- NO emojis or special characters
+- Use severity indicators: CRITICAL, HIGH, MEDIUM based on the fraud type's impact
+- Keep immediate_actions to 4 items - specific to that fraud type
+- Keep prevention_steps to 4 items - specific to preventing that fraud type
+- Monitor field must be specific to that fraud type
+- Return ONLY valid JSON array, no markdown formatting"""
+
+        from langchain_core.messages import HumanMessage
+        messages = [HumanMessage(content=prompt)]
 
         response = self.llm.invoke(messages)
 
-        # Parse recommendations (split by lines or bullet points)
-        recommendations_text = response.content
-        recommendations = [line.strip() for line in recommendations_text.split('\n') if line.strip() and not line.strip().startswith('#')]
+        # Parse JSON response
+        try:
+            response_text = response.content.strip()
+            # Remove markdown code blocks if present
+            response_text = re.sub(r'```json\s*', '', response_text)
+            response_text = re.sub(r'```\s*$', '', response_text)
+            response_text = response_text.strip()
 
-        # Filter out empty lines and headers
-        recommendations = [rec for rec in recommendations if rec and len(rec) > 10]
+            recommendations = json.loads(response_text)
 
-        return recommendations[:7]  # Limit to 7 recommendations
+            # Validate structure and ensure exactly 3 recommendations
+            if isinstance(recommendations, list):
+                return recommendations[:3]  # Limit to exactly 3 (one per fraud type)
+            else:
+                return [recommendations] if isinstance(recommendations, dict) else []
 
-    def _fallback_recommendations(self, analysis_result: Dict[str, Any]) -> List[str]:
-        """Generate fallback recommendations when LLM is not available"""
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse LLM JSON response: {e}")
+            logger.error(f"Raw LLM response: {response_text[:500]}")
+            # Raise error instead of falling back
+            raise Exception(f"OpenAI returned invalid JSON format. Raw response: {response_text[:200]}...")
+
+    # REMOVED: _fallback_recommendations - no rule-based fallbacks allowed
+    # REMOVED: _fallback_structured_recommendations - no rule-based fallbacks allowed
+
+    def _fallback_structured_recommendations(self, analysis_result: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Generate structured fallback recommendations when LLM is not available"""
 
         fraud_percentage = analysis_result.get('fraud_detection', {}).get('fraud_percentage', 0)
+        fraud_count = analysis_result.get('fraud_detection', {}).get('fraud_count', 0)
         fraud_amount = analysis_result.get('fraud_detection', {}).get('total_fraud_amount', 0)
-        total_amount = analysis_result.get('fraud_detection', {}).get('total_amount', 1)
+        total_count = analysis_result.get('fraud_detection', {}).get('total_count', fraud_count)
 
         recommendations = []
 
-        # Based on fraud rate
+        # Critical fraud rate
         if fraud_percentage > 20:
-            recommendations.append("CRITICAL: Immediate security review required - fraud rate exceeds 20%")
-            recommendations.append("SECURITY: Implement additional transaction verification for all high-value transactions")
-        elif fraud_percentage > 10:
-            recommendations.append("HIGH RISK: Enhanced monitoring and fraud detection rules needed")
-            recommendations.append("ACTION: Review and update fraud detection thresholds")
-        elif fraud_percentage > 5:
-            recommendations.append("MODERATE RISK: Continue monitoring with current protocols")
+            recommendations.append({
+                "title": "CRITICAL: Extremely High Fraud Rate Detected",
+                "description": f"{fraud_percentage:.1f}% fraud rate ({fraud_count}/{total_count} transactions). Immediate action required.",
+                "fraud_rate": f"{fraud_percentage:.1f}% of fraud",
+                "total_amount": f"${fraud_amount:,.2f} total",
+                "case_count": f"{fraud_count} cases",
+                "immediate_actions": [
+                    "Initiate emergency fraud response protocol",
+                    "Suspend high-risk transaction processing temporarily",
+                    "Conduct immediate security audit of authentication systems",
+                    "Review all recent account changes and access logs"
+                ],
+                "prevention_steps": [
+                    "Detect and flag sudden spikes in transaction volume",
+                    "Implement burst detection algorithms (3+ transactions within minutes)",
+                    "Set up alerts for accounts with no history suddenly active",
+                    "Monitor for automated transaction patterns",
+                    "Require manual approval for burst transactions above threshold"
+                ],
+                "monitor": "Transaction clustering, time gaps between transactions, volume spikes, automation indicators"
+            })
 
-        # Based on fraud amount
-        if fraud_amount / total_amount > 0.15:
-            recommendations.append(f"FINANCIAL IMPACT: {(fraud_amount/total_amount*100):.1f}% of total value is at risk")
+        # High fraud amount
+        if fraud_percentage > 10 and fraud_percentage <= 20:
+            recommendations.append({
+                "title": "HIGH PRIORITY: Significant Fraud Activity Detected",
+                "description": f"Detected {fraud_count} cases of fraud representing {fraud_percentage:.1f}% of transactions. Enhanced monitoring required.",
+                "fraud_rate": f"{fraud_percentage:.1f}% of fraud",
+                "total_amount": f"${fraud_amount:,.2f} total",
+                "case_count": f"{fraud_count} cases",
+                "immediate_actions": [
+                    "Hold burst transactions for fraud analyst review",
+                    "Verify user intent through phone/email confirmation",
+                    "Check if account credentials have been compromised",
+                    "Review shipping addresses for fraud indicators"
+                ],
+                "prevention_steps": [
+                    "Implement CVV/AVS checks for all transactions",
+                    "Flag accounts with multiple card additions in short time",
+                    "Review shipping addresses for fraud indicators",
+                    "Set up alerts for accounts with no history suddenly active",
+                    "Monitor for automated transaction patterns"
+                ],
+                "monitor": "Card-not-present risk indicators, fraud pattern evolution"
+            })
 
-        # General recommendations
+        # Moderate fraud
+        if fraud_percentage > 5 and fraud_percentage <= 10:
+            recommendations.append({
+                "title": "MODERATE: Elevated Fraud Levels Detected",
+                "description": f"{fraud_count} fraudulent transactions detected ({fraud_percentage:.1f}% of total). Continue enhanced monitoring.",
+                "fraud_rate": f"{fraud_percentage:.1f}% of fraud",
+                "total_amount": f"${fraud_amount:,.2f} total",
+                "case_count": f"{fraud_count} cases",
+                "immediate_actions": [
+                    "Review and update fraud detection thresholds",
+                    "Implement additional transaction verification",
+                    "Monitor high-value transaction patterns",
+                    "Conduct security audit of affected accounts"
+                ],
+                "prevention_steps": [
+                    "Enhance real-time transaction monitoring",
+                    "Update fraud detection rules based on new patterns",
+                    "Implement velocity checks for rapid transactions",
+                    "Review authentication mechanisms",
+                    "Set up automated fraud pattern alerts"
+                ],
+                "monitor": "Transaction velocity, unusual patterns, account behavior"
+            })
+
+        # Default if no recommendations yet
         if len(recommendations) == 0:
-            recommendations.append("STATUS: Fraud levels within acceptable ranges - maintain current monitoring")
+            recommendations.append({
+                "title": "LOW: Fraud Levels Within Normal Range",
+                "description": f"Detected {fraud_count} cases ({fraud_percentage:.1f}%). Maintain current protocols.",
+                "fraud_rate": f"{fraud_percentage:.1f}% of fraud",
+                "total_amount": f"${fraud_amount:,.2f} total",
+                "case_count": f"{fraud_count} cases",
+                "immediate_actions": [
+                    "Continue routine monitoring",
+                    "Review fraud detection logs regularly",
+                    "Maintain current security protocols",
+                    "Schedule regular fraud pattern reviews"
+                ],
+                "prevention_steps": [
+                    "Continue collecting transaction data",
+                    "Keep fraud detection models up to date",
+                    "Monitor emerging fraud patterns",
+                    "Maintain fraud prevention training for staff",
+                    "Regular security audits"
+                ],
+                "monitor": "Overall fraud trends, new pattern emergence"
+            })
 
-        recommendations.append("DATA COLLECTION: Continue collecting transaction data to improve detection accuracy")
-        recommendations.append("REVIEW SCHEDULE: Schedule regular fraud pattern reviews")
-
-        return recommendations
+        return recommendations[:3]  # Return top 3 recommendations
 
     def explain_plot(self, plot_data: Dict[str, Any]) -> str:
         """
@@ -350,9 +499,9 @@ Please provide 5-7 actionable recommendations prioritized by urgency and impact.
                 return self._llm_plot_explanation(plot_data)
             except Exception as e:
                 logger.error(f"Error in plot explanation: {e}")
-                return self._fallback_plot_explanation(plot_data)
+                return f"ERROR: Unable to generate plot explanation. OpenAI API error: {str(e)}. Please check your API key and network connection."
         else:
-            return self._fallback_plot_explanation(plot_data)
+            return "ERROR: OpenAI API key not configured. Plot explanations require OpenAI API access. Please set OPENAI_API_KEY environment variable."
 
     def _llm_plot_explanation(self, plot_data: Dict[str, Any]) -> str:
         """Generate plot explanation using LLM"""
@@ -415,6 +564,51 @@ Please provide 5-7 actionable recommendations prioritized by urgency and impact.
 
         return f"Total rows: {total_count}\nColumns:\n" + "\n".join(features)
 
+    def _get_top_fraud_types(self, fraud_transactions: List[Dict]) -> str:
+        """Analyze and return the TOP 3 fraud types with details"""
+        if not fraud_transactions:
+            return "No fraud patterns detected"
+
+        # Analyze fraud by reason/type
+        fraud_types = {}
+        for txn in fraud_transactions:
+            fraud_reason = txn.get('fraud_reason', 'Unknown')
+            amount = txn.get('amount', 0)
+
+            if fraud_reason not in fraud_types:
+                fraud_types[fraud_reason] = {
+                    'count': 0,
+                    'total_amount': 0,
+                    'amounts': []
+                }
+
+            fraud_types[fraud_reason]['count'] += 1
+            fraud_types[fraud_reason]['total_amount'] += amount
+            fraud_types[fraud_reason]['amounts'].append(amount)
+
+        # Sort by count (descending) and get top 3
+        sorted_types = sorted(fraud_types.items(), key=lambda x: x[1]['count'], reverse=True)
+        top_3 = sorted_types[:3]
+
+        # Format top 3 fraud types
+        result_lines = []
+        total_fraud = len(fraud_transactions)
+
+        for idx, (fraud_type, data) in enumerate(top_3, 1):
+            count = data['count']
+            total_amt = data['total_amount']
+            percentage = (count / total_fraud * 100) if total_fraud > 0 else 0
+            avg_amount = total_amt / count if count > 0 else 0
+
+            result_lines.append(
+                f"{idx}. {fraud_type}\n"
+                f"   - Cases: {count} ({percentage:.1f}% of all fraud)\n"
+                f"   - Total Amount: ${total_amt:,.2f}\n"
+                f"   - Average Amount: ${avg_amount:,.2f}"
+            )
+
+        return "\n\n".join(result_lines)
+
     def _analyze_patterns(self, fraud_transactions: List[Dict]) -> str:
         """Analyze patterns in fraud transactions"""
         if not fraud_transactions:
@@ -455,103 +649,7 @@ Please provide 5-7 actionable recommendations prioritized by urgency and impact.
             'model_used': self.model_name
         }
 
-    def _fallback_insights(self, analysis_result: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate rule-based insights when LLM is not available"""
-
-        fraud_count = analysis_result.get('fraud_detection', {}).get('fraud_count', 0)
-        total_count = analysis_result.get('csv_info', {}).get('total_count', 0)
-        fraud_percentage = analysis_result.get('fraud_detection', {}).get('fraud_percentage', 0)
-        fraud_amount = analysis_result.get('fraud_detection', {}).get('total_fraud_amount', 0)
-
-        insights = []
-
-        # Overall assessment
-        if fraud_percentage > 20:
-            insights.append(f"HIGH ALERT: {fraud_percentage:.1f}% fraud rate detected with {fraud_count} fraudulent transactions")
-        elif fraud_percentage > 10:
-            insights.append(f"MEDIUM ALERT: {fraud_percentage:.1f}% fraud rate with {fraud_count} suspicious transactions")
-        elif fraud_percentage > 5:
-            insights.append(f"LOW ALERT: {fraud_percentage:.1f}% fraud rate detected")
-        else:
-            insights.append(f"STATUS: Fraud rate is within acceptable limits ({fraud_percentage:.1f}%)")
-
-        # Amount insights
-        if fraud_amount > 0:
-            insights.append(f"FINANCIAL IMPACT: Total fraudulent amount: ${fraud_amount:,.2f}")
-
-        # Key features
-        csv_columns = analysis_result.get('csv_info', {}).get('columns', [])
-        if csv_columns:
-            insights.append(f"DATASET INFO: Contains {len(csv_columns)} features for analysis")
-
-        # Recommendations
-        if fraud_percentage > 15:
-            insights.append("RECOMMENDATION: Immediate review of security measures required")
-        elif fraud_percentage > 10:
-            insights.append("RECOMMENDATION: Enhanced monitoring recommended")
-        else:
-            insights.append("RECOMMENDATION: Continue standard monitoring procedures")
-
-        return {
-            'success': True,
-            'insights': "\n\n".join(insights),
-            'analysis_type': 'rule_based',
-            'model_used': 'fallback'
-        }
-
-    def _fallback_fraud_patterns(self, analysis_result: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate rule-based fraud pattern explanation"""
-
-        transactions = analysis_result.get('transactions', [])
-        fraud_transactions = [t for t in transactions if t.get('is_fraud') == 1]
-
-        patterns = []
-
-        if not fraud_transactions:
-            return {
-                'success': True,
-                'explanation': 'No fraud patterns detected in the dataset',
-                'patterns_detected': 0
-            }
-
-        # High-value transactions
-        high_value = [t for t in fraud_transactions if t.get('amount', 0) > 5000]
-        if high_value:
-            patterns.append(f"HIGH-VALUE FRAUD: {len(high_value)} transactions over $5,000")
-
-        # Category patterns
-        categories = {}
-        for t in fraud_transactions:
-            cat = t.get('category', 'Unknown')
-            categories[cat] = categories.get(cat, 0) + 1
-
-        if categories:
-            top_cats = sorted(categories.items(), key=lambda x: x[1], reverse=True)[:3]
-            patterns.append("TOP FRAUD CATEGORIES: " + ", ".join([f"{cat} ({count})" for cat, count in top_cats]))
-
-        explanation = "\n".join(patterns) if patterns else "Standard fraud patterns detected"
-
-        return {
-            'success': True,
-            'explanation': explanation,
-            'patterns_detected': len(fraud_transactions)
-        }
-
-    def _fallback_plot_explanation(self, plot_data: Dict[str, Any]) -> str:
-        """Generate rule-based plot explanation"""
-
-        plot_title = plot_data.get('title', 'Unknown Plot')
-        plot_description = plot_data.get('description', '')
-        plot_details = plot_data.get('details', [])
-
-        explanation = f"**{plot_title}**\n\n"
-
-        if plot_description:
-            explanation += f"{plot_description}\n\n"
-
-        if plot_details:
-            explanation += "Key metrics:\n"
-            for detail in plot_details:
-                explanation += f"- {detail['label']}: {detail['value']}\n"
-
-        return explanation
+    # REMOVED: All fallback functions - no rule-based fallbacks allowed
+    # _fallback_insights - REMOVED
+    # _fallback_fraud_patterns - REMOVED  
+    # _fallback_plot_explanation - REMOVED

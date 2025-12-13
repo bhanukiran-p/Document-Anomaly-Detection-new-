@@ -47,6 +47,59 @@ class EnsembleModel:
         return ensemble_proba
 
 
+def train_model_from_database(
+    limit: int = 10000,
+    min_samples: int = 100,
+    use_recent: bool = True
+) -> Dict[str, Any]:
+    """
+    Train fraud detection model using data from the database.
+    
+    Args:
+        limit: Maximum number of records to fetch from database (default: 10000)
+        min_samples: Minimum number of samples required (default: 100)
+        use_recent: If True, use most recent records first (default: True)
+    
+    Returns:
+        Training results dictionary
+    """
+    try:
+        logger.info(f"Starting model training from database (limit: {limit}, min_samples: {min_samples})")
+        
+        # Import database function
+        from database.analyzed_transactions_db import get_training_data_from_database
+        
+        # Fetch training data from database
+        transactions_list, error = get_training_data_from_database(
+            limit=limit,
+            min_samples=min_samples,
+            use_recent=use_recent
+        )
+        
+        if transactions_list is None:
+            return {
+                'success': False,
+                'error': error or 'Failed to fetch training data from database',
+                'message': 'Could not retrieve training data from database'
+            }
+        
+        # Convert to DataFrame
+        transactions_df = pd.DataFrame(transactions_list)
+        
+        logger.info(f"Fetched {len(transactions_df)} transactions from database for training")
+        
+        # Train model using the fetched data
+        return auto_train_model(transactions_df, labels=None)
+        
+    except Exception as e:
+        logger.error(f"Database training failed: {e}", exc_info=True)
+        return {
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to train model from database'
+        }
+
+
 def auto_train_model(transactions_df: pd.DataFrame, labels: np.ndarray = None) -> Dict[str, Any]:
     """
     Automatically train fraud detection model on new data.

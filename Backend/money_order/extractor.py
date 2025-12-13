@@ -210,9 +210,9 @@ class MoneyOrderExtractor:
                 )
                 if analysis_id:
                     response['analysis_id'] = analysis_id
-                    print(f"✅ Complete analysis saved with ID: {analysis_id}")
+                    print(f"[SUCCESS] Complete analysis saved with ID: {analysis_id}")
             except Exception as e:
-                print(f"⚠️  Error saving analysis result: {e}")
+                print(f"[WARNING] Error saving analysis result: {e}")
 
         return response
 
