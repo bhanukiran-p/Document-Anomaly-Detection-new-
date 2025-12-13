@@ -1624,8 +1624,17 @@ const CheckInsights = () => {
             })()}
 
             {/* Row 3: Payees with Highest Fraud Incidents (Bullet Chart) & Fraud Trend Over Time */}
-            {shouldShowChart.topFraudIncidentPayees() && displayData.topFraudIncidentPayees && displayData.topFraudIncidentPayees.length > 0 && (
-              <div style={chartBoxStyle}>
+            {shouldShowChart.topFraudIncidentPayees() && displayData.topFraudIncidentPayees && displayData.topFraudIncidentPayees.length > 0 && (() => {
+              // Check if both bank and fraud type filters are active
+              const hasBankFilter = bankFilter && bankFilter !== '' && bankFilter !== 'All Banks';
+              const hasFraudTypeFilter = fraudTypeFilter && fraudTypeFilter !== '' && fraudTypeFilter !== 'All Fraud Types';
+              const bothFiltersActive = hasBankFilter && hasFraudTypeFilter;
+              
+              return (
+              <div style={{
+                ...chartBoxStyle,
+                gridColumn: bothFiltersActive ? '1 / -1' : 'auto'
+              }}>
                 <h3 style={chartTitleStyle}>Payees with Highest Fraud Incidents</h3>
                 <div style={{ padding: '1rem' }}>
                   {displayData.topFraudIncidentPayees.map((payee, index) => {
@@ -1685,7 +1694,8 @@ const CheckInsights = () => {
                   })}
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             {/* Fraud Type Distribution - Scatter Plot */}
             {shouldShowChart.fraudTypeDistribution() && displayData.fraudTypeData && displayData.fraudTypeData.length > 0 && (
