@@ -16,7 +16,8 @@ _bank_names_cache: Optional[Set[str]] = None
 def get_supported_bank_names() -> Set[str]:
     """
     Fetch all bank names from database and return as a set for case-insensitive matching.
-    Tries 'bank_dictionary' table first, then 'financial_institutions' as fallback.
+    Uses 'financial_institutions' table as primary source (all banks in this table are supported).
+    Falls back to 'bank_dictionary' table if financial_institutions is unavailable.
 
     Returns:
         Set of bank names (stored in UPPERCASE as in database)
@@ -31,31 +32,31 @@ def get_supported_bank_names() -> Set[str]:
         supabase = get_supabase()
         bank_names = set()
 
-        # Try bank_dictionary table first (as per user's data)
+        # Use financial_institutions table as primary source (user's requirement)
         try:
-            response = supabase.table('bank_dictionary').select('bank_name').execute()
+            response = supabase.table('financial_institutions').select('name').execute()
             if response.data:
-                for bank in response.data:
-                    bank_name = bank.get('bank_name')
+                for institution in response.data:
+                    bank_name = institution.get('name')
                     if bank_name:
                         # Store in UPPERCASE for consistent matching
                         bank_names.add(bank_name.upper().strip())
-                logger.info(f"Loaded {len(bank_names)} banks from bank_dictionary table")
+                logger.info(f"Loaded {len(bank_names)} banks from financial_institutions table")
         except Exception as e:
-            logger.warning(f"Could not fetch from bank_dictionary table: {e}")
+            logger.warning(f"Could not fetch from financial_institutions table: {e}")
 
-        # Fallback to financial_institutions table if bank_dictionary didn't work
+        # Fallback to bank_dictionary table if financial_institutions didn't work
         if not bank_names:
             try:
-                response = supabase.table('financial_institutions').select('name').execute()
+                response = supabase.table('bank_dictionary').select('bank_name').execute()
                 if response.data:
-                    for institution in response.data:
-                        bank_name = institution.get('name')
+                    for bank in response.data:
+                        bank_name = bank.get('bank_name')
                         if bank_name:
                             bank_names.add(bank_name.upper().strip())
-                    logger.info(f"Loaded {len(bank_names)} banks from financial_institutions table")
+                    logger.info(f"Loaded {len(bank_names)} banks from bank_dictionary table")
             except Exception as e:
-                logger.warning(f"Could not fetch from financial_institutions table: {e}")
+                logger.warning(f"Could not fetch from bank_dictionary table: {e}")
 
         # If still no banks, use default list as fallback
         if not bank_names:

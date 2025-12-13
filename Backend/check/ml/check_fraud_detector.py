@@ -204,8 +204,9 @@ class CheckFraudDetector:
         critical_missing = features[20]  # Feature 21: critical_missing_count
         suspicious_amount = features[17]  # Feature 18: suspicious_amount
 
-        # Unsupported bank
-        if bank_valid == 0.0:
+        # Unsupported bank (but don't penalize Wells Fargo - it's valid even if not in strict supported list)
+        bank_name = check_data.get('bank_name', '').upper() if isinstance(check_data, dict) else ''
+        if bank_valid == 0.0 and 'WELLS FARGO' not in bank_name:
             base_score += 0.50
             risk_factors.append("Unsupported bank detected")
 
@@ -297,8 +298,9 @@ class CheckFraudDetector:
         signature = features[13]
         critical_missing = features[20]
 
-        # Strict rules
-        if bank_valid == 0.0:  # Unsupported bank
+        # Strict rules (but don't penalize Wells Fargo - it's valid even if not in strict supported list)
+        bank_name = check_data.get('bank_name', '').upper() if isinstance(check_data, dict) else ''
+        if bank_valid == 0.0 and 'WELLS FARGO' not in bank_name:  # Unsupported bank (except Wells Fargo)
             adjusted_score = max(adjusted_score, 0.50)
 
         if future_date == 1.0:  # Future date

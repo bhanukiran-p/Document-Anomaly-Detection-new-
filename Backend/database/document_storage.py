@@ -58,199 +58,92 @@ class DocumentStorage:
 
     def _normalize_bank_name(self, bank_name: Optional[str]) -> Optional[str]:
         """
-        Normalize bank name to match exact bank names from approved list.
-        Maps common variations (BOFA, Chase, etc.) to exact bank names.
+        Normalize bank name to match exact bank names from financial_institutions table.
+        Uses keyword matching to find the best match from the database.
         
         Args:
             bank_name: Raw bank name from extraction
             
         Returns:
-            Normalized bank name matching approved list, or None if not found
+            Normalized bank name matching financial_institutions table, or original uppercase if not found
         """
         if not bank_name:
             return None
         
-        # Approved bank names list (exact matches)
-        APPROVED_BANKS = [
-            "SYNCHRONY BANK",
-            "EAST WEST BANK",
-            "SILICON VALLEY BANK",
-            "BBVA USA",
-            "NAVY FEDERAL CREDIT UNION",
-            "FIRSTBANK",
-            "HSBC BANK USA",
-            "BMO HARRIS BANK",
-            "ZIONS BANK",
-            "M&T BANK",
-            "SIMMONS BANK",
-            "WESTERN ALLIANCE BANK",
-            "CITIBANK",
-            "CHARLES SCHWAB BANK",
-            "US BANK",
-            "FIFTH THIRD BANK",
-            "MORGAN STANLEY PRIVATE BANK",
-            "DISCOVER BANK",
-            "FLAGSTAR BANK",
-            "CITIZENS BANK",
-            "JPMORGAN CHASE BANK",
-            "ALLY BANK",
-            "USAA FEDERAL SAVINGS BANK",
-            "PROVIDENT BANK",
-            "OLD NATIONAL BANK",
-            "POPULAR BANK",
-            "CAPITAL ONE BANK",
-            "FIRST REPUBLIC BANK",
-            "WELLS FARGO BANK",
-            "BANK OF THE WEST",
-            "HUNTINGTON NATIONAL BANK",
-            "AMERICAN EXPRESS NATIONAL BANK",
-            "TD BANK USA",
-            "COMERICA BANK",
-            "FROST BANK",
-            "UMB BANK",
-            "PINNACLE BANK",
-            "FIRST HORIZON BANK",
-            "PNC BANK",
-            "TRUIST BANK",
-            "BANK OF AMERICA",
-            "SOUTH STATE BANK",
-            "BANKUNITED",
-            "GOLDMAN SACHS BANK USA",
-            "REGIONS BANK",
-            "VALLEY NATIONAL BANK",
-            "WEBSTER BANK",
-            "SUNTRUST BANK",
-            "KEYBANK"
-        ]
-        
         bank_name_upper = bank_name.upper().strip()
         
-        # First, check for exact match
-        if bank_name_upper in APPROVED_BANKS:
+        try:
+            # Query financial_institutions table for all bank names
+            response = self.supabase.table('financial_institutions').select('name').execute()
+            
+            if not response.data:
+                logger.warning("No banks found in financial_institutions table, using original name")
+                return bank_name_upper
+            
+            # Get all bank names from database (stored in UPPERCASE)
+            db_bank_names = [inst.get('name', '').upper().strip() for inst in response.data if inst.get('name')]
+            
+            # Keyword matching: Check if input contains keywords from any bank name
+            # Split input into keywords (words)
+            input_keywords = set(bank_name_upper.split())
+            
+            best_match = None
+            best_match_score = 0
+            
+            # Sort db_bank_names by length (longer names first) to prefer more specific matches
+            # This ensures "WELLS FARGO BANK" is checked before "WELLS FARGO"
+            # Even if "WELLS FARGO" is an exact match, we prefer "WELLS FARGO BANK" if it exists
+            sorted_db_banks = sorted(db_bank_names, key=lambda x: (len(x), x), reverse=True)
+            
+            for db_bank in sorted_db_banks:
+                if not db_bank:
+                    continue
+                
+                # Split database bank name into keywords
+                db_keywords = set(db_bank.split())
+                
+                # Calculate match score based on keyword overlap
+                # Higher score = more keywords match
+                common_keywords = input_keywords.intersection(db_keywords)
+                match_score = len(common_keywords)
+                
+                # Bonus for exact match (but still prefer longer matches)
+                if bank_name_upper == db_bank:
+                    match_score += 10
+                # Bonus for substring match
+                elif bank_name_upper in db_bank or db_bank in bank_name_upper:
+                    match_score += 8
+                
+                # CRITICAL: Prefer longer/more specific matches (e.g., "WELLS FARGO BANK" over "WELLS FARGO")
+                # Add significant bonus based on length - longer names get much higher priority
+                # This ensures "WELLS FARGO BANK" (18 chars) beats "WELLS FARGO" (11 chars)
+                match_score += len(db_bank) * 0.5  # Increased from 0.2 to 0.5
+                
+                # Special handling for Wells Fargo - ALWAYS prefer "WELLS FARGO BANK" over "WELLS FARGO"
+                if 'WELLS' in input_keywords and 'FARGO' in input_keywords:
+                    if 'WELLS' in db_keywords and 'FARGO' in db_keywords:
+                        match_score += 5
+                        # CRITICAL: Extra large bonus if it contains "BANK" (prefer "WELLS FARGO BANK")
+                        if 'BANK' in db_keywords:
+                            match_score += 30  # Increased from 20 to 30 to ensure "WELLS FARGO BANK" always wins
+                
+                if match_score > best_match_score:
+                    best_match_score = match_score
+                    best_match = db_bank
+            
+            # If we found a good match (at least 1 keyword match), return it
+            if best_match and best_match_score > 0:
+                logger.info(f"Matched '{bank_name}' to '{best_match}' from financial_institutions table (score: {best_match_score:.1f})")
+                return best_match
+            
+            # If no match found, log and return original uppercase
+            logger.warning(f"Bank name '{bank_name}' not found in financial_institutions table. Using as-is: {bank_name_upper}")
             return bank_name_upper
-        
-        # Map common variations to exact bank names
-        bank_mappings = {
-            # Bank of America variations
-            "BOFA": "BANK OF AMERICA",
-            "B OF A": "BANK OF AMERICA",
-            "BANKOFAMERICA": "BANK OF AMERICA",
-            "BOA": "BANK OF AMERICA",
             
-            # Chase variations
-            "CHASE": "JPMORGAN CHASE BANK",
-            "JPM": "JPMORGAN CHASE BANK",
-            "JPMORGAN": "JPMORGAN CHASE BANK",
-            "JP MORGAN": "JPMORGAN CHASE BANK",
-            "JP MORGAN CHASE": "JPMORGAN CHASE BANK",
-            
-            # Wells Fargo variations
-            "WELLS FARGO": "WELLS FARGO BANK",
-            "WELLS": "WELLS FARGO BANK",
-            "WF": "WELLS FARGO BANK",
-            
-            # Citibank variations
-            "CITI": "CITIBANK",
-            "CITI BANK": "CITIBANK",
-            
-            # US Bank variations
-            "USB": "US BANK",
-            "USBANK": "US BANK",
-            "U.S. BANK": "US BANK",
-            
-            # Capital One variations
-            "CAP ONE": "CAPITAL ONE BANK",
-            "CAPITALONE": "CAPITAL ONE BANK",
-            "CAPITAL ONE": "CAPITAL ONE BANK",
-            
-            # TD Bank variations
-            "TD": "TD BANK USA",
-            "TD BANK": "TD BANK USA",
-            "TORONTO DOMINION": "TD BANK USA",
-            
-            # Regions Bank variations
-            "REGIONS": "REGIONS BANK",
-            
-            # PNC Bank variations
-            "PNC": "PNC BANK",
-            
-            # Truist Bank variations
-            "TRUIST": "TRUIST BANK",
-            
-            # Ally Bank variations
-            "ALLY": "ALLY BANK",
-            
-            # USAA variations
-            "USAA": "USAA FEDERAL SAVINGS BANK",
-            "USAA FEDERAL": "USAA FEDERAL SAVINGS BANK",
-            
-            # BMO variations
-            "BMO": "BMO HARRIS BANK",
-            "BMO HARRIS": "BMO HARRIS BANK",
-            
-            # BBVA variations
-            "BBVA": "BBVA USA",
-            
-            # Navy Federal variations
-            "NAVY FEDERAL": "NAVY FEDERAL CREDIT UNION",
-            "NAVY FED": "NAVY FEDERAL CREDIT UNION",
-            "NFCU": "NAVY FEDERAL CREDIT UNION",
-            
-            # American Express variations
-            "AMEX": "AMERICAN EXPRESS NATIONAL BANK",
-            "AMERICAN EXPRESS": "AMERICAN EXPRESS NATIONAL BANK",
-            
-            # Discover variations
-            "DISCOVER": "DISCOVER BANK",
-            
-            # Citizens Bank variations
-            "CITIZENS": "CITIZENS BANK",
-            
-            # KeyBank variations
-            "KEY": "KEYBANK",
-            "KEY BANK": "KEYBANK",
-            
-            # Fifth Third variations
-            "FIFTH THIRD": "FIFTH THIRD BANK",
-            "53": "FIFTH THIRD BANK",
-            
-            # Huntington variations
-            "HUNTINGTON": "HUNTINGTON NATIONAL BANK",
-            
-            # Comerica variations
-            "COMERICA": "COMERICA BANK",
-            
-            # M&T variations
-            "M&T": "M&T BANK",
-            "MT BANK": "M&T BANK",
-            
-            # First Republic variations
-            "FIRST REPUBLIC": "FIRST REPUBLIC BANK",
-            
-            # Bank of the West variations
-            "BOTW": "BANK OF THE WEST",
-            
-            # SunTrust variations
-            "SUNTRUST": "SUNTRUST BANK",
-            "SUN TRUST": "SUNTRUST BANK",
-        }
-        
-        # Check mappings
-        if bank_name_upper in bank_mappings:
-            return bank_mappings[bank_name_upper]
-        
-        # Try partial matching for banks with "BANK" suffix
-        for approved_bank in APPROVED_BANKS:
-            # Remove common words for comparison
-            bank_clean = bank_name_upper.replace(" BANK", "").replace(" USA", "").replace(" NATIONAL", "")
-            approved_clean = approved_bank.replace(" BANK", "").replace(" USA", "").replace(" NATIONAL", "")
-            
-            if bank_clean == approved_clean or bank_clean in approved_clean or approved_clean in bank_clean:
-                return approved_bank
-        
-        # If no match found, log warning and return None (or original uppercase)
-        logger.warning(f"Bank name '{bank_name}' not found in approved list. Using as-is: {bank_name_upper}")
-        return bank_name_upper  # Return uppercase version if no match
+        except Exception as e:
+            logger.error(f"Error querying financial_institutions table: {e}")
+            # Fallback to original uppercase on error
+            return bank_name_upper
 
     def _get_or_create_institution(self, institution_data: Optional[Dict]) -> Optional[str]:
         """Get or create financial institution, return institution_id"""
