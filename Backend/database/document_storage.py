@@ -146,7 +146,13 @@ class DocumentStorage:
             return bank_name_upper
 
     def _get_or_create_institution(self, institution_data: Optional[Dict]) -> Optional[str]:
-        """Get or create financial institution, return institution_id"""
+        """
+        Get financial institution from database (match only, do not create new).
+        Uses normalized bank name that should already exist in financial_institutions table.
+        
+        Returns:
+            institution_id if found, None if not found (will not create new entries)
+        """
         if not institution_data:
             return None
 
@@ -162,7 +168,7 @@ class DocumentStorage:
             # Convert to UPPERCASE for consistent storage
             name = name.upper()
 
-            # Check if exists
+            # Check if exists in financial_institutions table
             response = self.supabase.table('financial_institutions').select('institution_id').eq(
                 'name', name
             ).execute()
@@ -171,25 +177,13 @@ class DocumentStorage:
                 logger.info(f"Found existing institution: {name}")
                 return response.data[0]['institution_id']
 
-            # Create new institution
-            institution_id = str(uuid.uuid4())
-            new_institution = {
-                'institution_id': institution_id,
-                'name': name,
-                'routing_number': self._safe_string(institution_data.get('routing_number')),
-                'address': self._safe_string(institution_data.get('address')),
-                'city': self._safe_string(institution_data.get('city')),
-                'state': self._safe_string(institution_data.get('state')),
-                'zip_code': self._safe_string(institution_data.get('zip')),
-                'country': self._safe_string(institution_data.get('country', 'USA'))
-            }
-
-            self.supabase.table('financial_institutions').insert([new_institution]).execute()
-            logger.info(f"Created new institution: {name} ({institution_id})")
-            return institution_id
+            # Do NOT create new institution - only match existing ones
+            # If bank name was normalized but still not found, log warning
+            logger.warning(f"Institution '{name}' not found in financial_institutions table. Bank name should be normalized to match existing entries.")
+            return None
 
         except Exception as e:
-            logger.warning(f"Error getting/creating institution: {e}")
+            logger.warning(f"Error getting institution: {e}")
             return None
 
     def _get_or_create_employer(self, employer_data: Optional[Dict]) -> Optional[str]:
