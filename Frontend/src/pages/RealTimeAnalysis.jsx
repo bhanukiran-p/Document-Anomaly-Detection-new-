@@ -454,7 +454,7 @@ const RealTimeAnalysis = () => {
         }
       });
 
-      // Detect date range
+      // Detect year range (ascending order)
       let dateRange = 'N/A';
       const dateColumn = headers.find(h =>
         h.toLowerCase().includes('date') ||
@@ -464,7 +464,21 @@ const RealTimeAnalysis = () => {
       if (dateColumn) {
         const dates = rows.map(r => r[dateColumn]).filter(d => d);
         if (dates.length > 0) {
-          dateRange = `${dates[0]} to ${dates[dates.length - 1]}`;
+          // Extract years from dates
+          const years = dates.map(dateStr => {
+            try {
+              const date = new Date(dateStr);
+              return date.getFullYear();
+            } catch {
+              return null;
+            }
+          }).filter(year => year && !isNaN(year));
+
+          if (years.length > 0) {
+            const minYear = Math.min(...years);
+            const maxYear = Math.max(...years);
+            dateRange = minYear === maxYear ? `${minYear}` : `${minYear} - ${maxYear}`;
+          }
         }
       }
 
@@ -1751,7 +1765,7 @@ const RealTimeAnalysis = () => {
               <div style={{ ...styles.previewStatValue, color: '#ef4444' }}>{(csvPreview.fraudCount || 0).toLocaleString()}</div>
             </div>
             <div style={styles.previewStatCard}>
-              <div style={styles.previewStatLabel}>Date Range</div>
+              <div style={styles.previewStatLabel}>Year Range</div>
               <div style={{ ...styles.previewStatValue, fontSize: '0.9rem' }}>{csvPreview.dateRange || 'N/A'}</div>
             </div>
           </div>

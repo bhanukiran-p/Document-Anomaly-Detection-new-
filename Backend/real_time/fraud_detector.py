@@ -101,6 +101,82 @@ def _looks_like_money_mule(transaction_row: pd.Series, feature_row: pd.Series, a
     )
 
 
+def _normalize_fraud_reasons(fraud_df: pd.DataFrame, features_df: pd.DataFrame) -> List[str]:
+    """
+    Normalize fraud reasons based on transaction patterns for better accuracy.
+    Assigns human-readable fraud types based on feature analysis.
+    """
+    normalized_reasons = []
+
+    for idx in fraud_df.index:
+        features = features_df.loc[idx]
+        txn = fraud_df.loc[idx]
+
+        # Priority-based fraud reason assignment
+        reason = None
+
+        # 1. Velocity abuse / Transaction burst (highest priority)
+        if features.get('customer_txn_count', 0) >= 3 and features.get('amount_deviation', 0) > 2:
+            reason = 'Velocity abuse'
+
+        # 2. Account takeover indicators
+        elif features.get('country_mismatch', 0) == 1 or features.get('login_transaction_mismatch', 0) == 1:
+            reason = 'Account takeover'
+
+        # 3. Unusual location
+        elif features.get('country_mismatch', 0) == 1:
+            reason = 'Unusual location'
+
+        # 4. Night-time activity
+        elif features.get('is_night', 1) == 1 and features.get('amount_zscore', 0) > 1.5:
+            reason = 'Night-time activity'
+
+        # 5. High-risk merchant
+        elif features.get('high_risk_category', 0) == 1:
+            reason = 'High-risk merchant'
+
+        # 6. Card-not-present risk (online/foreign transactions)
+        elif features.get('is_foreign_currency', 0) == 1 or features.get('is_transfer', 0) == 1:
+            reason = 'Card-not-present risk'
+
+        # 7. Unusual amount patterns
+        elif features.get('amount_zscore', 0) > 2.5:
+            reason = 'Unusual amount'
+
+        # 8. Money mule pattern
+        elif (features.get('amount_to_balance_ratio', 0) > 0.9 and
+              features.get('is_foreign_currency', 0) == 1):
+            reason = 'Money mule pattern'
+
+        # 9. Structuring / Smurfing (just below reporting thresholds)
+        elif 2900 <= txn.get('amount', 0) <= 3100:
+            reason = 'Structuring / smurfing'
+
+        # 10. Round-dollar pattern
+        elif _is_round_dollar(txn.get('amount', 0)):
+            reason = 'Round-dollar pattern'
+
+        # 11. Cross-border anomaly
+        elif features.get('is_foreign_currency', 0) == 1 and features.get('amount_deviation', 0) > 2:
+            reason = 'Cross-border anomaly'
+
+        # 12. Statistical outlier
+        elif features.get('is_outlier', 0) == 1:
+            reason = 'Unusual amount'
+
+        # 13. Weekend unusual activity
+        elif features.get('is_weekend', 0) == 1 and features.get('high_risk_category', 0) == 1:
+            reason = 'Suspicious login'
+
+        # 14. Default - Transaction burst
+        else:
+            reason = 'Transaction burst'
+
+        normalized_reasons.append(reason)
+
+    return normalized_reasons
+
+
 def detect_fraud_in_transactions(transactions: List[Dict[str, Any]], auto_train: bool = True) -> Dict[str, Any]:
     """
     Detect fraud in transactions using ML models.
@@ -220,6 +296,12 @@ def detect_fraud_in_transactions(transactions: List[Dict[str, Any]], auto_train:
                 df.loc[fraud_indices, 'fraud_reason'] = fraud_types_pred
                 df.loc[fraud_indices, 'fraud_type'] = fraud_types_pred
                 logger.info(f"ML fraud type classification successful for {len(fraud_df)} transactions")
+
+                # Normalize fraud reasons based on transaction patterns
+                normalized_reasons = _normalize_fraud_reasons(fraud_df, fraud_features)
+                df.loc[fraud_indices, 'fraud_reason'] = normalized_reasons
+                df.loc[fraud_indices, 'fraud_type'] = normalized_reasons
+                logger.info(f"Normalized fraud reasons for {len(fraud_df)} fraudulent transactions")
 
             except Exception as e:
                 logger.error(f"ML fraud type prediction failed: {e}", exc_info=True)
