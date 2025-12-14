@@ -21,16 +21,26 @@ const EChartsLine = ({ data, title, height = 220 }) => {
   }
 
   // Extract fraud and legitimate counts, calculate fraud rate
-  const months = data.map(item => item.month);
-  const fraudCounts = data.map(item => item.fraud || item.fraud_count || 0);
-  const legitimateCounts = data.map(item => item.legitimate || item.legitimate_count || 0);
+  // Ensure all values are defined and valid
+  const validData = data.filter(item => item && item.month);
+
+  const months = validData.map(item => item.month || 'Unknown');
+  const fraudCounts = validData.map(item => {
+    const value = item.fraud ?? item.fraud_count ?? 0;
+    return typeof value === 'number' && !isNaN(value) ? value : 0;
+  });
+  const legitimateCounts = validData.map(item => {
+    const value = item.legitimate ?? item.legitimate_count ?? 0;
+    return typeof value === 'number' && !isNaN(value) ? value : 0;
+  });
 
   // Calculate fraud rate as percentage
-  const fraudRates = data.map(item => {
-    const fraud = item.fraud || item.fraud_count || 0;
-    const legitimate = item.legitimate || item.legitimate_count || 0;
+  const fraudRates = validData.map(item => {
+    const fraud = item.fraud ?? item.fraud_count ?? 0;
+    const legitimate = item.legitimate ?? item.legitimate_count ?? 0;
     const total = fraud + legitimate;
-    return total > 0 ? ((fraud / total) * 100).toFixed(2) : 0;
+    const rate = total > 0 ? ((fraud / total) * 100) : 0;
+    return typeof rate === 'number' && !isNaN(rate) ? parseFloat(rate.toFixed(2)) : 0;
   });
 
   console.log('EChartsLine processed:', { months, fraudCounts, legitimateCounts, fraudRates });
@@ -44,9 +54,14 @@ const EChartsLine = ({ data, title, height = 220 }) => {
         color: '#e2e8f0'
       },
       formatter: (params) => {
-        let result = `<strong>${params[0].axisValue}</strong><br/>`;
+        if (!params || !Array.isArray(params) || params.length === 0) {
+          return '';
+        }
+        let result = `<strong>${params[0]?.axisValue || 'Unknown'}</strong><br/>`;
         params.forEach(param => {
-          result += `${param.marker} ${param.seriesName}: ${param.value}${param.seriesName.includes('Rate') ? '%' : ''}<br/>`;
+          if (param && param.seriesName && param.value !== undefined && param.value !== null) {
+            result += `${param.marker} ${param.seriesName}: ${param.value}${param.seriesName.includes('Rate') ? '%' : ''}<br/>`;
+          }
         });
         return result;
       }

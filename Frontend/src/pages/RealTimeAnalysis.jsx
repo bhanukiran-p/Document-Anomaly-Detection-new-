@@ -1759,29 +1759,37 @@ const RealTimeAnalysis = () => {
           {/* Column Information */}
           <div style={styles.columnInfoSection}>
             <div style={styles.columnInfoTitle}>Column Information:</div>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={styles.columnInfoTable}>
-                <thead>
-                  <tr>
-                    <th style={styles.tableHeader}></th>
-                    <th style={styles.tableHeader}>Column Name</th>
-                    <th style={styles.tableHeader}>Data Type</th>
-                    <th style={styles.tableHeader}>Non-Null Count</th>
-                    <th style={styles.tableHeader}>Null Count</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {csvPreview.columnInfo.map((col, idx) => (
-                    <tr key={idx} style={styles.tableRow}>
-                      <td style={styles.tableCell}>{idx}</td>
-                      <td style={styles.tableCell}>{col.name}</td>
-                      <td style={styles.tableCell}>{col.dataType}</td>
-                      <td style={styles.tableCell}>{col.nonNullCount}</td>
-                      <td style={styles.tableCell}>{col.nullCount}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
+              marginTop: '0.75rem'
+            }}>
+              {csvPreview.columnInfo.map((col, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    backgroundColor: colors.muted,
+                    padding: '0.5rem 1rem',
+                    borderRadius: '0.375rem',
+                    border: `1px solid ${colors.border}`,
+                    fontSize: '0.875rem',
+                    color: colors.textSecondary,
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  <span style={{
+                    color: colors.primary,
+                    fontWeight: 600,
+                    marginRight: '0.5rem'
+                  }}>
+                    {idx + 1}.
+                  </span>
+                  <span style={{ color: colors.text }}>
+                    {col.name}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
 
