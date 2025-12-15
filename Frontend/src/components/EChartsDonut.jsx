@@ -34,7 +34,26 @@ const EChartsDonut = ({ data, title, height = 220 }) => {
   const option = {
     tooltip: {
       trigger: 'item',
-      formatter: '{b}: {c} ({d}%)',
+      confine: true,
+      formatter: (params) => {
+        try {
+          if (!params || typeof params !== 'object') {
+            return '';
+          }
+          // Safely access data
+          const data = params.data;
+          if (!data) {
+            return '';
+          }
+          const name = params.name || data.name || '';
+          const value = params.value !== undefined ? params.value : (data.value !== undefined ? data.value : 0);
+          const percent = params.percent !== undefined ? params.percent : 0;
+          return `${name}: ${value} (${percent.toFixed(1)}%)`;
+        } catch (error) {
+          console.error('Tooltip formatter error:', error);
+          return '';
+        }
+      },
       backgroundColor: 'rgba(30, 41, 59, 0.95)',
       borderColor: '#334155',
       textStyle: {
@@ -101,13 +120,33 @@ const EChartsDonut = ({ data, title, height = 220 }) => {
     animationEasing: 'cubicOut'
   };
 
+  // Create a key based on data to force remount on data change
+  const dataKey = React.useMemo(() => {
+    return safeData.map(d => `${d.label}-${d.value}`).join('|');
+  }, [safeData]);
+
   return (
     <ReactECharts
+      key={dataKey}
       option={option}
       style={{ height: `${height}px`, width: '100%' }}
       opts={{ renderer: 'canvas' }}
       notMerge={true}
-      lazyUpdate={true}
+      lazyUpdate={false}
+      onEvents={{
+        mouseover: (params) => {
+          // Prevent errors by checking params validity
+          if (!params || !params.data) {
+            return;
+          }
+        },
+        mouseout: (params) => {
+          // Prevent errors by checking params validity
+          if (!params || !params.data) {
+            return;
+          }
+        }
+      }}
     />
   );
 };

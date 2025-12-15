@@ -198,17 +198,25 @@ const EChartsHeatmap = ({ data, title, height = 400 }) => {
         color: '#e2e8f0'
       },
       formatter: (params) => {
-        if (!params || !params.value || params.value.length < 3) {
+        try {
+          if (!params || !params.value || params.value.length < 3) {
+            return '';
+          }
+          const [xIdx, yIdx, rawVal] = params.value;
+          if (typeof xIdx !== 'number' || typeof yIdx !== 'number' || xIdx < 0 || yIdx < 0) {
+            return '';
+          }
+          const xLabel = (xIdx < labels.length) ? labels[xIdx] : xIdx;
+          const yLabel = (yIdx < labels.length) ? labels[yIdx] : yIdx;
+          const value =
+            typeof rawVal === 'number' && !Number.isNaN(rawVal)
+              ? rawVal.toFixed(2)
+              : rawVal ?? '0.00';
+          return `${xLabel} & ${yLabel}<br/>Correlation: ${value}`;
+        } catch (error) {
+          console.error('Tooltip formatter error:', error);
           return '';
         }
-        const [xIdx, yIdx, rawVal] = params.value;
-        const xLabel = labels[xIdx] ?? xIdx;
-        const yLabel = labels[yIdx] ?? yIdx;
-        const value =
-          typeof rawVal === 'number' && !Number.isNaN(rawVal)
-            ? rawVal.toFixed(2)
-            : rawVal ?? '0.00';
-        return `${xLabel} & ${yLabel}<br/>Correlation: ${value}`;
       }
     },
     grid: {
@@ -289,7 +297,7 @@ const EChartsHeatmap = ({ data, title, height = 400 }) => {
       style={{ height: `${height}px`, width: '100%' }}
       opts={{ renderer: 'canvas' }}
       notMerge={true}
-      lazyUpdate={true}
+      lazyUpdate={false}
     />
   );
 };

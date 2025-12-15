@@ -54,16 +54,25 @@ const EChartsLine = ({ data, title, height = 220 }) => {
         color: '#e2e8f0'
       },
       formatter: (params) => {
-        if (!params || !Array.isArray(params) || params.length === 0) {
+        try {
+          if (!params || !Array.isArray(params) || params.length === 0) {
+            return '';
+          }
+          const firstParam = params[0];
+          if (!firstParam) {
+            return '';
+          }
+          let result = `<strong>${firstParam.axisValue || firstParam.name || 'Unknown'}</strong><br/>`;
+          params.forEach(param => {
+            if (param && param.seriesName && param.value !== undefined && param.value !== null) {
+              result += `${param.marker || ''} ${param.seriesName}: ${param.value}${param.seriesName.includes('Rate') ? '%' : ''}<br/>`;
+            }
+          });
+          return result;
+        } catch (error) {
+          console.error('Tooltip formatter error:', error);
           return '';
         }
-        let result = `<strong>${params[0]?.axisValue || 'Unknown'}</strong><br/>`;
-        params.forEach(param => {
-          if (param && param.seriesName && param.value !== undefined && param.value !== null) {
-            result += `${param.marker} ${param.seriesName}: ${param.value}${param.seriesName.includes('Rate') ? '%' : ''}<br/>`;
-          }
-        });
-        return result;
       }
     },
     legend: {
@@ -178,13 +187,19 @@ const EChartsLine = ({ data, title, height = 220 }) => {
     animationEasing: 'cubicOut'
   };
 
+  // Create a key based on data to force remount on data change
+  const dataKey = React.useMemo(() => {
+    return months.join('|') + fraudCounts.join('|') + legitimateCounts.join('|');
+  }, [months, fraudCounts, legitimateCounts]);
+
   return (
     <ReactECharts
+      key={dataKey}
       option={option}
       style={{ height: `${height}px`, width: '100%' }}
       opts={{ renderer: 'canvas' }}
       notMerge={true}
-      lazyUpdate={true}
+      lazyUpdate={false}
     />
   );
 };
