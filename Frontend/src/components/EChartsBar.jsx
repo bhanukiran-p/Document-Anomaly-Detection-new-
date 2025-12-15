@@ -3,17 +3,32 @@ import ReactECharts from 'echarts-for-react';
 
 const EChartsBar = ({ data, title, height = 400 }) => {
 
-  const normalizedData = Array.isArray(data)
-    ? data
-        .map((item) => {
-          if (!item) return null;
-          const label = item.label || item.name;
-          const value = Number(item.value);
-          if (!label || Number.isNaN(value)) return null;
-          return { label, value };
-        })
-        .filter(Boolean)
-    : [];
+  const normalizedData = React.useMemo(() => {
+    return Array.isArray(data)
+      ? data
+          .map((item) => {
+            if (!item) return null;
+            const label = item.label || item.name;
+            const value = Number(item.value);
+            if (!label || Number.isNaN(value)) return null;
+            return { label, value };
+          })
+          .filter(Boolean)
+      : [];
+  }, [data]);
+
+  // Calculate dynamic height based on number of bars
+  const calculatedHeight = Math.max(400, normalizedData.length * 50);
+
+  // Reverse data so highest values appear at the top (descending order)
+  const reversedData = React.useMemo(() => {
+    return [...normalizedData].reverse();
+  }, [normalizedData]);
+
+  // Create a key based on data to force remount on data change
+  const dataKey = React.useMemo(() => {
+    return reversedData.map(d => `${d.label}-${d.value}`).join('|');
+  }, [reversedData]);
 
   if (normalizedData.length === 0) {
     return (
@@ -31,12 +46,6 @@ const EChartsBar = ({ data, title, height = 400 }) => {
       </div>
     );
   }
-
-  // Calculate dynamic height based on number of bars
-  const calculatedHeight = Math.max(400, normalizedData.length * 50);
-
-  // Reverse data so highest values appear at the top (descending order)
-  const reversedData = [...normalizedData].reverse();
 
   const option = {
     tooltip: {
@@ -159,11 +168,6 @@ const EChartsBar = ({ data, title, height = 400 }) => {
     animationDuration: 1000,
     animationEasing: 'cubicOut'
   };
-
-  // Create a key based on data to force remount on data change
-  const dataKey = React.useMemo(() => {
-    return reversedData.map(d => `${d.label}-${d.value}`).join('|');
-  }, [reversedData]);
 
   return (
     <ReactECharts
