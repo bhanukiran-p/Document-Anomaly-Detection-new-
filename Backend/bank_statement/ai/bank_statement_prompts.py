@@ -50,6 +50,12 @@ Total Debits: ${total_debits}
 Transaction Count: {transaction_count}
 Currency: {currency}
 
+**TRANSACTION PERIOD COVERAGE:**
+Statement Period: {statement_period_start} to {statement_period_end}
+Transaction Date Range: {transaction_date_range}
+Coverage Status: {transaction_period_coverage}
+**CRITICAL**: If transactions don't cover the full statement period (e.g., statement period is Nov 1-30 but transactions only go to Nov 15), this indicates document alteration and MUST be flagged as ALTERED_LEGITIMATE_DOCUMENT.
+
 **BALANCE VERIFICATION:**
 Expected Ending Balance = Beginning Balance + Total Credits - Total Debits
 Expected: ${beginning_balance} + ${total_credits} - ${total_debits} = ${calculated_ending_balance}
@@ -124,10 +130,11 @@ For each fraud_type you identify, you MUST provide SPECIFIC explanations based o
 - **ALTERED_LEGITIMATE_DOCUMENT**: Explain SPECIFIC alterations detected
   - Example: "Balance amounts show signs of tampering: Font inconsistencies detected in ending balance field"
   - Example: "Transaction dates appear altered: Date format inconsistencies detected"
+  - **CRITICAL**: "Statement period is {{statement_period_start}} to {{statement_period_end}}, but transactions only cover {{transaction_date_range}}. Missing transactions for {{X}} days at the end of the statement period, indicating document alteration or incomplete statement"
+  - Example: "Statement period is November 1-30, 2024, but transactions only go until November 15, 2024. Missing 15 days of transactions, indicating the document was altered or truncated"
 
 - **SUSPICIOUS_TRANSACTION_PATTERNS**: Explain SPECIFIC suspicious patterns
   - Example: "Unusual transaction pattern: {{X}} transactions of exactly ${{amount}} within {{timeframe}}"
-  - Example: "Round-number transactions: {{count}} transactions are exact round numbers (e.g., $1,000.00, $5,000.00)"
   - Example: "Rapid balance changes: Balance increased by ${{amount}} ({{percentage}}%) in {{days}} days"
 
 - **UNREALISTIC_FINANCIAL_PROPORTIONS**: Explain SPECIFIC unrealistic proportions
@@ -142,7 +149,7 @@ Your actionable_recommendations MUST be SPECIFIC to the document's actual proble
   - "Verify transaction reconciliation - ending balance ($12,384.50) doesn't match calculated balance ($12,384.50). Check for missing or duplicate transactions."
   - "Contact {{bank_name}} to verify account number {{account_number}} format matches their standards"
   - "Request original statement from account holder - document shows signs of alteration in balance fields"
-  - "Review transaction pattern - {{X}} round-number transactions detected, verify legitimacy with account holder"
+  - "Review transaction pattern - verify legitimacy with account holder"
 
 - BAD examples (too generic):
   - "Block this transaction immediately" (not specific to document issues)
@@ -150,12 +157,13 @@ Your actionable_recommendations MUST be SPECIFIC to the document's actual proble
   - "Contact account holder" (doesn't explain what to verify)
 
 **ANALYSIS REQUIREMENTS:**
-1. Calculate expected ending balance: Beginning Balance + Total Credits - Total Debits
-2. Compare calculated balance with reported Ending Balance
-3. Analyze transaction patterns (frequency, amounts, round numbers)
-4. Verify account number format matches bank standards
-5. Check for missing critical fields
-6. Identify SPECIFIC inconsistencies, not generic customer history
+1. **CRITICAL**: Check if transactions cover the full statement period - if statement period is Nov 1-30 but transactions only go to Nov 15, flag as ALTERED_LEGITIMATE_DOCUMENT
+2. Calculate expected ending balance: Beginning Balance + Total Credits - Total Debits
+3. Compare calculated balance with reported Ending Balance
+4. Analyze transaction patterns (frequency, amounts)
+5. Verify account number format matches bank standards
+6. Check for missing critical fields
+7. Identify SPECIFIC inconsistencies, not generic customer history
 
 **REMINDER: Return ONLY the JSON object. No markdown formatting, no code blocks, no explanations before or after the JSON.**
 """
@@ -195,7 +203,7 @@ Finally, if the customer is a repeat offender (i.e., their fraud_count is {great
 
 ### AUTOMATIC REJECTION CONDITIONS (Regardless of ML Score)
 1. Repeat Offender (fraud_count > 0) → REJECT (auto, before LLM)
-2. Duplicate Statement Detected → REJECT
+2. Duplicate Statement Detected → REJECT (ONLY if previous submission was REJECTED - if previous was ESCALATED, NOT a duplicate)
 
 ### ESCALATION CONDITIONS (For New Customers)
 **IMPORTANT: New customers with high risk should be ESCALATED, not REJECTED**
@@ -278,6 +286,52 @@ def format_analysis_template(bank_statement_data: dict, ml_analysis: dict, custo
     transactions = bank_statement_data.get('transactions', [])
     transaction_count = len(transactions) if transactions else 0
     
+    # Check if transactions cover the full statement period
+    transaction_period_coverage = "FULL COVERAGE"
+    transaction_date_range = "N/A"
+    if transactions and statement_period_start != 'N/A' and statement_period_end != 'N/A':
+        try:
+            from datetime import datetime
+            period_start_dt = datetime.strptime(statement_period_start, '%Y-%m-%d')
+            period_end_dt = datetime.strptime(statement_period_end, '%Y-%m-%d')
+            
+            # Find earliest and latest transaction dates
+            transaction_dates = []
+            for txn in transactions:
+                txn_date_str = txn.get('date', '')
+                if txn_date_str and txn_date_str != 'N/A':
+                    try:
+                        # Try various date formats
+                        for fmt in ['%Y-%m-%d', '%m/%d/%Y', '%Y/%m/%d', '%m-%d-%Y']:
+                            try:
+                                txn_dt = datetime.strptime(txn_date_str, fmt)
+                                transaction_dates.append(txn_dt)
+                                break
+                            except ValueError:
+                                continue
+                    except:
+                        continue
+            
+            if transaction_dates:
+                earliest_txn = min(transaction_dates)
+                latest_txn = max(transaction_dates)
+                transaction_date_range = f"{earliest_txn.strftime('%Y-%m-%d')} to {latest_txn.strftime('%Y-%m-%d')}"
+                
+                # Check if transactions don't cover the full period
+                # Allow 1 day buffer for statement date vs period end
+                period_end_buffer = period_end_dt.replace(day=min(period_end_dt.day + 1, 28))  # Allow 1 day buffer
+                
+                if latest_txn < period_end_dt:
+                    days_missing = (period_end_dt - latest_txn).days
+                    transaction_period_coverage = f"INCOMPLETE: Transactions only go until {latest_txn.strftime('%Y-%m-%d')}, but statement period ends {statement_period_end} ({days_missing} days missing)"
+                elif earliest_txn > period_start_dt:
+                    days_missing = (earliest_txn - period_start_dt).days
+                    transaction_period_coverage = f"INCOMPLETE: Transactions start from {earliest_txn.strftime('%Y-%m-%d')}, but statement period starts {statement_period_start} ({days_missing} days missing)"
+                else:
+                    transaction_period_coverage = "FULL COVERAGE"
+        except Exception as e:
+            transaction_period_coverage = f"CHECK REQUIRED: Could not verify coverage ({str(e)})"
+    
     # Get transaction samples for pattern analysis (up to 10 transactions)
     transaction_samples = []
     if transactions:
@@ -338,6 +392,8 @@ def format_analysis_template(bank_statement_data: dict, ml_analysis: dict, custo
         balance_match_status=balance_match_status,
         transaction_count=transaction_count,
         currency=currency,
+        transaction_date_range=transaction_date_range,
+        transaction_period_coverage=transaction_period_coverage,
         transaction_samples=transaction_samples_str,
         fraud_risk_score=f"{fraud_risk_score:.2%}",
         risk_level=risk_level,

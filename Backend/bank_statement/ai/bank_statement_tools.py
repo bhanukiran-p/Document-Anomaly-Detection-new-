@@ -73,9 +73,9 @@ class BankStatementDataAccessTools:
         # TODO: Query historical fraud cases
         return []
 
-    def check_duplicate(self, account_number: str, statement_period_start: str, account_holder_name: str) -> bool:
+    def check_duplicate(self, account_number: str, statement_period_start: str, account_holder_name: str) -> Dict:
         """
-        Check if this bank statement has been submitted before
+        Check if this bank statement has been submitted before and get previous recommendation
 
         Args:
             account_number: Account number
@@ -83,10 +83,10 @@ class BankStatementDataAccessTools:
             account_holder_name: Account holder name
 
         Returns:
-            True if duplicate found, False otherwise
+            Dict with 'is_duplicate' (bool) and 'previous_recommendation' (str or None)
         """
         if self.mock_mode or not self.customer_storage:
-            return False  # Mock: no duplicates
+            return {'is_duplicate': False, 'previous_recommendation': None}  # Mock: no duplicates
 
         # Use real database
         return self.customer_storage.check_duplicate_statement(account_number, statement_period_start, account_holder_name)

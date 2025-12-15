@@ -217,13 +217,11 @@ class BankStatementFeatureExtractor:
         large_txn_count = self._count_large_transactions(transactions, threshold=10000)
         features.append(min(large_txn_count, 50.0))
 
-        # Feature 23: Round number transactions (suspicious pattern)
-        # MEDIUM IMPACT: Normalize to reduce impact (divide by 2 to make it less influential)
-        round_txn_count = self._count_round_number_transactions(transactions)
-        # Normalize: divide by 2 to reduce impact, then cap at 50.0 (reduced from 100.0)
-        normalized_round_count = round_txn_count / 2.0
-        features.append(min(normalized_round_count, 50.0))
-
+        # Feature 23: Round number transactions (deprecated - always returns 0.0 for model compatibility)
+        # This feature is no longer used for fraud detection but kept for model compatibility
+        # Models were trained with 35 features, so we must maintain this position
+        features.append(0.0)
+        
         # Feature 24: Date format validation
         features.append(self._validate_date_format(statement_period_start))
 
@@ -418,19 +416,6 @@ class BankStatementFeatureExtractor:
             if isinstance(txn, dict):
                 amount = abs(self._extract_numeric_amount(txn.get('amount')))
                 if amount >= threshold:
-                    count += 1
-        return count
-
-    def _count_round_number_transactions(self, transactions: List) -> int:
-        """Count transactions with round numbers (e.g., $100.00, $1000.00)"""
-        if not transactions:
-            return 0
-
-        count = 0
-        for txn in transactions:
-            if isinstance(txn, dict):
-                amount = abs(self._extract_numeric_amount(txn.get('amount')))
-                if amount > 0 and amount % 100 == 0:  # Round to nearest $100
                     count += 1
         return count
 
