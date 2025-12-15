@@ -7,7 +7,7 @@ import { FaExclamationTriangle } from 'react-icons/fa';
 const LoginPage = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -21,7 +21,7 @@ const LoginPage = () => {
     setLoading(true);
 
     try {
-      await login(email, password);
+      await login(username, password);
       navigate('/industry-selection');
     } catch (err) {
       setError(err.message);
@@ -195,20 +195,20 @@ const LoginPage = () => {
             </div>
           )}
 
-          {/* Email Field */}
+          {/* Username Field */}
           <div style={styles.formGroup}>
-            <label style={styles.label}>Email Address</label>
+            <label style={styles.label}>Username</label>
             <input
-              type="email"
+              type="text"
               required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Enter your username"
               style={{
                 ...styles.input,
-                ...(focusedField === 'email' ? styles.inputFocus : {}),
+                ...(focusedField === 'username' ? styles.inputFocus : {}),
               }}
-              onFocus={() => setFocusedField('email')}
+              onFocus={() => setFocusedField('username')}
               onBlur={() => setFocusedField(null)}
               disabled={loading}
             />
