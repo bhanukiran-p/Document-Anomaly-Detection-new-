@@ -134,12 +134,36 @@ For each fraud_type you identify, you MUST provide SPECIFIC explanations based o
   - Example: "Statement period is November 1-30, 2024, but transactions only go until November 15, 2024. Missing 15 days of transactions, indicating the document was altered or truncated"
 
 - **SUSPICIOUS_TRANSACTION_PATTERNS**: Explain SPECIFIC suspicious patterns
-  - Example: "Unusual transaction pattern: {{X}} transactions of exactly ${{amount}} within {{timeframe}}"
-  - Example: "Rapid balance changes: Balance increased by ${{amount}} ({{percentage}}%) in {{days}} days"
+  - **CRITICAL**: Only flag SUSPICIOUS_TRANSACTION_PATTERNS for LARGE OUTGOING TRANSFERS exceeding $20,000
+  - **DO NOT flag as suspicious**:
+    - Salary deposits and rent payments within 24 hours (this is NORMAL - people pay rent after receiving salary)
+    - Transfers to savings accounts (this is NORMAL savings behavior)
+    - Rapid fund turnover between legitimate accounts (checking to savings, etc.)
+    - Normal expense patterns (rent, bills, groceries, etc.)
+    - Balance increases explained by legitimate credits
+    - Duplicate transactions (unless they're large transfers >$20,000)
+    - Timing patterns (weekends/holidays are normal for bill payments)
+  - **ONLY flag if**: A single outgoing transfer or withdrawal exceeds $20,000
+  - Example: "Large outgoing transfer detected: ${{amount}} transferred to {{recipient}} on {{date}}, exceeding $20,000 threshold for suspicious transaction patterns"
+  - Example: "Large withdrawal detected: ${{amount}} withdrawn on {{date}}, exceeding $20,000 threshold"
+  - **DO NOT use this fraud type for**: Any transaction under $20,000, salary deposits, rent payments, transfers to savings, or normal expense patterns
 
 - **UNREALISTIC_FINANCIAL_PROPORTIONS**: Explain SPECIFIC unrealistic proportions
-  - Example: "Unrealistic credit/debit ratio: Credits ($15,230.00) are {{X}} times debits ($11,388.25), which is unusual for this account type"
-  - Example: "Unrealistic transaction frequency: {{transaction_count}} transactions in {{days}} days averages {{avg}} per day, which is unusually high"
+  - **CRITICAL**: Do NOT flag normal financial proportions as suspicious. Many legitimate financial patterns may seem unusual but are perfectly normal:
+    - Rent/housing expenses representing 30-50% of income is NORMAL and LEGITIMATE (many people spend this much on housing)
+    - Credit/debit ratios vary widely based on individual circumstances (savings, income timing, etc.)
+    - Large single transactions (rent, car payments, insurance) are NORMAL expenses
+  - Only flag UNREALISTIC_FINANCIAL_PROPORTIONS for TRULY extreme and suspicious patterns:
+    - Credit/debit ratios > 100:1 or < 0.01:1 (extremely unrealistic, suggesting fabricated numbers)
+    - Transaction frequency > 100 transactions per day (physically impossible for normal banking)
+    - All transactions are exactly the same amount (suggesting manipulation)
+  - **DO NOT use this fraud type for**:
+    - Normal rent-to-income ratios (30-50% is standard)
+    - Normal credit/debit ratios (most ratios between 0.5:1 and 10:1 are legitimate)
+    - Large single expenses (rent, car payments, insurance premiums are normal)
+    - Variations in spending patterns (people have different financial habits)
+  - Example (ONLY for extreme cases): "Extreme credit/debit ratio of {{X}}:1 suggests fabricated transaction data"
+  - Example (ONLY for extreme cases): "Transaction frequency of {{X}} per day is physically impossible for normal banking activity"
 
 **CRITICAL: ACTIONABLE RECOMMENDATIONS MUST BE SPECIFIC TO THE DOCUMENT ISSUES**
 
@@ -160,10 +184,21 @@ Your actionable_recommendations MUST be SPECIFIC to the document's actual proble
 1. **CRITICAL**: Check if transactions cover the full statement period - if statement period is Nov 1-30 but transactions only go to Nov 15, flag as ALTERED_LEGITIMATE_DOCUMENT
 2. Calculate expected ending balance: Beginning Balance + Total Credits - Total Debits
 3. Compare calculated balance with reported Ending Balance
-4. Analyze transaction patterns (frequency, amounts)
-5. Verify account number format matches bank standards
-6. Check for missing critical fields
-7. Identify SPECIFIC inconsistencies, not generic customer history
+4. **CRITICAL**: Balance increases are LEGITIMATE if explained by documented credits (salary, income, transfers). Do NOT flag balance increases as suspicious unless there are NO corresponding credits to explain them.
+5. **CRITICAL**: Financial proportions are LEGITIMATE if they fall within normal ranges:
+   - Rent/housing expenses of 30-50% of income are NORMAL and should NOT be flagged
+   - Credit/debit ratios between 0.5:1 and 10:1 are typically legitimate
+   - Large single expenses (rent, car payments, insurance) are NORMAL
+   - Only flag proportions if they are EXTREME (e.g., > 100:1 ratio, impossible transaction frequency)
+6. **CRITICAL**: Transaction patterns are LEGITIMATE unless they involve large transfers:
+   - Salary deposits followed by rent payments within 24 hours are NORMAL and should NOT be flagged
+   - Transfers to savings accounts are NORMAL savings behavior
+   - Rapid fund movement between legitimate accounts is NORMAL
+   - Only flag SUSPICIOUS_TRANSACTION_PATTERNS for outgoing transfers/withdrawals exceeding $20,000
+7. Analyze transaction amounts - look ONLY for large outgoing transfers (>$20,000), ignore timing patterns, duplicates, or normal expenses
+7. Verify account number format matches bank standards
+8. Check for missing critical fields
+9. Identify SPECIFIC inconsistencies, not generic customer history
 
 **REMINDER: Return ONLY the JSON object. No markdown formatting, no code blocks, no explanations before or after the JSON.**
 """

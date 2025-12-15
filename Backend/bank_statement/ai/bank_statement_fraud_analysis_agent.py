@@ -287,7 +287,7 @@ class BankStatementFraudAnalysisAgent:
                 logger.warning(f"Overriding LLM recommendation to REJECT for second+ upload with >30% risk (escalate_count={escalate_count_post}, fraud_count={fraud_count_post})")
                 original_recommendation = final_result.get('recommendation')
                 
-                # Get fraud types from LLM (document-based analysis)
+                # Get fraud types from LLM (document-based analysis) - use LLM fraud types only
                 llm_fraud_types = final_result.get('fraud_types', []) or []
                 llm_fraud_explanations = final_result.get('fraud_explanations', []) or []
                 
@@ -311,7 +311,7 @@ class BankStatementFraudAnalysisAgent:
                 else:
                     logger.info(f"NOT adding REPEAT_OFFENDER because fraud_count={fraud_count_post} (only escalate_count={escalate_count_post})")
                 
-                # Override to REJECT but keep LLM fraud types and add REPEAT_OFFENDER if applicable
+                # Override to REJECT but keep LLM/ML fraud types and add REPEAT_OFFENDER if applicable
                 final_result['recommendation'] = 'REJECT'
                 final_result['confidence_score'] = 1.0
                 final_result['summary'] = f'Second+ upload rejected: {account_holder_name} has fraud risk score {fraud_risk_score_post:.1%} > 30%'

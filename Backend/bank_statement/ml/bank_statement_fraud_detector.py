@@ -186,6 +186,17 @@ class BankStatementFraudDetector:
 
             # Get feature importance
             feature_importance = self._get_feature_importance(features, feature_names)
+            
+            # Log top contributing features for debugging high fraud scores
+            if final_score > 0.30:
+                logger.info(f"High fraud risk score ({final_score:.1%}) detected. Analyzing contributing features...")
+                feature_values = list(zip(feature_names, features))
+                # Sort by feature value (highest first) to see what's contributing
+                sorted_features = sorted(feature_values, key=lambda x: abs(x[1]), reverse=True)
+                top_features = sorted_features[:10]  # Top 10 features
+                logger.info(f"Top contributing features to fraud score:")
+                for feat_name, feat_value in top_features:
+                    logger.info(f"  - {feat_name}: {feat_value:.4f}")
 
             # Determine risk level
             risk_level = self._determine_risk_level(final_score)
@@ -383,27 +394,16 @@ class BankStatementFraudDetector:
                 )
 
         # 3. SUSPICIOUS_TRANSACTION_PATTERNS
-        # Many small transactions, duplicates, round numbers, or unusual timing patterns
+        # CRITICAL: Only flag if any transaction exceeds $20,000 (policy: only large transfers are suspicious)
+        # The feature extractor now only returns 1.0 if a transaction > $20,000 is detected
         if suspicious_transaction_pattern:
             if SUSPICIOUS_TRANSACTION_PATTERNS not in fraud_types:
                 fraud_types.append(SUSPICIOUS_TRANSACTION_PATTERNS)
                 fraud_reasons.append(
-                    "Detected suspicious transaction patterns (many small transactions, unusual frequency)."
+                    "Large transaction detected: A transaction exceeding $20,000 was found, which exceeds the threshold for suspicious transaction patterns."
                 )
-        # Duplicate transactions - MEDIUM impact (reduced threshold)
-        # Only flag if duplicates are combined with other suspicious patterns
-        if duplicate_transactions and (balance_volatility > 0.5 or credit_debit_ratio > 1.5):
-            if SUSPICIOUS_TRANSACTION_PATTERNS not in fraud_types:
-                fraud_types.append(SUSPICIOUS_TRANSACTION_PATTERNS)
-                fraud_reasons.append(
-                    "Duplicate transactions detected in combination with other suspicious patterns."
-                )
-        if unusual_timing > 0.3:
-            if SUSPICIOUS_TRANSACTION_PATTERNS not in fraud_types:
-                fraud_types.append(SUSPICIOUS_TRANSACTION_PATTERNS)
-                fraud_reasons.append(
-                    f"Unusual transaction timing detected ({unusual_timing*100:.1f}% on weekends/holidays), which may indicate suspicious activity."
-                )
+        # Do NOT flag duplicates or unusual timing as suspicious transaction patterns
+        # These are normal patterns and should not trigger fraud detection
 
         # 4. BALANCE_CONSISTENCY_VIOLATION
         # Ending balance ≠ (beginning + credits - debits) OR negative balance
