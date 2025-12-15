@@ -390,20 +390,20 @@ class BankStatementFeatureExtractor:
             return 0.0
 
     def _detect_suspicious_transaction_pattern(self, transactions: List) -> float:
-        """Detect suspicious patterns (many small transactions)"""
-        if not transactions or len(transactions) < 10:
+        """
+        Detect suspicious patterns: Only flag if any transaction amount exceeds $20,000
+        This aligns with the policy that only large transfers (>$20,000) are considered suspicious
+        """
+        if not transactions:
             return 0.0
 
-        small_txn_count = 0
+        # Check if any transaction exceeds $20,000 threshold
         for txn in transactions:
             if isinstance(txn, dict):
                 amount = abs(self._extract_numeric_amount(txn.get('amount')))
-                if 0 < amount < 100:  # Many small transactions
-                    small_txn_count += 1
-
-        # If more than 50% are small transactions, flag as suspicious
-        if small_txn_count / len(transactions) > 0.5:
-            return 1.0
+                if amount > 20000:  # Only flag if transaction > $20,000
+                    return 1.0
+        
         return 0.0
 
     def _count_large_transactions(self, transactions: List, threshold: float = 10000) -> int:

@@ -115,6 +115,14 @@ class BankStatementExtractor:
 
         # Stage 2: Normalization
         bank_name = extracted_data.get('bank_name', '')
+        # Normalize bank name using financial_institutions table (like checks do)
+        normalized_bank_name = self._normalize_bank_name_with_db(bank_name)
+        if normalized_bank_name:
+            # Update bank_name in extracted_data to use normalized version
+            extracted_data['bank_name'] = normalized_bank_name
+            bank_name = normalized_bank_name
+            logger.info(f"Normalized bank name: '{bank_name}' -> '{normalized_bank_name}'")
+        
         normalized_data = self._normalize_data(extracted_data, bank_name)
 
         # Stage 3: Validation Rules (collects issues but doesn't exit early)
@@ -330,6 +338,31 @@ class BankStatementExtractor:
             
             logger.info(f"Generic normalization complete - Completeness: {normalized_data['completeness_score']}")
             return normalized_data
+    
+    def _normalize_bank_name_with_db(self, bank_name: Optional[str]) -> Optional[str]:
+        """
+        Normalize bank name to match exact bank names from financial_institutions table.
+        Uses keyword matching to find the best match from the database (same logic as checks).
+        
+        Args:
+            bank_name: Raw bank name from extraction
+            
+        Returns:
+            Normalized bank name matching financial_institutions table, or original if not found
+        """
+        if not bank_name:
+            return None
+        
+        try:
+            from database.document_storage import DocumentStorage
+            doc_storage = DocumentStorage()
+            normalized = doc_storage._normalize_bank_name(bank_name)
+            if normalized and normalized != bank_name.upper().strip():
+                logger.info(f"Normalized bank name '{bank_name}' to '{normalized}' using financial_institutions table")
+            return normalized
+        except Exception as e:
+            logger.warning(f"Could not normalize bank name using financial_institutions table: {e}, using original: {bank_name}")
+            return bank_name
 
     def _collect_validation_issues(self, data: Dict) -> List[str]:
         """
