@@ -1638,7 +1638,7 @@ const RealTimeAnalysis = () => {
               type="url"
               value={bankingUrl}
               onChange={(e) => setBankingUrl(e.target.value)}
-              placeholder="https://api.example.com/transactions"
+              placeholder="https://payments-api.yourbank.com/transactions"
               style={styles.input}
               onFocus={(e) => {
                 e.target.style.borderColor = primary;
