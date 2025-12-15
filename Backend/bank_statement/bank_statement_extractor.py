@@ -489,10 +489,20 @@ class BankStatementExtractor:
         try:
             from .ai.bank_statement_tools import BankStatementDataAccessTools
             data_tools = BankStatementDataAccessTools()
-            is_duplicate = data_tools.check_duplicate(account_number, statement_period_start, account_holder_name)
-            if is_duplicate:
-                logger.warning(f"Duplicate detected: {account_number} from {account_holder_name} for period {statement_period_start}")
-            return is_duplicate
+            duplicate_check = data_tools.check_duplicate(account_number, statement_period_start, account_holder_name)
+            is_duplicate = duplicate_check.get('is_duplicate', False) if isinstance(duplicate_check, dict) else duplicate_check
+            previous_recommendation = duplicate_check.get('previous_recommendation') if isinstance(duplicate_check, dict) else None
+            
+            # CRITICAL: Only mark as duplicate validation issue if previous was REJECTED (confirmed fraud)
+            # If previous was ESCALATED, APPROVE, or None - NOT a duplicate, allow resubmission
+            if is_duplicate and previous_recommendation and previous_recommendation.upper() == 'REJECT':
+                logger.warning(f"Duplicate detected (previous was REJECTED/fraud): {account_number} from {account_holder_name} for period {statement_period_start}")
+                return True
+            elif is_duplicate:
+                # Previous was ESCALATED, APPROVE, or None - NOT a duplicate, allow resubmission
+                logger.info(f"Same statement found but previous was {previous_recommendation or 'ESCALATED'} (not REJECTED) - NOT treating as duplicate validation issue")
+                return False
+            return False
         except Exception as e:
             logger.error(f"Duplicate check failed: {e}")
             return False

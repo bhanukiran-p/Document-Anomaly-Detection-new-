@@ -177,18 +177,66 @@ class BankStatementFraudAnalysisAgent:
             # REPEAT_OFFENDER only applies to customers who have been REJECTED before (fraud_count > 0)
             # Customers who were only ESCALATED (escalate_count > 0, fraud_count = 0) should go through LLM analysis
             fraud_count = customer_info.get('fraud_count', 0) or 0
+            escalate_count = customer_info.get('escalate_count', 0) or 0
             if fraud_count > 0:
                 logger.warning(f"REPEAT OFFENDER DETECTED: {account_holder_name} has fraud_count={fraud_count}. Auto-rejecting.")
                 return self._create_repeat_offender_rejection(account_holder_name, fraud_count)
+            
+            # CRITICAL: Upload-based decision logic BEFORE LLM
+            # First upload (escalate_count = 0): >30% → ESCALATE, ≤30% → APPROVE
+            # Second+ upload (escalate_count > 0): >30% → REJECT, ≤30% → Continue to LLM
+            fraud_risk_score = ml_analysis.get('fraud_risk_score', 0.0)
+            is_first_upload = escalate_count == 0
+            is_new_customer = not customer_info.get('customer_id')
+            
+            if is_first_upload:
+                # First upload logic
+                if fraud_risk_score > 0.30:
+                    logger.info(f"First upload with fraud_risk_score={fraud_risk_score:.1%} > 30% → ESCALATE")
+                    return self._create_first_time_escalation(account_holder_name, is_new_customer=is_new_customer, fraud_risk_score=fraud_risk_score)
+                else:
+                    logger.info(f"First upload with fraud_risk_score={fraud_risk_score:.1%} ≤ 30% → APPROVE")
+                    return self._create_first_time_approval(account_holder_name, fraud_risk_score)
+            else:
+                # Second+ upload logic
+                # For second+ uploads with >30% risk, we still need to call LLM to get fraud types
+                # Then we'll override recommendation to REJECT but keep LLM-provided fraud types
+                # And add REPEAT_OFFENDER only if fraud_count > 0
+                if fraud_risk_score > 0.30:
+                    logger.warning(f"Second+ upload (escalate_count={escalate_count}, fraud_count={fraud_count}) with fraud_risk_score={fraud_risk_score:.1%} > 30% → Will REJECT after LLM analysis")
+                    # Continue to LLM to get fraud types, then override to REJECT
+                    # Don't return early - let LLM analyze and provide fraud types
+                else:
+                    logger.info(f"Second+ upload (escalate_count={escalate_count}) with fraud_risk_score={fraud_risk_score:.1%} ≤ 30% → Continue to LLM for analysis")
+                    # Continue to LLM analysis for second+ uploads with low risk
 
-            # Check for duplicates
+            # Check for duplicates - CRITICAL: Only mark as duplicate if previous submission was REJECTED
+            # If previous was ESCALATED, NEVER mark as duplicate - allow resubmission even if current upload is fraud
+            # Duplicate = same document uploaded again AFTER it was already REJECTED (confirmed fraud)
             account_number = extracted_data.get('account_number')
             statement_period_start = extracted_data.get('statement_period_start_date')
             if account_number and statement_period_start and account_holder_name:
-                is_duplicate = self.data_tools.check_duplicate(account_number, statement_period_start, account_holder_name)
+                duplicate_check = self.data_tools.check_duplicate(account_number, statement_period_start, account_holder_name)
+                is_duplicate = duplicate_check.get('is_duplicate', False)
+                previous_recommendation = duplicate_check.get('previous_recommendation')
+                
+                # Log duplicate check results for debugging
+                logger.info(f"Duplicate check result: is_duplicate={is_duplicate}, previous_recommendation={previous_recommendation}")
+                
                 if is_duplicate:
-                    logger.warning(f"Duplicate bank statement detected: {account_number} from {account_holder_name}")
-                    return self._create_duplicate_rejection(account_number, account_holder_name)
+                    # CRITICAL LOGIC: Only reject as duplicate if previous submission was REJECTED (confirmed fraud)
+                    # If previous was ESCALATED, APPROVE, or None - allow resubmission (not considered duplicate)
+                    # This means: escalated documents can be resubmitted even if they turn out to be fraud
+                    previous_rec_upper = previous_recommendation.upper() if previous_recommendation else None
+                    if previous_recommendation and previous_rec_upper == 'REJECT':
+                        logger.warning(f"Duplicate bank statement detected (previous was REJECTED/fraud): {account_number} from {account_holder_name}, previous_recommendation={previous_recommendation}")
+                        return self._create_duplicate_rejection(account_number, account_holder_name)
+                    else:
+                        # Previous was ESCALATED, APPROVE, or no recommendation - NOT a duplicate
+                        # Allow resubmission and continue with normal analysis (even if current upload is fraud)
+                        logger.info(f"Same statement found but previous was '{previous_recommendation}' (not REJECTED) - NOT treating as duplicate, allowing resubmission: {account_number} from {account_holder_name}")
+                        # Continue with normal analysis flow - this will be analyzed normally
+                        # IMPORTANT: Do NOT mark as duplicate - let it go through normal analysis
 
             # Format the analysis prompt
             analysis_prompt = format_analysis_template(
@@ -226,25 +274,59 @@ class BankStatementFraudAnalysisAgent:
             # Validate and format result
             final_result = self._validate_and_format_result(result, ml_analysis, customer_info)
 
-            # CRITICAL: Post-LLM validation - Force ESCALATE for new customers regardless of LLM recommendation
-            # New customers should ALWAYS ESCALATE (1-100% risk) per updated decision matrix
-            is_new_customer = not customer_info.get('customer_id')
-            if is_new_customer:
+            # CRITICAL: Post-LLM override for second+ uploads with >30% risk
+            # We let LLM analyze to get fraud types, but then override recommendation to REJECT
+            # And add REPEAT_OFFENDER only if fraud_count > 0
+            # Get customer info again to ensure we have latest values
+            escalate_count_post = customer_info.get('escalate_count', 0) or 0
+            fraud_count_post = customer_info.get('fraud_count', 0) or 0
+            fraud_risk_score_post = ml_analysis.get('fraud_risk_score', 0.0)
+            is_second_upload = escalate_count_post > 0
+            
+            if is_second_upload and fraud_risk_score_post > 0.30:
+                logger.warning(f"Overriding LLM recommendation to REJECT for second+ upload with >30% risk (escalate_count={escalate_count_post}, fraud_count={fraud_count_post})")
                 original_recommendation = final_result.get('recommendation')
-                if original_recommendation in ['REJECT', 'APPROVE']:
-                    logger.warning(
-                        f"LLM returned {original_recommendation} for new customer {account_holder_name}. "
-                        f"Overriding to ESCALATE per policy (new customers must always escalate regardless of risk score)."
-                    )
-                # Always use first-time escalation for new customers (removes fraud_types and actionable_recommendations)
-                final_result = self._create_first_time_escalation(account_holder_name, is_new_customer=True)
-                if original_recommendation in ['REJECT', 'APPROVE']:
-                    final_result['reasoning'].append(
-                        f"Original LLM recommendation was {original_recommendation}, but overridden to ESCALATE because this is a new customer. "
-                        f"New customers require manual review regardless of risk score (1-100%)."
-                    )
+                
+                # Get fraud types from LLM (document-based analysis)
+                llm_fraud_types = final_result.get('fraud_types', []) or []
+                llm_fraud_explanations = final_result.get('fraud_explanations', []) or []
+                
+                # Add REPEAT_OFFENDER only if fraud_count > 0 (not based on escalate_count)
+                fraud_types = list(llm_fraud_types)  # Copy LLM fraud types
+                fraud_explanations = list(llm_fraud_explanations)  # Copy LLM explanations
+                
+                if fraud_count_post > 0:
+                    # Only add REPEAT_OFFENDER if customer has previous fraud (fraud_count > 0)
+                    if 'REPEAT_OFFENDER' not in fraud_types:
+                        fraud_types.append('REPEAT_OFFENDER')
+                        fraud_explanations.append({
+                            'type': 'REPEAT_OFFENDER',
+                            'reasons': [
+                                f'Customer has {fraud_count_post} previous fraud incident(s)',
+                                f'Current fraud risk score ({fraud_risk_score_post:.1%}) exceeds 30% threshold for repeat customers',
+                                'Second+ uploads with elevated risk from a customer with fraud history indicate potential fraud pattern'
+                            ]
+                        })
+                        logger.info(f"Added REPEAT_OFFENDER fraud type because fraud_count={fraud_count_post} > 0")
+                else:
+                    logger.info(f"NOT adding REPEAT_OFFENDER because fraud_count={fraud_count_post} (only escalate_count={escalate_count_post})")
+                
+                # Override to REJECT but keep LLM fraud types and add REPEAT_OFFENDER if applicable
+                final_result['recommendation'] = 'REJECT'
+                final_result['confidence_score'] = 1.0
+                final_result['summary'] = f'Second+ upload rejected: {account_holder_name} has fraud risk score {fraud_risk_score_post:.1%} > 30%'
+                final_result['fraud_types'] = fraud_types
+                final_result['fraud_explanations'] = fraud_explanations
+                
+                # Update reasoning to reflect override
+                if original_recommendation != 'REJECT':
+                    final_result['reasoning'].insert(0, f'Original LLM recommendation was {original_recommendation}, but overridden to REJECT because this is a second+ upload with fraud risk > 30%')
+                final_result['reasoning'].insert(0, f'Account holder {account_holder_name} has {escalate_count_post} previous escalation(s)')
+                final_result['reasoning'].insert(1, f'Fraud risk score ({fraud_risk_score_post:.1%}) exceeds 30% threshold for second+ uploads')
+                final_result['reasoning'].insert(2, 'Second and subsequent uploads with risk > 30% are automatically rejected per policy')
 
             logger.info(f"AI recommendation: {final_result.get('recommendation')}")
+            logger.info(f"Fraud types: {final_result.get('fraud_types', [])}")
             return final_result
 
         except Exception as e:
@@ -256,13 +338,83 @@ class BankStatementFraudAnalysisAgent:
                 f"LLM analysis is required - no fallback available."
             ) from e
 
-    def _create_first_time_escalation(self, account_holder_name: str, is_new_customer: bool = False) -> Dict:
-        """Create escalation response for first-time or clean-history customers.
-        For new customers, fraud_types and actionable_recommendations are excluded (empty lists).
+    def _create_first_time_approval(self, account_holder_name: str, fraud_risk_score: float) -> Dict:
+        """Create approval response for first-time uploads with fraud risk score ≤ 30%"""
+        return {
+            'recommendation': 'APPROVE',
+            'confidence_score': 1.0,
+            'summary': f'First upload approved: {account_holder_name} has fraud risk score {fraud_risk_score:.1%} ≤ 30%',
+            'reasoning': [
+                f'Account holder {account_holder_name} is a first-time uploader (escalate_count = 0)',
+                f'Fraud risk score ({fraud_risk_score:.1%}) is ≤ 30% threshold for first uploads',
+                'First uploads with low risk scores are automatically approved per policy'
+            ],
+            'key_indicators': [
+                'Customer escalation count: 0',
+                f'Fraud risk score: {fraud_risk_score:.1%}',
+                'Policy: first uploads with ≤30% risk are approved'
+            ],
+            'actionable_recommendations': [],
+            'fraud_types': [],
+            'fraud_explanations': []
+        }
+
+    def _create_second_upload_rejection(self, account_holder_name: str, fraud_risk_score: float, escalate_count: int, fraud_count: int) -> Dict:
+        """Create rejection response for second+ uploads with fraud risk score > 30%
+        
+        CRITICAL: REPEAT_OFFENDER fraud type is ONLY set if fraud_count > 0 (previous fraud).
+        If only escalate_count > 0 (previous escalation but no fraud), do NOT set REPEAT_OFFENDER.
+        However, we still include fraud_types array - it will just be empty or contain other fraud types.
         """
+        # REPEAT_OFFENDER logic: Only set if fraud_count > 0 (previous fraud/rejection)
+        # If only escalate_count > 0 (previous escalation), don't set REPEAT_OFFENDER
+        fraud_types = []
+        fraud_explanations = []
+        
+        if fraud_count > 0:
+            # Customer has previous fraud - set REPEAT_OFFENDER
+            fraud_types.append('REPEAT_OFFENDER')
+            fraud_explanations.append({
+                'type': 'REPEAT_OFFENDER',
+                'reasons': [
+                    f'Customer has {fraud_count} previous fraud incident(s)',
+                    f'Current fraud risk score ({fraud_risk_score:.1%}) exceeds 30% threshold for repeat customers',
+                    'Second+ uploads with elevated risk from a customer with fraud history indicate potential fraud pattern'
+                ]
+            })
+        # If fraud_count = 0, fraud_types remains empty (no REPEAT_OFFENDER)
+        # The rejection still happens, but without REPEAT_OFFENDER fraud type
+        
+        return {
+            'recommendation': 'REJECT',
+            'confidence_score': 1.0,
+            'summary': f'Second+ upload rejected: {account_holder_name} has fraud risk score {fraud_risk_score:.1%} > 30%',
+            'reasoning': [
+                f'Account holder {account_holder_name} has {escalate_count} previous escalation(s)',
+                f'Fraud risk score ({fraud_risk_score:.1%}) exceeds 30% threshold for second+ uploads',
+                'Second and subsequent uploads with risk > 30% are automatically rejected per policy',
+                'This customer was previously escalated, indicating ongoing risk concerns'
+            ],
+            'key_indicators': [
+                f'Customer escalation count: {escalate_count}',
+                f'Fraud risk score: {fraud_risk_score:.1%}',
+                'Policy: second+ uploads with >30% risk are rejected'
+            ],
+            'actionable_recommendations': [
+                'Block this transaction immediately',
+                'Flag customer account for fraud investigation',
+                'Review previous escalation history for patterns'
+            ],
+            'fraud_types': fraud_types,  # Empty if fraud_count = 0, contains REPEAT_OFFENDER if fraud_count > 0
+            'fraud_explanations': fraud_explanations  # Empty if fraud_count = 0, contains REPEAT_OFFENDER explanation if fraud_count > 0
+        }
+
+    def _create_first_time_escalation(self, account_holder_name: str, is_new_customer: bool = False, fraud_risk_score: float = None) -> Dict:
+        """Create escalation response for first-time uploads with fraud risk score > 30%"""
         customer_state = "new customer" if is_new_customer else "customer with no prior escalations"
+        risk_text = f" with fraud risk score {fraud_risk_score:.1%}" if fraud_risk_score else ""
         summary_reason = (
-            f"Automatic escalation: {account_holder_name} is a {customer_state} per account-holder-based fraud policy."
+            f"Automatic escalation: {account_holder_name} is a {customer_state}{risk_text} > 30%."
         )
         return {
             'recommendation': 'ESCALATE',
@@ -270,12 +422,14 @@ class BankStatementFraudAnalysisAgent:
             'summary': summary_reason,
             'reasoning': [
                 f"Account holder {account_holder_name} has no recorded escalations (escalate_count = 0)",
-                'First-time or clean-history uploads must be escalated for manual review',
+                f'Fraud risk score ({fraud_risk_score:.1%}) exceeds 30% threshold for first uploads' if fraud_risk_score else 'First-time uploads must be escalated for manual review',
+                'First-time uploads with fraud risk > 30% must be escalated for manual review',
                 'LLM and ML outputs cannot override this customer-history rule'
             ],
             'key_indicators': [
                 'Customer escalation count: 0',
-                'Policy: first-time uploads require escalation'
+                f'Fraud risk score: {fraud_risk_score:.1%}' if fraud_risk_score else 'Policy: first-time uploads require escalation',
+                'Policy: first-time uploads with >30% risk require escalation'
             ],
             # For new customers: exclude actionable_recommendations and fraud_types (empty lists)
             'actionable_recommendations': [] if is_new_customer else [
@@ -353,36 +507,42 @@ class BankStatementFraudAnalysisAgent:
     def _create_duplicate_rejection(self, account_number: str, account_holder_name: str) -> Dict:
         """Create rejection response for duplicate bank statements
         
-        Note: Duplicate detection is automatic and happens before LLM analysis.
-        Duplicate submissions are treated as FABRICATED_DOCUMENT since resubmitting
-        the same statement is a form of document fraud.
+        CRITICAL: This is ONLY called when:
+        - Same statement (account_number + statement_period_start) was previously submitted
+        - AND the previous submission was REJECTED (confirmed fraud)
+        
+        If previous was ESCALATED, this method is NOT called - resubmission is allowed.
         """
         return {
             'recommendation': 'REJECT',
             'confidence_score': 1.0,
-            'summary': f'Duplicate bank statement submission detected for account {account_number}',
+            'summary': f'Duplicate bank statement submission detected for account {account_number} - previous submission was REJECTED',
             'reasoning': [
-                f'Bank statement for account {account_number} from {account_holder_name} was previously submitted',
-                'Duplicate submissions are automatically rejected per fraud policy',
-                'This is a critical fraud indicator'
+                f'Bank statement for account {account_number} from {account_holder_name} was previously submitted and REJECTED (confirmed fraud)',
+                'Resubmitting a statement that was already rejected as fraud is a duplicate violation',
+                'Duplicate submissions after fraud rejection are automatically rejected per fraud policy',
+                'This is a critical fraud indicator - attempting to resubmit a fraudulent document'
             ],
             'key_indicators': [
                 'Duplicate statement detected',
-                'Same account_number and statement_period_start combination'
+                'Previous submission was REJECTED (confirmed fraud)',
+                'Same account_number and statement_period_start combination',
+                'Resubmission of fraudulent document'
             ],
             'actionable_recommendations': [
                 'Block this transaction immediately',
-                'Flag customer account for review',
-                'Investigate potential fraud attempt'
+                'Flag customer account for fraud investigation',
+                'Investigate potential fraud attempt - resubmitting rejected fraudulent document'
             ],
-            'fraud_types': ['FABRICATED_DOCUMENT'],  # Duplicate submission is a form of document fabrication
+            'fraud_types': ['FABRICATED_DOCUMENT'],  # Resubmitting a REJECTED statement is a form of document fabrication
             'fraud_explanations': [
                 {
                     'type': 'FABRICATED_DOCUMENT',
                     'reasons': [
-                        f'Bank statement for account {account_number} from {account_holder_name} was previously submitted and analyzed',
-                        'Duplicate statement submissions are automatically rejected per fraud policy',
-                        'This statement has already been processed - resubmission indicates potential fraud attempt'
+                        f'Bank statement for account {account_number} from {account_holder_name} was previously submitted and REJECTED as fraud',
+                        'Resubmitting a statement that was already rejected as fraudulent violates duplicate policy',
+                        'This statement has already been processed and rejected - resubmission indicates deliberate fraud attempt',
+                        'Only statements previously REJECTED (confirmed fraud) are considered duplicates - escalated statements can be resubmitted'
                     ]
                 }
             ]

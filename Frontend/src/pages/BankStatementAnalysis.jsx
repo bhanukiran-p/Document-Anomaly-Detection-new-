@@ -672,9 +672,9 @@ const BankStatementAnalysis = () => {
 
               {/* Fraud Type Card - Primary Fraud Type with Customer History as Reasons */}
               {(() => {
-                // Hide if recommendation is APPROVE
+                // Only show if recommendation is REJECT (hide for APPROVE and ESCALATE)
                 const aiRecommendation = (analysisData.ai_recommendation || aiAnalysis.recommendation || 'UNKNOWN').toUpperCase();
-                if (aiRecommendation === 'APPROVE') {
+                if (aiRecommendation !== 'REJECT') {
                   return false;
                 }
                 
@@ -865,43 +865,51 @@ const BankStatementAnalysis = () => {
                 </div>
               )}
 
-              <div style={{
-                ...infoCardStyle,
-                backgroundColor: colors.card,
-                border: `1px solid ${colors.border}`
-              }}>
-                <p style={{ margin: 0 }}>
-                  Download results in JSON format for complete details or CSV format for dashboard/analytics integration.
-                </p>
-              </div>
+              {/* Download buttons - Only show for REJECT (hide for APPROVE and ESCALATE) */}
+              {(() => {
+                const aiRecommendation = (analysisData.ai_recommendation || aiAnalysis.recommendation || 'UNKNOWN').toUpperCase();
+                return aiRecommendation === 'REJECT';
+              })() && (
+                <>
+                  <div style={{
+                    ...infoCardStyle,
+                    backgroundColor: colors.card,
+                    border: `1px solid ${colors.border}`
+                  }}>
+                    <p style={{ margin: 0 }}>
+                      Download results in JSON format for complete details or CSV format for dashboard/analytics integration.
+                    </p>
+                  </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1.5rem' }}>
-                <button
-                  style={{
-                    ...buttonStyle,
-                    backgroundColor: primary,
-                    marginTop: 0,
-                  }}
-                  onClick={downloadJSON}
-                  onMouseEnter={(e) => e.target.style.backgroundColor = colors.accent.redDark}
-                  onMouseLeave={(e) => e.target.style.backgroundColor = primary}
-                >
-                  Download JSON
-                </button>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1.5rem' }}>
+                    <button
+                      style={{
+                        ...buttonStyle,
+                        backgroundColor: primary,
+                        marginTop: 0,
+                      }}
+                      onClick={downloadJSON}
+                      onMouseEnter={(e) => e.target.style.backgroundColor = colors.accent.redDark}
+                      onMouseLeave={(e) => e.target.style.backgroundColor = primary}
+                    >
+                      Download JSON
+                    </button>
 
-                <button
-                  style={{
-                    ...buttonStyle,
-                    backgroundColor: colors.status.success,
-                    marginTop: 0,
-                  }}
-                  onClick={downloadCSV}
-                  onMouseEnter={(e) => e.target.style.backgroundColor = colors.status.successDark || '#1b5e20'}
-                  onMouseLeave={(e) => e.target.style.backgroundColor = colors.status.success}
-                >
-                  Download CSV
-                </button>
-              </div>
+                    <button
+                      style={{
+                        ...buttonStyle,
+                        backgroundColor: colors.status.success,
+                        marginTop: 0,
+                      }}
+                      onClick={downloadCSV}
+                      onMouseEnter={(e) => e.target.style.backgroundColor = colors.status.successDark || '#1b5e20'}
+                      onMouseLeave={(e) => e.target.style.backgroundColor = colors.status.success}
+                    >
+                      Download CSV
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>

@@ -24,7 +24,7 @@ REPEAT_OFFENDER = "REPEAT_OFFENDER"
 FRAUD_TYPE_LABELS = {
     FABRICATED_DOCUMENT: "Completely fake bank statement with non-existent bank or synthetic account",
     ALTERED_LEGITIMATE_DOCUMENT: "Real bank statement that has been manually edited or tampered with",
-    SUSPICIOUS_TRANSACTION_PATTERNS: "Unusual transaction patterns (duplicates, round numbers, timing anomalies)",
+    SUSPICIOUS_TRANSACTION_PATTERNS: "Unusual transaction patterns (duplicates, timing anomalies)",
     BALANCE_CONSISTENCY_VIOLATION: "Balance calculations don't match (ending ≠ beginning + credits - debits)",
     UNREALISTIC_FINANCIAL_PROPORTIONS: "Unrealistic credit/debit ratios or extreme balance volatility",
     REPEAT_OFFENDER: "Customer with history of fraudulent submissions and escalations",
@@ -319,7 +319,6 @@ class BankStatementFraudDetector:
         credit_debit_ratio = feature_dict.get('credit_debit_ratio', 0.0)
         balance_volatility = feature_dict.get('balance_volatility', 0.0)
         large_transaction_count = int(feature_dict.get('large_transaction_count', 0.0))
-        round_number_transactions = int(feature_dict.get('round_number_transactions', 0.0))
         
         # Extract additional data from normalized_data
         bank_name = normalized_data.get('bank_name', '')
@@ -393,19 +392,11 @@ class BankStatementFraudDetector:
                 )
         # Duplicate transactions - MEDIUM impact (reduced threshold)
         # Only flag if duplicates are combined with other suspicious patterns
-        if duplicate_transactions and (round_number_transactions > 15 or balance_volatility > 0.5 or credit_debit_ratio > 1.5):
+        if duplicate_transactions and (balance_volatility > 0.5 or credit_debit_ratio > 1.5):
             if SUSPICIOUS_TRANSACTION_PATTERNS not in fraud_types:
                 fraud_types.append(SUSPICIOUS_TRANSACTION_PATTERNS)
                 fraud_reasons.append(
                     "Duplicate transactions detected in combination with other suspicious patterns."
-                )
-        # Round number transactions - MEDIUM impact (increased threshold from 10 to 20)
-        # Only flag if there are many round numbers (20+) or combined with other patterns
-        if round_number_transactions > 20 or (round_number_transactions > 15 and (duplicate_transactions or balance_volatility > 0.5)):
-            if SUSPICIOUS_TRANSACTION_PATTERNS not in fraud_types:
-                fraud_types.append(SUSPICIOUS_TRANSACTION_PATTERNS)
-                fraud_reasons.append(
-                    f"High number of round-number transactions ({round_number_transactions}) detected, which may indicate fabricated transactions."
                 )
         if unusual_timing > 0.3:
             if SUSPICIOUS_TRANSACTION_PATTERNS not in fraud_types:

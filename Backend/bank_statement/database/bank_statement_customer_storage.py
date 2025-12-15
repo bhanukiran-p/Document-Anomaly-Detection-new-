@@ -124,9 +124,9 @@ class BankStatementCustomerStorage:
             logger.error(f"Error getting customer history: {e}")
             return {}
 
-    def check_duplicate_statement(self, account_number: str, statement_period_start: str, account_holder_name: str) -> bool:
+    def check_duplicate_statement(self, account_number: str, statement_period_start: str, account_holder_name: str) -> Dict:
         """
-        Check if this bank statement has been submitted before
+        Check if this bank statement has been submitted before and get previous recommendation
 
         Args:
             account_number: Account number
@@ -134,23 +134,31 @@ class BankStatementCustomerStorage:
             account_holder_name: Account holder name
 
         Returns:
-            True if duplicate found, False otherwise
+            Dict with 'is_duplicate' (bool) and 'previous_recommendation' (str or None)
         """
         if not self.supabase:
-            return False
+            return {'is_duplicate': False, 'previous_recommendation': None}
 
         try:
             # Query bank_statements table for duplicate
             # Check by account_number + statement_period_start_date
-            response = self.supabase.table('bank_statements').select('statement_id').eq('account_number', account_number).eq('statement_period_start_date', statement_period_start).execute()
+            # Also get the ai_recommendation to check if previous was REJECTED
+            # Order by created_at DESC to get the most recent submission
+            response = self.supabase.table('bank_statements').select('statement_id,ai_recommendation,created_at').eq('account_number', account_number).eq('statement_period_start_date', statement_period_start).order('created_at', desc=True).limit(1).execute()
 
             if response.data and len(response.data) > 0:
-                # Found existing statement with same account and period
-                return True
-            return False
+                previous_recommendation = response.data[0].get('ai_recommendation')
+                created_at = response.data[0].get('created_at')
+                logger.info(f"Found previous statement: account_number={account_number}, statement_period_start={statement_period_start}, previous_recommendation={previous_recommendation}, created_at={created_at}")
+                return {
+                    'is_duplicate': True,
+                    'previous_recommendation': previous_recommendation
+                }
+            logger.info(f"No previous statement found: account_number={account_number}, statement_period_start={statement_period_start}")
+            return {'is_duplicate': False, 'previous_recommendation': None}
         except Exception as e:
             logger.error(f"Error checking duplicate: {e}")
-            return False
+            return {'is_duplicate': False, 'previous_recommendation': None}
 
     def update_customer_fraud_status(
         self,
