@@ -80,6 +80,31 @@ const EChartsSankey = ({ data, title, height = 400 }) => {
   const option = {
     tooltip: {
       trigger: 'item',
+      confine: true,
+      formatter: (params) => {
+        try {
+          if (!params || typeof params !== 'object' || !params.data) {
+            return '';
+          }
+          // Handle node tooltips
+          if (params.dataType === 'node') {
+            const name = params.name || params.data.name || '';
+            const value = params.value ?? params.data.value ?? 0;
+            return `<strong>${name}</strong><br/>Total: ${value}`;
+          }
+          // Handle edge/link tooltips
+          if (params.dataType === 'edge') {
+            const source = params.data.source || '';
+            const target = params.data.target || '';
+            const value = params.data.value ?? 0;
+            return `${source} → ${target}<br/>Value: ${value}`;
+          }
+          return '';
+        } catch (error) {
+          console.error('Tooltip formatter error:', error);
+          return '';
+        }
+      },
       backgroundColor: 'rgba(30, 41, 59, 0.95)',
       borderColor: '#334155',
       textStyle: {
@@ -121,7 +146,7 @@ const EChartsSankey = ({ data, title, height = 400 }) => {
         style={{ height: `${height}px`, width: '100%' }}
         opts={{ renderer: 'canvas' }}
         notMerge={true}
-        lazyUpdate={true}
+        lazyUpdate={false}
       />
     </div>
   );
