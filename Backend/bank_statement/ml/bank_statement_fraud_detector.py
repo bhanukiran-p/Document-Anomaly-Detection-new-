@@ -181,8 +181,11 @@ class BankStatementFraudDetector:
             # Ensemble prediction (40% RF, 60% XGB)
             ensemble_score = (0.4 * rf_score) + (0.6 * xgb_score)
 
-            # Use ensemble score directly (no validation rules applied)
-            final_score = ensemble_score
+            # Apply leniency factor to reduce false positives for legitimate statements
+            # Reduce fraud scores by 35% to be more lenient with normal financial behaviors
+            # (e.g., saving behavior, transfers from savings, legitimate direct deposits)
+            leniency_factor = 0.65
+            final_score = ensemble_score * leniency_factor
 
             # Get feature importance
             feature_importance = self._get_feature_importance(features, feature_names)
