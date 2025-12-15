@@ -188,7 +188,7 @@ class BankStatementFraudAnalysisAgent:
             fraud_risk_score = ml_analysis.get('fraud_risk_score', 0.0)
             is_first_upload = escalate_count == 0
             is_new_customer = not customer_info.get('customer_id')
-            
+
             if is_first_upload:
                 # First upload logic
                 if fraud_risk_score > 0.30:
@@ -282,19 +282,19 @@ class BankStatementFraudAnalysisAgent:
             fraud_count_post = customer_info.get('fraud_count', 0) or 0
             fraud_risk_score_post = ml_analysis.get('fraud_risk_score', 0.0)
             is_second_upload = escalate_count_post > 0
-            
+
             if is_second_upload and fraud_risk_score_post > 0.30:
                 logger.warning(f"Overriding LLM recommendation to REJECT for second+ upload with >30% risk (escalate_count={escalate_count_post}, fraud_count={fraud_count_post})")
                 original_recommendation = final_result.get('recommendation')
-                
+
                 # Get fraud types from LLM (document-based analysis) - use LLM fraud types only
                 llm_fraud_types = final_result.get('fraud_types', []) or []
                 llm_fraud_explanations = final_result.get('fraud_explanations', []) or []
-                
+
                 # Add REPEAT_OFFENDER only if fraud_count > 0 (not based on escalate_count)
                 fraud_types = list(llm_fraud_types)  # Copy LLM fraud types
                 fraud_explanations = list(llm_fraud_explanations)  # Copy LLM explanations
-                
+
                 if fraud_count_post > 0:
                     # Only add REPEAT_OFFENDER if customer has previous fraud (fraud_count > 0)
                     if 'REPEAT_OFFENDER' not in fraud_types:
@@ -310,14 +310,14 @@ class BankStatementFraudAnalysisAgent:
                         logger.info(f"Added REPEAT_OFFENDER fraud type because fraud_count={fraud_count_post} > 0")
                 else:
                     logger.info(f"NOT adding REPEAT_OFFENDER because fraud_count={fraud_count_post} (only escalate_count={escalate_count_post})")
-                
+
                 # Override to REJECT but keep LLM/ML fraud types and add REPEAT_OFFENDER if applicable
                 final_result['recommendation'] = 'REJECT'
                 final_result['confidence_score'] = 1.0
                 final_result['summary'] = f'Second+ upload rejected: {account_holder_name} has fraud risk score {fraud_risk_score_post:.1%} > 30%'
                 final_result['fraud_types'] = fraud_types
                 final_result['fraud_explanations'] = fraud_explanations
-                
+
                 # Update reasoning to reflect override
                 if original_recommendation != 'REJECT':
                     final_result['reasoning'].insert(0, f'Original LLM recommendation was {original_recommendation}, but overridden to REJECT because this is a second+ upload with fraud risk > 30%')
