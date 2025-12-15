@@ -269,9 +269,14 @@ const AllDocumentsInsights = () => {
 
     // 8. Summary Metrics
     const totalDocuments = rows.length;
-    const riskScores = rows.map(r => parseFloat_(r['fraud_risk_score'] || r['RiskScore'] || 0));
-    const avgRiskScore = riskScores.length > 0 
-      ? (riskScores.reduce((a, b) => a + b, 0) / riskScores.length * 100).toFixed(1)
+    const riskScores = rows.map(r => {
+      const score = parseFloat_(r['fraud_risk_score'] || r['RiskScore'] || 0);
+      // If score is already in percentage form (> 1), don't multiply by 100
+      // Otherwise, convert from decimal (0-1) to percentage (0-100)
+      return score > 1 ? score : score * 100;
+    });
+    const avgRiskScore = riskScores.length > 0
+      ? (riskScores.reduce((a, b) => a + b, 0) / riskScores.length).toFixed(1)
       : '0.0';
     const highRiskCount = riskLevelData.highCount;
     const highRiskPercent = totalDocuments > 0 
