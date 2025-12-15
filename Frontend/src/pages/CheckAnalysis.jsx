@@ -654,8 +654,8 @@ const CheckAnalysis = () => {
                   );
                 })()}
 
-                {/* Anomalies Section */}
-                {results.anomalies && results.anomalies.length > 0 && (
+                {/* Anomalies Section - Only show if NOT APPROVED */}
+                {results.anomalies && results.anomalies.length > 0 && results.ai_recommendation !== 'APPROVE' && (
                   <div style={{
                     ...resultCardStyle,
                     marginBottom: '1.5rem',
