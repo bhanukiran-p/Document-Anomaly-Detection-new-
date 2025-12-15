@@ -1,14 +1,18 @@
 """
-Utility modules for PDF validation
+Utils Package
+Contains utility modules for API route handlers
 """
-try:
-    from .pdf_statement_validator import validate_pdf_statement
-    PDF_VALIDATOR_AVAILABLE = True
-except ImportError:
-    PDF_VALIDATOR_AVAILABLE = False
-    validate_pdf_statement = None
+
+from .realtime_handlers import (
+    handle_analyze_real_time_transactions,
+    handle_regenerate_plots,
+    handle_retrain_fraud_model,
+    handle_train_from_database
+)
 
 __all__ = [
-    'validate_pdf_statement',
-    'PDF_VALIDATOR_AVAILABLE'
+    'handle_analyze_real_time_transactions',
+    'handle_regenerate_plots',
+    'handle_retrain_fraud_model',
+    'handle_train_from_database'
 ]
