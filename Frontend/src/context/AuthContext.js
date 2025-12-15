@@ -56,12 +56,12 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const login = async (email, password) => {
+  const login = async (username, password) => {
     try {
       setError(null);
 
       const response = await axios.post(`${API_BASE_URL}/auth/login`, {
-        email,
+        username,
         password
       });
 
