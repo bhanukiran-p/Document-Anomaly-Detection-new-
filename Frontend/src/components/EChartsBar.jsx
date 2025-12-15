@@ -2,6 +2,7 @@ import React from 'react';
 import ReactECharts from 'echarts-for-react';
 
 const EChartsBar = ({ data, title, height = 400 }) => {
+
   const normalizedData = Array.isArray(data)
     ? data
         .map((item) => {
@@ -42,6 +43,21 @@ const EChartsBar = ({ data, title, height = 400 }) => {
       trigger: 'axis',
       axisPointer: {
         type: 'shadow'
+      },
+      formatter: (params) => {
+        try {
+          if (!params || !Array.isArray(params) || params.length === 0) {
+            return '';
+          }
+          const param = params[0];
+          if (!param || param.value === undefined || param.value === null) {
+            return '';
+          }
+          return `<strong>${param.axisValueLabel || param.name || ''}</strong><br/>${param.marker || ''} ${param.value}`;
+        } catch (error) {
+          console.error('Tooltip formatter error:', error);
+          return '';
+        }
       },
       backgroundColor: 'rgba(30, 41, 59, 0.95)',
       borderColor: '#334155',
@@ -93,23 +109,27 @@ const EChartsBar = ({ data, title, height = 400 }) => {
     series: [
       {
         type: 'bar',
-        data: reversedData.map(item => ({
-          value: item.value,
-          itemStyle: {
-            color: {
-              type: 'linear',
-              x: 0,
-              y: 0,
-              x2: 1,
-              y2: 0,
-              colorStops: [
-                { offset: 0, color: '#f59e0b' },
-                { offset: 1, color: '#f97316' }
-              ]
-            },
-            borderRadius: [0, 8, 8, 0]
-          }
-        })),
+        name: 'Count',
+        data: reversedData.map(item => {
+          const value = typeof item.value === 'number' ? item.value : 0;
+          return {
+            value: value,
+            itemStyle: {
+              color: {
+                type: 'linear',
+                x: 0,
+                y: 0,
+                x2: 1,
+                y2: 0,
+                colorStops: [
+                  { offset: 0, color: '#f59e0b' },
+                  { offset: 1, color: '#f97316' }
+                ]
+              },
+              borderRadius: [0, 8, 8, 0]
+            }
+          };
+        }),
         barWidth: '60%',
         label: {
           show: true,
@@ -140,13 +160,19 @@ const EChartsBar = ({ data, title, height = 400 }) => {
     animationEasing: 'cubicOut'
   };
 
+  // Create a key based on data to force remount on data change
+  const dataKey = React.useMemo(() => {
+    return reversedData.map(d => `${d.label}-${d.value}`).join('|');
+  }, [reversedData]);
+
   return (
     <ReactECharts
+      key={dataKey}
       option={option}
       style={{ height: `${calculatedHeight}px`, width: '100%' }}
       opts={{ renderer: 'canvas' }}
       notMerge={true}
-      lazyUpdate={true}
+      lazyUpdate={false}
     />
   );
 };

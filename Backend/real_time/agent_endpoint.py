@@ -89,7 +89,7 @@ class AgentAnalysisService:
     def _analyze_top_transactions(self, tools: TransactionAnalysisTools) -> Dict[str, Any]:
         """Analyze top fraudulent transactions"""
         try:
-            top_txns = tools.get_top_transactions(limit=3, fraud_only=True)
+            top_txns = tools.get_top_transactions(limit=10, fraud_only=True)
 
             analysis = {
                 'count': len(top_txns),
