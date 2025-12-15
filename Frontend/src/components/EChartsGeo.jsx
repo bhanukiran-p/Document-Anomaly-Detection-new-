@@ -233,6 +233,7 @@
 //       }
 //     },
 //     geo: {
+//       tooltip: { show: false },
 //       map: mapName,
 //       roam: true,
 //       selectedMode: false,  // Completely disable selection
@@ -574,37 +575,7 @@ const EChartsGeo = ({ data, title, height = 400 }) => {
   };
 
   const option = {
-    tooltip: {
-      trigger: 'item',
-      triggerOn: 'mousemove|click',
-      confine: true,
-      formatter: (params) => {
-        try {
-          // Only show tooltip for scatter series data, not geo map
-          if (!params) return '';
-          if (params.componentType !== 'series') return '';
-          if (params.seriesType !== 'scatter') return '';
-          if (!params.data) return '';
-          if (!params.value || !Array.isArray(params.value)) return '';
-
-          const value = params.value;
-          if (value.length >= 3) {
-            const name = params.name || 'Unknown';
-            const count = value[2] || 0;
-            return `<strong>${name}</strong><br/>Transactions: ${count}`;
-          }
-          return '';
-        } catch (e) {
-          console.error('Tooltip formatter error:', e);
-          return '';
-        }
-      },
-      backgroundColor: 'rgba(15, 23, 42, 0.95)',
-      borderColor: '#1e293b',
-      textStyle: {
-        color: '#e2e8f0'
-      }
-    },
+    tooltip: { show: false },
     geo: {
       map: mapName,
       roam: true,
@@ -644,6 +615,25 @@ const EChartsGeo = ({ data, title, height = 400 }) => {
         type: 'scatter',
         coordinateSystem: 'geo',
         data: geoData,
+        tooltip: {
+          show: true,
+          trigger: 'item',
+          formatter: (params) => {
+            try {
+              if (!params || params.componentType !== 'series' || params.seriesType !== 'scatter') return '';
+              const v = params.value;
+              if (!Array.isArray(v) || v.length < 3) return '';
+              const name = params.name || 'Unknown';
+              const count = v[2] ?? 0;
+              return `<strong>${name}</strong><br/>Count: ${count}`;
+            } catch (e) {
+              return '';
+            }
+          },
+          backgroundColor: 'rgba(30, 41, 59, 0.95)',
+          borderColor: '#334155',
+          textStyle: { color: '#e2e8f0' }
+        },
         symbolSize: function(val) {
           try {
             if (!val || !Array.isArray(val) || val.length < 3) {
@@ -724,25 +714,12 @@ const EChartsGeo = ({ data, title, height = 400 }) => {
   });
 
   const onEvents = {
-    // Prevent errors from geo component interactions
     click: (params) => {
       try {
         if (params && params.componentType === 'series' && params.seriesType === 'scatter') {
           console.log('Clicked scatter point:', params.name);
         }
-      } catch (e) {
-        // Silently ignore click errors
-      }
-    },
-    mousemove: (params) => {
-      try {
-        // Only handle mousemove for scatter points, not geo regions
-        if (!params || params.componentType !== 'series' || params.seriesType !== 'scatter') {
-          return false; // Stop propagation for non-scatter elements
-        }
-      } catch (e) {
-        return false;
-      }
+      } catch (e) {}
     }
   };
 
@@ -761,7 +738,7 @@ const EChartsGeo = ({ data, title, height = 400 }) => {
         }}
         onEvents={onEvents}
         notMerge={true}
-        lazyUpdate={true}
+        lazyUpdate={false}
       />
     </div>
   );

@@ -1305,7 +1305,7 @@ const RealTimeAnalysis = () => {
     },
     plotsGrid: {
       display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(500px, 1fr))',
+      gridTemplateColumns: 'repeat(2, 1fr)',
       gap: '2rem',
       marginTop: '2rem',
     },
@@ -1638,7 +1638,7 @@ const RealTimeAnalysis = () => {
               type="url"
               value={bankingUrl}
               onChange={(e) => setBankingUrl(e.target.value)}
-              placeholder="https://api.example.com/transactions"
+              placeholder="https://payments-api.yourbank.com/transactions"
               style={styles.input}
               onFocus={(e) => {
                 e.target.style.borderColor = primary;
@@ -1779,7 +1779,7 @@ const RealTimeAnalysis = () => {
               gap: '0.75rem',
               marginTop: '0.75rem'
             }}>
-              {csvPreview.columnInfo.map((col, idx) => (
+                  {csvPreview.columnInfo.map((col, idx) => (
                 <div
                   key={idx}
                   style={{
@@ -2045,8 +2045,20 @@ const RealTimeAnalysis = () => {
                   <h4 style={{ color: colors.foreground, fontSize: '0.95rem', marginBottom: '0.75rem', fontWeight: '600' }}>
                     Top Suspicious Transactions
                   </h4>
-                  {analysisResult.agent_analysis.top_transactions.transactions.slice(0, 3).map((txn, idx) => (
-                    <div key={idx} style={{
+                  {(() => {
+                    // Deduplicate: keep only 1 transaction per merchant-amount-category combination
+                    const seen = new Set();
+                    const uniqueTransactions = analysisResult.agent_analysis.top_transactions.transactions.filter(txn => {
+                      // Create a key based on merchant, amount, and category to identify truly identical transactions
+                      const key = `${txn.merchant || 'unknown'}-${txn.amount || 0}-${txn.category || 'unknown'}`;
+                      if (seen.has(key)) {
+                        return false; // Skip duplicate
+                      }
+                      seen.add(key);
+                      return true; // Keep first occurrence
+                    });
+                    return uniqueTransactions.slice(0, 5).map((txn, idx) => (
+                      <div key={`${txn.merchant || 'unknown'}-${txn.amount}-${idx}`} style={{
                       backgroundColor: colors.muted,
                       padding: '0.75rem',
                       borderRadius: '0.5rem',
@@ -2066,7 +2078,8 @@ const RealTimeAnalysis = () => {
                         {txn.category || 'N/A'} • {(txn.fraud_probability * 100).toFixed(0)}% probability
                       </div>
                     </div>
-                  ))}
+                    ));
+                  })()}
                 </div>
               )}
 
@@ -2480,20 +2493,20 @@ const RealTimeAnalysis = () => {
             )}
 
             {/* Reset Filters Button */}
-            <button
+              <button
               onClick={() => {
                 resetFilters();
                 setFilteredPlots(null);
               }}
-              style={{
+                style={{
                 padding: '8px 16px',
                 borderRadius: '4px',
                 border: `1px solid ${colors.border}`,
                 backgroundColor: colors.secondary || colors.card || colors.background,
-                color: colors.foreground,
-                cursor: 'pointer',
+                  color: colors.foreground,
+                  cursor: 'pointer',
                 fontSize: '14px',
-                fontWeight: '600',
+                  fontWeight: '600',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.5rem',
@@ -2549,7 +2562,7 @@ const RealTimeAnalysis = () => {
               </button>
             </div>
           )}
-
+            
           {/* Old filter UI - Hidden */}
           {false && (
               <div style={{
@@ -2572,92 +2585,92 @@ const RealTimeAnalysis = () => {
                   {/* Amount Filters - Always available */}
                   {hasColumn('amount') && (
                     <>
-                      <div>
-                        <label style={styles.label}>Min Amount ($)</label>
-                        <input
-                          type="number"
-                          value={filters.amountMin}
-                          onChange={(e) => handleFilterChange('amountMin', e.target.value)}
-                          placeholder="0"
-                          style={styles.input}
-                        />
-                      </div>
-                      <div>
-                        <label style={styles.label}>Max Amount ($)</label>
-                        <input
-                          type="number"
-                          value={filters.amountMax}
-                          onChange={(e) => handleFilterChange('amountMax', e.target.value)}
-                          placeholder="∞"
-                          style={styles.input}
-                        />
-                      </div>
+                  <div>
+                    <label style={styles.label}>Min Amount ($)</label>
+                    <input
+                      type="number"
+                      value={filters.amountMin}
+                      onChange={(e) => handleFilterChange('amountMin', e.target.value)}
+                      placeholder="0"
+                      style={styles.input}
+                    />
+                  </div>
+                  <div>
+                    <label style={styles.label}>Max Amount ($)</label>
+                    <input
+                      type="number"
+                      value={filters.amountMax}
+                      onChange={(e) => handleFilterChange('amountMax', e.target.value)}
+                      placeholder="∞"
+                      style={styles.input}
+                    />
+                  </div>
                     </>
                   )}
 
                   {/* Fraud Probability Filters */}
                   {hasColumn('fraud_probability') && (
                     <>
-                      <div>
-                        <label style={styles.label}>Min Fraud Probability</label>
-                        <select
-                          value={filters.fraudProbabilityMin}
-                          onChange={(e) => handleFilterChange('fraudProbabilityMin', e.target.value)}
-                          style={styles.input}
-                        >
+                  <div>
+                    <label style={styles.label}>Min Fraud Probability</label>
+                    <select
+                      value={filters.fraudProbabilityMin}
+                      onChange={(e) => handleFilterChange('fraudProbabilityMin', e.target.value)}
+                      style={styles.input}
+                    >
                           <option value="">-- All --</option>
-                          <option value="0">0% (All)</option>
-                          <option value="0.1">10%</option>
-                          <option value="0.2">20%</option>
-                          <option value="0.3">30%</option>
-                          <option value="0.4">40%</option>
-                          <option value="0.5">50%</option>
-                          <option value="0.6">60%</option>
-                          <option value="0.7">70%</option>
-                          <option value="0.8">80%</option>
-                          <option value="0.9">90%</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label style={styles.label}>Max Fraud Probability</label>
-                        <select
-                          value={filters.fraudProbabilityMax}
-                          onChange={(e) => handleFilterChange('fraudProbabilityMax', e.target.value)}
-                          style={styles.input}
-                        >
+                      <option value="0">0% (All)</option>
+                      <option value="0.1">10%</option>
+                      <option value="0.2">20%</option>
+                      <option value="0.3">30%</option>
+                      <option value="0.4">40%</option>
+                      <option value="0.5">50%</option>
+                      <option value="0.6">60%</option>
+                      <option value="0.7">70%</option>
+                      <option value="0.8">80%</option>
+                      <option value="0.9">90%</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={styles.label}>Max Fraud Probability</label>
+                    <select
+                      value={filters.fraudProbabilityMax}
+                      onChange={(e) => handleFilterChange('fraudProbabilityMax', e.target.value)}
+                      style={styles.input}
+                    >
                           <option value="">-- All --</option>
-                          <option value="0.1">10%</option>
-                          <option value="0.2">20%</option>
-                          <option value="0.3">30%</option>
-                          <option value="0.4">40%</option>
-                          <option value="0.5">50%</option>
-                          <option value="0.6">60%</option>
-                          <option value="0.7">70%</option>
-                          <option value="0.8">80%</option>
-                          <option value="0.9">90%</option>
-                          <option value="1">100%</option>
-                        </select>
-                      </div>
+                      <option value="0.1">10%</option>
+                      <option value="0.2">20%</option>
+                      <option value="0.3">30%</option>
+                      <option value="0.4">40%</option>
+                      <option value="0.5">50%</option>
+                      <option value="0.6">60%</option>
+                      <option value="0.7">70%</option>
+                      <option value="0.8">80%</option>
+                      <option value="0.9">90%</option>
+                      <option value="1">100%</option>
+                    </select>
+                  </div>
                     </>
                   )}
 
                   {/* Category Filter - Only if category column exists */}
                   {hasColumn('category') && getAvailableCategories().length > 0 && (
-                    <div>
-                      <label style={styles.label}>Category</label>
-                      <select
-                        value={filters.category}
-                        onChange={(e) => handleFilterChange('category', e.target.value)}
-                        style={styles.input}
-                      >
-                        <option value="">-- All Categories --</option>
-                        {getAvailableCategories().map((cat) => (
-                          <option key={cat} value={cat}>
-                            {cat}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                  <div>
+                    <label style={styles.label}>Category</label>
+                    <select
+                      value={filters.category}
+                      onChange={(e) => handleFilterChange('category', e.target.value)}
+                      style={styles.input}
+                    >
+                      <option value="">-- All Categories --</option>
+                      {getAvailableCategories().map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   )}
 
                   {/* Merchant Filter - Only if merchant column exists */}
@@ -2682,24 +2695,24 @@ const RealTimeAnalysis = () => {
                   {/* Date Filters - Only if timestamp column exists */}
                   {hasColumn('timestamp') && (
                     <>
-                      <div>
-                        <label style={styles.label}>Start Date</label>
-                        <input
-                          type="date"
-                          value={filters.dateStart}
-                          onChange={(e) => handleFilterChange('dateStart', e.target.value)}
-                          style={styles.input}
-                        />
-                      </div>
-                      <div>
-                        <label style={styles.label}>End Date</label>
-                        <input
-                          type="date"
-                          value={filters.dateEnd}
-                          onChange={(e) => handleFilterChange('dateEnd', e.target.value)}
-                          style={styles.input}
-                        />
-                      </div>
+                  <div>
+                    <label style={styles.label}>Start Date</label>
+                    <input
+                      type="date"
+                      value={filters.dateStart}
+                      onChange={(e) => handleFilterChange('dateStart', e.target.value)}
+                      style={styles.input}
+                    />
+                  </div>
+                  <div>
+                    <label style={styles.label}>End Date</label>
+                    <input
+                      type="date"
+                      value={filters.dateEnd}
+                      onChange={(e) => handleFilterChange('dateEnd', e.target.value)}
+                      style={styles.input}
+                    />
+                  </div>
                     </>
                   )}
                 </div>
