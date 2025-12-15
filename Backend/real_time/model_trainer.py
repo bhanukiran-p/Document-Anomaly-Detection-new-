@@ -1,6 +1,6 @@
 """
 Automatic ML Model Trainer for Transaction Fraud Detection
-Uses ensemble of Random Forest and XGBoost with automatic retraining
+Uses ensemble of Random Forest, XGBoost, and LightGBM with automatic retraining
 """
 import pandas as pd
 import numpy as np
@@ -13,6 +13,21 @@ from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, roc_auc_score, precision_recall_fscore_support
+
+# Try to import XGBoost and LightGBM (optional dependencies)
+try:
+    import xgboost as xgb
+    XGBOOST_AVAILABLE = True
+except ImportError:
+    XGBOOST_AVAILABLE = False
+    print("XGBoost not installed. Install with: pip install xgboost")
+
+try:
+    import lightgbm as lgb
+    LIGHTGBM_AVAILABLE = True
+except ImportError:
+    LIGHTGBM_AVAILABLE = False
+    print("LightGBM not installed. Install with: pip install lightgbm")
 
 logger = logging.getLogger(__name__)
 
@@ -28,22 +43,76 @@ MODEL_METADATA_PATH = os.path.join(MODEL_DIR, 'model_metadata.json')
 
 # Define EnsembleModel at module level so it can be pickled
 class EnsembleModel:
-    """Ensemble model combining Random Forest and Gradient Boosting"""
-    def __init__(self, rf, gb):
+    """
+    Enhanced ensemble model combining multiple algorithms:
+    - Random Forest
+    - Gradient Boosting
+    - XGBoost (if available)
+    - LightGBM (if available)
+    """
+    def __init__(self, rf, gb, xgb_model=None, lgb_model=None, threshold=0.30):
         self.rf = rf
         self.gb = gb
+        self.xgb_model = xgb_model
+        self.lgb_model = lgb_model
+        self.threshold = threshold  # Lower threshold for higher sensitivity to fraud
+
+        # Determine number of available models
+        self.models = [rf, gb]
+        self.model_names = ['RandomForest', 'GradientBoosting']
+
+        if xgb_model is not None:
+            self.models.append(xgb_model)
+            self.model_names.append('XGBoost')
+
+        if lgb_model is not None:
+            self.models.append(lgb_model)
+            self.model_names.append('LightGBM')
+
+        self.num_models = len(self.models)
+        logger.info(f"Ensemble initialized with {self.num_models} models: {', '.join(self.model_names)}")
 
     def predict(self, X):
-        rf_pred = self.rf.predict(X)
-        gb_pred = self.gb.predict(X)
-        # Majority voting
-        return ((rf_pred + gb_pred) >= 1).astype(int)
+        # Use probability-based prediction with custom threshold
+        proba = self.predict_proba(X)[:, 1]
+        return (proba >= self.threshold).astype(int)
 
     def predict_proba(self, X):
-        rf_proba = self.rf.predict_proba(X)
-        gb_proba = self.gb.predict_proba(X)
-        # Weighted average (60% RF, 40% GB)
-        ensemble_proba = 0.6 * rf_proba + 0.4 * gb_proba
+        # Collect predictions from all available models
+        all_probas = []
+
+        # Random Forest
+        all_probas.append(self.rf.predict_proba(X))
+
+        # Gradient Boosting
+        all_probas.append(self.gb.predict_proba(X))
+
+        # XGBoost (if available)
+        if self.xgb_model is not None:
+            all_probas.append(self.xgb_model.predict_proba(X))
+
+        # LightGBM (if available)
+        if self.lgb_model is not None:
+            all_probas.append(self.lgb_model.predict_proba(X))
+
+        # Weighted average based on model performance
+        # Give more weight to powerful models (XGBoost, LightGBM)
+        if self.num_models == 4:
+            # RF: 20%, GB: 20%, XGBoost: 30%, LightGBM: 30%
+            weights = [0.20, 0.20, 0.30, 0.30]
+        elif self.num_models == 3:
+            if self.xgb_model is not None:
+                # RF: 25%, GB: 25%, XGBoost: 50%
+                weights = [0.25, 0.25, 0.50]
+            else:
+                # RF: 25%, GB: 25%, LightGBM: 50%
+                weights = [0.25, 0.25, 0.50]
+        else:
+            # RF: 50%, GB: 50%
+            weights = [0.50, 0.50]
+
+        # Weighted ensemble
+        ensemble_proba = sum(w * proba for w, proba in zip(weights, all_probas))
         return ensemble_proba
 
 
@@ -234,20 +303,85 @@ def train_fraud_model(features_df: pd.DataFrame, labels: np.ndarray) -> Tuple:
     )
     rf_model.fit(X_train_scaled, y_train)
 
-    # Train Gradient Boosting
+    # Train Gradient Boosting with improved parameters
     gb_model = GradientBoostingClassifier(
         n_estimators=n_estimators,
         max_depth=max_depth_gb,
-        learning_rate=0.1,
+        learning_rate=0.05,  # Lower learning rate for better generalization
         min_samples_split=min(10, max(2, n_samples // 100)),
         min_samples_leaf=min(5, max(1, n_samples // 200)),
         random_state=42,
-        subsample=0.8
+        subsample=0.85,  # Slightly higher subsample
+        max_features='sqrt'  # Add feature sampling
     )
     gb_model.fit(X_train_scaled, y_train)
 
-    # Create ensemble using module-level class
-    ensemble = EnsembleModel(rf_model, gb_model)
+    # Train XGBoost (if available)
+    xgb_model = None
+    if XGBOOST_AVAILABLE:
+        try:
+            logger.info("Training XGBoost model...")
+            # Calculate scale_pos_weight for imbalanced data
+            scale_pos_weight = (len(y_train) - y_train.sum()) / (y_train.sum() + 1)
+
+            xgb_model = xgb.XGBClassifier(
+                n_estimators=n_estimators,
+                max_depth=max_depth_gb,
+                learning_rate=0.05,
+                subsample=0.85,
+                colsample_bytree=0.85,
+                scale_pos_weight=scale_pos_weight,
+                random_state=42,
+                n_jobs=-1,
+                use_label_encoder=False,
+                eval_metric='logloss'
+            )
+            xgb_model.fit(X_train_scaled, y_train)
+            logger.info("XGBoost model trained successfully")
+        except Exception as e:
+            logger.warning(f"XGBoost training failed: {e}")
+            xgb_model = None
+
+    # Train LightGBM (if available)
+    lgb_model = None
+    if LIGHTGBM_AVAILABLE:
+        try:
+            logger.info("Training LightGBM model...")
+            # Calculate class weights for imbalanced data
+            class_weight = 'balanced'
+            if y_train.sum() > 0:
+                neg_count = len(y_train) - y_train.sum()
+                pos_count = y_train.sum()
+                scale_weight = neg_count / (pos_count + 1)
+            else:
+                scale_weight = 1.0
+
+            lgb_model = lgb.LGBMClassifier(
+                n_estimators=n_estimators,
+                max_depth=max_depth_gb,
+                learning_rate=0.05,
+                subsample=0.85,
+                colsample_bytree=0.85,
+                scale_pos_weight=scale_weight,
+                random_state=42,
+                n_jobs=-1,
+                verbose=-1  # Suppress warnings
+            )
+            lgb_model.fit(X_train_scaled, y_train)
+            logger.info("LightGBM model trained successfully")
+        except Exception as e:
+            logger.warning(f"LightGBM training failed: {e}")
+            lgb_model = None
+
+    # Create ensemble using module-level class with optimized threshold
+    # Lower threshold (0.30) for higher fraud detection sensitivity
+    ensemble = EnsembleModel(
+        rf_model,
+        gb_model,
+        xgb_model=xgb_model,
+        lgb_model=lgb_model,
+        threshold=0.30
+    )
 
     # Evaluate
     y_pred = ensemble.predict(X_test_scaled)
@@ -272,14 +406,18 @@ def train_fraud_model(features_df: pd.DataFrame, labels: np.ndarray) -> Tuple:
         'feature_importance': dict(zip(
             features_df.columns,
             rf_model.feature_importances_.tolist()
-        ))
+        )),
+        'models_used': ensemble.model_names,
+        'num_models': ensemble.num_models,
+        'ensemble_threshold': ensemble.threshold
     }
 
     # Save model and scaler
     joblib.dump(ensemble, TRANSACTION_MODEL_PATH)
     joblib.dump(scaler, SCALER_PATH)
 
-    logger.info(f"Model trained - Accuracy: {metrics['accuracy']:.3f}, AUC: {metrics['auc']:.3f}")
+    logger.info(f"Ensemble trained with {ensemble.num_models} models: {', '.join(ensemble.model_names)}")
+    logger.info(f"Performance - Accuracy: {metrics['accuracy']:.3f}, AUC: {metrics['auc']:.3f}, Recall: {metrics['recall']:.3f}")
 
     return ensemble, scaler, metrics
 
@@ -441,10 +579,11 @@ def _generate_labels_from_anomalies(df: pd.DataFrame) -> np.ndarray:
     n_samples = len(features_df)
 
     # Use statistical analysis to estimate contamination
-    # Look for outliers in amount and other key features
+    # Look for outliers in amount and other key features with lower threshold
     amount_zscore = np.abs((features_df['amount'] - features_df['amount'].mean()) / (features_df['amount'].std() + 1))
-    potential_outliers = (amount_zscore > 2.5).sum()
-    estimated_contamination = min(0.3, max(0.05, potential_outliers / n_samples))
+    potential_outliers = (amount_zscore > 2.0).sum()  # Lower threshold from 2.5 to 2.0
+    # Increase baseline contamination rate for better fraud detection
+    estimated_contamination = min(0.35, max(0.08, potential_outliers / n_samples))
 
     logger.info(f"Using adaptive contamination rate: {estimated_contamination:.3f} for {n_samples} transactions")
 
