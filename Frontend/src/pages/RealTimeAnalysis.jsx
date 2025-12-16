@@ -196,6 +196,7 @@ const RealTimeAnalysis = () => {
   const [filteredPlots, setFilteredPlots] = useState(null);
   const [regeneratingPlots, setRegeneratingPlots] = useState(false);
   const [hoveredFraudPattern, setHoveredFraudPattern] = useState(null);
+  const [enlargedFraudPattern, setEnlargedFraudPattern] = useState(null);
   const [showDataSaved, setShowDataSaved] = useState(false);
   const isInitialMount = useRef(true);
 
@@ -2240,7 +2241,7 @@ const RealTimeAnalysis = () => {
             <div style={styles.reasonLegendTitle}>
               Standard Fraud Patterns
               <span style={{ fontSize: '0.75rem', fontWeight: 400, color: colors.mutedForeground, marginLeft: '0.5rem' }}>
-                (Hover for prevention recommendations)
+                (Hover to preview, click to enlarge)
               </span>
             </div>
               <div style={styles.reasonLegendGrid}>
@@ -2265,6 +2266,7 @@ const RealTimeAnalysis = () => {
                     }}
                     onMouseEnter={() => hasAIRecommendation && setHoveredFraudPattern(reason)}
                     onMouseLeave={() => setHoveredFraudPattern(null)}
+                    onClick={() => hasAIRecommendation && getRecommendationForPattern(reason) && setEnlargedFraudPattern(reason)}
                   >
                     <span>{reason}</span>
                     <span style={{ fontWeight: 600 }}>
@@ -2295,22 +2297,29 @@ const RealTimeAnalysis = () => {
                                           'transparent';
 
                     return (
-                      <div style={{
-                        position: 'absolute',
-                        bottom: '100%',
-                        left: '50%',
-                        transform: 'translateX(-50%)',
-                        marginBottom: '10px',
-                        backgroundColor: colors.card || colors.background,
-                        border: `3px solid ${severityColor}`,
-                        borderRadius: '8px',
-                        padding: '0.75rem 1rem',
-                        minWidth: '600px',
-                        maxWidth: '700px',
-                        boxShadow: `0 10px 40px rgba(0,0,0,0.3), 0 0 0 1px ${severityColor}20`,
-                        zIndex: 1000,
-                        animation: 'fadeIn 0.2s ease'
-                      }}>
+                      <div 
+                        style={{
+                          position: 'absolute',
+                          bottom: '100%',
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          marginBottom: '10px',
+                          backgroundColor: colors.card || colors.background,
+                          border: `3px solid ${severityColor}`,
+                          borderRadius: '8px',
+                          padding: '0.75rem 1rem',
+                          minWidth: '600px',
+                          maxWidth: '700px',
+                          boxShadow: `0 10px 40px rgba(0,0,0,0.3), 0 0 0 1px ${severityColor}20`,
+                          zIndex: 1000,
+                          animation: 'fadeIn 0.2s ease',
+                          cursor: 'pointer'
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEnlargedFraudPattern(reason);
+                        }}
+                      >
                         {/* Arrow pointing down */}
                         <div style={{
                           position: 'absolute',
@@ -3255,6 +3264,181 @@ const RealTimeAnalysis = () => {
           </div>
         </div>
       )}
+
+      {/* Enlarged Fraud Pattern Modal */}
+      {enlargedFraudPattern && getRecommendationForPattern(enlargedFraudPattern) && (() => {
+        const rec = getRecommendationForPattern(enlargedFraudPattern);
+        const isCritical = (rec.title || '').includes('CRITICAL');
+        const isHigh = (rec.title || '').includes('HIGH');
+        const isMedium = (rec.title || '').includes('MEDIUM');
+        const isLow = (rec.title || '').includes('LOW');
+
+        const severityColor = isCritical ? '#ef4444' :
+                            isHigh ? '#f97316' :
+                            isMedium ? '#fb923c' :
+                            isLow ? '#60a5fa' :
+                            primary;
+
+        return (
+          <div 
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.75)',
+              zIndex: 10000,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '2rem',
+              animation: 'fadeIn 0.2s ease'
+            }}
+            onClick={() => setEnlargedFraudPattern(null)}
+          >
+            <div 
+              style={{
+                backgroundColor: colors.card || colors.background,
+                border: `3px solid ${severityColor}`,
+                borderRadius: '12px',
+                padding: '2rem',
+                maxWidth: '900px',
+                width: '100%',
+                maxHeight: '90vh',
+                overflowY: 'auto',
+                boxShadow: `0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px ${severityColor}20`,
+                position: 'relative'
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Close Button */}
+              <button
+                style={{
+                  position: 'absolute',
+                  top: '1rem',
+                  right: '1rem',
+                  background: 'transparent',
+                  border: 'none',
+                  color: colors.foreground,
+                  fontSize: '2rem',
+                  cursor: 'pointer',
+                  width: '2.5rem',
+                  height: '2.5rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '50%',
+                  transition: 'background-color 0.2s',
+                }}
+                onClick={() => setEnlargedFraudPattern(null)}
+                onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(148, 163, 184, 0.2)'}
+                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+              >
+                &times;
+              </button>
+
+              {/* Header */}
+              <div style={{
+                fontWeight: '700',
+                color: colors.foreground,
+                marginBottom: '1rem',
+                fontSize: '1.5rem',
+                borderBottom: `3px solid ${severityColor}`,
+                paddingBottom: '1rem',
+                paddingRight: '3rem'
+              }}>
+                {rec.title}
+              </div>
+
+              {/* Description */}
+              <div style={{
+                fontSize: '1rem',
+                color: colors.mutedForeground,
+                marginBottom: '1.5rem',
+                lineHeight: '1.6'
+              }}>
+                {rec.description}
+              </div>
+
+              {/* Stats */}
+              {(rec.fraud_rate || rec.case_count || rec.total_amount) && (
+                <div style={{
+                  display: 'flex',
+                  gap: '2rem',
+                  fontSize: '0.9rem',
+                  color: colors.mutedForeground,
+                  marginBottom: '1.5rem',
+                  padding: '1rem',
+                  backgroundColor: colors.muted,
+                  borderRadius: '8px'
+                }}>
+                  {rec.case_count && <span><strong>Cases:</strong> {rec.case_count}</span>}
+                  {rec.fraud_rate && <span><strong>Fraud Rate:</strong> {rec.fraud_rate}</span>}
+                  {rec.total_amount && <span><strong>Total Amount:</strong> {rec.total_amount}</span>}
+                </div>
+              )}
+
+              {/* Two Column Layout for Actions and Prevention */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+                {/* Immediate Actions */}
+                {rec.immediate_actions && rec.immediate_actions.length > 0 && (
+                  <div>
+                    <div style={{
+                      fontWeight: '700',
+                      fontSize: '1.1rem',
+                      marginBottom: '0.75rem',
+                      color: colors.foreground,
+                      borderBottom: `2px solid ${severityColor}`,
+                      paddingBottom: '0.5rem'
+                    }}>
+                      Immediate Actions:
+                    </div>
+                    <ul style={{
+                      margin: 0,
+                      paddingLeft: '1.5rem',
+                      fontSize: '0.95rem',
+                      color: colors.foreground,
+                      lineHeight: '1.8'
+                    }}>
+                      {rec.immediate_actions.map((action, i) => (
+                        <li key={i} style={{ marginBottom: '0.5rem' }}>{action}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Prevention Steps */}
+                {rec.prevention_steps && rec.prevention_steps.length > 0 && (
+                  <div>
+                    <div style={{
+                      fontWeight: '700',
+                      fontSize: '1.1rem',
+                      marginBottom: '0.75rem',
+                      color: colors.foreground,
+                      borderBottom: `2px solid ${severityColor}`,
+                      paddingBottom: '0.5rem'
+                    }}>
+                      Prevention Steps:
+                    </div>
+                    <ul style={{
+                      margin: 0,
+                      paddingLeft: '1.5rem',
+                      fontSize: '0.95rem',
+                      color: colors.foreground,
+                      lineHeight: '1.8'
+                    }}>
+                      {rec.prevention_steps.map((step, i) => (
+                        <li key={i} style={{ marginBottom: '0.5rem' }}>{step}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
