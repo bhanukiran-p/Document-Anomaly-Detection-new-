@@ -10,6 +10,26 @@ from .supabase_client import get_supabase
 
 logger = logging.getLogger(__name__)
 
+TRAINING_DATA_COLUMNS = [
+    'transaction_id',
+    'amount',
+    'timestamp',
+    'category',
+    'merchant',
+    'customer_id',
+    'account_balance',
+    'home_country',
+    'transaction_country',
+    'login_country',
+    'is_by_check',
+    'transaction_type',
+    'currency',
+    'gender',
+    'is_fraud',
+    'fraud_probability',
+    'created_at'
+]
+
 
 def save_analyzed_transactions(
     transactions: List[Dict],
@@ -246,47 +266,96 @@ def get_training_data_from_database(
 ) -> Tuple[Optional[List[Dict]], Optional[str]]:
     """
     Fetch transaction data from database for model training.
-    
+
     Args:
         limit: Maximum number of records to fetch (default: 10000)
         min_samples: Minimum number of samples required (default: 100)
         use_recent: If True, fetch most recent records first (default: True)
-    
+
     Returns:
         Tuple of (transactions: Optional[List[Dict]], error_message: Optional[str])
     """
     try:
         supabase = get_supabase()
-        
-        query = supabase.table('analyzed_real_time_trn').select('*')
-        
-        # Order by most recent first if requested
-        if use_recent:
-            query = query.order('created_at', desc=True)
-        else:
-            query = query.order('created_at', desc=False)
-        
-        # Fetch data
-        response = query.limit(limit).execute()
-        
-        if not response.data:
+
+        selected_columns = ','.join(TRAINING_DATA_COLUMNS)
+
+        transactions = []
+        chunk_size = 500  # Reduced chunk size to avoid timeout
+        fetched = 0
+        last_created_at = None
+
+        logger.info(f"Starting to fetch training data (limit: {limit}, chunk_size: {chunk_size})")
+
+        while fetched < limit:
+            try:
+                # Build query with cursor-based pagination for better performance
+                query = supabase.table('analyzed_real_time_trn').select(selected_columns)
+
+                # Use cursor-based pagination instead of offset
+                if last_created_at is not None:
+                    if use_recent:
+                        query = query.lt('created_at', last_created_at)
+                    else:
+                        query = query.gt('created_at', last_created_at)
+
+                # Order and limit
+                if use_recent:
+                    query = query.order('created_at', desc=True)
+                else:
+                    query = query.order('created_at', desc=False)
+
+                query = query.limit(chunk_size)
+
+                # Execute query
+                response = query.execute()
+
+                if not response.data or len(response.data) == 0:
+                    logger.info(f"No more data available. Total fetched: {fetched}")
+                    break
+
+                # Add to transactions list
+                batch_size = len(response.data)
+                transactions.extend(response.data)
+                fetched += batch_size
+
+                # Update cursor for next iteration
+                last_created_at = response.data[-1].get('created_at')
+
+                logger.info(f"Fetched chunk: {batch_size} records (total: {fetched}/{limit})")
+
+                # Break if we got fewer records than chunk_size (no more data)
+                if batch_size < chunk_size:
+                    logger.info(f"Reached end of data. Total fetched: {fetched}")
+                    break
+
+            except Exception as e:
+                error_msg = f"Error fetching training data from database (fetched so far: {fetched}): {str(e)}"
+                logger.error(error_msg)
+
+                # If we have some data already, return it instead of failing completely
+                if len(transactions) >= min_samples:
+                    logger.warning(f"Partial fetch: returning {len(transactions)} transactions despite error")
+                    break
+                else:
+                    return None, error_msg
+
+        if not transactions:
             logger.warning("No training data found in database")
             return None, "No training data available in database"
-        
-        transactions = response.data
-        
+
         if len(transactions) < min_samples:
             logger.warning(f"Insufficient training data: {len(transactions)} samples (minimum: {min_samples})")
             return None, f"Insufficient training data: {len(transactions)} samples (minimum: {min_samples})"
-        
+
         # Check if we have fraud labels
         fraud_count = sum(1 for t in transactions if t.get('is_fraud') == 1)
         legitimate_count = len(transactions) - fraud_count
-        
+
         logger.info(f"Fetched {len(transactions)} transactions for training: {fraud_count} fraud, {legitimate_count} legitimate")
-        
+
         return transactions, None
-        
+
     except Exception as e:
         error_msg = f"Error fetching training data from database: {str(e)}"
         logger.error(error_msg)

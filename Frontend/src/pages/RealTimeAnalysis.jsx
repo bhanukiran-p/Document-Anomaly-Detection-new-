@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { colors } from '../styles/colors';
 import EChartsDonut from '../components/EChartsDonut';
@@ -50,6 +50,58 @@ const STANDARD_FRAUD_REASONS = [
   'Round-dollar pattern',
   'Night-time activity'
 ];
+
+const PATTERN_VARIATIONS = {
+  // Card-not-present variations
+  'card-not-present risk': ['card not present', 'cnp', 'cardnotpresent', 'card not present risk', 'card not present fraud'],
+  // Velocity abuse variations
+  'velocity abuse': ['velocity', 'rapid transactions', 'transaction velocity', 'rapid succession', 'velocity spike'],
+  // Transaction burst variations
+  'transaction burst': ['burst', 'rapid succession', 'transaction surge', 'multiple transactions', 'transaction burst'],
+  // Night-time activity variations
+  'night-time activity': ['nighttime', 'night time', 'off hours', 'unusual hours', 'nighttime activity', 'after hours'],
+  // Account takeover variations
+  'account takeover': ['takeover', 'unauthorized access', 'account compromise', 'credential theft'],
+  // Unusual amount variations
+  'unusual amount': ['amount anomaly', 'suspicious amount', 'outlier', 'unusual transaction', 'amount spike'],
+  // Additional fraud types from backend
+  'unusual location': ['location anomaly', 'unusual geo', 'geographic anomaly', 'geo mismatch'],
+  'high-risk merchant': ['risky merchant', 'high risk', 'dangerous merchant', 'merchant risk'],
+  'money mule pattern': ['money mule', 'mule activity', 'transfer chain', 'mule scheme'],
+  'structuring / smurfing': ['structuring', 'smurfing', 'structured transactions', 'structuring smurfing'],
+  'round-dollar pattern': ['round dollar', 'round amount', 'even amount', 'whole amount'],
+  'cross-border anomaly': ['cross border', 'international anomaly', 'foreign transaction', 'crossborder'],
+  'suspicious login': ['suspicious access', 'unusual login', 'login anomaly', 'credential risk'],
+  'new payee spike': ['new payee', 'payee spike', 'beneficiary spike', 'new beneficiary'],
+  'unusual device': ['new device', 'device anomaly', 'device risk', 'unknown device']
+};
+
+const normalizeText = (text = '') =>
+  text
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const getPatternVariations = (patternName = '') => {
+  const lower = patternName.toLowerCase();
+  const baseVariations = PATTERN_VARIATIONS[lower] || [];
+  const rawValues = [
+    lower,
+    ...baseVariations
+  ].filter(Boolean);
+
+  const normalizedValues = [
+    normalizeText(patternName),
+    ...rawValues.map((value) => normalizeText(value))
+  ].filter(Boolean);
+
+  return {
+    raw: Array.from(new Set(rawValues)),
+    normalized: Array.from(new Set(normalizedValues))
+  };
+};
 
 const plotColorPalette = ['#10b981', '#ef4444', '#60a5fa', '#f97316', '#a78bfa', '#fbbf24'];
 
@@ -143,6 +195,7 @@ const RealTimeAnalysis = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [filteredPlots, setFilteredPlots] = useState(null);
   const [regeneratingPlots, setRegeneratingPlots] = useState(false);
+  const [hoveredFraudPattern, setHoveredFraudPattern] = useState(null);
 
   const primary = colors.primaryColor || colors.accent?.red || '#E53935';
 
@@ -240,6 +293,186 @@ const RealTimeAnalysis = () => {
     Object.keys(reasonCountMap).forEach((reason) => unique.add(reason));
     return Array.from(unique);
   }, [reasonCountMap]);
+
+  const recommendationPatternMap = useMemo(() => {
+    const map = new Map();
+    const recommendations = analysisResult?.agent_analysis?.recommendations;
+    if (!Array.isArray(recommendations)) {
+      return map;
+    }
+
+    const candidatePatterns = new Set(STANDARD_FRAUD_REASONS);
+    fraudReasonChips.forEach((reason) => candidatePatterns.add(reason));
+
+    recommendations.forEach((rec) => {
+      if (!rec || typeof rec === 'string') return;
+      const normalizedTitle = normalizeText(rec.title || '');
+      const normalizedDesc = normalizeText(rec.description || '');
+
+      let bestPattern = null;
+      let bestScore = 0;
+
+      candidatePatterns.forEach((pattern) => {
+        const variations = getPatternVariations(pattern);
+        let score = 0;
+
+        for (const variation of variations.raw) {
+          if (!variation) continue;
+          if (
+            normalizedTitle.includes(variation) ||
+            normalizedDesc.includes(variation)
+          ) {
+            score = 1;
+            break;
+          }
+        }
+
+        if (score < 1) {
+          for (const variation of variations.normalized) {
+            if (!variation) continue;
+            if (
+              normalizedTitle.includes(variation) ||
+              normalizedDesc.includes(variation)
+            ) {
+              score = 1;
+              break;
+            }
+          }
+        }
+
+        if (score < 1) {
+          const patternWords = variations.normalized[0]?.split(' ').filter((w) => w.length > 2) || [];
+          if (patternWords.length > 0) {
+            const matchCount = patternWords.filter(
+              (word) => normalizedTitle.includes(word) || normalizedDesc.includes(word)
+            ).length;
+            score = Math.max(score, matchCount / patternWords.length);
+          }
+        }
+
+        if (score > bestScore && score >= 0.4) {
+          bestScore = score;
+          bestPattern = pattern;
+        }
+      });
+
+      if (bestPattern) {
+        const key = bestPattern.toLowerCase();
+        const existing = map.get(key);
+        if (!existing || bestScore > existing.score) {
+          map.set(key, { recommendation: rec, score: bestScore });
+        }
+      }
+    });
+
+    return map;
+  }, [analysisResult?.agent_analysis?.recommendations, fraudReasonChips]);
+
+  // Debug: Log all fraud types and recommendations on load
+  useEffect(() => {
+    if (analysisResult?.agent_analysis?.recommendations && console && console.log) {
+      console.log('=== FRAUD PATTERN MATCHING DEBUG ===');
+      console.log('Frontend Fraud Patterns:', Array.from(fraudReasonChips));
+      console.log('AI Recommendation Titles:', analysisResult.agent_analysis.recommendations.map(r => r.title));
+      console.log('Fraud Reason Breakdown:', fraudReasonBreakdown.map(f => f.label || f.type));
+      console.log('===================================');
+    }
+  }, [analysisResult, fraudReasonChips, fraudReasonBreakdown]);
+
+  // Helper function to get AI recommendation for a specific fraud pattern
+  const getRecommendationForPattern = (patternName) => {
+    if (!analysisResult?.agent_analysis?.recommendations) return null;
+
+    const preMatched = recommendationPatternMap.get(patternName.toLowerCase());
+    if (preMatched) {
+      return preMatched.recommendation;
+    }
+
+    const normalizedPattern = normalizeText(patternName);
+    const patternVariations = getPatternVariations(patternName);
+
+    const recommendation = analysisResult.agent_analysis.recommendations.find((rec) => {
+      if (!rec || typeof rec === 'string') return false;
+
+      const title = (rec.title || '').toLowerCase();
+      const description = (rec.description || '').toLowerCase();
+      const normalizedTitle = normalizeText(rec.title || '');
+      const normalizedDesc = normalizeText(rec.description || '');
+
+      if (console && console.log) {
+        console.log(`\nMatching "${patternName}" against "${rec.title}" (fallback search)`);
+      }
+
+      for (const variation of patternVariations.raw) {
+        if (!variation) continue;
+        if (title.includes(variation) || description.includes(variation)) {
+          if (console && console.log) {
+            console.log(` MATCH (Tier 1 - exact): "${variation}" found in title/description`);
+          }
+          return true;
+        }
+      }
+
+      for (const variation of patternVariations.normalized) {
+        if (!variation) continue;
+        if (normalizedTitle.includes(variation) || normalizedDesc.includes(variation)) {
+          if (console && console.log) {
+            console.log(` MATCH (Tier 2 - normalized): "${variation}" found`);
+          }
+          return true;
+        }
+      }
+
+      const patternWords = normalizedPattern.split(/\s+/).filter((w) => w.length > 2);
+      if (patternWords.length > 0) {
+        const matchCount = patternWords.filter((word) => {
+          const found = normalizedTitle.includes(word) || normalizedDesc.includes(word);
+          if (found && console && console.log) {
+            console.log(`  - Word "${word}" found in title/description`);
+          }
+          return found;
+        }).length;
+
+        const matchPercentage = matchCount / patternWords.length;
+        if (console && console.log) {
+          console.log(`  - Match percentage: ${(matchPercentage * 100).toFixed(0)}% (${matchCount}/${patternWords.length} words)`);
+        }
+
+        if (matchPercentage >= 0.5) {
+          if (console && console.log) {
+            console.log(` MATCH (Tier 3 - partial): ${(matchPercentage * 100).toFixed(0)}% words matched`);
+          }
+          return true;
+        }
+      }
+
+      const titleWords = normalizedTitle.split(/\s+/).filter((w) => w.length > 2);
+      if (titleWords.length > 0) {
+        const reverseMatchCount = titleWords.filter((word) => normalizedPattern.includes(word)).length;
+
+        if (reverseMatchCount / titleWords.length >= 0.5) {
+          if (console && console.log) {
+            console.log(` MATCH (Tier 4 - reverse): ${(reverseMatchCount / titleWords.length * 100).toFixed(0)}% of title words in pattern`);
+          }
+          return true;
+        }
+      }
+
+      if (console && console.log) {
+        console.log(' NO MATCH');
+      }
+      return false;
+    });
+
+    if (!recommendation && console && console.log) {
+      console.log(`\n FINAL: No recommendation found for pattern: "${patternName}" (fallback path)`);
+      console.log('Available recommendations:', analysisResult.agent_analysis.recommendations.map((r) => r.title));
+    } else if (recommendation && console && console.log) {
+      console.log(`\n FINAL: Matched "${patternName}" to "${recommendation.title}"`);
+    }
+
+    return recommendation || null;
+  };
 
   const renderPlotVisualization = (plot, options = {}) => {
     const height = options.height || 450;
@@ -1600,6 +1833,22 @@ const RealTimeAnalysis = () => {
 
   return (
     <div style={styles.container}>
+      {/* CSS Animation for Popover */}
+      <style>
+        {`
+          @keyframes fadeIn {
+            from {
+              opacity: 0;
+              transform: translateX(-50%) translateY(-10px);
+            }
+            to {
+              opacity: 1;
+              transform: translateX(-50%) translateY(0);
+            }
+          }
+        `}
+      </style>
+
       {/* Back Button */}
       <button
         style={styles.backButton}
@@ -1952,28 +2201,178 @@ const RealTimeAnalysis = () => {
           )}
 
           <div style={styles.reasonLegend}>
-            <div style={styles.reasonLegendTitle}>Standard Fraud Patterns</div>
-              <div style={styles.reasonLegendGrid}>
-                {fraudReasonChips.map((reason) => {
-                const count = reasonCountMap[reason] || 0;
-                const isActive = count > 0;
-                return (
-                  <div
-                    key={reason}
-                    style={{
-                      ...styles.reasonLegendChip,
-                      opacity: isActive ? 1 : 0.45,
-                      borderColor: isActive ? primary : colors.border,
-                      color: colors.foreground
-                    }}
-                  >
-                    <span>{reason}</span>
-                    <span style={{ fontWeight: 600 }}>
-                      {isActive ? `${count} case${count === 1 ? '' : 's'}` : '—'}
-                    </span>
-                  </div>
-                );
-              })}
+            <div style={styles.reasonLegendTitle}>
+              Standard Fraud Patterns
+              <span style={{ fontSize: '0.75rem', fontWeight: 400, color: colors.mutedForeground, marginLeft: '0.5rem' }}>
+                (Hover for prevention recommendations)
+              </span>
+            </div>
+              <div style={{ position: 'relative' }}>
+                <div style={styles.reasonLegendGrid}>
+                  {fraudReasonChips.map((reason) => {
+                  const count = reasonCountMap[reason] || 0;
+                  const isActive = count > 0;
+                  const hasAIRecommendation = isActive && getRecommendationForPattern(reason);
+
+                  return (
+                    <div
+                      key={reason}
+                      style={{
+                        ...styles.reasonLegendChip,
+                        opacity: isActive ? 1 : 0.45,
+                        borderColor: isActive ? primary : colors.border,
+                        color: colors.foreground,
+                        cursor: hasAIRecommendation ? 'pointer' : 'default',
+                        position: 'relative',
+                        transition: 'all 0.2s ease',
+                        transform: hoveredFraudPattern === reason ? 'scale(1.02)' : 'scale(1)',
+                        boxShadow: hoveredFraudPattern === reason ? `0 4px 12px rgba(0,0,0,0.15)` : 'none'
+                      }}
+                      onMouseEnter={() => hasAIRecommendation && setHoveredFraudPattern(reason)}
+                      onMouseLeave={() => setHoveredFraudPattern(null)}
+                    >
+                      <span>{reason}</span>
+                      <span style={{ fontWeight: 600 }}>
+                        {isActive ? `${count} case${count === 1 ? '' : 's'}` : '—'}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Recommendation Popover */}
+              {hoveredFraudPattern && getRecommendationForPattern(hoveredFraudPattern) && (
+                <div style={{
+                  position: 'absolute',
+                  bottom: '100%',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  marginBottom: '10px',
+                  backgroundColor: colors.card || colors.background,
+                  border: `2px solid ${primary}`,
+                  borderRadius: '8px',
+                  padding: '1rem',
+                  maxWidth: '500px',
+                  width: '90%',
+                  boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
+                  zIndex: 1000,
+                  animation: 'fadeIn 0.2s ease'
+                }}>
+                  {(() => {
+                    const rec = getRecommendationForPattern(hoveredFraudPattern);
+                    const isCritical = (rec.title || '').includes('CRITICAL');
+                    const isHigh = (rec.title || '').includes('HIGH');
+                    const borderColor = isCritical ? colors.error : isHigh ? colors.warning : colors.info;
+
+                    return (
+                      <>
+                        {/* Arrow pointing down */}
+                        <div style={{
+                          position: 'absolute',
+                          bottom: '-10px',
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          width: 0,
+                          height: 0,
+                          borderLeft: '10px solid transparent',
+                          borderRight: '10px solid transparent',
+                          borderTop: `10px solid ${primary}`
+                        }} />
+
+                        {/* Header */}
+                        <div style={{
+                          fontWeight: '600',
+                          color: colors.foreground,
+                          marginBottom: '0.5rem',
+                          fontSize: '0.95rem',
+                          borderBottom: `2px solid ${borderColor}`,
+                          paddingBottom: '0.5rem'
+                        }}>
+                          {rec.title}
+                        </div>
+
+                        {/* Description */}
+                        <div style={{
+                          fontSize: '0.85rem',
+                          color: colors.mutedForeground,
+                          marginBottom: '0.75rem',
+                          lineHeight: '1.4'
+                        }}>
+                          {rec.description}
+                        </div>
+
+                        {/* Stats */}
+                        {(rec.fraud_rate || rec.case_count || rec.total_amount) && (
+                          <div style={{
+                            display: 'flex',
+                            gap: '1rem',
+                            fontSize: '0.75rem',
+                            color: colors.mutedForeground,
+                            marginBottom: '0.75rem',
+                            padding: '0.5rem',
+                            backgroundColor: colors.muted,
+                            borderRadius: '4px'
+                          }}>
+                            {rec.case_count && <span>{rec.case_count}</span>}
+                            {rec.fraud_rate && <span>{rec.fraud_rate}</span>}
+                            {rec.total_amount && <span>{rec.total_amount}</span>}
+                          </div>
+                        )}
+
+                        {/* Immediate Actions */}
+                        {rec.immediate_actions && rec.immediate_actions.length > 0 && (
+                          <div style={{ marginBottom: '0.75rem' }}>
+                            <div style={{
+                              fontWeight: '600',
+                              fontSize: '0.8rem',
+                              marginBottom: '0.4rem',
+                              color: colors.foreground
+                            }}>
+                              Immediate Actions:
+                            </div>
+                            <ul style={{
+                              margin: 0,
+                              paddingLeft: '1.25rem',
+                              fontSize: '0.75rem',
+                              color: colors.foreground,
+                              lineHeight: '1.6'
+                            }}>
+                              {rec.immediate_actions.slice(0, 3).map((action, i) => (
+                                <li key={i}>{action}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Prevention Steps */}
+                        {rec.prevention_steps && rec.prevention_steps.length > 0 && (
+                          <div>
+                            <div style={{
+                              fontWeight: '600',
+                              fontSize: '0.8rem',
+                              marginBottom: '0.4rem',
+                              color: colors.foreground
+                            }}>
+                              Prevention Steps:
+                            </div>
+                            <ul style={{
+                              margin: 0,
+                              paddingLeft: '1.25rem',
+                              fontSize: '0.75rem',
+                              color: colors.foreground,
+                              lineHeight: '1.6'
+                            }}>
+                              {rec.prevention_steps.slice(0, 3).map((step, i) => (
+                                <li key={i}>{step}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
             </div>
           </div>
 
@@ -2105,125 +2504,6 @@ const RealTimeAnalysis = () => {
                 </div>
               )}
 
-              {/* Fraud Prevention Recommendations - Rich Format */}
-              {analysisResult.agent_analysis.recommendations?.length > 0 && (
-                <div>
-                  <h4 style={{ color: colors.foreground, fontSize: '1rem', marginBottom: '0.75rem', fontWeight: '600' }}>
-                    Fraud Prevention Recommendations
-                  </h4>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                    {analysisResult.agent_analysis.recommendations.slice(0, 5).map((rec, idx) => {
-                      // Check if this is a structured recommendation object
-                      const isStructured = typeof rec === 'object' && rec !== null && rec.title;
-
-                      if (isStructured) {
-                        // Determine severity color from title
-                        const title = rec.title || '';
-                        const isCritical = title.includes('CRITICAL');
-                        const isHigh = title.includes('HIGH');
-                        const borderColor = isCritical ? colors.error : isHigh ? colors.warning : colors.info;
-
-                        return (
-                          <div key={idx} style={{
-                            backgroundColor: colors.muted,
-                            borderRadius: '0.5rem',
-                            border: `1px solid ${colors.border}`,
-                            borderLeft: `4px solid ${borderColor}`,
-                            overflow: 'hidden'
-                          }}>
-                            {/* Header */}
-                            <div style={{
-                              padding: '0.75rem 1rem',
-                              backgroundColor: isCritical ? 'rgba(239, 68, 68, 0.1)' : isHigh ? 'rgba(245, 158, 11, 0.1)' : 'rgba(59, 130, 246, 0.1)'
-                            }}>
-                              <div style={{ fontWeight: '600', color: colors.foreground, marginBottom: '0.25rem', fontSize: '0.9rem' }}>
-                                {rec.title}
-                              </div>
-                              <div style={{ fontSize: '0.85rem', color: colors.mutedForeground }}>
-                                {rec.description}
-                              </div>
-                            </div>
-
-                            {/* Stats Row */}
-                            {(rec.fraud_rate || rec.case_count || rec.total_amount) && (
-                              <div style={{
-                                padding: '0.5rem 1rem',
-                                display: 'flex',
-                                gap: '1rem',
-                                fontSize: '0.8rem',
-                                color: colors.mutedForeground,
-                                borderTop: `1px solid ${colors.border}`
-                              }}>
-                                {rec.case_count && <span>{rec.case_count}</span>}
-                                {rec.fraud_rate && <span>{rec.fraud_rate}</span>}
-                                {rec.total_amount && <span>{rec.total_amount}</span>}
-                              </div>
-                            )}
-
-                            {/* Immediate Actions */}
-                            {rec.immediate_actions && rec.immediate_actions.length > 0 && (
-                              <div style={{ padding: '0.75rem 1rem', borderTop: `1px solid ${colors.border}` }}>
-                                <div style={{ fontWeight: '600', fontSize: '0.85rem', marginBottom: '0.5rem', color: colors.foreground }}>
-                                  Immediate Actions
-                                </div>
-                                <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.8rem', color: colors.foreground, lineHeight: '1.6' }}>
-                                  {rec.immediate_actions.map((action, i) => (
-                                    <li key={i} style={{ marginBottom: '0.25rem' }}>{action}</li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-
-                            {/* Prevention Steps */}
-                            {rec.prevention_steps && rec.prevention_steps.length > 0 && (
-                              <div style={{ padding: '0.75rem 1rem', borderTop: `1px solid ${colors.border}` }}>
-                                <div style={{ fontWeight: '600', fontSize: '0.85rem', marginBottom: '0.5rem', color: colors.foreground }}>
-                                  Prevention Steps
-                                </div>
-                                <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.8rem', color: colors.foreground, lineHeight: '1.6' }}>
-                                  {rec.prevention_steps.map((step, i) => (
-                                    <li key={i} style={{ marginBottom: '0.25rem' }}>{step}</li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-
-                            {/* Monitor */}
-                            {rec.monitor && (
-                              <div style={{
-                                padding: '0.5rem 1rem',
-                                borderTop: `1px solid ${colors.border}`,
-                                fontSize: '0.8rem',
-                                fontStyle: 'italic',
-                                color: colors.mutedForeground
-                              }}>
-                                <strong>Monitor:</strong> {rec.monitor}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      } else {
-                        // Fallback for simple string recommendations
-                        const displayText = typeof rec === 'string' ? rec.replace(/\*\*/g, '').replace(/^[-•]\s*/, '').trim() : '';
-                        return (
-                          <div key={idx} style={{
-                            backgroundColor: colors.muted,
-                            padding: '0.75rem 1rem',
-                            borderRadius: '0.5rem',
-                            border: `1px solid ${colors.border}`,
-                            borderLeft: `3px solid ${primary}`,
-                            fontSize: '0.85rem',
-                            color: colors.foreground,
-                            lineHeight: '1.5'
-                          }}>
-                            {displayText}
-                          </div>
-                        );
-                      }
-                    })}
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
