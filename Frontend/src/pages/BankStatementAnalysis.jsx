@@ -877,37 +877,22 @@ const BankStatementAnalysis = () => {
                     border: `1px solid ${colors.border}`
                   }}>
                     <p style={{ margin: 0 }}>
-                      Download results in JSON format for complete details or CSV format for dashboard/analytics integration.
+                      Detailed extracted bank statement information is available in the downloaded JSON file in a structured table format.
                     </p>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1.5rem' }}>
-                    <button
-                      style={{
-                        ...buttonStyle,
-                        backgroundColor: primary,
-                        marginTop: 0,
-                      }}
-                      onClick={downloadJSON}
-                      onMouseEnter={(e) => e.target.style.backgroundColor = colors.accent.redDark}
-                      onMouseLeave={(e) => e.target.style.backgroundColor = primary}
-                    >
-                      Download JSON
-                    </button>
-
-                    <button
-                      style={{
-                        ...buttonStyle,
-                        backgroundColor: colors.status.success,
-                        marginTop: 0,
-                      }}
-                      onClick={downloadCSV}
-                      onMouseEnter={(e) => e.target.style.backgroundColor = colors.status.successDark || '#1b5e20'}
-                      onMouseLeave={(e) => e.target.style.backgroundColor = colors.status.success}
-                    >
-                      Download CSV
-                    </button>
-                  </div>
+                  <button
+                    style={{
+                      ...buttonStyle,
+                      backgroundColor: primary,
+                      marginTop: '1.5rem',
+                    }}
+                    onClick={downloadJSON}
+                    onMouseEnter={(e) => e.target.style.backgroundColor = primary}
+                    onMouseLeave={(e) => e.target.style.backgroundColor = primary}
+                  >
+                    Download Full Results (JSON)
+                  </button>
                 </>
               )}
             </div>
