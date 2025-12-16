@@ -5,6 +5,48 @@ const EChartsLine = ({ data, title, height = 220 }) => {
   // Validate and log data
   console.log('EChartsLine received data:', data);
 
+  // Extract fraud and legitimate counts, calculate fraud rate
+  // Ensure all values are defined and valid
+  const validData = React.useMemo(() => {
+    return data?.filter(item => item && item.month) || [];
+  }, [data]);
+
+  const months = React.useMemo(() => {
+    return validData.map(item => item.month || 'Unknown');
+  }, [validData]);
+
+  const fraudCounts = React.useMemo(() => {
+    return validData.map(item => {
+      const value = item.fraud ?? item.fraud_count ?? 0;
+      return typeof value === 'number' && !isNaN(value) ? value : 0;
+    });
+  }, [validData]);
+
+  const legitimateCounts = React.useMemo(() => {
+    return validData.map(item => {
+      const value = item.legitimate ?? item.legitimate_count ?? 0;
+      return typeof value === 'number' && !isNaN(value) ? value : 0;
+    });
+  }, [validData]);
+
+  // Calculate fraud rate as percentage
+  const fraudRates = React.useMemo(() => {
+    return validData.map(item => {
+      const fraud = item.fraud ?? item.fraud_count ?? 0;
+      const legitimate = item.legitimate ?? item.legitimate_count ?? 0;
+      const total = fraud + legitimate;
+      const rate = total > 0 ? ((fraud / total) * 100) : 0;
+      return typeof rate === 'number' && !isNaN(rate) ? parseFloat(rate.toFixed(2)) : 0;
+    });
+  }, [validData]);
+
+  // Create a key based on data to force remount on data change
+  const dataKey = React.useMemo(() => {
+    return months.join('|') + fraudCounts.join('|') + legitimateCounts.join('|');
+  }, [months, fraudCounts, legitimateCounts]);
+
+  console.log('EChartsLine processed:', { months, fraudCounts, legitimateCounts, fraudRates });
+
   if (!data || data.length === 0) {
     return (
       <div style={{
@@ -19,31 +61,6 @@ const EChartsLine = ({ data, title, height = 220 }) => {
       </div>
     );
   }
-
-  // Extract fraud and legitimate counts, calculate fraud rate
-  // Ensure all values are defined and valid
-  const validData = data.filter(item => item && item.month);
-
-  const months = validData.map(item => item.month || 'Unknown');
-  const fraudCounts = validData.map(item => {
-    const value = item.fraud ?? item.fraud_count ?? 0;
-    return typeof value === 'number' && !isNaN(value) ? value : 0;
-  });
-  const legitimateCounts = validData.map(item => {
-    const value = item.legitimate ?? item.legitimate_count ?? 0;
-    return typeof value === 'number' && !isNaN(value) ? value : 0;
-  });
-
-  // Calculate fraud rate as percentage
-  const fraudRates = validData.map(item => {
-    const fraud = item.fraud ?? item.fraud_count ?? 0;
-    const legitimate = item.legitimate ?? item.legitimate_count ?? 0;
-    const total = fraud + legitimate;
-    const rate = total > 0 ? ((fraud / total) * 100) : 0;
-    return typeof rate === 'number' && !isNaN(rate) ? parseFloat(rate.toFixed(2)) : 0;
-  });
-
-  console.log('EChartsLine processed:', { months, fraudCounts, legitimateCounts, fraudRates });
 
   const option = {
     tooltip: {
@@ -186,11 +203,6 @@ const EChartsLine = ({ data, title, height = 220 }) => {
     animationDuration: 1000,
     animationEasing: 'cubicOut'
   };
-
-  // Create a key based on data to force remount on data change
-  const dataKey = React.useMemo(() => {
-    return months.join('|') + fraudCounts.join('|') + legitimateCounts.join('|');
-  }, [months, fraudCounts, legitimateCounts]);
 
   return (
     <ReactECharts

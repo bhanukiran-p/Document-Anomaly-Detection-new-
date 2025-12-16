@@ -117,34 +117,51 @@ def register_user_supabase(email, password):
         return {'error': f'Registration failed: {str(e)}'}, 500
 
 
-def login_user_supabase(email, password):
-    """Login user and return JWT token"""
+def login_user_supabase(username_or_email, password):
+    """Login user with username OR email and return JWT token"""
     try:
         from database.supabase_client import get_supabase
         supabase = get_supabase()
 
-        # Fetch user from Supabase using Email column
-        response = supabase.table(USERS_TABLE).select('*').eq('Email', email).execute()
+        # Try to find user by username first, then by email
+        response = None
 
-        if not response.data or len(response.data) == 0:
-            return {'error': 'Invalid email or password'}, 401
+        # Check if input contains @ (likely email)
+        if '@' in username_or_email:
+            # Try email lookup first
+            response = supabase.table(USERS_TABLE).select('*').eq('Email', username_or_email).execute()
+        else:
+            # Try username lookup first
+            response = supabase.table(USERS_TABLE).select('*').eq('UserName', username_or_email).execute()
+
+        # If not found and doesn't contain @, try as email anyway (edge case)
+        if (not response or not response.data or len(response.data) == 0) and '@' not in username_or_email:
+            response = supabase.table(USERS_TABLE).select('*').eq('Email', username_or_email).execute()
+
+        # If still not found and contains @, try as username (edge case)
+        if (not response or not response.data or len(response.data) == 0) and '@' in username_or_email:
+            response = supabase.table(USERS_TABLE).select('*').eq('UserName', username_or_email).execute()
+
+        if not response or not response.data or len(response.data) == 0:
+            return {'error': 'Invalid username or password'}, 401
 
         user = response.data[0]
 
         # Verify password
         password_hash = user.get('password_hash')
         if not password_hash or not verify_password(password_hash, password):
-            return {'error': 'Invalid email or password'}, 401
+            return {'error': 'Invalid username or password'}, 401
 
-        # Generate token
-        token = generate_token(email, user['UserID'])
+        # Generate token using email
+        user_email = user.get('Email', '')
+        token = generate_token(user_email, user['UserID'])
 
         return {
             'token': token,
             'user': {
                 'user_id': user['UserID'],
-                'email': email,
-                'username': user.get('UserName', email.split('@')[0])
+                'email': user_email,
+                'username': user.get('UserName', user_email.split('@')[0] if user_email else '')
             }
         }, 200
 
