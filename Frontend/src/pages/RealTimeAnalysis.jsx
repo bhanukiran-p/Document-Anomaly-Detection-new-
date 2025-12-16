@@ -321,29 +321,55 @@ const RealTimeAnalysis = () => {
 
     recommendations.forEach((rec) => {
       if (!rec || typeof rec === 'string') return;
-      const normalizedTitle = normalizeText(rec.title || '');
-      const normalizedDesc = normalizeText(rec.description || '');
-
-      let bestPattern = null;
-      let bestScore = 0;
-
-      candidatePatterns.forEach((pattern) => {
-        const variations = getPatternVariations(pattern);
-        let score = 0;
-
-        for (const variation of variations.raw) {
-          if (!variation) continue;
-          if (
-            normalizedTitle.includes(variation) ||
-            normalizedDesc.includes(variation)
-          ) {
-            score = 1;
-            break;
+      
+      // First, try direct matching using pattern_name field (most reliable)
+      if (rec.pattern_name) {
+        const patternName = rec.pattern_name.trim();
+        const normalizedPatternName = normalizeText(patternName);
+        
+        // Try exact match first
+        candidatePatterns.forEach((pattern) => {
+          const normalizedPattern = normalizeText(pattern);
+          if (normalizedPatternName === normalizedPattern || 
+              patternName.toLowerCase() === pattern.toLowerCase()) {
+            const key = pattern.toLowerCase();
+            map.set(key, { recommendation: rec, score: 1.0 });
+            return;
           }
+        });
+        
+        // If exact match not found, try fuzzy match on pattern_name
+        if (!Array.from(map.values()).some(v => v.recommendation === rec)) {
+          candidatePatterns.forEach((pattern) => {
+            const variations = getPatternVariations(pattern);
+            for (const variation of variations.normalized) {
+              if (normalizedPatternName.includes(variation) || 
+                  variation.includes(normalizedPatternName)) {
+                const key = pattern.toLowerCase();
+                const existing = map.get(key);
+                if (!existing) {
+                  map.set(key, { recommendation: rec, score: 0.9 });
+                }
+                return;
+              }
+            }
+          });
         }
+      }
+      
+      // Fallback to title/description matching if pattern_name not available
+      if (!Array.from(map.values()).some(v => v.recommendation === rec)) {
+        const normalizedTitle = normalizeText(rec.title || '');
+        const normalizedDesc = normalizeText(rec.description || '');
 
-        if (score < 1) {
-          for (const variation of variations.normalized) {
+        let bestPattern = null;
+        let bestScore = 0;
+
+        candidatePatterns.forEach((pattern) => {
+          const variations = getPatternVariations(pattern);
+          let score = 0;
+
+          for (const variation of variations.raw) {
             if (!variation) continue;
             if (
               normalizedTitle.includes(variation) ||
@@ -353,29 +379,42 @@ const RealTimeAnalysis = () => {
               break;
             }
           }
-        }
 
-        if (score < 1) {
-          const patternWords = variations.normalized[0]?.split(' ').filter((w) => w.length > 2) || [];
-          if (patternWords.length > 0) {
-            const matchCount = patternWords.filter(
-              (word) => normalizedTitle.includes(word) || normalizedDesc.includes(word)
-            ).length;
-            score = Math.max(score, matchCount / patternWords.length);
+          if (score < 1) {
+            for (const variation of variations.normalized) {
+              if (!variation) continue;
+              if (
+                normalizedTitle.includes(variation) ||
+                normalizedDesc.includes(variation)
+              ) {
+                score = 1;
+                break;
+              }
+            }
           }
-        }
 
-        if (score > bestScore && score >= 0.4) {
-          bestScore = score;
-          bestPattern = pattern;
-        }
-      });
+          if (score < 1) {
+            const patternWords = variations.normalized[0]?.split(' ').filter((w) => w.length > 2) || [];
+            if (patternWords.length > 0) {
+              const matchCount = patternWords.filter(
+                (word) => normalizedTitle.includes(word) || normalizedDesc.includes(word)
+              ).length;
+              score = Math.max(score, matchCount / patternWords.length);
+            }
+          }
 
-      if (bestPattern) {
-        const key = bestPattern.toLowerCase();
-        const existing = map.get(key);
-        if (!existing || bestScore > existing.score) {
-          map.set(key, { recommendation: rec, score: bestScore });
+          if (score > bestScore && score >= 0.4) {
+            bestScore = score;
+            bestPattern = pattern;
+          }
+        });
+
+        if (bestPattern) {
+          const key = bestPattern.toLowerCase();
+          const existing = map.get(key);
+          if (!existing || bestScore > existing.score) {
+            map.set(key, { recommendation: rec, score: bestScore });
+          }
         }
       }
     });
@@ -916,16 +955,20 @@ const RealTimeAnalysis = () => {
 
     // Transaction Country filter
     if (filters.transactionCountry !== '') {
-      filtered = filtered.filter(t =>
-        t.transaction_country === filters.transactionCountry
-      );
+      filtered = filtered.filter(t => {
+        const txnCountry = (t.transaction_country || '').toString().trim().toLowerCase();
+        const filterCountry = filters.transactionCountry.toString().trim().toLowerCase();
+        return txnCountry === filterCountry;
+      });
     }
 
     // Login Country filter
     if (filters.loginCountry !== '') {
-      filtered = filtered.filter(t =>
-        t.login_country === filters.loginCountry
-      );
+      filtered = filtered.filter(t => {
+        const loginCountry = (t.login_country || '').toString().trim().toLowerCase();
+        const filterCountry = filters.loginCountry.toString().trim().toLowerCase();
+        return loginCountry === filterCountry;
+      });
     }
 
     // Card Type filter
@@ -974,10 +1017,11 @@ const RealTimeAnalysis = () => {
     }
 
     // Fraud/Legitimate only filters
-    if (filters.fraudOnly) {
+    // Only apply if transactions have is_fraud field (added after fraud detection)
+    if (filters.fraudOnly && filtered.length > 0 && 'is_fraud' in filtered[0]) {
       filtered = filtered.filter(t => t.is_fraud === 1);
     }
-    if (filters.legitimateOnly) {
+    if (filters.legitimateOnly && filtered.length > 0 && 'is_fraud' in filtered[0]) {
       filtered = filtered.filter(t => t.is_fraud === 0);
     }
 
@@ -986,12 +1030,15 @@ const RealTimeAnalysis = () => {
 
   const getFilteredStatistics = () => {
     const filtered = getFilteredTransactions();
-    const fraudTransactions = filtered.filter(t => t.is_fraud === 1);
-    const legitTransactions = filtered.filter(t => t.is_fraud === 0);
 
-    const totalAmount = filtered.reduce((sum, t) => sum + t.amount, 0);
-    const fraudAmount = fraudTransactions.reduce((sum, t) => sum + t.amount, 0);
-    const legitAmount = legitTransactions.reduce((sum, t) => sum + t.amount, 0);
+    // Only calculate fraud stats if transactions have is_fraud field
+    const hasFraudField = filtered.length > 0 && 'is_fraud' in filtered[0];
+    const fraudTransactions = hasFraudField ? filtered.filter(t => t.is_fraud === 1) : [];
+    const legitTransactions = hasFraudField ? filtered.filter(t => t.is_fraud === 0) : [];
+
+    const totalAmount = filtered.reduce((sum, t) => sum + (t.amount || 0), 0);
+    const fraudAmount = fraudTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+    const legitAmount = legitTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
 
     return {
       total_count: filtered.length,

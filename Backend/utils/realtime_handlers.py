@@ -238,6 +238,48 @@ def handle_regenerate_plots():
             filtered_transactions = [t for t in filtered_transactions if filters['category'].lower() in str(t.get('category', '')).lower()]
             logger.info(f"Category filter ({filters['category']}): {before} → {len(filtered_transactions)}")
 
+        # Transaction Country filter
+        if 'transaction_country' in filters and filters['transaction_country']:
+            before = len(filtered_transactions)
+            filter_country = str(filters['transaction_country']).strip().lower()
+            filtered_transactions = [t for t in filtered_transactions if str(t.get('transaction_country', '')).strip().lower() == filter_country]
+            logger.info(f"Transaction country filter ({filters['transaction_country']}): {before} → {len(filtered_transactions)}")
+
+        # Login Country filter
+        if 'login_country' in filters and filters['login_country']:
+            before = len(filtered_transactions)
+            filter_country = str(filters['login_country']).strip().lower()
+            filtered_transactions = [t for t in filtered_transactions if str(t.get('login_country', '')).strip().lower() == filter_country]
+            logger.info(f"Login country filter ({filters['login_country']}): {before} → {len(filtered_transactions)}")
+
+        # Merchant filter
+        if 'merchant' in filters and filters['merchant']:
+            before = len(filtered_transactions)
+            filter_merchant = str(filters['merchant']).lower()
+            filtered_transactions = [t for t in filtered_transactions if filter_merchant in str(t.get('merchant', '')).lower()]
+            logger.info(f"Merchant filter ({filters['merchant']}): {before} → {len(filtered_transactions)}")
+
+        # Card Type filter
+        if 'card_type' in filters and filters['card_type']:
+            before = len(filtered_transactions)
+            filter_card_type = str(filters['card_type']).strip().lower()
+            filtered_transactions = [t for t in filtered_transactions if str(t.get('card_type', '')).strip().lower() == filter_card_type]
+            logger.info(f"Card type filter ({filters['card_type']}): {before} → {len(filtered_transactions)}")
+
+        # Transaction Type filter
+        if 'transaction_type' in filters and filters['transaction_type']:
+            before = len(filtered_transactions)
+            filter_txn_type = str(filters['transaction_type']).strip().lower()
+            filtered_transactions = [t for t in filtered_transactions if str(t.get('transaction_type', '')).strip().lower() == filter_txn_type]
+            logger.info(f"Transaction type filter ({filters['transaction_type']}): {before} → {len(filtered_transactions)}")
+
+        # Currency filter
+        if 'currency' in filters and filters['currency']:
+            before = len(filtered_transactions)
+            filter_currency = str(filters['currency']).strip().upper()
+            filtered_transactions = [t for t in filtered_transactions if str(t.get('currency', '')).strip().upper() == filter_currency]
+            logger.info(f"Currency filter ({filters['currency']}): {before} → {len(filtered_transactions)}")
+
         # Date filters
         if 'date_start' in filters and filters['date_start']:
             try:
@@ -423,20 +465,32 @@ def handle_train_from_database():
 
         # Get optional parameters from request
         data = request.get_json() or {}
-        limit = data.get('limit', 10000)
-        min_samples = data.get('min_samples', 100)
-        use_recent = data.get('use_recent', True)
+        max_samples = data.get('max_samples', 50000)  # Increased default for better training
+        batch_size = data.get('batch_size', 5000)     # Batch size for incremental loading
+        force_retrain = data.get('force_retrain', False)
+
+        logger.info(f"Training parameters: max_samples={max_samples:,}, batch_size={batch_size:,}, force={force_retrain}")
+
+        # Check if model already exists
+        if not force_retrain:
+            from real_time.model_trainer import TRANSACTION_MODEL_PATH
+            import os
+
+            if os.path.exists(TRANSACTION_MODEL_PATH):
+                logger.warning("Model already exists. Use force_retrain=true to overwrite.")
+                return jsonify({
+                    'success': False,
+                    'error': 'Model already exists',
+                    'message': 'Set force_retrain=true in request body to retrain existing model'
+                }), 400
 
         # Import training function
         from real_time.model_trainer import train_model_from_database
 
-        logger.info(f"Training model from database (limit: {limit}, min_samples: {min_samples})")
-
-        # Train model from database
+        # Train model from database using incremental loading
         training_result = train_model_from_database(
-            limit=limit,
-            min_samples=min_samples,
-            use_recent=use_recent
+            limit=max_samples,
+            batch_size=batch_size
         )
 
         if not training_result.get('success'):
@@ -448,15 +502,25 @@ def handle_train_from_database():
 
         logger.info("Model training from database completed successfully")
 
+        # Get database stats if available
+        db_stats = training_result.get('database_stats', {})
+
         return jsonify({
             'success': True,
-            'message': 'Model trained successfully from database',
+            'message': 'Model trained successfully from database using incremental batch loading',
             'training_results': {
                 'samples': training_result.get('training_samples'),
                 'fraud_samples': training_result.get('fraud_samples'),
                 'legitimate_samples': training_result.get('legitimate_samples'),
                 'metrics': training_result.get('metrics'),
-                'trained_at': training_result.get('trained_at')
+                'trained_at': training_result.get('trained_at'),
+                'database_stats': db_stats,
+                'incremental_loading': {
+                    'max_samples_used': max_samples,
+                    'batch_size': batch_size,
+                    'total_in_database': db_stats.get('total_transactions', 0),
+                    'batches_loaded': db_stats.get('batches_loaded', 0)
+                }
             }
         })
 

@@ -180,6 +180,12 @@ def _clean_data(df: pd.DataFrame) -> pd.DataFrame:
     else:
         df['category'] = df['category'].fillna('general')
 
+    # Fill missing description
+    if 'description' not in df.columns:
+        df['description'] = ''
+    else:
+        df['description'] = df['description'].fillna('').astype(str)
+
     return df
 
 

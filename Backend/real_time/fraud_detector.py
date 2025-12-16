@@ -76,6 +76,11 @@ def _is_round_dollar(amount: float) -> bool:
 
 
 def _is_card_not_present(txn_type: str, category: str, description: str) -> bool:
+    # Handle None or missing values gracefully
+    txn_type = str(txn_type) if txn_type is not None else ''
+    category = str(category) if category is not None else ''
+    description = str(description) if description is not None else ''
+    
     text_blobs = [txn_type, category, description]
     for blob in text_blobs:
         if blob and any(keyword in blob for keyword in CARD_NOT_PRESENT_KEYWORDS):
@@ -534,9 +539,23 @@ def _predict_fraud_ml(features_df: pd.DataFrame, model, scaler, original_df: pd.
         # Scale features
         X_scaled = scaler.transform(features_df)
 
-        # Predict
-        predictions = model.predict(X_scaled)
+        # Get probabilities first
         probabilities = model.predict_proba(X_scaled)[:, 1]
+        
+        # Log probability statistics for debugging
+        logger.info(f"📊 Fraud probability statistics:")
+        logger.info(f"   Min: {probabilities.min():.4f}, Max: {probabilities.max():.4f}")
+        logger.info(f"   Mean: {probabilities.mean():.4f}, Median: {np.median(probabilities):.4f}")
+        logger.info(f"   Std: {probabilities.std():.4f}")
+        logger.info(f"   Probabilities > 0.5: {np.sum(probabilities > 0.5)}/{len(probabilities)} ({100*np.sum(probabilities > 0.5)/len(probabilities):.2f}%)")
+        logger.info(f"   Probabilities > 0.7: {np.sum(probabilities > 0.7)}/{len(probabilities)} ({100*np.sum(probabilities > 0.7)/len(probabilities):.2f}%)")
+        logger.info(f"   Probabilities > 0.9: {np.sum(probabilities > 0.9)}/{len(probabilities)} ({100*np.sum(probabilities > 0.9)/len(probabilities):.2f}%)")
+
+        # Predict using model's default threshold (0.5)
+        predictions = model.predict(X_scaled)
+        
+        fraud_count = np.sum(predictions == 1)
+        logger.info(f"🔍 Model predictions: {fraud_count}/{len(predictions)} fraudulent ({100*fraud_count/len(predictions):.2f}%)")
 
         # Generate detailed reasons based on ML predictions and feature importance
         reasons = _generate_ml_reasons(predictions, probabilities, features_df, original_df, model)
