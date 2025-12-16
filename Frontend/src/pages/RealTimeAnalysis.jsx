@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { colors } from '../styles/colors';
 import EChartsDonut from '../components/EChartsDonut';
@@ -196,6 +196,7 @@ const RealTimeAnalysis = () => {
   const [filteredPlots, setFilteredPlots] = useState(null);
   const [regeneratingPlots, setRegeneratingPlots] = useState(false);
   const [hoveredFraudPattern, setHoveredFraudPattern] = useState(null);
+  const isInitialMount = useRef(true);
 
   const primary = colors.primaryColor || colors.accent?.red || '#E53935';
 
@@ -1076,8 +1077,14 @@ const RealTimeAnalysis = () => {
   }).length;
 
   const handleRegeneratePlots = async () => {
-    if (!analysisResult?.transactions) return;
-    
+    if (!analysisResult?.transactions) {
+      console.log('⚠️ No transactions available for plot regeneration');
+      return;
+    }
+
+    console.log('🔄 Starting plot regeneration...');
+    console.log('Current filters:', filters);
+
     setRegeneratingPlots(true);
     try {
       // Convert filters to backend format
@@ -1098,18 +1105,28 @@ const RealTimeAnalysis = () => {
         fraud_only: filters.fraudOnly || false,
         legitimate_only: filters.legitimateOnly || false,
       };
-      
+
       // Remove null values
       Object.keys(backendFilters).forEach(key => {
         if (backendFilters[key] === null || backendFilters[key] === '') {
           delete backendFilters[key];
         }
       });
-      
-      console.log('Regenerating plots with filters:', backendFilters);
-      console.log('Sending transactions:', analysisResult.transactions.length);
-      
-      const result = await regeneratePlotsWithFilters(analysisResult.transactions, backendFilters);
+
+      // Apply filters on frontend to reduce data size
+      const filteredTransactions = getFilteredTransactions();
+
+      console.log('📤 Filtered transactions on frontend:', filteredTransactions.length, '(from', analysisResult.transactions.length, 'total)');
+      console.log('📤 Sending to backend for plot regeneration...');
+
+      // Send filtered transactions with empty filters since filtering is already done
+      const result = await regeneratePlotsWithFilters(filteredTransactions, {});
+
+      console.log('📥 Received result:', {
+        success: result.success,
+        plotsCount: result.plots?.length || 0,
+        error: result.error
+      });
       
       if (result.success) {
         console.log('Received filtered plots:', result.plots?.length || 0);
@@ -1132,6 +1149,40 @@ const RealTimeAnalysis = () => {
       setRegeneratingPlots(false);
     }
   };
+
+  // Auto-regenerate plots when filters change (with debouncing)
+  useEffect(() => {
+    // Only run if we have analysis results
+    if (!analysisResult?.transactions || analysisResult.transactions.length === 0) {
+      console.log('⚠️ Skipping - no transactions loaded yet');
+      return;
+    }
+
+    // Skip on initial mount with data
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      console.log('⏭️ Skipping initial mount - useEffect initialized with data');
+      return;
+    }
+
+    console.log('🎯 Filter change detected!', {
+      transactionCount: analysisResult.transactions.length,
+      filterString: JSON.stringify(filters)
+    });
+
+    console.log('⏰ Starting 500ms debounce timer...');
+
+    // Debounce the regeneration to avoid excessive API calls
+    const timeoutId = setTimeout(() => {
+      console.log('✅ Debounce complete! Calling handleRegeneratePlots NOW');
+      handleRegeneratePlots();
+    }, 500); // 500ms debounce
+
+    return () => {
+      console.log('🧹 Cleanup: Clearing previous debounce timer');
+      clearTimeout(timeoutId);
+    };
+  }, [filters]);
 
   const handleAnalyze = async () => {
     if (!file) {
@@ -1844,6 +1895,15 @@ const RealTimeAnalysis = () => {
             to {
               opacity: 1;
               transform: translateX(-50%) translateY(0);
+            }
+          }
+
+          @keyframes spin {
+            from {
+              transform: rotate(0deg);
+            }
+            to {
+              transform: rotate(360deg);
             }
           }
         `}
@@ -2779,32 +2839,8 @@ const RealTimeAnalysis = () => {
             </span>
           </div>
 
-          {/* Apply Filters Button */}
-          {activeFilterCount > 0 && (
-            <div style={{ marginBottom: '1rem' }}>
-              <button
-                onClick={handleRegeneratePlots}
-                disabled={regeneratingPlots}
-                style={{
-                  backgroundColor: primary,
-                  color: 'white',
-                  padding: '0.75rem 2rem',
-                  borderRadius: '0.5rem',
-                  border: 'none',
-                  cursor: regeneratingPlots ? 'not-allowed' : 'pointer',
-                  fontSize: '0.95rem',
-                  fontWeight: '600',
-                  opacity: regeneratingPlots ? 0.6 : 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem'
-                }}
-              >
-                <FaFilter />
-                {regeneratingPlots ? 'Regenerating Plots...' : 'Apply Filters to Plots'}
-              </button>
-            </div>
-          )}
+          {/* Apply Filters Button - REMOVED: Plots now auto-update with filters */}
+          {/* Real-time plot updates enabled - filters apply automatically with 500ms debounce */}
             
           {/* Old filter UI - Hidden */}
           {false && (
@@ -3044,11 +3080,35 @@ const RealTimeAnalysis = () => {
           })() && (
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h3 style={{ color: colors.foreground, fontSize: '1.1rem', margin: 0 }}>
+                <h3 style={{ color: colors.foreground, fontSize: '1.1rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                   Visual Analytics
-                  {filteredPlots && (
-                    <span style={{ 
-                      fontSize: '0.85rem', 
+                  {regeneratingPlots && (
+                    <span style={{
+                      fontSize: '0.85rem',
+                      color: '#f59e0b',
+                      fontWeight: '600',
+                      backgroundColor: '#fef3c7',
+                      padding: '0.25rem 0.75rem',
+                      borderRadius: '0.5rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem'
+                    }}>
+                      <span className="spinner" style={{
+                        display: 'inline-block',
+                        width: '12px',
+                        height: '12px',
+                        border: '2px solid #f59e0b',
+                        borderTopColor: 'transparent',
+                        borderRadius: '50%',
+                        animation: 'spin 0.8s linear infinite'
+                      }} />
+                      Updating plots...
+                    </span>
+                  )}
+                  {!regeneratingPlots && filteredPlots && (
+                    <span style={{
+                      fontSize: '0.85rem',
                       color: primary,
                       marginLeft: '0.5rem',
                       fontWeight: '600',
@@ -3059,7 +3119,7 @@ const RealTimeAnalysis = () => {
                       🔍 Filtered ({filteredPlots.length} plots)
                     </span>
                   )}
-                  {!filteredPlots && (
+                  {!regeneratingPlots && !filteredPlots && (
                     <span style={{ fontSize: '0.85rem', color: colors.mutedForeground, marginLeft: '0.5rem' }}>
                       (All Data)
                     </span>
