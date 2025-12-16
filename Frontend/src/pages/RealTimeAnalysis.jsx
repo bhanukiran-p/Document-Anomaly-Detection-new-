@@ -741,7 +741,7 @@ const RealTimeAnalysis = () => {
 
       setCsvPreview({
         headers,
-        rows,
+        rows: rows.slice(0, 5), // Limit to first 5 rows for preview
         totalRows,
         totalColumns,
         fraudCount,
@@ -2019,44 +2019,7 @@ const RealTimeAnalysis = () => {
             </div>
           </div>
 
-          {/* Column Information */}
-          <div style={styles.columnInfoSection}>
-            <div style={styles.columnInfoTitle}>Column Information:</div>
-            <div style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '0.75rem',
-              marginTop: '0.75rem'
-            }}>
-                  {csvPreview.columnInfo.map((col, idx) => (
-                <div
-                  key={idx}
-                  style={{
-                    backgroundColor: colors.muted,
-                    padding: '0.5rem 1rem',
-                    borderRadius: '0.375rem',
-                    border: `1px solid ${colors.border}`,
-                    fontSize: '0.875rem',
-                    color: colors.textSecondary,
-                    whiteSpace: 'nowrap'
-                  }}
-                >
-                  <span style={{
-                    color: colors.primary,
-                    fontWeight: 600,
-                    marginRight: '0.5rem'
-                  }}>
-                    {idx + 1}.
-                  </span>
-                  <span style={{ color: colors.text }}>
-                    {col.name}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* First 10 Rows Preview */}
+          {/* First 5 Rows Preview */}
           <div style={styles.previewTableSection}>
             <div style={styles.previewTableTitle}>First {csvPreview.rows.length} Rows:</div>
             <div style={{ overflowX: 'auto' }}>

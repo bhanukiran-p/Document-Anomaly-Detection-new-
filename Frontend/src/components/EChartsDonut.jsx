@@ -2,17 +2,24 @@ import React from 'react';
 import ReactECharts from 'echarts-for-react';
 
 const EChartsDonut = ({ data, title, height = 220 }) => {
-  const safeData = Array.isArray(data)
-    ? data
-        .map((item) => {
-          if (!item) return null;
-          const value = Number(item.value);
-          const label = item.label || item.name;
-          if (!label || Number.isNaN(value)) return null;
-          return { label, value };
-        })
-        .filter(Boolean)
-    : [];
+  const safeData = React.useMemo(() => {
+    return Array.isArray(data)
+      ? data
+          .map((item) => {
+            if (!item) return null;
+            const value = Number(item.value);
+            const label = item.label || item.name;
+            if (!label || Number.isNaN(value)) return null;
+            return { label, value };
+          })
+          .filter(Boolean)
+      : [];
+  }, [data]);
+
+  // Create a key based on data to force remount on data change
+  const dataKey = React.useMemo(() => {
+    return safeData.map(d => `${d.label}-${d.value}`).join('|');
+  }, [safeData]);
 
   if (safeData.length === 0) {
     return (
@@ -119,11 +126,6 @@ const EChartsDonut = ({ data, title, height = 220 }) => {
     animationDuration: 1000,
     animationEasing: 'cubicOut'
   };
-
-  // Create a key based on data to force remount on data change
-  const dataKey = React.useMemo(() => {
-    return safeData.map(d => `${d.label}-${d.value}`).join('|');
-  }, [safeData]);
 
   return (
     <ReactECharts

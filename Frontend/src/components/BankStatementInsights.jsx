@@ -6,7 +6,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Sector,
   ComposedChart, ScatterChart, Scatter, ZAxis
 } from 'recharts';
-import { FaUpload, FaCog } from 'react-icons/fa';
+import { FaUpload, FaCog, FaRedo } from 'react-icons/fa';
 
 // Custom Tooltip Component
 const CustomTooltip = ({ active, payload, label }) => {
@@ -45,7 +45,9 @@ const BankStatementInsights = () => {
   const [dateFilter, setDateFilter] = useState(null); // null, 'last_30', 'last_60', 'last_90', 'older', 'custom'
   const [totalRecords, setTotalRecords] = useState(0);
   const [bankFilter, setBankFilter] = useState(null);
+  const [fraudTypeFilter, setFraudTypeFilter] = useState(null);
   const [availableBanks, setAvailableBanks] = useState([]);
+  const [availableFraudTypes, setAvailableFraudTypes] = useState([]);
   const [allBankStatementsData, setAllBankStatementsData] = useState([]);
   const [activePieIndex, setActivePieIndex] = useState(null);
   const [activeBarIndex, setActiveBarIndex] = useState(null);
@@ -129,10 +131,11 @@ const BankStatementInsights = () => {
     const riskByBankData = Object.entries(bankRisks)
       .map(([name, data]) => ({
         name,
-        avgRisk: parseFloat(((data.totalRisk / data.count) * 100).toFixed(1)),
+        avgRisk: parseFloat((data.totalRisk / data.count).toFixed(1)),
         count: data.count
       }))
       .sort((a, b) => b.avgRisk - a.avgRisk)
+      .slice(0, 5) // Only take top 5 highest-risk banks
       .map(bank => ({
         ...bank,
         displayName: (() => {
@@ -385,7 +388,32 @@ const BankStatementInsights = () => {
       .sort((a, b) => a.date.localeCompare(b.date))
       .slice(-30);
 
-    // 6. Summary Metrics
+    // 6. Top Risk Customers (by account holder)
+    const customerRisks = {};
+    rows.forEach(r => {
+      const accountHolder = (r['Account Holder'] || r['account_holder'] || 'Unknown').trim();
+      const risk = parseFloat_(r['Fraud Risk Score (%)'] || r['fraud_risk_score'] || 0);
+      if (accountHolder && accountHolder !== 'Unknown') {
+        if (!customerRisks[accountHolder]) {
+          customerRisks[accountHolder] = { count: 0, totalRisk: 0, maxRisk: 0 };
+        }
+        customerRisks[accountHolder].count++;
+        customerRisks[accountHolder].totalRisk += risk;
+        customerRisks[accountHolder].maxRisk = Math.max(customerRisks[accountHolder].maxRisk, risk);
+      }
+    });
+    const topRiskCustomers = Object.entries(customerRisks)
+      .map(([name, data]) => ({
+        name: name.length > 20 ? name.substring(0, 20) + '...' : name,
+        fullName: name,
+        avgRisk: parseFloat((data.totalRisk / data.count).toFixed(1)),
+        maxRisk: parseFloat(data.maxRisk.toFixed(1)),
+        count: data.count
+      }))
+      .sort((a, b) => b.avgRisk - a.avgRisk)
+      .slice(0, 10);
+
+    // 7. Summary Metrics
     const totalStatements = rows.length;
     const avgRiskScore = riskScores.length > 0 ? (riskScores.reduce((a, b) => a + b, 0) / riskScores.length).toFixed(1) : '0.0';
     const approveCount = recommendations.filter(d => d === 'APPROVE').length;
@@ -401,6 +429,7 @@ const BankStatementInsights = () => {
       riskByBankData,
       fraudTypeData,
       fraudTrendData,
+      topRiskCustomers,
       metrics: {
         totalStatements,
         avgRiskScore,
@@ -487,9 +516,40 @@ const BankStatementInsights = () => {
         const fetchedData = data.data || [];
         setAllBankStatementsData(fetchedData);
 
-        // Extract unique banks from the data
-        const uniqueBanks = [...new Set(fetchedData.map(bs => bs.bank_name).filter(Boolean))].sort();
+        // Extract unique banks from the data with normalization
+        const normalizeBankName = (bankName) => {
+          if (!bankName) return null;
+          const normalized = bankName.toUpperCase().trim();
+
+          // Map common variations to standard names
+          if (normalized.includes('CHASE')) return 'CHASE BANK';
+          if (normalized.includes('BANK OF AMERICA') || normalized.includes('BOFA')) return 'BANK OF AMERICA';
+          if (normalized.includes('WELLS FARGO')) return 'WELLS FARGO';
+          if (normalized.includes('CITI')) return 'CITIBANK';
+          if (normalized.includes('US BANK')) return 'US BANK';
+          if (normalized.includes('PNC')) return 'PNC BANK';
+          if (normalized.includes('TD BANK')) return 'TD BANK';
+          if (normalized.includes('CAPITAL ONE')) return 'CAPITAL ONE';
+          if (normalized.includes('ALLY')) return 'ALLY BANK';
+
+          return bankName; // Return original if no match
+        };
+
+        const uniqueBanks = [...new Set(
+          fetchedData
+            .map(bs => normalizeBankName(bs.bank_name))
+            .filter(Boolean)
+        )].sort();
         setAvailableBanks(uniqueBanks);
+
+        // Extract unique fraud types from the data
+        const uniqueFraudTypes = [...new Set(
+          fetchedData
+            .map(bs => bs.fraud_types || bs.fraud_type)
+            .filter(Boolean)
+            .map(ft => ft.trim())
+        )].sort();
+        setAvailableFraudTypes(uniqueFraudTypes);
 
         // Apply bank filter if specified
         let filteredData = fetchedData;
@@ -503,12 +563,7 @@ const BankStatementInsights = () => {
         setBankStatementsList(filteredData);
         setTotalRecords(data.total_records || data.count);
         setDateFilter(filter);
-        // Auto-load all bank statements as insights if data exists
-        if (filteredData.length > 0) {
-          loadBankStatementData(filteredData);
-        } else {
-          setError('No bank statements found for the selected filters');
-        }
+        // Don't call loadBankStatementData here - let the useEffect handle it with current filters
       } else {
         setError(data.message || 'Failed to fetch bank statements');
         setCsvData(null);
@@ -623,6 +678,143 @@ const BankStatementInsights = () => {
     }
   };
 
+  // Normalize bank name helper (same as in fetchBankStatementsList)
+  const normalizeBankName = (bankName) => {
+    if (!bankName) return null;
+    const normalized = bankName.toUpperCase().trim();
+
+    // Map common variations to standard names
+    if (normalized.includes('CHASE')) return 'CHASE BANK';
+    if (normalized.includes('BANK OF AMERICA') || normalized.includes('BOFA')) return 'BANK OF AMERICA';
+    if (normalized.includes('WELLS FARGO')) return 'WELLS FARGO';
+    if (normalized.includes('CITI')) return 'CITIBANK';
+    if (normalized.includes('US BANK')) return 'US BANK';
+    if (normalized.includes('PNC')) return 'PNC BANK';
+    if (normalized.includes('TD BANK')) return 'TD BANK';
+    if (normalized.includes('CAPITAL ONE')) return 'CAPITAL ONE';
+    if (normalized.includes('ALLY')) return 'ALLY BANK';
+
+    return bankName; // Return original if no match
+  };
+
+  // Filter data based on active filters (similar to CheckInsights)
+  const getFilteredData = () => {
+    let filtered = allBankStatementsData;
+
+    // Filter by bank (using normalized names)
+    if (bankFilter && bankFilter !== '' && bankFilter !== 'All Banks') {
+      filtered = filtered.filter(bs => normalizeBankName(bs.bank_name) === bankFilter);
+    }
+
+    // Filter by date range
+    if (dateFilter) {
+      if (dateFilter === 'custom' && (customDateRange.startDate || customDateRange.endDate)) {
+        filtered = filtered.filter(bs => {
+          const statementDate = new Date(bs.timestamp || bs.created_at);
+          const startDate = customDateRange.startDate ? new Date(customDateRange.startDate) : null;
+          const endDate = customDateRange.endDate ? new Date(customDateRange.endDate) : null;
+
+          if (startDate && endDate) {
+            return statementDate >= startDate && statementDate <= endDate;
+          } else if (startDate) {
+            return statementDate >= startDate;
+          } else if (endDate) {
+            return statementDate <= endDate;
+          }
+          return true;
+        });
+      } else {
+        const now = new Date();
+        const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+        const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+        filtered = filtered.filter(bs => {
+          const statementDate = new Date(bs.timestamp || bs.created_at);
+          if (dateFilter === 'last_30') return statementDate >= thirtyDaysAgo;
+          if (dateFilter === 'last_60') return statementDate >= sixtyDaysAgo;
+          if (dateFilter === 'last_90') return statementDate >= ninetyDaysAgo;
+          return true;
+        });
+      }
+    }
+
+    // Filter by fraud type
+    if (fraudTypeFilter && fraudTypeFilter !== '' && fraudTypeFilter !== 'All Fraud Types') {
+      filtered = filtered.filter(bs => {
+        const fraudType = bs.fraud_types || bs.fraud_type;
+        if (!fraudType) return false;
+        const normalizedFilter = fraudTypeFilter.toLowerCase().trim();
+        const typeStr = String(fraudType || '').trim().toLowerCase();
+        return typeStr === normalizedFilter;
+      });
+    }
+
+    return filtered;
+  };
+
+  const filteredData = getFilteredData();
+
+  // Process filtered data on every render (like CheckInsights) - ensures filters always work
+  const processedData = (() => {
+    if (inputMode === 'api' && filteredData.length > 0) {
+      const rows = filteredData.map(bs => {
+        // Parse top_anomalies if it's a JSONB field
+        let anomalies = '';
+        if (bs.top_anomalies) {
+          if (typeof bs.top_anomalies === 'string') {
+            try {
+              const parsed = JSON.parse(bs.top_anomalies);
+              anomalies = Array.isArray(parsed) ? parsed.map(a =>
+                typeof a === 'string' ? a : (a.message || a.type || JSON.stringify(a))
+              ).join(' | ') : bs.top_anomalies;
+            } catch {
+              anomalies = bs.top_anomalies;
+            }
+          } else if (Array.isArray(bs.top_anomalies)) {
+            anomalies = bs.top_anomalies.map(a =>
+              typeof a === 'string' ? a : (a.message || a.type || JSON.stringify(a))
+            ).join(' | ');
+          } else {
+            anomalies = JSON.stringify(bs.top_anomalies);
+          }
+        }
+
+        return {
+          'fraud_risk_score': bs.fraud_risk_score || 0,
+          'Fraud Risk Score (%)': (bs.fraud_risk_score || 0) * 100,
+          'ai_recommendation': bs.ai_recommendation || 'UNKNOWN',
+          'AI Recommendation': bs.ai_recommendation || 'UNKNOWN',
+          'bank_name': bs.bank_name || 'Unknown',
+          'Bank Name': bs.bank_name || 'Unknown',
+          'account_holder': bs.account_holder || '',
+          'Account Holder': bs.account_holder || '',
+          'account_number': bs.account_number || '',
+          'Account Number': bs.account_number || '',
+          'statement_period': bs.statement_period || '',
+          'Statement Period': bs.statement_period || '',
+          'timestamp': bs.timestamp || bs.created_at || '',
+          'Timestamp': bs.timestamp || bs.created_at || '',
+          'model_confidence': bs.model_confidence || 0,
+          'Model Confidence (%)': (bs.model_confidence || 0) * 100,
+          'top_anomalies': anomalies,
+          'Top Anomalies': anomalies,
+          'anomalies': anomalies,
+          'Anomalies': anomalies,
+          'fraud_types': bs.fraud_types || bs.fraud_type || null,
+          'Fraud Types': bs.fraud_types || bs.fraud_type || null,
+          'fraud_type': bs.fraud_types || bs.fraud_type || null,
+          'Fraud Type': bs.fraud_types || bs.fraud_type || null,
+        };
+      });
+      return processData(rows);
+    }
+    return null;
+  })();
+
+  // Use processedData when available (from filters), fallback to csvData (for CSV upload mode)
+  const displayData = processedData || csvData;
+
   // Auto-fetch data when component mounts in 'api' mode
   useEffect(() => {
     if (inputMode === 'api' && allBankStatementsData.length === 0 && !loadingBankStatementsList) {
@@ -682,318 +874,271 @@ const BankStatementInsights = () => {
     'ESCALATE': colors.status.warning || '#f59e0b'
   };
 
+  // Styles matching CheckInsights
+  const filterStyles = {
+    filtersSection: {
+      display: 'flex',
+      gap: '10px',
+      marginBottom: '20px',
+      alignItems: 'center',
+      flexWrap: 'wrap'
+    },
+    select: {
+      padding: '8px 12px',
+      border: `1px solid ${colors.border}`,
+      borderRadius: '4px',
+      fontSize: '14px',
+      backgroundColor: colors.card,
+      color: colors.foreground,
+      cursor: 'pointer'
+    },
+    recordCount: {
+      fontSize: '12px',
+      color: colors.mutedForeground,
+      whiteSpace: 'nowrap'
+    }
+  };
+
   return (
     <div style={containerStyle}>
-
-
-      {inputMode === 'api' && (
-        <>
-          <div style={{ marginBottom: '1.5rem' }}>
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-              <input
-                type="text"
-                placeholder="Search bank statements..."
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  if (e.target.value) {
-                    handleSearchBankStatements(e.target.value);
-                  } else {
-                    fetchBankStatementsList(dateFilter);
-                  }
-                }}
-                style={{
-                  padding: '0.75rem',
-                  borderRadius: '0.5rem',
-                  border: `1px solid ${colors.border}`,
-                  fontSize: '14px',
-                  flex: 1,
-                  minWidth: '200px',
-                  backgroundColor: colors.card,
-                  color: colors.foreground
-                }}
-              />
-              {availableBanks.length > 0 && (
-                <select
-                  value={bankFilter || ''}
-                  onChange={(e) => {
-                    const bank = e.target.value || null;
-                    setBankFilter(bank);
-                    fetchBankStatementsList(dateFilter, bank);
-                  }}
-                  style={{
-                    padding: '0.75rem',
-                    borderRadius: '0.5rem',
-                    border: `1px solid ${colors.border}`,
-                    fontSize: '14px',
-                    backgroundColor: colors.card,
-                    color: colors.foreground,
-                    cursor: 'pointer'
-                  }}
-                >
-                  <option value="">All Banks</option>
-                  {availableBanks.map(bank => (
-                    <option key={bank} value={bank}>{bank}</option>
-                  ))}
-                </select>
-              )}
-              <div style={{ fontSize: '12px', color: colors.mutedForeground, whiteSpace: 'nowrap' }}>
-                {totalRecords} records
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-              <button
-                onClick={() => fetchBankStatementsList(null, bankFilter)}
-                style={{
-                  padding: '0.75rem 1rem',
-                  borderRadius: '0.5rem',
-                  backgroundColor: !dateFilter ? primary : colors.secondary,
-                  color: !dateFilter ? colors.primaryForeground : colors.foreground,
-                  border: `1px solid ${colors.border}`,
-                  cursor: 'pointer',
-                  fontWeight: !dateFilter ? '600' : '500',
-                  transition: 'all 0.3s',
-                }}
-              >
-                All Time
-              </button>
-              <button
-                onClick={() => fetchBankStatementsList('last_30', bankFilter)}
-                style={{
-                  padding: '0.75rem 1rem',
-                  borderRadius: '0.5rem',
-                  backgroundColor: dateFilter === 'last_30' ? primary : colors.secondary,
-                  color: dateFilter === 'last_30' ? colors.primaryForeground : colors.foreground,
-                  border: `1px solid ${colors.border}`,
-                  cursor: 'pointer',
-                  fontWeight: dateFilter === 'last_30' ? '600' : '500',
-                  transition: 'all 0.3s',
-                }}
-              >
-                Last 30
-              </button>
-              <button
-                onClick={() => fetchBankStatementsList('last_60', bankFilter)}
-                style={{
-                  padding: '0.75rem 1rem',
-                  borderRadius: '0.5rem',
-                  backgroundColor: dateFilter === 'last_60' ? primary : colors.secondary,
-                  color: dateFilter === 'last_60' ? colors.primaryForeground : colors.foreground,
-                  border: `1px solid ${colors.border}`,
-                  cursor: 'pointer',
-                  fontWeight: dateFilter === 'last_60' ? '600' : '500',
-                  transition: 'all 0.3s',
-                }}
-              >
-                Last 60
-              </button>
-              <button
-                onClick={() => fetchBankStatementsList('last_90', bankFilter)}
-                style={{
-                  padding: '0.75rem 1rem',
-                  borderRadius: '0.5rem',
-                  backgroundColor: dateFilter === 'last_90' ? primary : colors.secondary,
-                  color: dateFilter === 'last_90' ? colors.primaryForeground : colors.foreground,
-                  border: `1px solid ${colors.border}`,
-                  cursor: 'pointer',
-                  fontWeight: dateFilter === 'last_90' ? '600' : '500',
-                  transition: 'all 0.3s',
-                }}
-              >
-                Last 90
-              </button>
-              <button
-                onClick={() => fetchBankStatementsList('older', bankFilter)}
-                style={{
-                  padding: '0.75rem 1rem',
-                  borderRadius: '0.5rem',
-                  backgroundColor: dateFilter === 'older' ? primary : colors.secondary,
-                  color: dateFilter === 'older' ? colors.primaryForeground : colors.foreground,
-                  border: `1px solid ${colors.border}`,
-                  cursor: 'pointer',
-                  fontWeight: dateFilter === 'older' ? '600' : '500',
-                  transition: 'all 0.3s',
-                }}
-              >
-                Older
-              </button>
-              <button
-                onClick={() => setShowCustomDatePicker(!showCustomDatePicker)}
-                style={{
-                  padding: '0.75rem 1rem',
-                  borderRadius: '0.5rem',
-                  backgroundColor: dateFilter === 'custom' ? primary : colors.secondary,
-                  color: dateFilter === 'custom' ? colors.primaryForeground : colors.foreground,
-                  border: `1px solid ${colors.border}`,
-                  cursor: 'pointer',
-                  fontWeight: dateFilter === 'custom' ? '600' : '500',
-                  transition: 'all 0.3s',
-                }}
-              >
-                Custom Range
-              </button>
-              {(dateFilter || bankFilter) && (
-                <button
-                  onClick={() => {
-                    setDateFilter(null);
-                    setBankFilter(null);
-                    setSearchQuery('');
-                    setCustomDateRange({ startDate: '', endDate: '' });
-                    setShowCustomDatePicker(false);
-                    fetchBankStatementsList(null, null);
-                  }}
-                  style={{
-                    padding: '0.75rem 1rem',
-                    borderRadius: '0.5rem',
-                    backgroundColor: colors.accent.redLight || '#fee2e2',
-                    color: colors.accent.red || primary,
-                    border: `1px solid ${colors.border}`,
-                    cursor: 'pointer',
-                    fontWeight: '600',
-                    transition: 'all 0.3s',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                  }}
-                >
-                  <span>Reset Filters</span>
-                </button>
-              )}
-            </div>
-
-            {/* Custom Date Range Picker */}
-            {showCustomDatePicker && (
-              <div style={{
-                marginTop: '1rem',
-                padding: '1.5rem',
-                backgroundColor: colors.card,
-                border: `1px solid ${colors.border}`,
-                borderRadius: '0.5rem',
-                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
-              }}>
-                <div style={{ marginBottom: '1rem', fontWeight: '600', color: colors.foreground }}>
-                  Select Custom Date Range
-                </div>
-                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                  <div style={{ flex: '1', minWidth: '200px' }}>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '14px', color: colors.mutedForeground }}>
-                      Start Date
-                    </label>
-                    <input
-                      type="date"
-                      value={customDateRange.startDate}
-                      onChange={(e) => setCustomDateRange({ ...customDateRange, startDate: e.target.value })}
-                      style={{
-                        width: '100%',
-                        padding: '0.75rem',
-                        borderRadius: '0.5rem',
-                        border: `1px solid ${colors.border}`,
-                        fontSize: '14px',
-                        backgroundColor: colors.secondary,
-                        color: colors.foreground
-                      }}
-                    />
-                  </div>
-                  <div style={{ flex: '1', minWidth: '200px' }}>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '14px', color: colors.mutedForeground }}>
-                      End Date
-                    </label>
-                    <input
-                      type="date"
-                      value={customDateRange.endDate}
-                      onChange={(e) => setCustomDateRange({ ...customDateRange, endDate: e.target.value })}
-                      style={{
-                        width: '100%',
-                        padding: '0.75rem',
-                        borderRadius: '0.5rem',
-                        border: `1px solid ${colors.border}`,
-                        fontSize: '14px',
-                        backgroundColor: colors.secondary,
-                        color: colors.foreground
-                      }}
-                    />
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button
-                      onClick={() => {
-                        if (!customDateRange.startDate && !customDateRange.endDate) {
-                          setError('Please select at least one date');
-                          return;
-                        }
-                        if (customDateRange.startDate && customDateRange.endDate &&
-                          customDateRange.startDate > customDateRange.endDate) {
-                          setError('Start date must be before end date');
-                          return;
-                        }
-                        setDateFilter('custom');
-                        setShowCustomDatePicker(false);
-                        fetchBankStatementsList(null, bankFilter, customDateRange);
-                      }}
-                      style={{
-                        padding: '0.75rem 1.5rem',
-                        borderRadius: '0.5rem',
-                        backgroundColor: primary,
-                        color: colors.primaryForeground,
-                        border: 'none',
-                        cursor: 'pointer',
-                        fontWeight: '600',
-                        transition: 'all 0.3s',
-                      }}
-                    >
-                      Apply
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowCustomDatePicker(false);
-                        setCustomDateRange({ startDate: '', endDate: '' });
-                      }}
-                      style={{
-                        padding: '0.75rem 1.5rem',
-                        borderRadius: '0.5rem',
-                        backgroundColor: colors.secondary,
-                        color: colors.foreground,
-                        border: `1px solid ${colors.border}`,
-                        cursor: 'pointer',
-                        fontWeight: '500',
-                        transition: 'all 0.3s',
-                      }}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {loadingBankStatementsList && (
-            <div style={{ textAlign: 'center', padding: '2rem' }}>
-              <FaCog className="spin" style={{
-                fontSize: '2rem',
-                color: primary,
-              }} />
-              <p style={{ marginTop: '0.5rem', color: colors.mutedForeground }}>
-                Loading bank statements...
-              </p>
-            </div>
+      {/* Filters Section - Matching CheckInsights Style */}
+      {inputMode === 'api' && displayData && (
+        <div style={filterStyles.filtersSection}>
+          {availableBanks.length > 0 && (
+            <select
+              value={bankFilter || ''}
+              onChange={(e) => setBankFilter(e.target.value || null)}
+              style={filterStyles.select}
+            >
+              <option value="">All Banks</option>
+              {availableBanks.map(bank => (
+                <option key={bank} value={bank}>{bank}</option>
+              ))}
+            </select>
           )}
 
-          {error && inputMode === 'api' && (
+          <select
+            value={dateFilter || ''}
+            onChange={(e) => {
+              const value = e.target.value || null;
+              if (value === 'custom') {
+                setShowCustomDatePicker(true);
+              } else {
+                setShowCustomDatePicker(false);
+                setDateFilter(value);
+              }
+            }}
+            style={filterStyles.select}
+          >
+            <option value="">All Time</option>
+            <option value="last_30">Last 30 Days</option>
+            <option value="last_60">Last 60 Days</option>
+            <option value="last_90">Last 90 Days</option>
+            <option value="custom">Custom Range</option>
+          </select>
+
+          {/* Custom Date Range Picker */}
+          {showCustomDatePicker && (
             <div style={{
-              backgroundColor: colors.accent.redLight,
-              color: colors.accent.red,
-              padding: '1rem',
+              gridColumn: '1 / -1',
+              padding: '16px',
+              backgroundColor: colors.card,
+              border: `1px solid ${colors.border}`,
               borderRadius: '8px',
-              marginTop: '1rem',
-              fontWeight: '500',
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
             }}>
-              {error}
+              <div style={{ marginBottom: '12px', fontWeight: '600', color: colors.foreground }}>
+                Select Custom Date Range
+              </div>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <div style={{ flex: '1', minWidth: '180px' }}>
+                  <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: colors.mutedForeground }}>
+                    Start Date
+                  </label>
+                  <input
+                    type="date"
+                    value={customDateRange.startDate}
+                    onChange={(e) => setCustomDateRange({ ...customDateRange, startDate: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      borderRadius: '4px',
+                      border: `1px solid ${colors.border}`,
+                      fontSize: '13px',
+                      backgroundColor: colors.secondary,
+                      color: colors.foreground
+                    }}
+                  />
+                </div>
+                <div style={{ flex: '1', minWidth: '180px' }}>
+                  <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: colors.mutedForeground }}>
+                    End Date
+                  </label>
+                  <input
+                    type="date"
+                    value={customDateRange.endDate}
+                    onChange={(e) => setCustomDateRange({ ...customDateRange, endDate: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      borderRadius: '4px',
+                      border: `1px solid ${colors.border}`,
+                      fontSize: '13px',
+                      backgroundColor: colors.secondary,
+                      color: colors.foreground
+                    }}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={() => {
+                      if (!customDateRange.startDate && !customDateRange.endDate) {
+                        setError('Please select at least one date');
+                        return;
+                      }
+                      if (customDateRange.startDate && customDateRange.endDate &&
+                        customDateRange.startDate > customDateRange.endDate) {
+                        setError('Start date must be before end date');
+                        return;
+                      }
+                      setDateFilter('custom');
+                      setShowCustomDatePicker(false);
+                    }}
+                    style={{
+                      padding: '8px 20px',
+                      borderRadius: '4px',
+                      backgroundColor: primary,
+                      color: colors.primaryForeground,
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontWeight: '600',
+                      fontSize: '13px',
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    Apply
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowCustomDatePicker(false);
+                      setCustomDateRange({ startDate: '', endDate: '' });
+                      setDateFilter(null);
+                    }}
+                    style={{
+                      padding: '8px 20px',
+                      borderRadius: '4px',
+                      backgroundColor: colors.secondary,
+                      color: colors.foreground,
+                      border: `1px solid ${colors.border}`,
+                      cursor: 'pointer',
+                      fontWeight: '600',
+                      fontSize: '13px',
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
             </div>
           )}
-        </>
+
+          {availableFraudTypes.length > 0 && (
+            <select
+              value={fraudTypeFilter || ''}
+              onChange={(e) => setFraudTypeFilter(e.target.value || null)}
+              style={filterStyles.select}
+            >
+              <option value="">All Fraud Types</option>
+              {availableFraudTypes.map(fraudType => (
+                <option key={fraudType} value={fraudType}>{fraudType}</option>
+              ))}
+            </select>
+          )}
+
+          <button
+            onClick={() => {
+              setSearchQuery('');
+              setBankFilter(null);
+              setDateFilter(null);
+              setFraudTypeFilter(null);
+              setCustomDateRange({ startDate: '', endDate: '' });
+              setShowCustomDatePicker(false);
+              fetchBankStatementsList();
+            }}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '4px',
+              border: `1px solid ${colors.border}`,
+              backgroundColor: colors.secondary,
+              color: colors.foreground,
+              cursor: 'pointer',
+              fontSize: '14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.backgroundColor = colors.muted;
+              e.target.style.borderColor = primary;
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.backgroundColor = colors.secondary;
+              e.target.style.borderColor = colors.border;
+            }}
+          >
+            <FaRedo /> Reset Filters
+          </button>
+
+          <span style={filterStyles.recordCount}>
+            Showing {filteredData.length} of {totalRecords} bank statements
+          </span>
+        </div>
       )}
 
-      {csvData && (
+      {inputMode === 'api' && error && (
+        <div style={{
+          backgroundColor: colors.accent.redLight,
+          color: colors.accent.red,
+          padding: '1rem',
+          borderRadius: '8px',
+          marginTop: '1rem',
+          marginBottom: '1rem',
+          fontWeight: '500',
+        }}>
+          {error}
+        </div>
+      )}
+
+      {/* Show empty state when filters return no data */}
+      {inputMode === 'api' && !displayData && allBankStatementsData.length > 0 && (() => {
+        const currentFiltered = getFilteredData();
+        const hasActiveFilters =
+          (bankFilter && bankFilter !== '' && bankFilter !== 'All Banks') ||
+          (dateFilter && dateFilter !== null) ||
+          (fraudTypeFilter && fraudTypeFilter !== '' && fraudTypeFilter !== 'All Fraud Types');
+
+        if (hasActiveFilters && currentFiltered.length === 0) {
+          return (
+            <div data-metrics-section>
+              <div style={cardStyle}>
+                <div style={{
+                  textAlign: 'center',
+                  padding: '3rem',
+                  color: colors.mutedForeground
+                }}>
+                  <h3 style={{ color: colors.foreground, marginBottom: '1rem' }}>No bank statements found for selected filters</h3>
+                  <p>Try adjusting your filters to see data.</p>
+                </div>
+              </div>
+            </div>
+          );
+        }
+        return null;
+      })()}
+
+      {displayData && (
         <div>
           {/* Summary Metrics */}
           <div data-metrics-section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
@@ -1002,7 +1147,7 @@ const BankStatementInsights = () => {
                 Total Statements
               </div>
               <div style={{ fontSize: '2rem', fontWeight: 'bold', color: primary }}>
-                {csvData.metrics.totalStatements}
+                {displayData.metrics.totalStatements}
               </div>
             </div>
             <div style={chartBoxStyle}>
@@ -1010,7 +1155,7 @@ const BankStatementInsights = () => {
                 Avg Risk Score
               </div>
               <div style={{ fontSize: '2rem', fontWeight: 'bold', color: primary }}>
-                {csvData.metrics.avgRiskScore}%
+                {displayData.metrics.avgRiskScore}%
               </div>
             </div>
             <div style={chartBoxStyle}>
@@ -1018,7 +1163,7 @@ const BankStatementInsights = () => {
                 Approve
               </div>
               <div style={{ fontSize: '2rem', fontWeight: 'bold', color: colors.status.success }}>
-                {csvData.metrics.approveCount}
+                {displayData.metrics.approveCount}
               </div>
             </div>
             <div style={chartBoxStyle}>
@@ -1026,7 +1171,7 @@ const BankStatementInsights = () => {
                 Reject
               </div>
               <div style={{ fontSize: '2rem', fontWeight: 'bold', color: primary }}>
-                {csvData.metrics.rejectCount}
+                {displayData.metrics.rejectCount}
               </div>
             </div>
             <div style={chartBoxStyle}>
@@ -1034,7 +1179,7 @@ const BankStatementInsights = () => {
                 Escalate
               </div>
               <div style={{ fontSize: '2rem', fontWeight: 'bold', color: colors.status.warning }}>
-                {csvData.metrics.escalateCount}
+                {displayData.metrics.escalateCount}
               </div>
             </div>
           </div>
@@ -1042,13 +1187,13 @@ const BankStatementInsights = () => {
           {/* Charts */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(500px, 1fr))', gap: '20px' }}>
             {/* AI Recommendation Breakdown */}
-            {csvData.recommendationData && csvData.recommendationData.length > 0 && (
+            {displayData.recommendationData && displayData.recommendationData.length > 0 && (
               <div style={chartBoxStyle}>
                 <h3 style={chartTitleStyle}>AI Decision Breakdown</h3>
                 <ResponsiveContainer width="100%" height={320}>
                   <PieChart>
                     <Pie
-                      data={csvData.recommendationData}
+                      data={displayData.recommendationData}
                       cx="50%"
                       cy="50%"
                       innerRadius={60}
@@ -1076,7 +1221,7 @@ const BankStatementInsights = () => {
                         );
                       }}
                     >
-                      {csvData.recommendationData.map((entry, index) => (
+                      {displayData.recommendationData.map((entry, index) => (
                         <Cell
                           key={`cell-${index}`}
                           fill={colorMap[entry.name] || primary}
@@ -1089,7 +1234,7 @@ const BankStatementInsights = () => {
                       content={({ active, payload }) => {
                         if (active && payload && payload.length) {
                           const data = payload[0];
-                          const total = csvData.recommendationData.reduce((sum, item) => sum + item.value, 0);
+                          const total = displayData.recommendationData.reduce((sum, item) => sum + item.value, 0);
                           const percentage = total > 0 ? ((data.value / total) * 100).toFixed(1) : 0;
                           return (
                             <div style={{
@@ -1118,7 +1263,7 @@ const BankStatementInsights = () => {
                   </PieChart>
                 </ResponsiveContainer>
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', marginTop: '1rem', flexWrap: 'wrap' }}>
-                  {csvData.recommendationData.map((entry, index) => (
+                  {displayData.recommendationData.map((entry, index) => (
                     <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <div style={{
                         width: '12px',
@@ -1136,11 +1281,11 @@ const BankStatementInsights = () => {
             )}
 
             {/* Risk Score Distribution by Range */}
-            {csvData.riskDistribution && csvData.riskDistribution.length > 0 && (
+            {displayData.riskDistribution && displayData.riskDistribution.length > 0 && (
               <div style={chartBoxStyle}>
                 <h3 style={chartTitleStyle}>Risk Score Distribution by Range</h3>
                 <ResponsiveContainer width="100%" height={320}>
-                  <BarChart data={csvData.riskDistribution} margin={{ top: 10, right: 20, left: 10, bottom: 10 }}>
+                  <BarChart data={displayData.riskDistribution} margin={{ top: 10, right: 20, left: 10, bottom: 10 }}>
                     <defs>
                       <linearGradient id="riskGradient" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor={primary} stopOpacity={1} />
@@ -1187,7 +1332,7 @@ const BankStatementInsights = () => {
                       cursor={{ fill: 'transparent' }}
                     />
                     <Bar dataKey="count" fill="url(#riskGradient)" radius={[8, 8, 0, 0]} name="Bank Statement Count">
-                      {csvData.riskDistribution.map((entry, index) => {
+                      {displayData.riskDistribution.map((entry, index) => {
                         const isActive = activeBarIndex === index;
                         return (
                           <Cell
@@ -1209,13 +1354,13 @@ const BankStatementInsights = () => {
               </div>
             )}
 
-            {/* Risk Level by Bank (Combined Bar + Line) */}
-            {!bankFilter && csvData.riskByBankData && csvData.riskByBankData.length > 0 && (
+            {/* Risk Level by Bank (Combined Bar + Line) - Hide when bank filter is active */}
+            {!bankFilter && displayData.riskByBankData && displayData.riskByBankData.length > 0 && (
               <div style={chartBoxStyle}>
                 <h3 style={chartTitleStyle}>Risk Level by Bank</h3>
                 <ResponsiveContainer width="100%" height={400}>
                   <ComposedChart
-                    data={csvData.riskByBankData}
+                    data={displayData.riskByBankData}
                     margin={{ top: 10, right: 30, left: 10, bottom: 60 }}
                     onMouseLeave={() => setActiveBarIndex(null)}
                   >
@@ -1287,7 +1432,7 @@ const BankStatementInsights = () => {
                       fill="url(#countGradient)"
                       name="Statement Count"
                     >
-                      {csvData.riskByBankData.map((entry, index) => {
+                      {displayData.riskByBankData.map((entry, index) => {
                         const isActive = activeBarIndex === index;
                         return (
                           <Cell
@@ -1319,13 +1464,13 @@ const BankStatementInsights = () => {
               </div>
             )}
 
-            {/* Fraud Type Distribution - Scatter Plot */}
-            {csvData.fraudTypeData && csvData.fraudTypeData.length > 0 && (
+            {/* Fraud Type Distribution - Scatter Plot (hide when fraud type filter is active) */}
+            {!fraudTypeFilter && displayData.fraudTypeData && displayData.fraudTypeData.length > 0 && (
               <div style={chartBoxStyle}>
                 <h3 style={chartTitleStyle}>Fraud Type Distribution</h3>
                 {(() => {
-                  const total = csvData.fraudTypeData.reduce((sum, item) => sum + item.value, 0);
-                  const maxValue = Math.max(...csvData.fraudTypeData.map(e => e.value));
+                  const total = displayData.fraudTypeData.reduce((sum, item) => sum + item.value, 0);
+                  const maxValue = Math.max(...displayData.fraudTypeData.map(e => e.value));
 
                   // Colors that complement DAD color scheme (red/navy theme)
                   const COMPLEMENTARY_COLORS = [
@@ -1340,7 +1485,7 @@ const BankStatementInsights = () => {
                   ];
 
                   // Prepare scatter plot data with complementary colors
-                  const scatterData = csvData.fraudTypeData.map((entry, index) => {
+                  const scatterData = displayData.fraudTypeData.map((entry, index) => {
                     const percentage = total > 0 ? ((entry.value / total) * 100) : 0;
                     return {
                       name: entry.name,
@@ -1534,14 +1679,86 @@ const BankStatementInsights = () => {
                 })()}
               </div>
             )}
+
+            {/* Top Risk Customers - Show when fraud type OR bank filter is active */}
+            {(fraudTypeFilter || bankFilter) && displayData.topRiskCustomers && displayData.topRiskCustomers.length > 0 && (
+              <div style={chartBoxStyle}>
+                <h3 style={chartTitleStyle}>
+                  Top High-Risk Customers
+                  {fraudTypeFilter && ` (${fraudTypeFilter})`}
+                  {bankFilter && ` at ${bankFilter}`}
+                </h3>
+                <div style={{ padding: '20px 0' }}>
+                  {displayData.topRiskCustomers.map((customer, index) => (
+                    <div key={index} style={{ marginBottom: '16px' }}>
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: '6px'
+                      }}>
+                        <span style={{
+                          fontSize: '13px',
+                          fontWeight: '500',
+                          color: colors.foreground,
+                          minWidth: '150px',
+                          textAlign: 'right',
+                          paddingRight: '12px'
+                        }}>
+                          {customer.fullName}
+                        </span>
+                        <div style={{
+                          flex: 1,
+                          height: '28px',
+                          backgroundColor: colors.secondary,
+                          borderRadius: '4px',
+                          position: 'relative',
+                          overflow: 'hidden'
+                        }}>
+                          <div style={{
+                            width: `${customer.avgRisk}%`,
+                            height: '100%',
+                            backgroundColor: primary,
+                            borderRadius: '4px',
+                            transition: 'width 0.5s ease',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'flex-end',
+                            paddingRight: '8px'
+                          }}>
+                            <span style={{
+                              fontSize: '12px',
+                              fontWeight: '600',
+                              color: colors.primaryForeground || '#fff'
+                            }}>
+                              {customer.avgRisk}%
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      {/* Subtle info line */}
+                      <div style={{
+                        fontSize: '11px',
+                        color: colors.mutedForeground,
+                        textAlign: 'right',
+                        paddingRight: '12px',
+                        marginTop: '2px'
+                      }}>
+                        {customer.count} statement{customer.count > 1 ? 's' : ''} • Max risk: {customer.maxRisk}%
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Fraud Trend Over Time - Full Width Below */}
-          {csvData.fraudTrendData && csvData.fraudTrendData.length > 0 && (
+          {displayData.fraudTrendData && displayData.fraudTrendData.length > 0 && (
             <div style={chartBoxStyle}>
               <h3 style={chartTitleStyle}>Fraud Trend Over Time</h3>
               <ResponsiveContainer width="100%" height={320}>
-                <LineChart data={csvData.fraudTrendData}>
+                <LineChart data={displayData.fraudTrendData}>
                   <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
                   <XAxis dataKey="date" stroke={colors.mutedForeground} />
                   <YAxis yAxisId="left" stroke={colors.mutedForeground} />

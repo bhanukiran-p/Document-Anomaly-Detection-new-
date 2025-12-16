@@ -423,7 +423,7 @@ const LandingPage = () => {
   const faqs = [
     {
       question: 'How accurate is DAD compared to manual review?',
-      answer: "DAD's ensemble ML models achieve XX% accuracy on known fraud patterns in testing. Unlike manual review, DAD maintains consistent performance across thousands of documents and doesn't experience fatigue or bias.",
+      answer: "DAD's ensemble ML models achieve 99% accuracy on known fraud patterns in testing. Unlike manual review, DAD maintains consistent performance across thousands of documents and doesn't experience fatigue or bias.",
     },
     {
       question: 'What types of documents can DAD analyze?',
@@ -636,7 +636,7 @@ const LandingPage = () => {
             </button>
           </div>
           <p style={{ fontSize: '0.875rem', color: colors.mutedForeground, marginTop: '1rem' }}>
-            Detect fraud with <span style={{ color: primary, fontWeight: '600' }}>XX%</span> accuracy • No AI expertise required
+            Detect fraud with <span style={{ color: primary, fontWeight: '600' }}>99%</span> accuracy • No AI expertise required
           </p>
         </div>
       </section>

@@ -224,7 +224,7 @@ const RegisterPage = () => {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
+              placeholder=""
               style={{
                 ...styles.input,
                 ...(focusedField === 'email' ? styles.inputFocus : {}),

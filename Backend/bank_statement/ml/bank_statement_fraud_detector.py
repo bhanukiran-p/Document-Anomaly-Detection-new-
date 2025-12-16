@@ -181,8 +181,48 @@ class BankStatementFraudDetector:
             # Ensemble prediction (40% RF, 60% XGB)
             ensemble_score = (0.4 * rf_score) + (0.6 * xgb_score)
 
-            # Use ensemble score directly (no validation rules applied)
-            final_score = ensemble_score
+            # INTELLIGENT LENIENCY: Apply different leniency based on balance consistency
+            # Check if balances are consistent to determine appropriate leniency factor
+            beginning_balance = bank_statement_data.get('beginning_balance', {})
+            ending_balance = bank_statement_data.get('ending_balance', {})
+            total_credits = bank_statement_data.get('total_credits', {})
+            total_debits = bank_statement_data.get('total_debits', {})
+
+            # Helper to extract numeric value
+            def get_numeric(val):
+                if isinstance(val, (int, float)):
+                    return float(val)
+                if isinstance(val, dict):
+                    return float(val.get('value', 0.0))
+                return 0.0
+
+            beginning = get_numeric(beginning_balance)
+            ending = get_numeric(ending_balance)
+            credits = get_numeric(total_credits)
+            debits = get_numeric(total_debits)
+
+            # Calculate expected ending balance
+            expected_ending = beginning + credits - debits
+            balance_difference = abs(ending - expected_ending) if ending else 0.0
+
+            # Determine leniency factor based on balance consistency
+            if balance_difference <= 1.0:
+                # Perfect or near-perfect balance match (≤$1 difference due to rounding)
+                # Apply strong leniency (35% reduction) for statements with consistent balances
+                leniency_factor = 0.65
+                logger.info(f"Balance consistency: PERFECT (diff=${balance_difference:.2f}) → Applying strong leniency (0.65)")
+            elif balance_difference <= 10.0:
+                # Small discrepancy (≤$10) - might be rounding or fees
+                # Apply moderate leniency (25% reduction)
+                leniency_factor = 0.75
+                logger.info(f"Balance consistency: GOOD (diff=${balance_difference:.2f}) → Applying moderate leniency (0.75)")
+            else:
+                # Significant balance inconsistency (>$10)
+                # Apply minimal leniency (10% reduction) to ensure fraud score stays high
+                leniency_factor = 0.90
+                logger.info(f"Balance consistency: POOR (diff=${balance_difference:.2f}) → Applying minimal leniency (0.90)")
+
+            final_score = ensemble_score * leniency_factor
 
             # Get feature importance
             feature_importance = self._get_feature_importance(features, feature_names)

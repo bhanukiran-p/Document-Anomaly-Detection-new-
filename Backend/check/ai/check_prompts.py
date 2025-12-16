@@ -50,7 +50,8 @@ The system uses ONLY the following 5 fraud types. You MUST use these exact fraud
 - For ESCALATE recommendations: Leave fraud_types empty (escalation is for review, not confirmed fraud)
 - For APPROVE recommendations: Leave fraud_types empty (no fraud detected)
 - Each fraud type in fraud_types MUST have a corresponding explanation in fraud_explanations
-- Explanations MUST reference specific document data (amounts, fields, ML scores)
+- Explanations MUST reference specific document data (amounts, fields, dates, signature status)
+- **CRITICAL**: Do NOT mention ML fraud risk scores or ML model metrics in fraud explanations
 
 **FRAUD TYPE PRIORITIZATION (CRITICAL):**
 When multiple fraud indicators are present, list fraud types in order of severity and confidence:
@@ -91,9 +92,46 @@ Always provide:
 2. confidence_score: Your confidence in the decision (0.0-1.0)
 3. reasoning: List of specific factors that led to your decision
 4. key_indicators: Critical fraud indicators or validation points
-5. actionable_recommendations: Next steps or actions to take
+5. actionable_recommendations: **EMPTY ARRAY [] for APPROVE**. For REJECT/ESCALATE: specific next steps or actions
 6. **FRAUD_TYPES**: Comma-separated list of fraud type IDs (ONLY for REJECT, not ESCALATE or APPROVE)
 7. **FRAUD_EXPLANATIONS**: Structured explanations for each fraud type with specific reasons (ONLY for REJECT)
+
+**ACTIONABLE RECOMMENDATIONS GUIDELINES:**
+For REJECT decisions, provide specific remediation actions based on the fraud type:
+
+- **SIGNATURE_FORGERY** (Missing/Invalid Signature):
+  → "Request the payer to resubmit the check with a valid signature"
+  → "Contact the payer to verify the authenticity of the check and obtain a properly signed version"
+  → "Reject this check and inform the payer that all checks must be signed"
+
+- **AMOUNT_ALTERATION** (Amount Mismatch):
+  → "Request the payer to submit a new check with matching numeric and written amounts"
+  → "Verify the correct amount with the payer before processing"
+  → "Reject this check and request a replacement with correct amount details"
+
+- **STALE_CHECK** (Old/Future-Dated):
+  → "Request the payer to issue a new check with a current date"
+  → "Inform the payer that checks older than 6 months cannot be processed"
+  → "For future-dated checks: Request immediate reissuance with current date"
+
+- **COUNTERFEIT_CHECK** (Fake/Tampered):
+  → "Reject this check immediately and report potential fraud to the bank"
+  → "Contact the payer to verify if they issued this check"
+  → "File a fraud report and notify relevant authorities"
+
+- **REPEAT_OFFENDER**:
+  → "Flag this payer for enhanced verification on all future submissions"
+  → "Reject all checks from this payer pending fraud investigation"
+  → "Escalate to fraud prevention team for account review"
+
+For ESCALATE decisions:
+  → "Forward to manual review team for verification"
+  → "Request additional documentation from the payer (ID, proof of account ownership)"
+  → "Contact the payer to verify check authenticity before processing"
+
+**For APPROVE decisions:**
+  → **DO NOT provide actionable_recommendations** - Return empty array []
+  → Approved checks do not require any recommendations
 """
 
 # Template for check fraud analysis
@@ -131,13 +169,27 @@ Last Recommendation: {last_recommendation}
 Based on the above information and the decision guidelines below, provide your fraud analysis.
 
 Return your analysis in the following JSON format:
+
+**FOR APPROVE DECISIONS:**
 {{
-  "recommendation": "APPROVE | REJECT | ESCALATE",
+  "recommendation": "APPROVE",
+  "confidence_score": 0.85,
+  "summary": "Check appears legitimate",
+  "reasoning": ["All required fields present", "No fraud indicators detected"],
+  "key_indicators": ["Valid signature", "Proper amounts"],
+  "actionable_recommendations": [],
+  "fraud_types": [],
+  "fraud_explanations": []
+}}
+
+**FOR REJECT/ESCALATE DECISIONS:**
+{{
+  "recommendation": "REJECT | ESCALATE",
   "confidence_score": 0.0-1.0,
   "summary": "Brief summary of your decision",
   "reasoning": ["reason 1", "reason 2", ...],
   "key_indicators": ["indicator 1", "indicator 2", ...],
-  "actionable_recommendations": ["action 1", "action 2", ...],
+  "actionable_recommendations": ["SPECIFIC action 1 based on fraud type", "SPECIFIC action 2", ...],
   "fraud_types": ["FRAUD_TYPE_1", "FRAUD_TYPE_2", ...],
   "fraud_explanations": [
     {{
@@ -159,9 +211,16 @@ Return your analysis in the following JSON format:
 - **CRITICAL**: When REJECT is due to missing signature, you MUST include "SIGNATURE_FORGERY" in fraud_types
 - **CRITICAL**: When REJECT is due to stale/future date, you MUST include "STALE_CHECK" in fraud_types
 - **CRITICAL**: Do NOT include routing number issues in fraud_explanations
+
+**CRITICAL RULES ON ACTIONABLE RECOMMENDATIONS:**
+- **For APPROVE decisions: actionable_recommendations MUST be an empty array []**
+- **For REJECT decisions: actionable_recommendations MUST contain specific remediation actions based on the fraud type**
+- **For ESCALATE decisions: actionable_recommendations should contain manual review guidance**
 - **CRITICAL**: Do NOT include "bank not supported", "unsupported bank", "not in supported bank list", "only Bank of America or Chase", or any bank support restrictions in fraud_explanations
 - **CRITICAL**: ALL BANKS are considered valid - never mention bank support status in fraud explanations
 - **CRITICAL**: For checks with future dates, only include STALE_CHECK, never routing or bank support issues
+- **CRITICAL**: Do NOT mention ML fraud risk scores, ML model confidence, or any ML-related metrics in fraud explanations
+- **CRITICAL**: Fraud explanations should only reference document data (signature status, amounts, dates, etc.), NOT ML scores
 """
 
 # Decision guidelines based on customer type and ML scores

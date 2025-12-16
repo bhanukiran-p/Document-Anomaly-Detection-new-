@@ -104,16 +104,15 @@ Return your analysis in the following JSON format (valid JSON only, no markdown)
 }}
 
 IMPORTANT FRAUD TYPE RULES:
-- For NEW customers: Always return empty arrays for fraud_types and fraud_explanations (even if ML detected fraud)
-- For REPEAT customers: **YOU MUST ALWAYS return fraud_types and fraud_explanations** if recommendation is REJECT or ESCALATE
-- **CRITICAL**: For REPEAT customers with REJECT or ESCALATE, you MUST identify at least ONE fraud type and provide SPECIFIC explanations
+- **CRITICAL**: For ALL REJECT or ESCALATE recommendations, you MUST ALWAYS return fraud_types and fraud_explanations
+- **YOU MUST identify at least ONE fraud type** for every REJECT or ESCALATE decision (regardless of customer type)
 - Valid fraud types: BALANCE_CONSISTENCY_VIOLATION, FABRICATED_DOCUMENT, ALTERED_LEGITIMATE_DOCUMENT, SUSPICIOUS_TRANSACTION_PATTERNS, UNREALISTIC_FINANCIAL_PROPORTIONS, REPEAT_OFFENDER
 - Only include fraud_types if recommendation is REJECT or ESCALATE (not for APPROVE)
 - **If you cannot identify a specific fraud type, analyze the document data and ML risk factors to determine the most likely fraud type**
 
 **CRITICAL: FRAUD EXPLANATIONS MUST BE SPECIFIC TO THE DOCUMENT DATA**
 
-**MANDATORY FOR REPEAT CUSTOMERS**: If recommendation is REJECT or ESCALATE, you MUST provide fraud_types and fraud_explanations. Do NOT return empty arrays.
+**MANDATORY**: If recommendation is REJECT or ESCALATE, you MUST provide fraud_types and fraud_explanations. Do NOT return empty arrays.
 
 For each fraud_type you identify, you MUST provide SPECIFIC explanations based on the ACTUAL document data:
 
@@ -126,6 +125,7 @@ For each fraud_type you identify, you MUST provide SPECIFIC explanations based o
   - Example: "Bank name format doesn't match known patterns for {{bank_name}}"
   - Example: "Account number format invalid: {{account_number}} doesn't match {{bank_name}} account number standards"
   - Example: "Missing critical security features: No watermark, incorrect font, or missing bank logo"
+  - **DO NOT flag missing currency field as fabrication** - many legitimate US bank statements don't specify currency (defaults to USD)
 
 - **ALTERED_LEGITIMATE_DOCUMENT**: Explain SPECIFIC alterations detected
   - Example: "Balance amounts show signs of tampering: Font inconsistencies detected in ending balance field"
@@ -293,7 +293,8 @@ def format_analysis_template(bank_statement_data: dict, ml_analysis: dict, custo
     statement_period_start = bank_statement_data.get('statement_period_start_date', 'N/A')
     statement_period_end = bank_statement_data.get('statement_period_end_date', 'N/A')
     statement_date = bank_statement_data.get('statement_date', 'N/A')
-    currency = bank_statement_data.get('currency', 'USD')
+    # Default to USD if currency is missing - this is common for US bank statements
+    currency = bank_statement_data.get('currency') or 'USD'
 
     # Extract balances
     beginning_balance = bank_statement_data.get('beginning_balance', {})
