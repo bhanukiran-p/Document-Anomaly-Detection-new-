@@ -263,11 +263,7 @@ class CheckFraudAnalysisAgent:
                 f'Fraud risk score: {fraud_risk_score:.1%} < 30%',
                 'Policy: first-time low-risk uploads are approved'
             ],
-            'actionable_recommendations': [
-                'Process this check normally',
-                'Create a customer record for future tracking',
-                'Monitor future uploads for this payer'
-            ],
+            'actionable_recommendations': [],
             'fraud_types': [],
             'fraud_explanations': []
         }

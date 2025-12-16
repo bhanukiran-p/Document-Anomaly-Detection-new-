@@ -638,47 +638,36 @@ const CheckAnalysis = () => {
                       }}>
                         {displayLabel}
                       </div>
-                      {displayExplanations.length > 0 && (
-                        <div style={{ color: colors.foreground }}>
-                          <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
-                            Why this fraud occurred:
-                          </div>
-                          <ul style={{ margin: 0, paddingLeft: '1.5rem', color: colors.foreground }}>
-                            {displayExplanations.map((explanation, index) => (
-                              <li key={index} style={{ marginBottom: '0.5rem', fontSize: '1rem' }}>{explanation}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
                     </div>
                   );
                 })()}
 
-                {/* Anomalies Section - Only show if NOT APPROVED */}
-                {results.anomalies && results.anomalies.length > 0 && results.ai_recommendation !== 'APPROVE' && (
-                  <div style={{
-                    ...resultCardStyle,
-                    marginBottom: '1.5rem',
-                    backgroundColor: `${colors.status.warning}15`,
-                    borderLeft: `4px solid ${colors.status.warning}`,
-                  }}>
-                    <h4 style={{ color: colors.foreground, marginBottom: '1rem', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                        <line x1="12" y1="9" x2="12" y2="13" />
-                        <line x1="12" y1="17" x2="12.01" y2="17" />
-                      </svg>
-                      Detected Anomalies
-                    </h4>
-                    <ul style={{ color: colors.mutedForeground, paddingLeft: '1.5rem' }}>
-                      {results.anomalies.map((anomaly, idx) => (
-                        <li key={idx} style={{ marginBottom: '0.5rem' }}>
-                          {emphasizeAnomaly(anomaly)}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+                {/* Actionable Recommendations Card */}
+                {(() => {
+                  const aiAnalysis = results.ai_analysis || {};
+                  const actionableRecommendations = aiAnalysis.actionable_recommendations || [];
+
+                  if (actionableRecommendations.length === 0) {
+                    return null;
+                  }
+
+                  return (
+                    <div style={{
+                      ...resultCardStyle,
+                      marginBottom: '1.5rem',
+                      borderLeft: `4px solid ${colors.status?.info || '#3b82f6'}`,
+                    }}>
+                      <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '1rem' }}>
+                        Actionable Recommendations
+                      </div>
+                      <ul style={{ margin: 0, paddingLeft: '1.5rem', color: colors.foreground }}>
+                        {actionableRecommendations.map((rec, index) => (
+                          <li key={index} style={{ marginBottom: '0.5rem', fontSize: '1.1rem' }}>{rec}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })()}
 
                 {/* Key Missing / Risk Factors section - HIDDEN */}
 
