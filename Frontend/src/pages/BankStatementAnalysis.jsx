@@ -865,36 +865,30 @@ const BankStatementAnalysis = () => {
                 </div>
               )}
 
-              {/* Download buttons - Only show for REJECT (hide for APPROVE and ESCALATE) */}
-              {(() => {
-                const aiRecommendation = (analysisData.ai_recommendation || aiAnalysis.recommendation || 'UNKNOWN').toUpperCase();
-                return aiRecommendation === 'REJECT';
-              })() && (
-                <>
-                  <div style={{
-                    ...infoCardStyle,
-                    backgroundColor: colors.card,
-                    border: `1px solid ${colors.border}`
-                  }}>
-                    <p style={{ margin: 0 }}>
-                      Detailed extracted bank statement information is available in the downloaded JSON file in a structured table format.
-                    </p>
-                  </div>
+              {/* Informational Message */}
+              <div style={{
+                ...infoCardStyle,
+                backgroundColor: colors.card,
+                border: `1px solid ${colors.border}`
+              }}>
+                <p style={{ margin: 0 }}>
+                  Detailed extracted bank statement information is available in the downloaded JSON file in a structured table format.
+                </p>
+              </div>
 
-                  <button
-                    style={{
-                      ...buttonStyle,
-                      backgroundColor: primary,
-                      marginTop: '1.5rem',
-                    }}
-                    onClick={downloadJSON}
-                    onMouseEnter={(e) => e.target.style.backgroundColor = primary}
-                    onMouseLeave={(e) => e.target.style.backgroundColor = primary}
-                  >
-                    Download Full Results (JSON)
-                  </button>
-                </>
-              )}
+              {/* Download Button */}
+              <button
+                style={{
+                  ...buttonStyle,
+                  backgroundColor: primary,
+                  marginTop: '1.5rem',
+                }}
+                onClick={downloadJSON}
+                onMouseEnter={(e) => e.target.style.backgroundColor = primary}
+                onMouseLeave={(e) => e.target.style.backgroundColor = primary}
+              >
+                Download Full Results (JSON)
+              </button>
             </div>
           )}
         </div>
