@@ -495,8 +495,10 @@ const MoneyOrderAnalysis = () => {
                   );
                 })()}
 
-                {/* Actionable Recommendations Card */}
-                {aiAnalysis.actionable_recommendations && aiAnalysis.actionable_recommendations.length > 0 && (
+                {/* Actionable Recommendations Card - Hidden for APPROVE */}
+                {aiAnalysis.actionable_recommendations &&
+                 aiAnalysis.actionable_recommendations.length > 0 &&
+                 (aiAnalysis.recommendation || aiAnalysis.ai_recommendation) !== 'APPROVE' && (
                   <div style={{
                     ...resultCardStyle,
                     marginBottom: '1.5rem',
@@ -528,20 +530,12 @@ const MoneyOrderAnalysis = () => {
                 <button
                   style={{
                     ...buttonStyle,
-                    backgroundColor: colors.card,
-                    color: colors.foreground,
-                    border: `2px solid ${colors.border}`,
+                    backgroundColor: primary,
                     marginTop: '1.5rem',
                   }}
                   onClick={downloadJSON}
-                  onMouseEnter={(e) => {
-                    e.target.style.borderColor = primary;
-                    e.target.style.backgroundColor = colors.muted;
-                  }}
-                  onMouseLeave={(e) => {
-                    e.target.style.borderColor = colors.border;
-                    e.target.style.backgroundColor = colors.card;
-                  }}
+                  onMouseEnter={(e) => e.target.style.backgroundColor = primary}
+                  onMouseLeave={(e) => e.target.style.backgroundColor = primary}
                 >
                   Download Full Results (JSON)
                 </button>
@@ -566,20 +560,12 @@ const MoneyOrderAnalysis = () => {
                 <button
                   style={{
                     ...buttonStyle,
-                    backgroundColor: colors.card,
-                    color: colors.foreground,
-                    border: `2px solid ${colors.border}`,
+                    backgroundColor: primary,
                     marginTop: '1.5rem',
                   }}
                   onClick={downloadJSON}
-                  onMouseEnter={(e) => {
-                    e.target.style.borderColor = primary;
-                    e.target.style.backgroundColor = colors.muted;
-                  }}
-                  onMouseLeave={(e) => {
-                    e.target.style.borderColor = colors.border;
-                    e.target.style.backgroundColor = colors.card;
-                  }}
+                  onMouseEnter={(e) => e.target.style.backgroundColor = primary}
+                  onMouseLeave={(e) => e.target.style.backgroundColor = primary}
                 >
                   Download Full Results (JSON)
                 </button>
