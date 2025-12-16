@@ -278,6 +278,12 @@ const RealTimeAnalysis = () => {
       .join(' ');
   };
 
+  const formatAmountInMillions = (amount) => {
+    if (!amount || amount === 0) return '$0M';
+    const millions = amount / 1000000;
+    return `$${millions.toFixed(2)}M`;
+  };
+
   const topFraudCases = analysisResult?.transactions
     ? [...analysisResult.transactions]
         .filter((t) => t.is_fraud === 1)
@@ -2195,13 +2201,13 @@ const RealTimeAnalysis = () => {
             <div style={styles.statCard}>
               <div style={styles.statLabel}>Total Amount</div>
               <div style={{ ...styles.statValue, fontSize: '1.5rem' }}>
-                ${(analysisResult.fraud_detection.total_amount || 0).toLocaleString()}
+                {formatAmountInMillions(analysisResult.fraud_detection.total_amount || 0)}
               </div>
             </div>
             <div style={styles.statCard}>
               <div style={styles.statLabel}>Fraud Amount</div>
               <div style={{ ...styles.statValue, ...styles.fraudStat, fontSize: '1.5rem' }}>
-                ${(analysisResult.fraud_detection.total_fraud_amount || 0).toLocaleString()}
+                {formatAmountInMillions(analysisResult.fraud_detection.total_fraud_amount || 0)}
               </div>
             </div>
             <div style={styles.statCard}>
