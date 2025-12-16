@@ -23,7 +23,7 @@ class Config:
     SECRET_KEY = os.getenv('SECRET_KEY', 'check-extractor-secret-key-change-in-production')
     FLASK_ENV = os.getenv('FLASK_ENV', 'development')
     FLASK_DEBUG = os.getenv('FLASK_DEBUG', '1') == '1'
-    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
+    MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50MB max file size (for large CSV files)
     ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
 
     # ==================== API KEYS ====================
