@@ -75,7 +75,7 @@ class RealTimeAnalysisAgent:
                 # Only set max_tokens for older models that support it
                 # Newer models (o4, o1) don't support max_tokens or max_completion_tokens in LangChain
                 if not (self.model_name.startswith('o4') or self.model_name.startswith('o1')):
-                    llm_kwargs['max_tokens'] = 2000
+                    llm_kwargs['max_tokens'] = 8000  # Increased for large recommendation lists
 
                 self.llm = ChatOpenAI(**llm_kwargs)
                 logger.info(f"Initialized LangChain agent with {self.model_name} - GPT-4 mode active!")
@@ -249,16 +249,23 @@ class RealTimeAnalysisAgent:
         """
         if self.llm is not None:
             try:
-                return self._llm_recommendations(analysis_result)
+                logger.info(f"✅ OpenAI LLM is configured. Generating AI recommendations using {self.model_name}...")
+                recommendations = self._llm_recommendations(analysis_result)
+                logger.info(f"✅ Successfully generated {len(recommendations)} AI recommendations")
+                return recommendations
             except Exception as e:
-                logger.error(f"Error generating recommendations: {e}")
+                logger.error(f"❌ Error generating recommendations: {e}", exc_info=True)
+                logger.error(f"Error type: {type(e).__name__}")
+                logger.error(f"Error details: {str(e)}")
                 # Generate basic recommendations as fallback
-                logger.warning("OpenAI API failed. Generating basic recommendations for all fraud patterns.")
+                logger.warning("⚠️ OpenAI API failed. Generating basic recommendations for all fraud patterns.")
                 fraud_pattern_entries = self._build_fraud_pattern_entries(analysis_result)
                 return [self._build_basic_recommendation(entry) for entry in fraud_pattern_entries]
         else:
             # No LLM configured - generate basic recommendations
-            logger.warning("OpenAI API not configured. Generating basic recommendations for all fraud patterns.")
+            logger.warning("⚠️ OpenAI API not configured. Generating basic recommendations for all fraud patterns.")
+            logger.warning(f"API Key present: {bool(self.api_key)}")
+            logger.warning(f"LangChain available: {LANGCHAIN_AVAILABLE}")
             fraud_pattern_entries = self._build_fraud_pattern_entries(analysis_result)
             return [self._build_basic_recommendation(entry) for entry in fraud_pattern_entries]
 
@@ -316,6 +323,14 @@ JSON OUTPUT TEMPLATE:
         messages = [HumanMessage(content=prompt)]
 
         response = self.llm.invoke(messages)
+
+        # Debug logging
+        logger.info(f"🔍 Received response from OpenAI")
+        logger.info(f"🔍 Response type: {type(response)}")
+        logger.info(f"🔍 Response hasattr content: {hasattr(response, 'content')}")
+        if hasattr(response, 'content'):
+            logger.info(f"🔍 Response content length: {len(str(response.content))} chars")
+            logger.info(f"🔍 Response content preview: {str(response.content)[:200]}")
 
         # Parse JSON response
         try:
@@ -399,7 +414,10 @@ JSON OUTPUT TEMPLATE:
 
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse LLM JSON response: {e}")
-            logger.error(f"Raw LLM response: {response_text[:500]}")
+            logger.error(f"Raw LLM response (first 1000 chars): {response_text[:1000]}")
+            logger.error(f"Response length: {len(response_text)} characters")
+            logger.error(f"Response type: {type(response)}")
+            logger.error(f"Response object: {response}")
             # Return basic recommendations for all patterns as fallback
             logger.warning("AI recommendations unavailable due to JSON parsing error. Generating basic recommendations.")
             return [self._build_basic_recommendation(entry) for entry in fraud_pattern_entries]
