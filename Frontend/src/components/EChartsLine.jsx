@@ -119,28 +119,72 @@ const EChartsLine = ({ data, title, height = 220 }) => {
         rotate: 45
       }
     },
-    yAxis: {
-      type: 'value',
-      name: 'Transaction Count',
-      axisLine: {
-        lineStyle: {
-          color: '#475569'
+    yAxis: [
+      {
+        type: 'value',
+        name: 'Fraud Count',
+        position: 'left',
+        min: function(value) {
+          // Calculate min with padding
+          const minValue = value.min;
+          const maxValue = value.max;
+          const range = maxValue - minValue;
+          // Add 20% padding below
+          return Math.max(0, Math.floor(minValue - range * 0.2));
+        },
+        max: function(value) {
+          // Calculate max with padding
+          const minValue = value.min;
+          const maxValue = value.max;
+          const range = maxValue - minValue;
+          // Add 20% padding above
+          return Math.ceil(maxValue + range * 0.2);
+        },
+        interval: 50,
+        axisLine: {
+          lineStyle: {
+            color: '#ef4444'
+          }
+        },
+        axisLabel: {
+          color: '#ef4444',
+          formatter: '{value}'
+        },
+        splitLine: {
+          show: true,
+          lineStyle: {
+            color: '#334155',
+            type: 'dashed',
+            opacity: 0.3
+          }
         }
       },
-      axisLabel: {
-        color: '#94a3b8'
-      },
-      splitLine: {
-        lineStyle: {
-          color: '#334155',
-          type: 'dashed'
+      {
+        type: 'value',
+        name: 'Legitimate Count',
+        position: 'right',
+        axisLine: {
+          lineStyle: {
+            color: '#10b981'
+          }
+        },
+        axisLabel: {
+          color: '#10b981',
+          formatter: '{value}'
+        },
+        splitLine: {
+          lineStyle: {
+            color: '#334155',
+            type: 'dashed'
+          }
         }
       }
-    },
+    ],
     series: [
       {
         name: 'Fraud',
         type: 'line',
+        yAxisIndex: 0,
         data: fraudCounts,
         smooth: true,
         symbol: 'circle',
@@ -171,6 +215,7 @@ const EChartsLine = ({ data, title, height = 220 }) => {
       {
         name: 'Legitimate',
         type: 'line',
+        yAxisIndex: 1,
         data: legitimateCounts,
         smooth: true,
         symbol: 'circle',
