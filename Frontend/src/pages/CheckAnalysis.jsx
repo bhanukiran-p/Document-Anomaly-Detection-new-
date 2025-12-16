@@ -638,6 +638,18 @@ const CheckAnalysis = () => {
                       }}>
                         {displayLabel}
                       </div>
+                      {displayExplanations.length > 0 && (
+                        <div style={{ color: colors.foreground }}>
+                          <div style={{ fontSize: '0.9rem', color: colors.mutedForeground, marginBottom: '0.5rem' }}>
+                            Why this fraud occurred:
+                          </div>
+                          <ul style={{ margin: 0, paddingLeft: '1.5rem', color: colors.foreground }}>
+                            {displayExplanations.map((explanation, index) => (
+                              <li key={index} style={{ marginBottom: '0.5rem', fontSize: '1rem' }}>{explanation}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
@@ -685,48 +697,18 @@ const CheckAnalysis = () => {
                   </p>
                 </div>
 
-                <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
-                  <button
-                    style={{
-                      ...buttonStyle,
-                      backgroundColor: colors.card,
-                      color: colors.foreground,
-                      border: `2px solid ${colors.border}`,
-                      marginTop: 0,
-                      flex: 1,
-                    }}
-                    onClick={downloadJSON}
-                    onMouseEnter={(e) => {
-                      e.target.style.borderColor = primary;
-                      e.target.style.backgroundColor = colors.muted;
-                    }}
-                    onMouseLeave={(e) => {
-                      e.target.style.borderColor = colors.border;
-                      e.target.style.backgroundColor = colors.card;
-                    }}
-                  >
-                    Download JSON
-                  </button>
-                  <button
-                    style={{
-                      ...buttonStyle,
-                      backgroundColor: primary,
-                      color: colors.primaryForeground,
-                      border: `2px solid ${primary}`,
-                      marginTop: 0,
-                      flex: 1,
-                    }}
-                    onClick={downloadCSV}
-                    onMouseEnter={(e) => {
-                      e.target.style.backgroundColor = colors.accent.redDark;
-                    }}
-                    onMouseLeave={(e) => {
-                      e.target.style.backgroundColor = primary;
-                    }}
-                  >
-                    Download CSV (Dashboard)
-                  </button>
-                </div>
+                <button
+                  style={{
+                    ...buttonStyle,
+                    backgroundColor: primary,
+                    marginTop: '1.5rem',
+                  }}
+                  onClick={downloadJSON}
+                  onMouseEnter={(e) => e.target.style.backgroundColor = primary}
+                  onMouseLeave={(e) => e.target.style.backgroundColor = primary}
+                >
+                  Download Full Results (JSON)
+                </button>
               </div>
             )}
           </div>
