@@ -33,6 +33,7 @@ from .agent_prompts import (
     PLOT_EXPLANATION_PROMPT,
     RECOMMENDATIONS_PROMPT
 )
+from .fraud_detector import STANDARD_FRAUD_REASONS
 
 
 class RealTimeAnalysisAgent:
@@ -251,52 +252,18 @@ class RealTimeAnalysisAgent:
                 return self._llm_recommendations(analysis_result)
             except Exception as e:
                 logger.error(f"Error generating recommendations: {e}")
-                # Return error instead of fallback
-                return [{
-                    'title': 'ERROR: AI Recommendations Unavailable',
-                    'description': f'OpenAI API error: {str(e)}. Please check your API key, usage limits, or network connection.',
-                    'fraud_rate': 'N/A',
-                    'total_amount': 'N/A',
-                    'case_count': 'N/A',
-                    'immediate_actions': [
-                        'Verify OpenAI API key is valid and active',
-                        'Check OpenAI account has sufficient credits/quota',
-                        'Verify network connectivity to OpenAI services',
-                        'Review error logs for specific API error details'
-                    ],
-                    'prevention_steps': [
-                        'Add OpenAI API credits to your account',
-                        'Check API usage dashboard for rate limits',
-                        'Ensure OPENAI_API_KEY environment variable is set correctly',
-                        'Contact OpenAI support if issue persists'
-                    ],
-                    'monitor': 'OpenAI API status, account credits, rate limit quotas'
-                }]
+                # Generate basic recommendations as fallback
+                logger.warning("OpenAI API failed. Generating basic recommendations for all fraud patterns.")
+                fraud_pattern_entries = self._build_fraud_pattern_entries(analysis_result)
+                return [self._build_basic_recommendation(entry) for entry in fraud_pattern_entries]
         else:
-            # No LLM configured - return error
-            return [{
-                'title': 'ERROR: OpenAI API Not Configured',
-                'description': 'OpenAI API key is required to generate AI-powered fraud prevention recommendations.',
-                'fraud_rate': 'N/A',
-                'total_amount': 'N/A',
-                'case_count': 'N/A',
-                'immediate_actions': [
-                    'Set OPENAI_API_KEY in your environment variables or .env file',
-                    'Obtain API key from https://platform.openai.com/api-keys',
-                    'Verify API key has proper permissions',
-                    'Restart backend server after adding API key'
-                ],
-                'prevention_steps': [
-                    'Sign up for OpenAI API access if not already registered',
-                    'Add payment method to OpenAI account',
-                    'Configure API key in Backend/.env file',
-                    'Install required packages: pip install langchain langchain-openai'
-                ],
-                'monitor': 'API key configuration, OpenAI account status'
-            }]
+            # No LLM configured - generate basic recommendations
+            logger.warning("OpenAI API not configured. Generating basic recommendations for all fraud patterns.")
+            fraud_pattern_entries = self._build_fraud_pattern_entries(analysis_result)
+            return [self._build_basic_recommendation(entry) for entry in fraud_pattern_entries]
 
     def _llm_recommendations(self, analysis_result: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Generate structured recommendations using LLM based on TOP 3 fraud types"""
+        """Generate structured recommendations using LLM for ALL standard fraud patterns"""
         import json
         import re
 
@@ -306,45 +273,44 @@ class RealTimeAnalysisAgent:
         total_amount = analysis_result.get('fraud_detection', {}).get('total_amount', 0)
         fraud_amount = analysis_result.get('fraud_detection', {}).get('total_fraud_amount', 0)
 
-        # Get fraud transactions and analyze TOP 3 fraud types
-        transactions = analysis_result.get('transactions', [])
-        fraud_transactions = [t for t in transactions if t.get('is_fraud') == 1]
-        top_fraud_types = self._get_top_fraud_types(fraud_transactions)
+        # Build comprehensive fraud pattern list (standard + detected)
+        fraud_pattern_entries = self._build_fraud_pattern_entries(analysis_result)
+        fraud_types_count = len(fraud_pattern_entries)
+        fraud_types_text = self._format_fraud_entries_for_prompt(fraud_pattern_entries)
 
-        # Enhanced prompt for structured recommendations based on TOP 3 fraud types
-        prompt = f"""Based on this fraud analysis, generate exactly 3 detailed fraud prevention recommendations in JSON format - ONE for EACH of the TOP 3 fraud types detected.
+        prompt = f"""You are a fraud prevention expert. Generate EXACTLY {fraud_types_count} structured recommendations in JSON format ? ONE for EACH fraud pattern listed below.
 
 **Fraud Overview:**
 - Fraud Rate: {fraud_percentage:.2f}%
 - Fraudulent Transactions: {fraud_count}
 - Fraudulent Amount: ${fraud_amount:,.2f} out of ${total_amount:,.2f}
 
-**TOP 3 Fraud Types Detected:**
-{top_fraud_types}
+**Fraud Patterns ({fraud_types_count} total):**
+{fraud_types_text}
 
-IMPORTANT: Generate exactly 3 recommendations - one focused on EACH of the top 3 fraud types listed above.
+MANDATORY RULES:
+1. Output MUST contain exactly {fraud_types_count} recommendation objects ? one for EACH fraud pattern in the list above (in the same order).
+2. Title format: "SEVERITY: Exact Fraud Pattern Name" (use the exact spelling provided).
+3. Severity levels: CRITICAL (>50% of fraud), HIGH (10-50%), MEDIUM (1-10%), LOW (<1% or zero cases). If no cases were detected, use LOW and describe preventative guidance.
+4. Description must mention that pattern's percentage and case count (even if zero: "0 cases detected").
+5. Immediate actions and prevention steps must contain 4 concise, pattern-specific bullet points.
+6. Monitor field must describe what telemetry to watch for that specific pattern.
+7. Return ONLY a valid JSON array, no markdown fences or commentary.
 
-Return a JSON array of exactly 3 recommendation objects. Each object MUST have this EXACT structure:
-{{
-  "title": "Severity: Fraud Type Name Detected" (e.g., 'CRITICAL: High Fraud Rate Detected in Entertainment Category' or 'HIGH: Unusually High Average Fraudulent Amount Detected'),
-  "description": "One sentence description including the fraud type percentage and case count",
-  "fraud_rate": "X.X% of fraud",
-  "total_amount": "$XXX,XXX.XX total",
-  "case_count": "XXX cases",
-  "immediate_actions": ["Action 1 specific to this fraud type", "Action 2", "Action 3", "Action 4"],
-  "prevention_steps": ["Step 1 specific to preventing this fraud type", "Step 2", "Step 3", "Step 4"],
-  "monitor": "What to monitor for this specific fraud type"
-}}
-
-IMPORTANT REQUIREMENTS:
-- Generate EXACTLY 3 recommendations - one for each of the TOP 3 fraud types
-- Each recommendation title MUST mention the specific fraud type (e.g., "Entertainment category", "High-value transactions", "Night-time fraud")
-- NO emojis or special characters
-- Use severity indicators: CRITICAL, HIGH, MEDIUM based on the fraud type's impact
-- Keep immediate_actions to 4 items - specific to that fraud type
-- Keep prevention_steps to 4 items - specific to preventing that fraud type
-- Monitor field must be specific to that fraud type
-- Return ONLY valid JSON array, no markdown formatting"""
+JSON OUTPUT TEMPLATE:
+[
+  {{
+    "title": "SEVERITY: Exact Fraud Pattern Name",
+    "description": "One sentence including the fraud percentage and case count for that pattern",
+    "fraud_rate": "X.X% of fraud",
+    "total_amount": "$XXX,XXX.XX total",
+    "case_count": "XXX cases",
+    "immediate_actions": ["Action 1", "Action 2", "Action 3", "Action 4"],
+    "prevention_steps": ["Step 1", "Step 2", "Step 3", "Step 4"],
+    "monitor": "Telemetry to monitor for that pattern"
+  }}
+  ... repeat for ALL {fraud_types_count} patterns ...
+]"""
 
         from langchain_core.messages import HumanMessage
         messages = [HumanMessage(content=prompt)]
@@ -359,130 +325,89 @@ IMPORTANT REQUIREMENTS:
             response_text = re.sub(r'```\s*$', '', response_text)
             response_text = response_text.strip()
 
-            recommendations = json.loads(response_text)
+            # Try to extract JSON from response (handle cases where there's extra text)
+            recommendations = None
+            
+            # First, try direct parsing
+            try:
+                recommendations = json.loads(response_text)
+            except json.JSONDecodeError:
+                # Try to find JSON array/object in the response
+                # Look for JSON array pattern
+                json_match = re.search(r'\[[\s\S]*\]', response_text)
+                if json_match:
+                    try:
+                        recommendations = json.loads(json_match.group(0))
+                    except json.JSONDecodeError:
+                        pass
+                
+                # If still no luck, try to find JSON object
+                if recommendations is None:
+                    json_match = re.search(r'\{[\s\S]*\}', response_text)
+                    if json_match:
+                        try:
+                            recommendations = json.loads(json_match.group(0))
+                        except json.JSONDecodeError:
+                            pass
 
-            # Validate structure and ensure exactly 3 recommendations
-            if isinstance(recommendations, list):
-                return recommendations[:3]  # Limit to exactly 3 (one per fraud type)
-            else:
-                return [recommendations] if isinstance(recommendations, dict) else []
+            # If still can't parse, try to extract and fix common issues
+            if recommendations is None:
+                # Try to fix common JSON issues
+                # Remove trailing commas before closing brackets/braces
+                fixed_text = re.sub(r',\s*}', '}', response_text)
+                fixed_text = re.sub(r',\s*]', ']', fixed_text)
+                try:
+                    recommendations = json.loads(fixed_text)
+                except json.JSONDecodeError:
+                    # Last resort: try to extract first valid JSON structure
+                    # Find the start of JSON array
+                    start_idx = response_text.find('[')
+                    if start_idx != -1:
+                        # Try to find matching closing bracket
+                        bracket_count = 0
+                        end_idx = start_idx
+                        for i in range(start_idx, len(response_text)):
+                            if response_text[i] == '[':
+                                bracket_count += 1
+                            elif response_text[i] == ']':
+                                bracket_count -= 1
+                                if bracket_count == 0:
+                                    end_idx = i + 1
+                                    break
+                        if end_idx > start_idx:
+                            try:
+                                recommendations = json.loads(response_text[start_idx:end_idx])
+                            except json.JSONDecodeError:
+                                pass
+
+            # If still None, raise error
+            if recommendations is None:
+                raise json.JSONDecodeError("Could not extract valid JSON from response", response_text, 0)
+
+            if isinstance(recommendations, dict):
+                recommendations = [recommendations]
+
+            if not isinstance(recommendations, list):
+                recommendations = []
+
+            recommendations = self._ensure_full_pattern_coverage(
+                recommendations,
+                fraud_pattern_entries
+            )
+
+            return recommendations
 
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse LLM JSON response: {e}")
             logger.error(f"Raw LLM response: {response_text[:500]}")
-            # Raise error instead of falling back
-            raise Exception(f"OpenAI returned invalid JSON format. Raw response: {response_text[:200]}...")
+            # Return basic recommendations for all patterns as fallback
+            logger.warning("AI recommendations unavailable due to JSON parsing error. Generating basic recommendations.")
+            return [self._build_basic_recommendation(entry) for entry in fraud_pattern_entries]
 
     # REMOVED: _fallback_recommendations - no rule-based fallbacks allowed
     # REMOVED: _fallback_structured_recommendations - no rule-based fallbacks allowed
-
-    def _fallback_structured_recommendations(self, analysis_result: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Generate structured fallback recommendations when LLM is not available"""
-
-        fraud_percentage = analysis_result.get('fraud_detection', {}).get('fraud_percentage', 0)
-        fraud_count = analysis_result.get('fraud_detection', {}).get('fraud_count', 0)
-        fraud_amount = analysis_result.get('fraud_detection', {}).get('total_fraud_amount', 0)
-        total_count = analysis_result.get('fraud_detection', {}).get('total_count', fraud_count)
-
-        recommendations = []
-
-        # Critical fraud rate
-        if fraud_percentage > 20:
-            recommendations.append({
-                "title": "CRITICAL: Extremely High Fraud Rate Detected",
-                "description": f"{fraud_percentage:.1f}% fraud rate ({fraud_count}/{total_count} transactions). Immediate action required.",
-                "fraud_rate": f"{fraud_percentage:.1f}% of fraud",
-                "total_amount": f"${fraud_amount:,.2f} total",
-                "case_count": f"{fraud_count} cases",
-                "immediate_actions": [
-                    "Initiate emergency fraud response protocol",
-                    "Suspend high-risk transaction processing temporarily",
-                    "Conduct immediate security audit of authentication systems",
-                    "Review all recent account changes and access logs"
-                ],
-                "prevention_steps": [
-                    "Detect and flag sudden spikes in transaction volume",
-                    "Implement burst detection algorithms (3+ transactions within minutes)",
-                    "Set up alerts for accounts with no history suddenly active",
-                    "Monitor for automated transaction patterns",
-                    "Require manual approval for burst transactions above threshold"
-                ],
-                "monitor": "Transaction clustering, time gaps between transactions, volume spikes, automation indicators"
-            })
-
-        # High fraud amount
-        if fraud_percentage > 10 and fraud_percentage <= 20:
-            recommendations.append({
-                "title": "HIGH PRIORITY: Significant Fraud Activity Detected",
-                "description": f"Detected {fraud_count} cases of fraud representing {fraud_percentage:.1f}% of transactions. Enhanced monitoring required.",
-                "fraud_rate": f"{fraud_percentage:.1f}% of fraud",
-                "total_amount": f"${fraud_amount:,.2f} total",
-                "case_count": f"{fraud_count} cases",
-                "immediate_actions": [
-                    "Hold burst transactions for fraud analyst review",
-                    "Verify user intent through phone/email confirmation",
-                    "Check if account credentials have been compromised",
-                    "Review shipping addresses for fraud indicators"
-                ],
-                "prevention_steps": [
-                    "Implement CVV/AVS checks for all transactions",
-                    "Flag accounts with multiple card additions in short time",
-                    "Review shipping addresses for fraud indicators",
-                    "Set up alerts for accounts with no history suddenly active",
-                    "Monitor for automated transaction patterns"
-                ],
-                "monitor": "Card-not-present risk indicators, fraud pattern evolution"
-            })
-
-        # Moderate fraud
-        if fraud_percentage > 5 and fraud_percentage <= 10:
-            recommendations.append({
-                "title": "MODERATE: Elevated Fraud Levels Detected",
-                "description": f"{fraud_count} fraudulent transactions detected ({fraud_percentage:.1f}% of total). Continue enhanced monitoring.",
-                "fraud_rate": f"{fraud_percentage:.1f}% of fraud",
-                "total_amount": f"${fraud_amount:,.2f} total",
-                "case_count": f"{fraud_count} cases",
-                "immediate_actions": [
-                    "Review and update fraud detection thresholds",
-                    "Implement additional transaction verification",
-                    "Monitor high-value transaction patterns",
-                    "Conduct security audit of affected accounts"
-                ],
-                "prevention_steps": [
-                    "Enhance real-time transaction monitoring",
-                    "Update fraud detection rules based on new patterns",
-                    "Implement velocity checks for rapid transactions",
-                    "Review authentication mechanisms",
-                    "Set up automated fraud pattern alerts"
-                ],
-                "monitor": "Transaction velocity, unusual patterns, account behavior"
-            })
-
-        # Default if no recommendations yet
-        if len(recommendations) == 0:
-            recommendations.append({
-                "title": "LOW: Fraud Levels Within Normal Range",
-                "description": f"Detected {fraud_count} cases ({fraud_percentage:.1f}%). Maintain current protocols.",
-                "fraud_rate": f"{fraud_percentage:.1f}% of fraud",
-                "total_amount": f"${fraud_amount:,.2f} total",
-                "case_count": f"{fraud_count} cases",
-                "immediate_actions": [
-                    "Continue routine monitoring",
-                    "Review fraud detection logs regularly",
-                    "Maintain current security protocols",
-                    "Schedule regular fraud pattern reviews"
-                ],
-                "prevention_steps": [
-                    "Continue collecting transaction data",
-                    "Keep fraud detection models up to date",
-                    "Monitor emerging fraud patterns",
-                    "Maintain fraud prevention training for staff",
-                    "Regular security audits"
-                ],
-                "monitor": "Overall fraud trends, new pattern emergence"
-            })
-
-        return recommendations[:3]  # Return top 3 recommendations
+    # REMOVED: _generate_pattern_specific_recommendations - no rule-based fallbacks allowed
+    # All recommendations must come from AI only - no fallbacks
 
     def explain_plot(self, plot_data: Dict[str, Any]) -> str:
         """
@@ -563,6 +488,173 @@ IMPORTANT REQUIREMENTS:
             features.append(f"- {col['name']} ({col['type']}): {col['non_null_count']} non-null values")
 
         return f"Total rows: {total_count}\nColumns:\n" + "\n".join(features)
+
+    def _build_fraud_pattern_entries(self, analysis_result: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Combine backend fraud breakdown with standard patterns for comprehensive coverage."""
+        detection = analysis_result.get('fraud_detection', {}) or {}
+        breakdown = detection.get('fraud_reason_breakdown') or detection.get('fraud_type_breakdown') or []
+
+        entries_map: Dict[str, Dict[str, Any]] = {}
+        total_cases = sum(entry.get('count', 0) for entry in breakdown) or 0
+
+        def normalize_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
+            name = entry.get('type') or entry.get('label') or 'Unknown pattern'
+            count = int(entry.get('count', 0) or 0)
+            percentage = entry.get('percentage')
+            total_amount = float(entry.get('total_amount', 0) or 0.0)
+            avg_amount = total_amount / count if count else 0.0
+
+            if percentage is None:
+                percentage = (count / total_cases * 100) if total_cases else 0.0
+
+            return {
+                'name': name,
+                'count': count,
+                'percentage': float(percentage),
+                'total_amount': total_amount,
+                'avg_amount': avg_amount,
+                'generated': False
+            }
+
+        for entry in breakdown:
+            normalized = normalize_entry(entry)
+            entries_map[normalized['name'].lower()] = normalized
+
+        if not entries_map:
+            transactions = analysis_result.get('transactions', [])
+            fraud_transactions = [t for t in transactions if t.get('is_fraud') == 1]
+            total_cases = len(fraud_transactions) or 1
+            amount_map: Dict[str, float] = {}
+            count_map: Dict[str, int] = {}
+
+            for txn in fraud_transactions:
+                reason = txn.get('fraud_reason') or txn.get('fraud_type') or 'Unknown pattern'
+                reason_key = str(reason).lower()
+                count_map[reason_key] = count_map.get(reason_key, 0) + 1
+                amount_map[reason_key] = amount_map.get(reason_key, 0.0) + float(txn.get('amount', 0.0) or 0.0)
+
+            for reason_key, count in count_map.items():
+                total_amt = amount_map.get(reason_key, 0.0)
+                entries_map[reason_key] = {
+                    'name': reason_key.title(),
+                    'count': count,
+                    'percentage': (count / total_cases) * 100,
+                    'total_amount': total_amt,
+                    'avg_amount': total_amt / count if count else 0.0,
+                    'generated': False
+                }
+
+        final_entries: List[Dict[str, Any]] = []
+
+        for pattern in STANDARD_FRAUD_REASONS:
+            key = pattern.lower()
+            entry = entries_map.pop(key, None)
+            if entry is None:
+                entry = {
+                    'name': pattern,
+                    'count': 0,
+                    'percentage': 0.0,
+                    'total_amount': 0.0,
+                    'avg_amount': 0.0,
+                    'generated': True
+                }
+            else:
+                entry['name'] = pattern
+            final_entries.append(entry)
+
+        for leftover in entries_map.values():
+            final_entries.append(leftover)
+
+        return final_entries
+
+    def _format_fraud_entries_for_prompt(self, entries: List[Dict[str, Any]]) -> str:
+        """Format fraud pattern entries for the LLM prompt."""
+        lines = []
+        for idx, entry in enumerate(entries, 1):
+            lines.append(
+                f"{idx}. {entry['name']}\n"
+                f"   - Cases: {entry['count']} ({entry['percentage']:.1f}% of all fraud)\n"
+                f"   - Total Amount: ${entry['total_amount']:,.2f}\n"
+                f"   - Average Amount: ${entry['avg_amount']:,.2f}"
+            )
+        return "\n\n".join(lines)
+
+    def _ensure_full_pattern_coverage(
+        self,
+        recommendations: List[Dict[str, Any]],
+        entries: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Guarantee every fraud pattern has a recommendation."""
+        remaining = recommendations.copy()
+        assigned: List[Dict[str, Any]] = []
+
+        for entry in entries:
+            match_index = None
+            entry_key = entry['name'].lower()
+
+            for idx, rec in enumerate(remaining):
+                title = (rec.get('title') or '').lower()
+                if entry_key in title:
+                    match_index = idx
+                    break
+
+            if match_index is not None:
+                assigned.append(remaining.pop(match_index))
+            else:
+                assigned.append(self._build_basic_recommendation(entry))
+
+        return assigned
+
+    def _build_basic_recommendation(self, entry: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a baseline recommendation when the LLM omits a fraud pattern."""
+        percentage = float(entry.get('percentage', 0.0) or 0.0)
+        count = int(entry.get('count', 0) or 0)
+        total_amount = float(entry.get('total_amount', 0.0) or 0.0)
+        name = entry.get('name', 'Unknown pattern')
+
+        if percentage > 50:
+            severity = "CRITICAL"
+        elif percentage > 10:
+            severity = "HIGH"
+        elif percentage > 1:
+            severity = "MEDIUM"
+        else:
+            severity = "LOW"
+
+        percentage_text = f"{percentage:.1f}%"
+        case_text = f"{count} case{'s' if count != 1 else ''}"
+        amount_text = f"${total_amount:,.2f}"
+
+        if count == 0:
+            description = f"No recent cases of {name} detected, but controls must stay active ({percentage_text} of fraud historically)."
+            case_display = "0 cases"
+        else:
+            description = f"Detected {case_text} ({percentage_text} of fraud) tied to {name}; immediate mitigation required."
+            case_display = case_text
+
+        template_action = f"Escalate suspected {name.lower()} activity to fraud operations"
+        template_prevention = f"Update detection rules specific to {name.lower()} patterns"
+
+        return {
+            "title": f"{severity}: {name}",
+            "description": description,
+            "fraud_rate": f"{percentage_text} of fraud",
+            "total_amount": f"{amount_text} total",
+            "case_count": case_display,
+            "immediate_actions": [
+                template_action,
+                f"Review recent transactions exhibiting {name.lower()} indicators",
+                "Notify fraud analytics to monitor for emerging variants",
+                "Document findings and link to active investigations"
+            ],
+            "prevention_steps": [
+                template_prevention,
+                "Tighten authentication or velocity limits tied to this pattern",
+                "Add automated alerts for early warning signals",
+                f"Train analysts on latest {name.lower()} red flags"
+            ],
+            "monitor": f"Trend lines, thresholds, and anomalies associated with {name.lower()}"
+        }
 
     def _get_top_fraud_types(self, fraud_transactions: List[Dict]) -> str:
         """Analyze and return the TOP 3 fraud types with details"""
@@ -653,3 +745,4 @@ IMPORTANT REQUIREMENTS:
     # _fallback_insights - REMOVED
     # _fallback_fraud_patterns - REMOVED  
     # _fallback_plot_explanation - REMOVED
+
