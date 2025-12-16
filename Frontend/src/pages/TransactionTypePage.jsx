@@ -307,6 +307,16 @@ const TransactionTypePage = () => {
           {/* Real Time Transaction - RIGHT SIDE - ACTIVE */}
           <div
             style={cardStyle}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-8px)';
+              e.currentTarget.style.boxShadow = `0 12px 40px ${primary}30`;
+              e.currentTarget.style.borderColor = primary;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 10px 40px rgba(0, 0, 0, 0.5)';
+              e.currentTarget.style.borderColor = colors.border;
+            }}
           >
             <div style={iconCircleStyle}>
               <FaChartLine />
