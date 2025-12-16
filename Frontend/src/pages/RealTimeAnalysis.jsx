@@ -196,9 +196,22 @@ const RealTimeAnalysis = () => {
   const [filteredPlots, setFilteredPlots] = useState(null);
   const [regeneratingPlots, setRegeneratingPlots] = useState(false);
   const [hoveredFraudPattern, setHoveredFraudPattern] = useState(null);
+  const [showDataSaved, setShowDataSaved] = useState(false);
   const isInitialMount = useRef(true);
 
   const primary = colors.primaryColor || colors.accent?.red || '#E53935';
+
+  // Auto-hide "Data Saved" message after 4 seconds
+  useEffect(() => {
+    if (analysisResult?.database_status === 'saved') {
+      setShowDataSaved(true);
+      const timer = setTimeout(() => {
+        setShowDataSaved(false);
+      }, 4000); // 4 seconds
+
+      return () => clearTimeout(timer);
+    }
+  }, [analysisResult?.database_status]);
 
   const renderMarkdownText = (text) => {
     if (!text) return null;
@@ -2230,76 +2243,85 @@ const RealTimeAnalysis = () => {
                 (Hover for prevention recommendations)
               </span>
             </div>
-              <div style={{ position: 'relative' }}>
-                <div style={styles.reasonLegendGrid}>
-                  {fraudReasonChips.map((reason) => {
-                  const count = reasonCountMap[reason] || 0;
-                  const isActive = count > 0;
-                  const hasAIRecommendation = isActive && getRecommendationForPattern(reason);
+              <div style={styles.reasonLegendGrid}>
+                {fraudReasonChips.map((reason) => {
+                const count = reasonCountMap[reason] || 0;
+                const isActive = count > 0;
+                const hasAIRecommendation = isActive && getRecommendationForPattern(reason);
 
-                  return (
-                    <div
-                      key={reason}
-                      style={{
-                        ...styles.reasonLegendChip,
-                        opacity: isActive ? 1 : 0.45,
-                        borderColor: isActive ? primary : colors.border,
-                        color: colors.foreground,
-                        cursor: hasAIRecommendation ? 'pointer' : 'default',
-                        position: 'relative',
-                        transition: 'all 0.2s ease',
-                        transform: hoveredFraudPattern === reason ? 'scale(1.02)' : 'scale(1)',
-                        boxShadow: hoveredFraudPattern === reason ? `0 4px 12px rgba(0,0,0,0.15)` : 'none'
-                      }}
-                      onMouseEnter={() => hasAIRecommendation && setHoveredFraudPattern(reason)}
-                      onMouseLeave={() => setHoveredFraudPattern(null)}
-                    >
-                      <span>{reason}</span>
-                      <span style={{ fontWeight: 600 }}>
-                        {isActive ? `${count} case${count === 1 ? '' : 's'}` : '—'}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
+                return (
+                  <div
+                    key={reason}
+                    style={{
+                      ...styles.reasonLegendChip,
+                      opacity: isActive ? 1 : 0.45,
+                      borderColor: isActive ? primary : colors.border,
+                      color: colors.foreground,
+                      cursor: hasAIRecommendation ? 'pointer' : 'default',
+                      position: 'relative',
+                      transition: 'all 0.2s ease',
+                      transform: hoveredFraudPattern === reason ? 'scale(1.02)' : 'scale(1)',
+                      boxShadow: hoveredFraudPattern === reason ? `0 4px 12px rgba(0,0,0,0.15)` : 'none'
+                    }}
+                    onMouseEnter={() => hasAIRecommendation && setHoveredFraudPattern(reason)}
+                    onMouseLeave={() => setHoveredFraudPattern(null)}
+                  >
+                    <span>{reason}</span>
+                    <span style={{ fontWeight: 600 }}>
+                      {isActive ? `${count} case${count === 1 ? '' : 's'}` : '—'}
+                    </span>
 
-              {/* Recommendation Popover */}
-              {hoveredFraudPattern && getRecommendationForPattern(hoveredFraudPattern) && (
-                <div style={{
-                  position: 'absolute',
-                  bottom: '100%',
-                  left: '50%',
-                  transform: 'translateX(-50%)',
-                  marginBottom: '10px',
-                  backgroundColor: colors.card || colors.background,
-                  border: `2px solid ${primary}`,
-                  borderRadius: '8px',
-                  padding: '1rem',
-                  maxWidth: '500px',
-                  width: '90%',
-                  boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
-                  zIndex: 1000,
-                  animation: 'fadeIn 0.2s ease'
-                }}>
+                    {/* Recommendation Popover - positioned relative to this chip */}
+                    {hoveredFraudPattern === reason && getRecommendationForPattern(reason) && (
+                <div>
                   {(() => {
-                    const rec = getRecommendationForPattern(hoveredFraudPattern);
+                    const rec = getRecommendationForPattern(reason);
                     const isCritical = (rec.title || '').includes('CRITICAL');
                     const isHigh = (rec.title || '').includes('HIGH');
-                    const borderColor = isCritical ? colors.error : isHigh ? colors.warning : colors.info;
+                    const isMedium = (rec.title || '').includes('MEDIUM');
+                    const isLow = (rec.title || '').includes('LOW');
+
+                    // Define severity colors
+                    const severityColor = isCritical ? '#ef4444' : // Red for CRITICAL
+                                        isHigh ? '#f97316' : // Orange for HIGH
+                                        isMedium ? '#fb923c' : // Light orange for MEDIUM
+                                        isLow ? '#60a5fa' : // Blue for LOW
+                                        primary; // Default
+
+                    const severityBgColor = isCritical ? 'rgba(239, 68, 68, 0.1)' : // Red bg
+                                          isHigh ? 'rgba(249, 115, 22, 0.1)' : // Orange bg
+                                          isMedium ? 'rgba(251, 146, 60, 0.1)' : // Light orange bg
+                                          isLow ? 'rgba(96, 165, 250, 0.1)' : // Blue bg
+                                          'transparent';
 
                     return (
-                      <>
+                      <div style={{
+                        position: 'absolute',
+                        bottom: '100%',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        marginBottom: '10px',
+                        backgroundColor: colors.card || colors.background,
+                        border: `3px solid ${severityColor}`,
+                        borderRadius: '8px',
+                        padding: '0.75rem 1rem',
+                        minWidth: '600px',
+                        maxWidth: '700px',
+                        boxShadow: `0 10px 40px rgba(0,0,0,0.3), 0 0 0 1px ${severityColor}20`,
+                        zIndex: 1000,
+                        animation: 'fadeIn 0.2s ease'
+                      }}>
                         {/* Arrow pointing down */}
                         <div style={{
                           position: 'absolute',
-                          bottom: '-10px',
+                          bottom: '-12px',
                           left: '50%',
                           transform: 'translateX(-50%)',
                           width: 0,
                           height: 0,
-                          borderLeft: '10px solid transparent',
-                          borderRight: '10px solid transparent',
-                          borderTop: `10px solid ${primary}`
+                          borderLeft: '12px solid transparent',
+                          borderRight: '12px solid transparent',
+                          borderTop: `12px solid ${severityColor}`
                         }} />
 
                         {/* Header */}
@@ -2308,7 +2330,7 @@ const RealTimeAnalysis = () => {
                           color: colors.foreground,
                           marginBottom: '0.5rem',
                           fontSize: '0.95rem',
-                          borderBottom: `2px solid ${borderColor}`,
+                          borderBottom: `2px solid ${severityColor}`,
                           paddingBottom: '0.5rem'
                         }}>
                           {rec.title}
@@ -2342,60 +2364,66 @@ const RealTimeAnalysis = () => {
                           </div>
                         )}
 
-                        {/* Immediate Actions */}
-                        {rec.immediate_actions && rec.immediate_actions.length > 0 && (
-                          <div style={{ marginBottom: '0.75rem' }}>
-                            <div style={{
-                              fontWeight: '600',
-                              fontSize: '0.8rem',
-                              marginBottom: '0.4rem',
-                              color: colors.foreground
-                            }}>
-                              Immediate Actions:
+                        {/* Two Column Layout for Actions and Prevention */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                          {/* Immediate Actions */}
+                          {rec.immediate_actions && rec.immediate_actions.length > 0 && (
+                            <div>
+                              <div style={{
+                                fontWeight: '600',
+                                fontSize: '0.8rem',
+                                marginBottom: '0.4rem',
+                                color: colors.foreground
+                              }}>
+                                Immediate Actions:
+                              </div>
+                              <ul style={{
+                                margin: 0,
+                                paddingLeft: '1.25rem',
+                                fontSize: '0.75rem',
+                                color: colors.foreground,
+                                lineHeight: '1.6'
+                              }}>
+                                {rec.immediate_actions.slice(0, 3).map((action, i) => (
+                                  <li key={i}>{action}</li>
+                                ))}
+                              </ul>
                             </div>
-                            <ul style={{
-                              margin: 0,
-                              paddingLeft: '1.25rem',
-                              fontSize: '0.75rem',
-                              color: colors.foreground,
-                              lineHeight: '1.6'
-                            }}>
-                              {rec.immediate_actions.slice(0, 3).map((action, i) => (
-                                <li key={i}>{action}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
+                          )}
 
-                        {/* Prevention Steps */}
-                        {rec.prevention_steps && rec.prevention_steps.length > 0 && (
-                          <div>
-                            <div style={{
-                              fontWeight: '600',
-                              fontSize: '0.8rem',
-                              marginBottom: '0.4rem',
-                              color: colors.foreground
-                            }}>
-                              Prevention Steps:
+                          {/* Prevention Steps */}
+                          {rec.prevention_steps && rec.prevention_steps.length > 0 && (
+                            <div>
+                              <div style={{
+                                fontWeight: '600',
+                                fontSize: '0.8rem',
+                                marginBottom: '0.4rem',
+                                color: colors.foreground
+                              }}>
+                                Prevention Steps:
+                              </div>
+                              <ul style={{
+                                margin: 0,
+                                paddingLeft: '1.25rem',
+                                fontSize: '0.75rem',
+                                color: colors.foreground,
+                                lineHeight: '1.6'
+                              }}>
+                                {rec.prevention_steps.slice(0, 3).map((step, i) => (
+                                  <li key={i}>{step}</li>
+                                ))}
+                              </ul>
                             </div>
-                            <ul style={{
-                              margin: 0,
-                              paddingLeft: '1.25rem',
-                              fontSize: '0.75rem',
-                              color: colors.foreground,
-                              lineHeight: '1.6'
-                            }}>
-                              {rec.prevention_steps.slice(0, 3).map((step, i) => (
-                                <li key={i}>{step}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </>
+                          )}
+                        </div>
+                      </div>
                     );
                   })()}
                 </div>
-              )}
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -2421,8 +2449,8 @@ const RealTimeAnalysis = () => {
             </button>
           </div>
 
-          {/* Database Storage Notification */}
-          {analysisResult?.database_status === 'saved' && (
+          {/* Database Storage Notification - Auto-hides after 7 seconds */}
+          {analysisResult?.database_status === 'saved' && showDataSaved && (
             <div style={{
               marginTop: '1rem',
               padding: '1rem',
@@ -2433,7 +2461,8 @@ const RealTimeAnalysis = () => {
               fontSize: '0.95rem',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.75rem'
+              gap: '0.75rem',
+              animation: 'fadeIn 0.3s ease-in'
             }}>
               <span style={{ fontSize: '1.2rem' }}>✓</span>
               <div>
