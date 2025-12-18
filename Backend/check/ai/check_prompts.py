@@ -164,6 +164,8 @@ Has Fraud History: {has_fraud_history}
 Previous Fraud Count: {fraud_count}
 Previous Escalation Count: {escalate_count}
 Last Recommendation: {last_recommendation}
+Duplicate Check Detected: {is_duplicate}
+{duplicate_info}
 
 ## TASK
 Based on the above information and the decision guidelines below, provide your fraud analysis.
@@ -261,14 +263,23 @@ RECOMMENDATION_GUIDELINES = """
 
 ### AUTOMATIC REJECTION CONDITIONS (Regardless of ML Score)
 1. Missing Critical Fields:
-   - Missing check number → REJECT
-   - Missing payer name → REJECT
-   - Missing payee name → REJECT
-3. Invalid Banking Information:
+   - Missing check number → REJECT with fraud_type based on context
+   - Missing payer name → REJECT with fraud_type based on context
+   - Missing payee name → REJECT with fraud_type based on context
+2. Invalid Banking Information:
    - Invalid routing number (not 9 digits) → REJECT
    - Invalid check number format → REJECT
-4. Future-Dated Check → REJECT
-5. Duplicate Check Detected → REJECT
+3. **Future-Dated Check → REJECT with fraud_type: STALE_CHECK**
+   - Any check dated after today must be rejected
+   - Fraud explanation must mention the future date and current date
+4. **Duplicate Check Detected → REJECT**
+   - Check with same check number and payer was previously submitted
+   - Must provide specific fraud explanation about the duplicate
+
+**CRITICAL: For ALL REJECT decisions, you MUST provide:**
+- fraud_types: Array with at least one fraud type
+- fraud_explanations: Array with explanations for each fraud type
+- actionable_recommendations: Specific remediation steps
 
 ### IMPORTANT NOTES
 - Missing signature is NOT an auto-reject condition
@@ -294,7 +305,22 @@ RECOMMENDATION_GUIDELINES = """
 - Customer Type: Previously Escalated (escalate_count = 1, fraud_count = 0)
 - Fraud Score: 100%
 - Missing Signature: Yes
-- **DECISION: REJECT** with fraud_type: SIGNATURE_FORGERY
+- **DECISION: REJECT** with fraud_types: ["SIGNATURE_FORGERY"]
+- fraud_explanations: [{"type": "SIGNATURE_FORGERY", "explanation": "Check signature is missing..."}]
+
+**Example 4: Future-dated check (ANY customer type)**
+- Check Date: 05/15/2026
+- Today's Date: 12/18/2025
+- **DECISION: REJECT** with fraud_types: ["STALE_CHECK"]
+- fraud_explanations: [{"type": "STALE_CHECK", "explanation": "Check is future-dated (05/15/2026). Current date is 12/18/2025. Future-dated checks cannot be processed."}]
+
+**Example 5: Duplicate check submission**
+- Duplicate Check Detected: Yes
+- Check #1050 from Robert Davis previously submitted
+- **DECISION: REJECT**
+- fraud_types: ["COUNTERFEIT_CHECK"] (or appropriate fraud type based on other indicators)
+- fraud_explanations: [{"type": "COUNTERFEIT_CHECK", "explanation": "Duplicate submission of check #1050. This check was previously submitted and processed."}]
+- NOTE: For duplicates, examine other fraud indicators (future date, missing signature, etc.) to determine primary fraud_type
 """
 
 # Prompt for customer history analysis
@@ -375,7 +401,7 @@ def format_analysis_template(check_data: dict, ml_analysis: dict, customer_info:
     # Extract customer info
     fraud_count = customer_info.get('fraud_count', 0)
     escalate_count = customer_info.get('escalate_count', 0)
-    
+
     # Determine customer type based on escalation history
     if escalate_count == 0 and fraud_count == 0:
         customer_type = "First Time"
@@ -385,10 +411,17 @@ def format_analysis_template(check_data: dict, ml_analysis: dict, customer_info:
         customer_type = "Repeat Offender"
     else:
         customer_type = "First Time"
-    
+
     customer_id = customer_info.get('customer_id', 'NEW_CUSTOMER')
     has_fraud_history = customer_info.get('has_fraud_history', False)
     last_recommendation = customer_info.get('last_recommendation', 'None')
+
+    # Check for duplicate submission
+    is_duplicate = customer_info.get('is_duplicate', False)
+    duplicate_check_number = customer_info.get('duplicate_check_number', '')
+    duplicate_info = ''
+    if is_duplicate:
+        duplicate_info = f'**WARNING: This check #{duplicate_check_number} from {payer_name} was previously submitted. This is a duplicate submission.**'
 
     # Get current date for analysis
     analysis_date = datetime.now().strftime('%Y-%m-%d')
@@ -415,5 +448,7 @@ def format_analysis_template(check_data: dict, ml_analysis: dict, customer_info:
         has_fraud_history=has_fraud_history,
         fraud_count=fraud_count,
         escalate_count=escalate_count,
-        last_recommendation=last_recommendation
+        last_recommendation=last_recommendation,
+        is_duplicate='Yes' if is_duplicate else 'No',
+        duplicate_info=duplicate_info
     )
