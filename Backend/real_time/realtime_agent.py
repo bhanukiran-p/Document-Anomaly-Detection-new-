@@ -308,7 +308,6 @@ JSON OUTPUT TEMPLATE:
 [
   {{
     "title": "SEVERITY: Exact Fraud Pattern Name",
-    "pattern_name": "Exact Fraud Pattern Name",
     "description": "One sentence including the fraud percentage and case count for that pattern",
     "fraud_rate": "X.X% of fraud",
     "total_amount": "$XXX,XXX.XX total",
@@ -410,19 +409,6 @@ JSON OUTPUT TEMPLATE:
                 recommendations,
                 fraud_pattern_entries
             )
-
-            # Add pattern_name field to each recommendation for direct matching
-            for i, rec in enumerate(recommendations):
-                if i < len(fraud_pattern_entries):
-                    rec['pattern_name'] = fraud_pattern_entries[i]['name']
-                elif 'title' in rec:
-                    # Extract pattern name from title (format: "SEVERITY: Pattern Name")
-                    title = rec.get('title', '')
-                    if ':' in title:
-                        pattern_name = title.split(':', 1)[1].strip()
-                        rec['pattern_name'] = pattern_name
-                    else:
-                        rec['pattern_name'] = title
 
             return recommendations
 
@@ -673,7 +659,6 @@ JSON OUTPUT TEMPLATE:
             "fraud_rate": f"{percentage_text} of fraud",
             "total_amount": f"{amount_text} total",
             "case_count": case_display,
-            "pattern_name": name,  # Add pattern_name for direct matching
             "immediate_actions": [
                 template_action,
                 f"Review recent transactions exhibiting {name.lower()} indicators",

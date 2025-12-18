@@ -50,12 +50,12 @@ class EnsembleModel:
     - XGBoost (if available)
     - LightGBM (if available)
     """
-    def __init__(self, rf, gb, xgb_model=None, lgb_model=None, threshold=0.05):
+    def __init__(self, rf, gb, xgb_model=None, lgb_model=None, threshold=0.30):
         self.rf = rf
         self.gb = gb
         self.xgb_model = xgb_model
         self.lgb_model = lgb_model
-        self.threshold = threshold  # Very low threshold for maximum sensitivity (5% - will flag more potential fraud)
+        self.threshold = threshold  # Lower threshold for higher sensitivity to fraud
 
         # Determine number of available models
         self.models = [rf, gb]
@@ -117,40 +117,49 @@ class EnsembleModel:
 
 
 def train_model_from_database(
-    limit: int = 50000,
-    min_samples: int = 500,
-    use_recent: bool = True,
-    batch_size: int = 5000
+    limit: int = 10000,
+    min_samples: int = 100,
+    use_recent: bool = True
 ) -> Dict[str, Any]:
     """
     Train fraud detection model using data from the database.
-    Uses incremental/batch loading to handle large datasets efficiently.
-
+    
     Args:
-        limit: Maximum number of records to use for training (default: 50000)
-        min_samples: Minimum number of samples required (default: 500)
+        limit: Maximum number of records to fetch from database (default: 10000)
+        min_samples: Minimum number of samples required (default: 100)
         use_recent: If True, use most recent records first (default: True)
-        batch_size: Number of records to load per batch (default: 5000)
-
+    
     Returns:
         Training results dictionary
     """
     try:
-        logger.info(f"Starting incremental model training from database")
-        logger.info(f"  - Max samples: {limit:,}")
-        logger.info(f"  - Min samples: {min_samples:,}")
-        logger.info(f"  - Batch size: {batch_size:,}")
-
-        # Use incremental trainer for large datasets
-        from real_time.incremental_trainer import train_from_database_incremental
-
-        result = train_from_database_incremental(
-            max_samples=limit,
-            batch_size=batch_size
+        logger.info(f"Starting model training from database (limit: {limit}, min_samples: {min_samples})")
+        
+        # Import database function
+        from database.analyzed_transactions_db import get_training_data_from_database
+        
+        # Fetch training data from database
+        transactions_list, error = get_training_data_from_database(
+            limit=limit,
+            min_samples=min_samples,
+            use_recent=use_recent
         )
-
-        return result
-
+        
+        if transactions_list is None:
+            return {
+                'success': False,
+                'error': error or 'Failed to fetch training data from database',
+                'message': 'Could not retrieve training data from database'
+            }
+        
+        # Convert to DataFrame
+        transactions_df = pd.DataFrame(transactions_list)
+        
+        logger.info(f"Fetched {len(transactions_df)} transactions from database for training")
+        
+        # Train model using the fetched data
+        return auto_train_model(transactions_df, labels=None)
+        
     except Exception as e:
         logger.error(f"Database training failed: {e}", exc_info=True)
         return {
@@ -364,14 +373,14 @@ def train_fraud_model(features_df: pd.DataFrame, labels: np.ndarray) -> Tuple:
             logger.warning(f"LightGBM training failed: {e}")
             lgb_model = None
 
-    # Create ensemble using module-level class with very low threshold
-    # Threshold of 0.05 (5%) for maximum fraud detection sensitivity
+    # Create ensemble using module-level class with optimized threshold
+    # Lower threshold (0.30) for higher fraud detection sensitivity
     ensemble = EnsembleModel(
         rf_model,
         gb_model,
         xgb_model=xgb_model,
         lgb_model=lgb_model,
-        threshold=0.05  # 5% threshold - will catch transactions with low fraud probability
+        threshold=0.30
     )
 
     # Evaluate
