@@ -137,7 +137,13 @@ For ESCALATE decisions:
 # Template for check fraud analysis
 ANALYSIS_TEMPLATE = """Analyze this check for fraud indicators:
 
-**IMPORTANT: Today's date is {analysis_date} for determining if checks are future-dated.**
+**CRITICAL DATE VALIDATION:**
+- **Today's date: {analysis_date}** (December 18, 2025)
+- **Check date: {check_date}**
+- **Date comparison: {date_comparison_result}**
+- A check is FUTURE-DATED only if check date > today's date
+- A check is STALE-DATED if check date < (today - 180 days)
+- IMPORTANT: November (month 11) comes BEFORE December (month 12) in the same year
 
 ## CHECK INFORMATION
 Bank: {bank_name}
@@ -426,9 +432,37 @@ def format_analysis_template(check_data: dict, ml_analysis: dict, customer_info:
     # Get current date for analysis
     analysis_date = datetime.now().strftime('%Y-%m-%d')
 
+    # Calculate date comparison
+    date_comparison_result = "Unknown"
+    try:
+        from datetime import datetime as dt
+        # Parse check date (handle various formats)
+        check_dt = None
+        if check_date and check_date != 'N/A':
+            for fmt in ['%m/%d/%Y', '%Y-%m-%d', '%m-%d-%Y']:
+                try:
+                    check_dt = dt.strptime(str(check_date), fmt)
+                    break
+                except:
+                    continue
+
+        if check_dt:
+            today = dt.now()
+            days_diff = (check_dt - today).days
+
+            if days_diff > 0:
+                date_comparison_result = f"Check date is {days_diff} days in the FUTURE (FUTURE-DATED)"
+            elif days_diff < -180:
+                date_comparison_result = f"Check date is {abs(days_diff)} days in the PAST (STALE-DATED, older than 180 days)"
+            else:
+                date_comparison_result = f"Check date is {abs(days_diff)} days in the PAST (VALID - within 180 days)"
+    except Exception as e:
+        date_comparison_result = f"Could not parse check date: {check_date}"
+
     # Format the template
     return ANALYSIS_TEMPLATE.format(
         analysis_date=analysis_date,
+        date_comparison_result=date_comparison_result,
         bank_name=bank_name,
         check_number=check_number,
         amount=f"{amount:,.2f}",
