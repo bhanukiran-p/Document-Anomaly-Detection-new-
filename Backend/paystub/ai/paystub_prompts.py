@@ -215,6 +215,45 @@ RECOMMENDATION_GUIDELINES = """
 - LLM must follow the decision table exactly - no special cases
 - **NEW employees should NEVER get REJECT on first upload - always ESCALATE for high risk**
 - No interpretation or override of the decision matrix is permitted
+
+### EXPLICIT EXAMPLES (MANDATORY TO FOLLOW):
+
+**Example 1: Repeat offender with LOW fraud risk (< 40%)**
+- Employee Type: Repeat Offender (escalate_count = 1)
+- Fraud Risk Score: 1.3%
+- **DECISION: APPROVE** (NOT ESCALATE, NOT REJECT)
+- Reasoning: Per decision matrix, repeat offenders with fraud_risk < 40% must be APPROVED
+- Example JSON response:
+{{
+  "recommendation": "APPROVE",
+  "confidence_score": 0.95,
+  "summary": "Low fraud risk paystub from repeat employee",
+  "reasoning": [
+    "Fraud risk score is 1.3%, well below 40% threshold for repeat offenders",
+    "Employee has escalate_count=1 but current submission shows no fraud indicators",
+    "Per policy: repeat offenders with fraud_risk < 40% are approved"
+  ],
+  "key_indicators": ["Low fraud risk: 1.3%", "Repeat employee: escalate_count=1"],
+  "actionable_recommendations": []
+}}
+
+**Example 2: Repeat offender with HIGH fraud risk (>= 40%)**
+- Employee Type: Repeat Offender (escalate_count = 2)
+- Fraud Risk Score: 65%
+- **DECISION: REJECT** (per decision matrix)
+- Reasoning: escalate_count > 0 AND fraud_risk >= 40%
+
+**Example 3: New employee with high fraud risk**
+- Employee Type: New Employee (escalate_count = 0)
+- Fraud Risk Score: 85%
+- **DECISION: ESCALATE** (NOT REJECT - new employees need human review)
+- Reasoning: New employees with high risk are escalated, never rejected on first upload
+
+**Example 4: Repeat offender with medium-low risk**
+- Employee Type: Repeat Offender (escalate_count = 1)
+- Fraud Risk Score: 25%
+- **DECISION: APPROVE** (< 40% threshold)
+- Reasoning: Per decision matrix, repeat offenders with fraud_risk < 40% must be approved
 """
 
 def format_analysis_template(paystub_data: dict, ml_analysis: dict, employee_info: dict) -> str:

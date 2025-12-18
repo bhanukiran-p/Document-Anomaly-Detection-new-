@@ -208,12 +208,22 @@ class PaystubFraudAnalysisAgent:
             ai_response = response.content
             logger.info("Received LLM response")
 
+            # Strip markdown code blocks if present (LLM sometimes wraps JSON in ```json ... ```)
+            ai_response_cleaned = ai_response.strip()
+            if ai_response_cleaned.startswith('```json'):
+                ai_response_cleaned = ai_response_cleaned[7:]  # Remove ```json
+            elif ai_response_cleaned.startswith('```'):
+                ai_response_cleaned = ai_response_cleaned[3:]  # Remove ```
+            if ai_response_cleaned.endswith('```'):
+                ai_response_cleaned = ai_response_cleaned[:-3]  # Remove trailing ```
+            ai_response_cleaned = ai_response_cleaned.strip()
+
             # Try to parse as JSON
             try:
-                result = json.loads(ai_response)
+                result = json.loads(ai_response_cleaned)
             except json.JSONDecodeError:
                 # If not JSON, try to extract structured data from text
-                result = self._parse_text_response(ai_response)
+                result = self._parse_text_response(ai_response_cleaned)
 
             # Validate and format result
             final_result = self._validate_and_format_result(result, ml_analysis, employee_info)
