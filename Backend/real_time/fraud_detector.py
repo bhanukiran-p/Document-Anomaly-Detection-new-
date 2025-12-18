@@ -227,85 +227,36 @@ def detect_fraud_in_transactions(transactions: List[Dict[str, Any]], auto_train:
         fraud_features = features_df[fraud_indices].copy()
 
         if len(fraud_df) > 0:
-            # Always use ML-based fraud type classification
-            # Train classifier if not already trained
-            if fraud_type_classifier.model is None:
-                logger.info("Training fraud type classifier using pure ML (unsupervised clustering)")
+            # Use dynamic pattern discovery to discover fraud patterns from the data
+            logger.info("Discovering fraud patterns using clustering and AI naming")
 
-                # Use unsupervised clustering to discover fraud patterns (pure ML, no rules)
-                from sklearn.cluster import KMeans
-                from sklearn.preprocessing import StandardScaler
-                
-                # Prepare features for clustering
-                fraud_features_for_clustering = features_df[fraud_indices].copy()
-                
-                # Select key features for clustering
-                clustering_features = [
-                    'amount_zscore', 'amount_deviation', 'country_mismatch', 
-                    'login_transaction_mismatch', 'is_foreign_currency',
-                    'is_night', 'is_weekend', 'is_transfer', 'high_risk_category',
-                    'amount_to_balance_ratio', 'customer_txn_count', 'is_outlier'
-                ]
-                
-                # Use available features
-                available_features = [f for f in clustering_features if f in fraud_features_for_clustering.columns]
-                if len(available_features) < 3:
-                    # Fallback to all numeric features
-                    available_features = fraud_features_for_clustering.select_dtypes(include=[np.number]).columns.tolist()
-                
-                X_cluster = fraud_features_for_clustering[available_features].fillna(0)
-                
-                # Determine optimal number of clusters (between 3 and min(10, len(fraud_df)//2))
-                n_clusters = min(max(3, len(fraud_df) // 10), 10, len(fraud_df))
-                
-                # Scale features
-                scaler_cluster = StandardScaler()
-                X_cluster_scaled = scaler_cluster.fit_transform(X_cluster)
-                
-                # Perform clustering
-                kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-                cluster_labels = kmeans.fit_predict(X_cluster_scaled)
-                
-                # Map clusters to fraud type labels
-                fraud_type_labels = [f'Fraud Pattern {i+1}' for i in cluster_labels]
-                
-                # Add labels to dataframe
-                df.loc[fraud_indices, 'fraud_reason'] = fraud_type_labels
-                df.loc[~fraud_indices, 'fraud_reason'] = LEGITIMATE_LABEL
-
-                # Train the ML model on these patterns
-                try:
-                    accuracy, report = fraud_type_classifier.train(df, features_df)
-                    logger.info(f"Fraud type classifier trained with accuracy: {accuracy:.3f} using {n_clusters} discovered patterns")
-                    logger.info(f"Classification Report:\n{report}")
-                except Exception as e:
-                    logger.error(f"Failed to train fraud type classifier: {e}", exc_info=True)
-                    raise RuntimeError(f"ML fraud type classifier training failed: {e}")
-
-            # Predict fraud types using trained ML model
             try:
-                fraud_types_pred = fraud_type_classifier.predict(fraud_df, fraud_features)
+                # Import the new pattern discovery module
+                from real_time.fraud_pattern_discovery import discover_fraud_patterns
 
-                # Validate predictions
-                if any(ft in ['Prediction error', 'Unknown fraud type'] for ft in fraud_types_pred):
-                    error_count = sum(1 for ft in fraud_types_pred if ft in ['Prediction error', 'Unknown fraud type'])
-                    logger.error(f"ML predictions failed for {error_count}/{len(fraud_types_pred)} transactions")
-                    raise RuntimeError(f"ML fraud type prediction returned {error_count} errors")
+                # Discover patterns using clustering with AI-generated names
+                pattern_names, cluster_profiles = discover_fraud_patterns(
+                    fraud_df,
+                    fraud_features,
+                    n_clusters=None  # Auto-determine optimal number
+                )
 
-                # Apply predictions
-                df.loc[fraud_indices, 'fraud_reason'] = fraud_types_pred
-                df.loc[fraud_indices, 'fraud_type'] = fraud_types_pred
-                logger.info(f"ML fraud type classification successful for {len(fraud_df)} transactions")
+                # Assign discovered pattern names to transactions
+                df.loc[fraud_indices, 'fraud_reason'] = pattern_names
+                df.loc[fraud_indices, 'fraud_type'] = pattern_names
 
-                # Normalize fraud reasons based on transaction patterns
-                normalized_reasons = _normalize_fraud_reasons(fraud_df, fraud_features)
-                df.loc[fraud_indices, 'fraud_reason'] = normalized_reasons
-                df.loc[fraud_indices, 'fraud_type'] = normalized_reasons
-                logger.info(f"Normalized fraud reasons for {len(fraud_df)} fraudulent transactions")
+                logger.info(f"✅ Discovered {len(cluster_profiles)} unique fraud patterns:")
+                for cluster_id, profile in cluster_profiles.items():
+                    logger.info(f"   - {profile['pattern_name']}: {profile['size']} cases ({profile['percentage']:.1f}%)")
+
+                # Store cluster profiles for use in recommendations
+                df.attrs['cluster_profiles'] = cluster_profiles
 
             except Exception as e:
-                logger.error(f"ML fraud type prediction failed: {e}", exc_info=True)
-                raise RuntimeError(f"ML fraud type classifier prediction failed: {e}")
+                logger.error(f"Pattern discovery failed: {e}, using fallback", exc_info=True)
+                # Fallback to simple labeling
+                df.loc[fraud_indices, 'fraud_reason'] = 'Fraudulent Transaction'
+                df.loc[fraud_indices, 'fraud_type'] = 'Fraudulent Transaction'
 
         # Set legitimate transactions
         df.loc[~fraud_indices, 'fraud_reason'] = LEGITIMATE_LABEL
