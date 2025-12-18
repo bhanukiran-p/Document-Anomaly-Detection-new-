@@ -179,8 +179,13 @@ def _normalize_fraud_reasons(fraud_df: pd.DataFrame, features_df: pd.DataFrame) 
 
 def detect_fraud_in_transactions(transactions: List[Dict[str, Any]], auto_train: bool = True) -> Dict[str, Any]:
     """
-    Detect fraud in transactions using ML models.
-    Automatically trains model if none exists.
+    Detect fraud using advanced ML ensemble (XGBoost + Isolation Forest).
+
+    This system:
+    1. Learns behavioral patterns from data (not hardcoded rules)
+    2. Uses XGBoost for supervised learning (high accuracy)
+    3. Uses Isolation Forest for anomaly detection (unknown patterns)
+    4. Returns probability scores (not just yes/no)
 
     Args:
         transactions: List of transaction dictionaries
@@ -190,26 +195,62 @@ def detect_fraud_in_transactions(transactions: List[Dict[str, Any]], auto_train:
         Dictionary containing fraud detection results
     """
     try:
-        logger.info(f"Analyzing {len(transactions)} transactions for fraud")
+        logger.info(f"🔍 Analyzing {len(transactions)} transactions using advanced ML fraud detection")
 
         # Convert to DataFrame
         df = pd.DataFrame(transactions)
 
-        # Extract features
-        features_df = _extract_features(df)
+        # Initialize advanced fraud detector
+        from real_time.advanced_fraud_detector import AdvancedFraudDetector
 
-        # Load or train model
-        model, scaler = _load_model()
+        detector = AdvancedFraudDetector()
 
-        if model is None or scaler is None:
+        # Try to load existing models
+        models_loaded = detector.load_models()
+
+        if not models_loaded:
             if auto_train:
-                logger.info("No model found, training new model on current data")
-                model, scaler = _train_on_current_data(df, features_df)
-            else:
-                raise ValueError("No trained model found and auto_train is disabled")
+                logger.info("⚠️ No trained models found, training new ensemble on current data...")
 
-        # Make predictions
-        predictions, probabilities, reasons = _predict_fraud_ml(features_df, model, scaler, df)
+                # Check if we have fraud labels in the data
+                if 'is_fraud' in df.columns:
+                    # Train on labeled data
+                    train_results = detector.train(df, target_col='is_fraud')
+                    logger.info(f"✅ Training complete: {train_results}")
+                else:
+                    # Load training data
+                    logger.info("Loading training data for model training...")
+                    model, scaler = _load_model()
+
+                    if model is None:
+                        # Train using old method as fallback
+                        logger.warning("Falling back to legacy training method...")
+                        features_df = _extract_features(df)
+                        model, scaler = _train_on_current_data(df, features_df)
+
+                        # Use legacy predictions
+                        predictions, probabilities, reasons = _predict_fraud_ml(features_df, model, scaler, df)
+
+                        # Add to dataframe
+                        df['is_fraud'] = predictions
+                        df['fraud_probability'] = probabilities
+                        df['fraud_reason_detail'] = reasons
+
+                        # Skip to pattern discovery
+                        logger.info("Using legacy ML model for predictions")
+                        # Continue with existing flow...
+                        # (Pattern discovery code will follow)
+
+        if models_loaded or detector.xgb_model is not None:
+            # Make predictions using advanced ensemble
+            logger.info("🤖 Running XGBoost + Isolation Forest ensemble...")
+            predictions, probabilities, reasons = detector.predict(df)
+        else:
+            # Fallback to legacy method
+            logger.warning("Using legacy prediction method")
+            features_df = _extract_features(df)
+            model, scaler = _load_model()
+            predictions, probabilities, reasons = _predict_fraud_ml(features_df, model, scaler, df)
 
         # Add predictions to transactions
         df['is_fraud'] = predictions
