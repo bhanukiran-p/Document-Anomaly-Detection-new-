@@ -227,19 +227,39 @@ class CheckFraudAnalysisAgent:
 
             # Parse response
             ai_response = response.content
-            logger.info("Received LLM response")
+            logger.info(f"Received LLM response (length: {len(ai_response)} chars)")
+            logger.info(f"LLM raw response: {ai_response[:500]}...")  # Log first 500 chars
+
+            # Strip markdown code blocks if present (LLM sometimes wraps JSON in ```json ... ```)
+            ai_response_cleaned = ai_response.strip()
+            if ai_response_cleaned.startswith('```json'):
+                ai_response_cleaned = ai_response_cleaned[7:]  # Remove ```json
+            elif ai_response_cleaned.startswith('```'):
+                ai_response_cleaned = ai_response_cleaned[3:]  # Remove ```
+            if ai_response_cleaned.endswith('```'):
+                ai_response_cleaned = ai_response_cleaned[:-3]  # Remove trailing ```
+            ai_response_cleaned = ai_response_cleaned.strip()
 
             # Try to parse as JSON
             try:
-                result = json.loads(ai_response)
-            except json.JSONDecodeError:
+                result = json.loads(ai_response_cleaned)
+                logger.info(f"Successfully parsed LLM response as JSON")
+            except json.JSONDecodeError as e:
+                logger.warning(f"Failed to parse LLM response as JSON: {e}")
                 # If not JSON, try to extract structured data from text
-                result = self._parse_text_response(ai_response)
+                result = self._parse_text_response(ai_response_cleaned)
+
+            # Log what the LLM returned before validation
+            logger.info(f"LLM returned recommendation: {result.get('recommendation')}")
+            logger.info(f"LLM returned fraud_types: {result.get('fraud_types', [])}")
+            logger.info(f"LLM returned fraud_explanations: {result.get('fraud_explanations', [])}")
 
             # Validate and format result
             final_result = self._validate_and_format_result(result, ml_analysis, customer_info)
 
             logger.info(f"AI recommendation: {final_result.get('recommendation')}")
+            logger.info(f"Final fraud_types: {final_result.get('fraud_types', [])}")
+            logger.info(f"Final fraud_explanations: {final_result.get('fraud_explanations', [])}")
             return final_result
 
         except Exception as e:
