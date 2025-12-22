@@ -37,6 +37,7 @@ class PaystubModelRetrainer(DocumentModelRetrainer):
             # Query paystubs with high confidence (>= 0.8) and valid recommendations
             response = self.supabase.table('paystubs').select('*').gte(
                 'model_confidence', 0.8
+            ).in_('ai_recommendation', ['APPROVE', 'REJECT']).execute()
             
             if not response.data:
                 logger.warning("No high-confidence paystub data found in database")
