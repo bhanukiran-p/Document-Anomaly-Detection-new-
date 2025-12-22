@@ -1,0 +1,46 @@
+[
+  {
+    "version_id": "20251222_151716",
+    "timestamp": "2025-12-22T15:17:16.709021",
+    "data_source": "hybrid",
+    "training_data": {
+      "total_samples": 588,
+      "real_samples": 353,
+      "synthetic_samples": 235,
+      "fraud_count": 85,
+      "fraud_ratio": 0.1445578231292517
+    },
+    "metrics": {
+      "r2_score": 0.951263999027671,
+      "mse": 49.36083797485922,
+      "rf_r2": 0.92609107887687,
+      "rf_mse": 74.85649638194212,
+      "xgb_r2": 0.9580837153277423,
+      "xgb_mse": 42.45368710884023,
+      "training_time_seconds": 0.178753
+    },
+    "is_active": false
+  },
+  {
+    "version_id": "20251222_154614",
+    "timestamp": "2025-12-22T15:46:16.115554",
+    "data_source": "hybrid",
+    "training_data": {
+      "total_samples": 588,
+      "real_samples": 353,
+      "synthetic_samples": 235,
+      "fraud_count": 85,
+      "fraud_ratio": 0.1445578231292517
+    },
+    "metrics": {
+      "r2_score": 0.951263999027671,
+      "mse": 49.36083797485923,
+      "rf_r2": 0.92609107887687,
+      "rf_mse": 74.85649638194211,
+      "xgb_r2": 0.9580837153277423,
+      "xgb_mse": 42.45368710884023,
+      "training_time_seconds": 0.154518
+    },
+    "is_active": true
+  }
+]

@@ -64,12 +64,26 @@ class DocumentModelRetrainer(ABC):
         # Initialize performance tracker
         self.performance_tracker = ModelPerformanceTracker(document_type)
 
-        # Set up output directory - use absolute path to production location
+        # Set up directories following the check pattern:
+        # - Versioned models (history/rollback) → Backend/training/{type}/ml/models/
+        # - Non-versioned models (production) → Backend/{type}/ml/models/
         backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self.models_dir = os.path.join(backend_dir, f"{document_type}/ml/models")
-        os.makedirs(self.models_dir, exist_ok=True)
+        training_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # Versioned models directory (for history)
+        self.versioned_models_dir = os.path.join(training_dir, f"{document_type}/ml/models")
+        os.makedirs(self.versioned_models_dir, exist_ok=True)
+        
+        # Production models directory (for active non-versioned models)
+        self.production_models_dir = os.path.join(backend_dir, f"{document_type}/ml/models")
+        os.makedirs(self.production_models_dir, exist_ok=True)
+        
+        # For backward compatibility, keep models_dir pointing to production
+        self.models_dir = self.production_models_dir
 
         logger.info(f"Initialized {document_type} model retrainer")
+        logger.info(f"  Versioned models: {self.versioned_models_dir}")
+        logger.info(f"  Production models: {self.production_models_dir}")
 
     @abstractmethod
     def generate_synthetic_data(self, n_samples: int) -> pd.DataFrame:
@@ -287,7 +301,7 @@ class DocumentModelRetrainer(ABC):
         version_id: str
     ) -> bool:
         """
-        Save models with versioned filenames
+        Save models with versioned filenames to training directory
 
         Args:
             rf_model: Trained Random Forest model
@@ -299,28 +313,28 @@ class DocumentModelRetrainer(ABC):
             True if saved successfully
         """
         try:
-            # Save each model with versioned filename
+            # Save versioned models to training directory (for history/rollback)
             rf_path = os.path.join(
-                self.models_dir,
+                self.versioned_models_dir,
                 f"{self.document_type}_random_forest_{version_id}.pkl"
             )
             xgb_path = os.path.join(
-                self.models_dir,
+                self.versioned_models_dir,
                 f"{self.document_type}_xgboost_{version_id}.pkl"
             )
             scaler_path = os.path.join(
-                self.models_dir,
+                self.versioned_models_dir,
                 f"{self.document_type}_feature_scaler_{version_id}.pkl"
             )
 
             joblib.dump(rf_model, rf_path)
-            logger.info(f"Saved: {os.path.basename(rf_path)}")
+            logger.info(f"Saved versioned: {os.path.basename(rf_path)}")
 
             joblib.dump(xgb_model, xgb_path)
-            logger.info(f"Saved: {os.path.basename(xgb_path)}")
+            logger.info(f"Saved versioned: {os.path.basename(xgb_path)}")
 
             joblib.dump(scaler, scaler_path)
-            logger.info(f"Saved: {os.path.basename(scaler_path)}")
+            logger.info(f"Saved versioned: {os.path.basename(scaler_path)}")
 
             return True
 

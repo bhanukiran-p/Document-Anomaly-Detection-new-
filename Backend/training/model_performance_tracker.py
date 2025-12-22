@@ -23,11 +23,22 @@ class ModelPerformanceTracker:
             document_type: Type of document (paystub, check, money_order, bank_statement)
         """
         self.document_type = document_type
-        self.models_dir = os.path.join(f"{document_type}/ml/models")
-        os.makedirs(self.models_dir, exist_ok=True)
-
-        self.history_path = os.path.join(self.models_dir, "performance_history.json")
-        self.active_version_path = os.path.join(self.models_dir, "ACTIVE_VERSION.txt")
+        
+        # Set up directories following the check pattern:
+        # - Training directory: Backend/training/{type}/ml/models/ (versioned models + metadata)
+        # - Production directory: Backend/{type}/ml/models/ (non-versioned active models)
+        training_base = os.path.dirname(os.path.abspath(__file__))
+        backend_base = os.path.dirname(training_base)
+        
+        self.training_models_dir = os.path.join(training_base, f"{document_type}/ml/models")
+        self.production_models_dir = os.path.join(backend_base, f"{document_type}/ml/models")
+        
+        os.makedirs(self.training_models_dir, exist_ok=True)
+        os.makedirs(self.production_models_dir, exist_ok=True)
+        
+        # Metadata files stored in training directory
+        self.history_path = os.path.join(self.training_models_dir, "performance_history.json")
+        self.active_version_path = os.path.join(self.training_models_dir, "ACTIVE_VERSION.txt")
 
     def load_history(self) -> List[Dict[str, Any]]:
         """Load performance history from JSON file"""
@@ -167,7 +178,10 @@ class ModelPerformanceTracker:
 
     def activate_version(self, version_id: str) -> bool:
         """
-        Mark a version as active and update ACTIVE_VERSION.txt
+        Mark a version as active and copy versioned models to production directory
+        
+        Copies versioned models from Backend/training/{type}/ml/models/ to
+        Backend/{type}/ml/models/ as non-versioned files for fraud detector use
 
         Args:
             version_id: Version to activate (e.g., "20250122_143052")
@@ -176,17 +190,43 @@ class ModelPerformanceTracker:
             True if activated successfully
         """
         try:
+            import shutil
+            
             # Update history - mark this version as active, others as inactive
             history = self.load_history()
             for entry in history:
                 entry['is_active'] = (entry['version_id'] == version_id)
             self.save_history(history)
 
-            # Update ACTIVE_VERSION.txt
+            # Update ACTIVE_VERSION.txt in training directory
             with open(self.active_version_path, 'w') as f:
                 f.write(version_id)
 
-            logger.info(f"Activated version {version_id} for {self.document_type}")
+            # Copy versioned models from training to production as non-versioned files
+            # This ensures fraud detectors (which expect non-versioned names) load the new models
+            model_types = ['random_forest', 'xgboost', 'feature_scaler']
+            
+            for model_type in model_types:
+                # Source: versioned file in training directory
+                versioned_path = os.path.join(
+                    self.training_models_dir,
+                    f"{self.document_type}_{model_type}_{version_id}.pkl"
+                )
+                # Destination: non-versioned file in production directory
+                non_versioned_path = os.path.join(
+                    self.production_models_dir,
+                    f"{self.document_type}_{model_type}.pkl"
+                )
+                
+                if os.path.exists(versioned_path):
+                    shutil.copy2(versioned_path, non_versioned_path)
+                    logger.info(f"Copied {os.path.basename(versioned_path)} → {self.production_models_dir}/{os.path.basename(non_versioned_path)}")
+                else:
+                    logger.warning(f"Versioned model not found: {versioned_path}")
+
+            logger.info(f"✓ Activated version {version_id} for {self.document_type}")
+            logger.info(f"  Training dir: {self.training_models_dir}")
+            logger.info(f"  Production dir: {self.production_models_dir}")
             return True
 
         except Exception as e:
@@ -205,7 +245,7 @@ class ModelPerformanceTracker:
 
     def cleanup_old_versions(self, keep_n: int = 5):
         """
-        Delete old model files, keeping only the N most recent versions
+        Delete old model files from training directory, keeping only the N most recent versions
 
         Args:
             keep_n: Number of recent versions to keep (default: 5)
@@ -223,10 +263,10 @@ class ModelPerformanceTracker:
                 for entry in versions_to_delete:
                     version_id = entry['version_id']
 
-                    # Delete model files for this version
+                    # Delete versioned model files from training directory
                     for model_type in ['random_forest', 'xgboost', 'feature_scaler']:
                         model_filename = f"{self.document_type}_{model_type}_{version_id}.pkl"
-                        model_path = os.path.join(self.models_dir, model_filename)
+                        model_path = os.path.join(self.training_models_dir, model_filename)
 
                         if os.path.exists(model_path):
                             os.remove(model_path)
