@@ -138,9 +138,9 @@ def check_confidence_distribution(table_name):
 
     try:
         response = supabase.table(table_name)\
-            .select('ai_recommendation', 'confidence_score', 'fraud_risk_score')\
+            .select('ai_recommendation', 'model_confidence', 'fraud_risk_score')\
             .in_('ai_recommendation', ['APPROVE', 'REJECT'])\
-            .not_.is_('confidence_score', 'null')\
+            .not_.is_('model_confidence', 'null')\
             .execute()
 
         if not response.data:
@@ -149,7 +149,7 @@ def check_confidence_distribution(table_name):
         # Group by confidence range and recommendation
         stats = {}
         for row in response.data:
-            conf = row.get('confidence_score', 0)
+            conf = row.get('model_confidence', 0)
             rec = row.get('ai_recommendation')
             score = row.get('fraud_risk_score', 0)
 
@@ -204,14 +204,14 @@ def check_high_confidence_readiness():
         try:
             # Get all usable data
             response = supabase.table(table)\
-                .select('ai_recommendation', 'confidence_score')\
+                .select('ai_recommendation', 'model_confidence')\
                 .in_('ai_recommendation', ['APPROVE', 'REJECT'])\
                 .execute()
 
             total_usable = len(response.data) if response.data else 0
 
             # Filter high confidence
-            high_conf = [r for r in response.data if r.get('confidence_score', 0) >= 0.80] if response.data else []
+            high_conf = [r for r in response.data if r.get('model_confidence', 0) >= 0.80] if response.data else []
             high_conf_count = len(high_conf)
 
             approve_count = len([r for r in high_conf if r.get('ai_recommendation') == 'APPROVE'])
@@ -285,33 +285,33 @@ def check_high_confidence_readiness():
 
 
 def check_schema():
-    """Check if confidence_score column exists"""
-    print_section("SECTION 5: SCHEMA CHECK - Confidence Score Column")
+    """Check if model_confidence column exists"""
+    print_section("SECTION 5: SCHEMA CHECK - Model Confidence Column")
 
     supabase = get_supabase()
     results = []
 
     for table in ['paystubs', 'checks', 'money_orders', 'bank_statements']:
         try:
-            # Try to query confidence_score
-            response = supabase.table(table).select('confidence_score').limit(1).execute()
+            # Try to query model_confidence
+            response = supabase.table(table).select('model_confidence').limit(1).execute()
             exists = True
-            sample_value = response.data[0].get('confidence_score') if response.data else None
+            sample_value = response.data[0].get('model_confidence') if response.data else None
         except:
             exists = False
             sample_value = None
 
         results.append({
             'Table': table,
-            'Confidence Column Exists': '✅ Yes' if exists else '❌ No',
+            'Model Confidence Column Exists': '✅ Yes' if exists else '❌ No',
             'Sample Value': sample_value if sample_value is not None else 'N/A'
         })
 
     print(tabulate(results, headers='keys', tablefmt='grid'))
 
-    missing = [r['Table'] for r in results if '❌' in r['Confidence Column Exists']]
+    missing = [r['Table'] for r in results if '❌' in r['Model Confidence Column Exists']]
     if missing:
-        print(f"\n⚠️  WARNING: confidence_score column missing in: {', '.join(missing)}")
+        print(f"\n⚠️  WARNING: model_confidence column missing in: {', '.join(missing)}")
         print("   You'll need to add this column for confidence filtering to work.")
 
     return results

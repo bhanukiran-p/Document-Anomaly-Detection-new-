@@ -107,19 +107,19 @@ ORDER BY count DESC;
 SELECT 'PAYSTUBS - Confidence Score Distribution' as check_name;
 SELECT
     CASE
-        WHEN confidence_score >= 0.90 THEN '0.90-1.00 (Excellent)'
-        WHEN confidence_score >= 0.80 THEN '0.80-0.89 (Good)'
-        WHEN confidence_score >= 0.70 THEN '0.70-0.79 (Fair)'
-        WHEN confidence_score >= 0.60 THEN '0.60-0.69 (Low)'
+        WHEN model_confidence >= 0.90 THEN '0.90-1.00 (Excellent)'
+        WHEN model_confidence >= 0.80 THEN '0.80-0.89 (Good)'
+        WHEN model_confidence >= 0.70 THEN '0.70-0.79 (Fair)'
+        WHEN model_confidence >= 0.60 THEN '0.60-0.69 (Low)'
         ELSE '< 0.60 (Very Low)'
     END as confidence_range,
     ai_recommendation,
     COUNT(*) as count,
-    ROUND(AVG(confidence_score), 3) as avg_confidence,
+    ROUND(AVG(model_confidence), 3) as avg_confidence,
     ROUND(AVG(fraud_risk_score), 3) as avg_fraud_score
 FROM paystubs
 WHERE ai_recommendation IN ('APPROVE', 'REJECT')
-  AND confidence_score IS NOT NULL
+  AND model_confidence IS NOT NULL
 GROUP BY confidence_range, ai_recommendation
 ORDER BY confidence_range DESC, ai_recommendation;
 
@@ -127,19 +127,19 @@ ORDER BY confidence_range DESC, ai_recommendation;
 SELECT 'CHECKS - Confidence Score Distribution' as check_name;
 SELECT
     CASE
-        WHEN confidence_score >= 0.90 THEN '0.90-1.00 (Excellent)'
-        WHEN confidence_score >= 0.80 THEN '0.80-0.89 (Good)'
-        WHEN confidence_score >= 0.70 THEN '0.70-0.79 (Fair)'
-        WHEN confidence_score >= 0.60 THEN '0.60-0.69 (Low)'
+        WHEN model_confidence >= 0.90 THEN '0.90-1.00 (Excellent)'
+        WHEN model_confidence >= 0.80 THEN '0.80-0.89 (Good)'
+        WHEN model_confidence >= 0.70 THEN '0.70-0.79 (Fair)'
+        WHEN model_confidence >= 0.60 THEN '0.60-0.69 (Low)'
         ELSE '< 0.60 (Very Low)'
     END as confidence_range,
     ai_recommendation,
     COUNT(*) as count,
-    ROUND(AVG(confidence_score), 3) as avg_confidence,
+    ROUND(AVG(model_confidence), 3) as avg_confidence,
     ROUND(AVG(fraud_risk_score), 3) as avg_fraud_score
 FROM checks
 WHERE ai_recommendation IN ('APPROVE', 'REJECT')
-  AND confidence_score IS NOT NULL
+  AND model_confidence IS NOT NULL
 GROUP BY confidence_range, ai_recommendation
 ORDER BY confidence_range DESC, ai_recommendation;
 
@@ -147,19 +147,19 @@ ORDER BY confidence_range DESC, ai_recommendation;
 SELECT 'MONEY ORDERS - Confidence Score Distribution' as check_name;
 SELECT
     CASE
-        WHEN confidence_score >= 0.90 THEN '0.90-1.00 (Excellent)'
-        WHEN confidence_score >= 0.80 THEN '0.80-0.89 (Good)'
-        WHEN confidence_score >= 0.70 THEN '0.70-0.79 (Fair)'
-        WHEN confidence_score >= 0.60 THEN '0.60-0.69 (Low)'
+        WHEN model_confidence >= 0.90 THEN '0.90-1.00 (Excellent)'
+        WHEN model_confidence >= 0.80 THEN '0.80-0.89 (Good)'
+        WHEN model_confidence >= 0.70 THEN '0.70-0.79 (Fair)'
+        WHEN model_confidence >= 0.60 THEN '0.60-0.69 (Low)'
         ELSE '< 0.60 (Very Low)'
     END as confidence_range,
     ai_recommendation,
     COUNT(*) as count,
-    ROUND(AVG(confidence_score), 3) as avg_confidence,
+    ROUND(AVG(model_confidence), 3) as avg_confidence,
     ROUND(AVG(fraud_risk_score), 3) as avg_fraud_score
 FROM money_orders
 WHERE ai_recommendation IN ('APPROVE', 'REJECT')
-  AND confidence_score IS NOT NULL
+  AND model_confidence IS NOT NULL
 GROUP BY confidence_range, ai_recommendation
 ORDER BY confidence_range DESC, ai_recommendation;
 
@@ -167,19 +167,19 @@ ORDER BY confidence_range DESC, ai_recommendation;
 SELECT 'BANK STATEMENTS - Confidence Score Distribution' as check_name;
 SELECT
     CASE
-        WHEN confidence_score >= 0.90 THEN '0.90-1.00 (Excellent)'
-        WHEN confidence_score >= 0.80 THEN '0.80-0.89 (Good)'
-        WHEN confidence_score >= 0.70 THEN '0.70-0.79 (Fair)'
-        WHEN confidence_score >= 0.60 THEN '0.60-0.69 (Low)'
+        WHEN model_confidence >= 0.90 THEN '0.90-1.00 (Excellent)'
+        WHEN model_confidence >= 0.80 THEN '0.80-0.89 (Good)'
+        WHEN model_confidence >= 0.70 THEN '0.70-0.79 (Fair)'
+        WHEN model_confidence >= 0.60 THEN '0.60-0.69 (Low)'
         ELSE '< 0.60 (Very Low)'
     END as confidence_range,
     ai_recommendation,
     COUNT(*) as count,
-    ROUND(AVG(confidence_score), 3) as avg_confidence,
+    ROUND(AVG(model_confidence), 3) as avg_confidence,
     ROUND(AVG(fraud_risk_score), 3) as avg_fraud_score
 FROM bank_statements
 WHERE ai_recommendation IN ('APPROVE', 'REJECT')
-  AND confidence_score IS NOT NULL
+  AND model_confidence IS NOT NULL
 GROUP BY confidence_range, ai_recommendation
 ORDER BY confidence_range DESC, ai_recommendation;
 
@@ -216,13 +216,13 @@ FROM (
     SELECT
         'paystubs' as document_type,
         COUNT(*) as total_usable,
-        COUNT(CASE WHEN confidence_score >= 0.80 THEN 1 END) as high_conf_count,
-        COUNT(CASE WHEN confidence_score >= 0.80 AND ai_recommendation = 'APPROVE' THEN 1 END) as approve_count,
-        COUNT(CASE WHEN confidence_score >= 0.80 AND ai_recommendation = 'REJECT' THEN 1 END) as reject_count,
+        COUNT(CASE WHEN model_confidence >= 0.80 THEN 1 END) as high_conf_count,
+        COUNT(CASE WHEN model_confidence >= 0.80 AND ai_recommendation = 'APPROVE' THEN 1 END) as approve_count,
+        COUNT(CASE WHEN model_confidence >= 0.80 AND ai_recommendation = 'REJECT' THEN 1 END) as reject_count,
         CASE
-            WHEN COUNT(CASE WHEN confidence_score >= 0.80 THEN 1 END) > 0
-            THEN COUNT(CASE WHEN confidence_score >= 0.80 AND ai_recommendation = 'REJECT' THEN 1 END)::float /
-                 COUNT(CASE WHEN confidence_score >= 0.80 THEN 1 END)
+            WHEN COUNT(CASE WHEN model_confidence >= 0.80 THEN 1 END) > 0
+            THEN COUNT(CASE WHEN model_confidence >= 0.80 AND ai_recommendation = 'REJECT' THEN 1 END)::float /
+                 COUNT(CASE WHEN model_confidence >= 0.80 THEN 1 END)
             ELSE 0
         END as fraud_ratio
     FROM paystubs
@@ -233,13 +233,13 @@ FROM (
     SELECT
         'checks' as document_type,
         COUNT(*) as total_usable,
-        COUNT(CASE WHEN confidence_score >= 0.80 THEN 1 END) as high_conf_count,
-        COUNT(CASE WHEN confidence_score >= 0.80 AND ai_recommendation = 'APPROVE' THEN 1 END) as approve_count,
-        COUNT(CASE WHEN confidence_score >= 0.80 AND ai_recommendation = 'REJECT' THEN 1 END) as reject_count,
+        COUNT(CASE WHEN model_confidence >= 0.80 THEN 1 END) as high_conf_count,
+        COUNT(CASE WHEN model_confidence >= 0.80 AND ai_recommendation = 'APPROVE' THEN 1 END) as approve_count,
+        COUNT(CASE WHEN model_confidence >= 0.80 AND ai_recommendation = 'REJECT' THEN 1 END) as reject_count,
         CASE
-            WHEN COUNT(CASE WHEN confidence_score >= 0.80 THEN 1 END) > 0
-            THEN COUNT(CASE WHEN confidence_score >= 0.80 AND ai_recommendation = 'REJECT' THEN 1 END)::float /
-                 COUNT(CASE WHEN confidence_score >= 0.80 THEN 1 END)
+            WHEN COUNT(CASE WHEN model_confidence >= 0.80 THEN 1 END) > 0
+            THEN COUNT(CASE WHEN model_confidence >= 0.80 AND ai_recommendation = 'REJECT' THEN 1 END)::float /
+                 COUNT(CASE WHEN model_confidence >= 0.80 THEN 1 END)
             ELSE 0
         END as fraud_ratio
     FROM checks
@@ -250,13 +250,13 @@ FROM (
     SELECT
         'money_orders' as document_type,
         COUNT(*) as total_usable,
-        COUNT(CASE WHEN confidence_score >= 0.80 THEN 1 END) as high_conf_count,
-        COUNT(CASE WHEN confidence_score >= 0.80 AND ai_recommendation = 'APPROVE' THEN 1 END) as approve_count,
-        COUNT(CASE WHEN confidence_score >= 0.80 AND ai_recommendation = 'REJECT' THEN 1 END) as reject_count,
+        COUNT(CASE WHEN model_confidence >= 0.80 THEN 1 END) as high_conf_count,
+        COUNT(CASE WHEN model_confidence >= 0.80 AND ai_recommendation = 'APPROVE' THEN 1 END) as approve_count,
+        COUNT(CASE WHEN model_confidence >= 0.80 AND ai_recommendation = 'REJECT' THEN 1 END) as reject_count,
         CASE
-            WHEN COUNT(CASE WHEN confidence_score >= 0.80 THEN 1 END) > 0
-            THEN COUNT(CASE WHEN confidence_score >= 0.80 AND ai_recommendation = 'REJECT' THEN 1 END)::float /
-                 COUNT(CASE WHEN confidence_score >= 0.80 THEN 1 END)
+            WHEN COUNT(CASE WHEN model_confidence >= 0.80 THEN 1 END) > 0
+            THEN COUNT(CASE WHEN model_confidence >= 0.80 AND ai_recommendation = 'REJECT' THEN 1 END)::float /
+                 COUNT(CASE WHEN model_confidence >= 0.80 THEN 1 END)
             ELSE 0
         END as fraud_ratio
     FROM money_orders
@@ -267,13 +267,13 @@ FROM (
     SELECT
         'bank_statements' as document_type,
         COUNT(*) as total_usable,
-        COUNT(CASE WHEN confidence_score >= 0.80 THEN 1 END) as high_conf_count,
-        COUNT(CASE WHEN confidence_score >= 0.80 AND ai_recommendation = 'APPROVE' THEN 1 END) as approve_count,
-        COUNT(CASE WHEN confidence_score >= 0.80 AND ai_recommendation = 'REJECT' THEN 1 END) as reject_count,
+        COUNT(CASE WHEN model_confidence >= 0.80 THEN 1 END) as high_conf_count,
+        COUNT(CASE WHEN model_confidence >= 0.80 AND ai_recommendation = 'APPROVE' THEN 1 END) as approve_count,
+        COUNT(CASE WHEN model_confidence >= 0.80 AND ai_recommendation = 'REJECT' THEN 1 END) as reject_count,
         CASE
-            WHEN COUNT(CASE WHEN confidence_score >= 0.80 THEN 1 END) > 0
-            THEN COUNT(CASE WHEN confidence_score >= 0.80 AND ai_recommendation = 'REJECT' THEN 1 END)::float /
-                 COUNT(CASE WHEN confidence_score >= 0.80 THEN 1 END)
+            WHEN COUNT(CASE WHEN model_confidence >= 0.80 THEN 1 END) > 0
+            THEN COUNT(CASE WHEN model_confidence >= 0.80 AND ai_recommendation = 'REJECT' THEN 1 END)::float /
+                 COUNT(CASE WHEN model_confidence >= 0.80 THEN 1 END)
             ELSE 0
         END as fraud_ratio
     FROM bank_statements
@@ -299,7 +299,7 @@ FROM (
         'paystubs' as document_type,
         COUNT(CASE WHEN ai_recommendation IS NULL THEN 1 END) as missing_recommendation,
         COUNT(CASE WHEN fraud_risk_score IS NULL THEN 1 END) as missing_fraud_score,
-        COUNT(CASE WHEN confidence_score IS NULL THEN 1 END) as missing_confidence,
+        COUNT(CASE WHEN model_confidence IS NULL THEN 1 END) as missing_confidence,
         COUNT(*) as total_docs
     FROM paystubs
 
@@ -309,7 +309,7 @@ FROM (
         'checks' as document_type,
         COUNT(CASE WHEN ai_recommendation IS NULL THEN 1 END) as missing_recommendation,
         COUNT(CASE WHEN fraud_risk_score IS NULL THEN 1 END) as missing_fraud_score,
-        COUNT(CASE WHEN confidence_score IS NULL THEN 1 END) as missing_confidence,
+        COUNT(CASE WHEN model_confidence IS NULL THEN 1 END) as missing_confidence,
         COUNT(*) as total_docs
     FROM checks
 
@@ -319,7 +319,7 @@ FROM (
         'money_orders' as document_type,
         COUNT(CASE WHEN ai_recommendation IS NULL THEN 1 END) as missing_recommendation,
         COUNT(CASE WHEN fraud_risk_score IS NULL THEN 1 END) as missing_fraud_score,
-        COUNT(CASE WHEN confidence_score IS NULL THEN 1 END) as missing_confidence,
+        COUNT(CASE WHEN model_confidence IS NULL THEN 1 END) as missing_confidence,
         COUNT(*) as total_docs
     FROM money_orders
 
@@ -329,21 +329,21 @@ FROM (
         'bank_statements' as document_type,
         COUNT(CASE WHEN ai_recommendation IS NULL THEN 1 END) as missing_recommendation,
         COUNT(CASE WHEN fraud_risk_score IS NULL THEN 1 END) as missing_fraud_score,
-        COUNT(CASE WHEN confidence_score IS NULL THEN 1 END) as missing_confidence,
+        COUNT(CASE WHEN model_confidence IS NULL THEN 1 END) as missing_confidence,
         COUNT(*) as total_docs
     FROM bank_statements
 ) as missing_data;
 
 
--- 5.2 Check for confidence_score column existence
-SELECT 'SCHEMA CHECK - Confidence Score Column' as check_name;
+-- 5.2 Check for model_confidence column existence
+SELECT 'SCHEMA CHECK - Model Confidence Column' as check_name;
 SELECT
     table_name,
     column_name,
     data_type
 FROM information_schema.columns
 WHERE table_name IN ('paystubs', 'checks', 'money_orders', 'bank_statements')
-  AND column_name = 'confidence_score'
+  AND column_name = 'model_confidence'
 ORDER BY table_name;
 
 
@@ -364,7 +364,7 @@ FROM (
         'paystubs' as document_type,
         COUNT(*) as recent_docs,
         COUNT(CASE WHEN ai_recommendation IS NOT NULL THEN 1 END) as recent_with_ai,
-        COUNT(CASE WHEN confidence_score >= 0.80 AND ai_recommendation IN ('APPROVE', 'REJECT') THEN 1 END) as recent_high_conf
+        COUNT(CASE WHEN model_confidence >= 0.80 AND ai_recommendation IN ('APPROVE', 'REJECT') THEN 1 END) as recent_high_conf
     FROM paystubs
     WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
 
@@ -374,7 +374,7 @@ FROM (
         'checks' as document_type,
         COUNT(*) as recent_docs,
         COUNT(CASE WHEN ai_recommendation IS NOT NULL THEN 1 END) as recent_with_ai,
-        COUNT(CASE WHEN confidence_score >= 0.80 AND ai_recommendation IN ('APPROVE', 'REJECT') THEN 1 END) as recent_high_conf
+        COUNT(CASE WHEN model_confidence >= 0.80 AND ai_recommendation IN ('APPROVE', 'REJECT') THEN 1 END) as recent_high_conf
     FROM checks
     WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
 
@@ -384,7 +384,7 @@ FROM (
         'money_orders' as document_type,
         COUNT(*) as recent_docs,
         COUNT(CASE WHEN ai_recommendation IS NOT NULL THEN 1 END) as recent_with_ai,
-        COUNT(CASE WHEN confidence_score >= 0.80 AND ai_recommendation IN ('APPROVE', 'REJECT') THEN 1 END) as recent_high_conf
+        COUNT(CASE WHEN model_confidence >= 0.80 AND ai_recommendation IN ('APPROVE', 'REJECT') THEN 1 END) as recent_high_conf
     FROM money_orders
     WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
 
@@ -394,7 +394,7 @@ FROM (
         'bank_statements' as document_type,
         COUNT(*) as recent_docs,
         COUNT(CASE WHEN ai_recommendation IS NOT NULL THEN 1 END) as recent_with_ai,
-        COUNT(CASE WHEN confidence_score >= 0.80 AND ai_recommendation IN ('APPROVE', 'REJECT') THEN 1 END) as recent_high_conf
+        COUNT(CASE WHEN model_confidence >= 0.80 AND ai_recommendation IN ('APPROVE', 'REJECT') THEN 1 END) as recent_high_conf
     FROM bank_statements
     WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
 ) as recent_activity;
