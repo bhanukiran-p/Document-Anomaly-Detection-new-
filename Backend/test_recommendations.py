@@ -11,8 +11,9 @@ if sys.platform == "win32":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
-# Force the correct API key BEFORE importing anything else
-os.environ['OPENAI_API_KEY'] = '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'
+# Load API key from .env file
+from dotenv import load_dotenv
+load_dotenv()
 
 print("=" * 60)
 print("Testing AI Recommendation Generation")

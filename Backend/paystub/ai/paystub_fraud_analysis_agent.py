@@ -43,17 +43,17 @@ class PaystubFraudAnalysisAgent:
     Uses LangChain + ChatOpenAI to make final fraud determination decisions
     """
 
-    def __init__(self, api_key: str, model: str = "o4-mini", data_tools: Optional[PaystubDataAccessTools] = None):
+    def __init__(self, api_key: str, model: str = None, data_tools: Optional[PaystubDataAccessTools] = None):
         """
         Initialize the paystub fraud analysis agent with LangChain
 
         Args:
             api_key: OpenAI API key
-            model: Model to use (default: o4-mini)
+            model: Model to use (default: reads from AI_MODEL env var)
             data_tools: Data access tools for querying employee history, etc.
         """
         self.api_key = api_key or os.getenv('OPENAI_API_KEY')
-        self.model_name = model
+        self.model_name = model or os.getenv('AI_MODEL', 'gpt-4o-mini')
         self.data_tools = data_tools or PaystubDataAccessTools()
         self.llm = None
 

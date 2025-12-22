@@ -39,17 +39,17 @@ class CheckFraudAnalysisAgent:
     Uses LangChain + ChatOpenAI to make final fraud determination decisions
     """
 
-    def __init__(self, api_key: str, model: str = "gpt-4", data_tools: Optional[CheckDataAccessTools] = None):
+    def __init__(self, api_key: str, model: str = None, data_tools: Optional[CheckDataAccessTools] = None):
         """
         Initialize the check fraud analysis agent with LangChain
 
         Args:
             api_key: OpenAI API key
-            model: Model to use (default: o4-mini)
+            model: Model to use (default: reads from AI_MODEL env var)
             data_tools: Data access tools for querying customer history, etc.
         """
         self.api_key = api_key or os.getenv('OPENAI_API_KEY')
-        self.model_name = model
+        self.model_name = model or os.getenv('AI_MODEL', 'gpt-4o-mini')
         self.data_tools = data_tools or CheckDataAccessTools()
         self.llm = None
 

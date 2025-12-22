@@ -4,10 +4,9 @@ echo Starting Backend Server with Correct OpenAI API Key
 echo ============================================================
 echo.
 
-REM Set the correct API key from .env file
-set OPENAI_API_KEY=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
+REM API key will be loaded from .env file by the application
 
-echo API Key set: %OPENAI_API_KEY:~0,15%...
+echo Starting with API key from .env file...
 echo.
 echo Starting server...
 echo.

@@ -22,9 +22,8 @@ class AgentAnalysisService:
         Args:
             api_key: OpenAI API key (if None, reads from env)
         """
-        # Temporarily disable guardrails to diagnose timeout issues
-        # TODO: Re-enable after fixing the timeout problem
-        self.agent = RealTimeAnalysisAgent(api_key=api_key, enable_guardrails=False)
+        # Guardrails enabled for rate limiting and safety
+        self.agent = RealTimeAnalysisAgent(api_key=api_key, enable_guardrails=True)
 
     def generate_comprehensive_analysis(self, analysis_result: Dict[str, Any]) -> Dict[str, Any]:
         """

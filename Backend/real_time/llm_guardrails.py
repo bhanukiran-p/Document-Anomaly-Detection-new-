@@ -27,9 +27,9 @@ class LLMGuardrailConfig:
     MAX_TOKENS_PER_MINUTE = 90000
     MAX_TOKENS_PER_DAY = 2000000
 
-    # Timeouts (increased for better reliability)
-    DEFAULT_TIMEOUT_SECONDS = 60
-    MAX_TIMEOUT_SECONDS = 120
+    # Timeouts (optimized for real-time processing)
+    DEFAULT_TIMEOUT_SECONDS = 45
+    MAX_TIMEOUT_SECONDS = 90
 
     # Retries
     MAX_RETRIES = 3

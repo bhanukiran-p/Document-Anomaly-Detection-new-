@@ -33,17 +33,17 @@ class FraudAnalysisAgent:
     AI-powered fraud analysis agent using OpenAI GPT-4
     """
 
-    def __init__(self, api_key: Optional[str] = None, model: str = 'gpt-4', data_tools: Optional[DataAccessTools] = None):
+    def __init__(self, api_key: Optional[str] = None, model: str = None, data_tools: Optional[DataAccessTools] = None):
         """
         Initialize the fraud analysis agent
-        
+
         Args:
             api_key: OpenAI API key (optional, falls back to env var)
-            model: Model name to use (default: gpt-4)
+            model: Model name to use (default: reads from AI_MODEL env var)
             data_tools: Tools for accessing historical data
         """
         self.api_key = api_key or os.getenv('OPENAI_API_KEY')
-        self.model_name = model
+        self.model_name = model or os.getenv('AI_MODEL', 'gpt-4o-mini')
         self.data_tools = data_tools
         self.llm = None
 
