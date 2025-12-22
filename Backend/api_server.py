@@ -3,9 +3,18 @@ Flask API Server for XFORIA DAD
 Handles Check, Paystub, Money Order, and Bank Statement Analysis
 """
 
+# CRITICAL FIX: Force correct OpenAI API key before any imports
+# This must be at the very top to override system environment variables
+import os
+from dotenv import load_dotenv
+load_dotenv(override=True)
+_api_key = os.getenv('OPENAI_API_KEY')
+if _api_key:
+    os.environ['OPENAI_API_KEY'] = _api_key
+    print(f"✅ Forced OPENAI_API_KEY from .env (starts with: {_api_key[:15]}...)")
+
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-import os
 import sys
 import logging
 from logging.handlers import RotatingFileHandler

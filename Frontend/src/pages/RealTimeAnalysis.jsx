@@ -214,14 +214,156 @@ const RealTimeAnalysis = () => {
     }
   }, [analysisResult?.database_status]);
 
-  const renderMarkdownText = (text) => {
+  // Fraud pattern color mapping
+  const getFraudPatternColor = (text) => {
+    const lowerText = text.toLowerCase();
+
+    // Critical/High Risk - Red shades
+    if (lowerText.includes('account takeover') || lowerText.includes('takeover')) {
+      return { bg: 'rgba(239, 68, 68, 0.15)', border: '#ef4444', text: '#dc2626' };
+    }
+    if (lowerText.includes('money mule') || lowerText.includes('mule pattern')) {
+      return { bg: 'rgba(220, 38, 38, 0.15)', border: '#dc2626', text: '#b91c1c' };
+    }
+    if (lowerText.includes('structuring') || lowerText.includes('smurfing')) {
+      return { bg: 'rgba(248, 113, 113, 0.15)', border: '#f87171', text: '#dc2626' };
+    }
+
+    // Medium Risk - Orange shades
+    if (lowerText.includes('velocity abuse') || lowerText.includes('transaction burst')) {
+      return { bg: 'rgba(249, 115, 22, 0.15)', border: '#f97316', text: '#ea580c' };
+    }
+    if (lowerText.includes('high-risk merchant') || lowerText.includes('risky merchant')) {
+      return { bg: 'rgba(251, 146, 60, 0.15)', border: '#fb923c', text: '#f97316' };
+    }
+    if (lowerText.includes('unusual amount') || lowerText.includes('amount')) {
+      return { bg: 'rgba(253, 186, 116, 0.15)', border: '#fdba74', text: '#f97316' };
+    }
+
+    // Location/Geographic - Yellow/Amber shades
+    if (lowerText.includes('unusual location') || lowerText.includes('location')) {
+      return { bg: 'rgba(252, 211, 77, 0.15)', border: '#fcd34d', text: '#d97706' };
+    }
+    if (lowerText.includes('cross-border') || lowerText.includes('international')) {
+      return { bg: 'rgba(250, 204, 21, 0.15)', border: '#facc15', text: '#ca8a04' };
+    }
+
+    // Authentication/Access - Purple shades
+    if (lowerText.includes('suspicious login') || lowerText.includes('login')) {
+      return { bg: 'rgba(167, 139, 250, 0.15)', border: '#a78bfa', text: '#7c3aed' };
+    }
+    if (lowerText.includes('unusual device') || lowerText.includes('device')) {
+      return { bg: 'rgba(196, 181, 253, 0.15)', border: '#c4b5fd', text: '#8b5cf6' };
+    }
+
+    // Payment/Transaction - Blue shades
+    if (lowerText.includes('card-not-present') || lowerText.includes('cnp')) {
+      return { bg: 'rgba(96, 165, 250, 0.15)', border: '#60a5fa', text: '#2563eb' };
+    }
+    if (lowerText.includes('new payee') || lowerText.includes('payee spike')) {
+      return { bg: 'rgba(59, 130, 246, 0.15)', border: '#3b82f6', text: '#1d4ed8' };
+    }
+
+    // Patterns - Green/Teal shades
+    if (lowerText.includes('round-dollar') || lowerText.includes('round amount')) {
+      return { bg: 'rgba(52, 211, 153, 0.15)', border: '#34d399', text: '#059669' };
+    }
+    if (lowerText.includes('night-time') || lowerText.includes('nighttime')) {
+      return { bg: 'rgba(45, 212, 191, 0.15)', border: '#2dd4bf', text: '#0d9488' };
+    }
+
+    // Default - Gray
+    return { bg: 'rgba(148, 163, 184, 0.15)', border: '#94a3b8', text: '#64748b' };
+  };
+
+  const highlightFraudPatterns = (text) => {
+    if (!text) return text;
+
+    // List of fraud patterns to highlight
+    const patterns = [
+      'Account Takeover', 'account takeover',
+      'Low Transaction Amounts', 'low-value',
+      'Consistent Merchant Categories', 'merchant categories',
+      'Gas & Fuel', 'Home & Garden', 'Utilities',
+      'Velocity abuse', 'velocity',
+      'Transaction burst', 'burst',
+      'High-risk merchant', 'risky merchant',
+      'Unusual amount', 'unusual transaction',
+      'Money mule', 'mule pattern',
+      'Structuring', 'smurfing',
+      'Round-dollar', 'round amount',
+      'Night-time', 'nighttime activity',
+      'Suspicious login', 'unusual login',
+      'Cross-border', 'international',
+      'Card-not-present', 'CNP',
+      'New payee', 'payee spike',
+      'Unusual location', 'location anomaly',
+      'Unusual device', 'device anomaly'
+    ];
+
+    let parts = [text];
+
+    patterns.forEach(pattern => {
+      const newParts = [];
+      const regex = new RegExp(`(${pattern})`, 'gi');
+
+      parts.forEach(part => {
+        if (typeof part === 'string') {
+          const splits = part.split(regex);
+          splits.forEach((split, i) => {
+            if (regex.test(split)) {
+              const colorInfo = getFraudPatternColor(split);
+              newParts.push(
+                <span key={`${pattern}-${i}`} style={{
+                  backgroundColor: colorInfo.bg,
+                  color: colorInfo.text,
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  border: `1px solid ${colorInfo.border}`,
+                  fontWeight: '600',
+                  fontSize: '0.9em',
+                  whiteSpace: 'nowrap',
+                  display: 'inline-block',
+                  margin: '0 2px'
+                }}>
+                  {split}
+                </span>
+              );
+            } else if (split) {
+              newParts.push(split);
+            }
+          });
+        } else {
+          newParts.push(part);
+        }
+      });
+
+      parts = newParts;
+    });
+
+    return parts;
+  };
+
+  // Check if text contains any fraud pattern keywords
+  const containsFraudPattern = (text) => {
+    const lowerText = text.toLowerCase();
+    const patterns = [
+      'account takeover', 'takeover', 'velocity', 'high-risk merchant',
+      'unusual location', 'suspicious login', 'card-not-present',
+      'money mule', 'structuring', 'smurfing', 'cross-border',
+      'unusual device', 'new payee', 'round-dollar', 'night-time',
+      'unusual amount', 'fraud', 'suspicious'
+    ];
+    return patterns.some(pattern => lowerText.includes(pattern));
+  };
+
+  // Render markdown for Key Insights section with selective color-coding
+  const renderKeyInsights = (text) => {
     if (!text) return null;
 
-    // Split by lines but preserve structure
     const lines = text.split('\n');
 
     return lines.map((line, idx) => {
-      // Remove markdown bold syntax
       const cleanLine = line.replace(/\*\*/g, '');
 
       // Check if it's a bullet point
@@ -233,22 +375,100 @@ const RealTimeAnalysis = () => {
               marginLeft: '1rem',
               marginBottom: '0.5rem',
               display: 'flex',
-              gap: '0.5rem'
+              gap: '0.5rem',
+              alignItems: 'flex-start'
             }}>
-              <span style={{ color: colors.mutedForeground }}>•</span>
-              <span>{content}</span>
+              <span style={{ color: colors.mutedForeground, marginTop: '2px' }}>•</span>
+              <span style={{ flex: 1 }}>{content}</span>
             </div>
           );
         }
       }
 
-      // Check if it's a numbered item
+      // Check if it's a numbered item - apply color-coding ONLY if it contains fraud patterns
+      const numberedMatch = cleanLine.match(/^(\d+)\.\s*(.+)/);
+      if (numberedMatch) {
+        const itemText = numberedMatch[2];
+
+        // Only apply color-coding if this heading contains fraud pattern keywords
+        if (containsFraudPattern(itemText)) {
+          const colorInfo = getFraudPatternColor(itemText);
+
+          return (
+            <div key={idx} style={{
+              marginBottom: '0.75rem',
+              fontWeight: '600',
+              padding: '8px 12px',
+              borderRadius: '6px',
+              backgroundColor: colorInfo.bg,
+              border: `1px solid ${colorInfo.border}`
+            }}>
+              <span style={{ color: primary, fontWeight: '700' }}>{numberedMatch[1]}. </span>
+              <span style={{ color: colorInfo.text }}>{highlightFraudPatterns(itemText)}</span>
+            </div>
+          );
+        } else {
+          // Regular numbered item without color-coding
+          return (
+            <div key={idx} style={{
+              marginBottom: '0.5rem',
+              fontWeight: '500'
+            }}>
+              <span style={{ color: primary }}>{numberedMatch[1]}. </span>
+              <span>{itemText}</span>
+            </div>
+          );
+        }
+      }
+
+      // Regular line without highlighting
+      if (cleanLine.trim()) {
+        return (
+          <div key={idx} style={{ marginBottom: '0.5rem' }}>
+            {cleanLine}
+          </div>
+        );
+      }
+
+      return null;
+    }).filter(Boolean);
+  };
+
+  // Simple markdown renderer for other sections (no color-coding)
+  const renderMarkdownText = (text) => {
+    if (!text) return null;
+
+    const lines = text.split('\n');
+
+    return lines.map((line, idx) => {
+      const cleanLine = line.replace(/\*\*/g, '');
+
+      // Check if it's a bullet point
+      if (cleanLine.trim().startsWith('-') || cleanLine.trim().startsWith('•')) {
+        const content = cleanLine.replace(/^[-•]\s*/, '').trim();
+        if (content) {
+          return (
+            <div key={idx} style={{
+              marginLeft: '1rem',
+              marginBottom: '0.5rem',
+              display: 'flex',
+              gap: '0.5rem',
+              alignItems: 'flex-start'
+            }}>
+              <span style={{ color: colors.mutedForeground, marginTop: '2px' }}>•</span>
+              <span style={{ flex: 1 }}>{content}</span>
+            </div>
+          );
+        }
+      }
+
+      // Check if it's a numbered item - simple rendering without color
       const numberedMatch = cleanLine.match(/^(\d+)\.\s*(.+)/);
       if (numberedMatch) {
         return (
           <div key={idx} style={{
-            marginBottom: '0.75rem',
-            fontWeight: '600'
+            marginBottom: '0.5rem',
+            fontWeight: '500'
           }}>
             <span style={{ color: primary }}>{numberedMatch[1]}. </span>
             <span>{numberedMatch[2]}</span>
