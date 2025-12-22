@@ -10,15 +10,11 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Load API key from environment only - no hardcoded override
+logger.info(f"✅ Loading OpenAI API key from environment variables...")
+
 # Load environment variables
 load_dotenv(override=True)
-
-# CRITICAL FIX: Force override system environment variable with .env value
-# This ensures the correct API key from .env is used, even if there's a conflicting system env var
-_env_api_key = os.getenv('OPENAI_API_KEY')
-if _env_api_key and _env_api_key.startswith('sk-proj-al'):  # Only override if it's the correct key from .env
-    os.environ['OPENAI_API_KEY'] = _env_api_key
-    logger.info(f"✅ Forced OPENAI_API_KEY override from .env file (key starts with: {_env_api_key[:15]}...)")
 
 try:
     from langchain_openai import ChatOpenAI
@@ -64,8 +60,9 @@ class RealTimeAnalysisAgent:
             analysis_tools: Transaction analysis tools
             enable_guardrails: Enable LLM guardrails for safety and rate limiting
         """
+        # Get API key from parameter or environment variable
         self.api_key = api_key or os.getenv('OPENAI_API_KEY')
-        self.model_name = model or os.getenv('AI_MODEL', 'gpt-3.5-turbo')
+        self.model_name = model or os.getenv('AI_MODEL', 'gpt-4o-mini')
         self.analysis_tools = analysis_tools
         self.llm = None
         self.agent_executor = None
