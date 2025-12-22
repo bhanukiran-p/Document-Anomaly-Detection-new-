@@ -13,6 +13,13 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv(override=True)
 
+# CRITICAL FIX: Force override system environment variable with .env value
+# This ensures the correct API key from .env is used, even if there's a conflicting system env var
+_env_api_key = os.getenv('OPENAI_API_KEY')
+if _env_api_key and _env_api_key.startswith('sk-proj-al'):  # Only override if it's the correct key from .env
+    os.environ['OPENAI_API_KEY'] = _env_api_key
+    logger.info(f"✅ Forced OPENAI_API_KEY override from .env file (key starts with: {_env_api_key[:15]}...)")
+
 try:
     from langchain_openai import ChatOpenAI
     from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
@@ -34,6 +41,7 @@ from .agent_prompts import (
     RECOMMENDATIONS_PROMPT
 )
 from .fraud_detector import STANDARD_FRAUD_REASONS
+from .llm_guardrails import get_guardrails
 
 
 class RealTimeAnalysisAgent:
@@ -45,7 +53,8 @@ class RealTimeAnalysisAgent:
     def __init__(self,
                  api_key: Optional[str] = None,
                  model: Optional[str] = None,
-                 analysis_tools: Optional[TransactionAnalysisTools] = None):
+                 analysis_tools: Optional[TransactionAnalysisTools] = None,
+                 enable_guardrails: bool = True):
         """
         Initialize real-time analysis agent
 
@@ -53,6 +62,7 @@ class RealTimeAnalysisAgent:
             api_key: OpenAI API key (if None, reads from env)
             model: OpenAI model to use (if None, reads from AI_MODEL env var)
             analysis_tools: Transaction analysis tools
+            enable_guardrails: Enable LLM guardrails for safety and rate limiting
         """
         self.api_key = api_key or os.getenv('OPENAI_API_KEY')
         self.model_name = model or os.getenv('AI_MODEL', 'gpt-3.5-turbo')
@@ -60,8 +70,24 @@ class RealTimeAnalysisAgent:
         self.llm = None
         self.agent_executor = None
 
+        # Initialize guardrails
+        self.enable_guardrails = enable_guardrails
+        if enable_guardrails:
+            self.guardrails = get_guardrails()
+            logger.info("LLM guardrails enabled")
+        else:
+            self.guardrails = None
+            logger.warning("LLM guardrails disabled - this is not recommended for production")
+
         if LANGCHAIN_AVAILABLE and self.api_key:
             try:
+                # Validate model with guardrails
+                if self.guardrails:
+                    valid, error = self.guardrails.input_validator.validate_model(self.model_name)
+                    if not valid:
+                        logger.error(f"Model validation failed: {error}")
+                        raise ValueError(error)
+
                 # Build ChatOpenAI kwargs based on model capabilities
                 llm_kwargs = {
                     'model': self.model_name,
@@ -71,11 +97,15 @@ class RealTimeAnalysisAgent:
                 # o4-mini doesn't support custom temperature, only uses default (1)
                 if not self.model_name.startswith('o4'):
                     llm_kwargs['temperature'] = 0.3
-                
+
                 # Only set max_tokens for older models that support it
                 # Newer models (o4, o1) don't support max_tokens or max_completion_tokens in LangChain
                 if not (self.model_name.startswith('o4') or self.model_name.startswith('o1')):
                     llm_kwargs['max_tokens'] = 8000  # Increased for large recommendation lists
+
+                # Add request timeout from guardrails config
+                if self.guardrails:
+                    llm_kwargs['request_timeout'] = self.guardrails.config.DEFAULT_TIMEOUT_SECONDS
 
                 self.llm = ChatOpenAI(**llm_kwargs)
                 logger.info(f"Initialized LangChain agent with {self.model_name} - GPT-4 mode active!")
@@ -90,6 +120,87 @@ class RealTimeAnalysisAgent:
             elif not self.api_key:
                 logger.warning("OpenAI API key not found - using fallback analysis")
             self.llm = None
+
+    def _safe_llm_call(self, messages: List, expected_output_tokens: int = 2000) -> Optional[str]:
+        """
+        Safely invoke LLM with guardrails
+
+        Args:
+            messages: List of messages to send to LLM
+            expected_output_tokens: Expected number of output tokens
+
+        Returns:
+            LLM response content or None if failed
+
+        Raises:
+            Exception if guardrails block the request
+        """
+        if not self.llm:
+            raise ValueError("LLM not initialized")
+
+        # Convert messages to string for validation
+        prompt_text = str(messages)
+
+        # Validate request with guardrails
+        if self.guardrails:
+            valid, error, metadata = self.guardrails.validate_request(
+                prompt_text,
+                self.model_name,
+                expected_output_tokens
+            )
+
+            if not valid:
+                logger.error(f"LLM request blocked by guardrails: {error}")
+                raise ValueError(f"Guardrail validation failed: {error}")
+
+            logger.info(f"Guardrail check passed - Tokens: {metadata['input_tokens']}, Cost: ${metadata['estimated_cost']:.6f}")
+
+        # Invoke LLM with timeout/retry handling
+        try:
+            if self.guardrails:
+                # Use timeout handler from guardrails
+                response = self.guardrails.timeout_handler.with_timeout_retry(
+                    self.llm.invoke,
+                    messages
+                )
+            else:
+                # Direct call without guardrails
+                response = self.llm.invoke(messages)
+
+            response_content = response.content
+
+            # Validate response with guardrails
+            if self.guardrails:
+                valid, error, sanitized_output = self.guardrails.validate_response(response_content)
+
+                if not valid:
+                    logger.error(f"LLM response validation failed: {error}")
+                    raise ValueError(f"Response validation failed: {error}")
+
+                # Record usage for rate limiting
+                input_tokens = metadata.get('input_tokens', 0)
+                output_tokens = self.guardrails.input_validator.count_tokens(sanitized_output, self.model_name)
+
+                from .llm_guardrails import CostEstimator
+                actual_cost = CostEstimator.estimate_cost(self.model_name, input_tokens, output_tokens)
+
+                self.guardrails.record_usage(input_tokens, output_tokens, actual_cost)
+
+                logger.info(f"LLM call successful - Output tokens: {output_tokens}, Actual cost: ${actual_cost:.6f}")
+
+                return sanitized_output
+            else:
+                return response_content
+
+        except Exception as e:
+            logger.error(f"LLM call failed: {e}", exc_info=True)
+            raise
+
+    def get_guardrail_stats(self) -> Optional[Dict[str, Any]]:
+        """Get current guardrail statistics"""
+        if self.guardrails:
+            return self.guardrails.get_stats()
+        return None
 
     def generate_comprehensive_insights(self, analysis_result: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -126,7 +237,7 @@ class RealTimeAnalysisAgent:
             }
 
     def _llm_insights(self, analysis_result: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate insights using LLM"""
+        """Generate insights using LLM with guardrails"""
 
         # Extract key metrics
         total_transactions = analysis_result.get('csv_info', {}).get('total_count', 0)
@@ -142,6 +253,10 @@ class RealTimeAnalysisAgent:
             key=lambda x: x.get('fraud_probability', 0),
             reverse=True
         )[:3]
+
+        # Sanitize transactions if guardrails enabled
+        if self.guardrails:
+            top_fraud = self.guardrails.input_validator.sanitize_transaction_data(top_fraud)
 
         # Format top transactions for LLM
         top_transactions_text = self._format_transactions(top_fraud)
@@ -170,9 +285,8 @@ class RealTimeAnalysisAgent:
             csv_features=features_text
         )
 
-        # Get LLM response
-        response = self.llm.invoke(messages)
-        insights_text = response.content
+        # Get LLM response with guardrails
+        insights_text = self._safe_llm_call(messages, expected_output_tokens=1500)
 
         # Parse response
         return self._parse_insights_response(insights_text)
@@ -207,10 +321,14 @@ class RealTimeAnalysisAgent:
             }
 
     def _llm_fraud_patterns(self, analysis_result: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate fraud pattern explanations using LLM"""
+        """Generate fraud pattern explanations using LLM with guardrails"""
 
         transactions = analysis_result.get('transactions', [])
         fraud_transactions = [t for t in transactions if t.get('is_fraud') == 1]
+
+        # Sanitize transactions if guardrails enabled
+        if self.guardrails:
+            fraud_transactions = self.guardrails.input_validator.sanitize_transaction_data(fraud_transactions)
 
         # Analyze patterns
         patterns_text = self._analyze_patterns(fraud_transactions)
@@ -229,11 +347,12 @@ class RealTimeAnalysisAgent:
             patterns=patterns_text
         )
 
-        response = self.llm.invoke(messages)
+        # Get LLM response with guardrails
+        explanation = self._safe_llm_call(messages, expected_output_tokens=1000)
 
         return {
             'success': True,
-            'explanation': response.content,
+            'explanation': explanation,
             'patterns_detected': len(fraud_transactions)
         }
 
@@ -322,19 +441,18 @@ JSON OUTPUT TEMPLATE:
         from langchain_core.messages import HumanMessage
         messages = [HumanMessage(content=prompt)]
 
-        response = self.llm.invoke(messages)
+        # Get LLM response with guardrails (expect larger output for recommendations)
+        response_text = self._safe_llm_call(messages, expected_output_tokens=4000)
 
         # Debug logging
         logger.info(f"🔍 Received response from OpenAI")
-        logger.info(f"🔍 Response type: {type(response)}")
-        logger.info(f"🔍 Response hasattr content: {hasattr(response, 'content')}")
-        if hasattr(response, 'content'):
-            logger.info(f"🔍 Response content length: {len(str(response.content))} chars")
-            logger.info(f"🔍 Response content preview: {str(response.content)[:200]}")
+        logger.info(f"🔍 Response type: {type(response_text)}")
+        logger.info(f"🔍 Response content length: {len(str(response_text))} chars")
+        logger.info(f"🔍 Response content preview: {str(response_text)[:200]}")
 
         # Parse JSON response
         try:
-            response_text = response.content.strip()
+            response_text = response_text.strip()
             # Remove markdown code blocks if present
             response_text = re.sub(r'```json\s*', '', response_text)
             response_text = re.sub(r'```\s*$', '', response_text)
@@ -416,8 +534,7 @@ JSON OUTPUT TEMPLATE:
             logger.error(f"Failed to parse LLM JSON response: {e}")
             logger.error(f"Raw LLM response (first 1000 chars): {response_text[:1000]}")
             logger.error(f"Response length: {len(response_text)} characters")
-            logger.error(f"Response type: {type(response)}")
-            logger.error(f"Response object: {response}")
+            logger.error(f"Response type: {type(response_text)}")
             # Return basic recommendations for all patterns as fallback
             logger.warning("AI recommendations unavailable due to JSON parsing error. Generating basic recommendations.")
             return [self._build_basic_recommendation(entry) for entry in fraud_pattern_entries]
@@ -447,7 +564,7 @@ JSON OUTPUT TEMPLATE:
             return "ERROR: OpenAI API key not configured. Plot explanations require OpenAI API access. Please set OPENAI_API_KEY environment variable."
 
     def _llm_plot_explanation(self, plot_data: Dict[str, Any]) -> str:
-        """Generate plot explanation using LLM"""
+        """Generate plot explanation using LLM with guardrails"""
 
         plot_title = plot_data.get('title', 'Unknown Plot')
         plot_type = plot_data.get('type', 'unknown')
@@ -473,8 +590,8 @@ JSON OUTPUT TEMPLATE:
             plot_details=details_text
         )
 
-        response = self.llm.invoke(messages)
-        return response.content
+        # Get LLM response with guardrails
+        return self._safe_llm_call(messages, expected_output_tokens=800)
 
     def _format_transactions(self, transactions: List[Dict]) -> str:
         """Format transactions for LLM prompt"""

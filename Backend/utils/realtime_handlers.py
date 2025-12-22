@@ -51,8 +51,62 @@ def handle_analyze_real_time_transactions(upload_folder):
                 generate_insights,
                 get_agent_service
             )
+            from real_time.csv_duplicate_detector import get_duplicate_detector
 
             logger.info(f"Processing real-time transaction CSV: {filename}")
+
+            # GUARDRAIL: Check for duplicate CSV uploads
+            duplicate_detector = get_duplicate_detector()
+
+            # Compute file hash BEFORE processing (file still exists)
+            file_hash = duplicate_detector.compute_file_hash(filepath)
+
+            is_duplicate, duplicate_type, prev_upload = duplicate_detector.check_duplicate(
+                filepath=filepath,
+                filename=filename
+            )
+
+            if is_duplicate:
+                logger.warning(f"Duplicate CSV detected: {duplicate_type} - {filename}")
+                logger.info("Previous upload: " + str(prev_upload.get('timestamp')))
+
+                # FAST PATH: Try to get cached analysis result from previous upload
+                cached_result = prev_upload.get('analysis_result')
+
+                if cached_result:
+                    # Return cached result immediately (FAST!)
+                    logger.info("⚡ FAST PATH: Returning cached analysis result")
+
+                    # Clean up temp file
+                    if os.path.exists(filepath):
+                        os.remove(filepath)
+
+                    # Make a copy of cached result to avoid modifying the cache
+                    import copy
+                    response_data = copy.deepcopy(cached_result)
+
+                    # Update duplicate detection info
+                    response_data['duplicate_detection'] = {
+                        'is_duplicate': True,
+                        'duplicate_type': duplicate_type,
+                        'previous_upload': {
+                            'filename': prev_upload.get('filename'),
+                            'timestamp': prev_upload.get('timestamp')
+                        },
+                        'action_taken': 'cached_result_returned',
+                        'cache_hit': True
+                    }
+                    response_data['database_status'] = 'duplicate_cached'
+                    response_data['message'] = 'Duplicate CSV - Returning cached analysis (FAST)'
+
+                    return jsonify(response_data)
+
+                # No cached result - process but skip database save
+                duplicate_mode = True
+                logger.info("Processing in DUPLICATE MODE: No cached result, analyzing again but won't save to DB")
+            else:
+                duplicate_mode = False
+                logger.info("New CSV file detected - full analysis will proceed")
 
             # Step 1: Process CSV file
             csv_result = process_transaction_csv(filepath)
@@ -94,50 +148,83 @@ def handle_analyze_real_time_transactions(upload_folder):
                     'message': 'AI analysis unavailable'
                 }
 
-            # Step 6: Save analyzed transactions to database
+            # Step 6: Save analyzed transactions to database (SKIP if duplicate)
             from database.analyzed_transactions_db import save_analyzed_transactions
 
             batch_id = str(uuid.uuid4())
             analysis_id = f"analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-            db_save_success, db_error = save_analyzed_transactions(
-                transactions=fraud_result.get('transactions', []),
-                batch_id=batch_id,
-                analysis_id=analysis_id,
-                model_type='transaction_fraud_model'
-            )
+            if duplicate_mode:
+                # DUPLICATE MODE: Skip database save, update model instead
+                logger.info("DUPLICATE MODE: Skipping database save to prevent duplicate transactions")
+                db_save_success = False
+                db_error = "Duplicate CSV - transactions not saved"
 
-            if db_save_success:
-                logger.info(f"Successfully saved {len(fraud_result.get('transactions', []))} transactions to database (batch: {batch_id})")
-
-                # Trigger automatic model training from database (in background)
+                # Trigger model update with current CSV data
                 try:
-                    from real_time.model_trainer import train_model_from_database
+                    from real_time.model_trainer import auto_train_model
 
-                    def train_in_background():
-                        """Train model from database in background thread"""
+                    def update_model_in_background():
+                        """Update model with duplicate CSV data in background"""
                         try:
-                            logger.info("Starting automatic model training from database...")
-                            training_result = train_model_from_database(
-                                limit=10000,
-                                min_samples=100,
-                                use_recent=True
+                            logger.info("Starting model update with duplicate CSV data...")
+                            training_result = auto_train_model(
+                                transactions=fraud_result.get('transactions', [])
                             )
                             if training_result.get('success'):
-                                logger.info(f"Automatic model training completed successfully. AUC: {training_result.get('metrics', {}).get('auc', 0):.3f}")
+                                logger.info(f"Model updated successfully with duplicate data. AUC: {training_result.get('metrics', {}).get('auc', 0):.3f}")
                             else:
-                                logger.warning(f"Automatic model training failed: {training_result.get('error')}")
+                                logger.warning(f"Model update failed: {training_result.get('error')}")
                         except Exception as e:
-                            logger.error(f"Background model training error: {e}", exc_info=True)
+                            logger.error(f"Background model update error: {e}", exc_info=True)
 
-                    # Start training in background thread (non-blocking)
-                    training_thread = threading.Thread(target=train_in_background, daemon=True)
-                    training_thread.start()
-                    logger.info("Automatic model training triggered in background")
+                    # Start model update in background thread (non-blocking)
+                    update_thread = threading.Thread(target=update_model_in_background, daemon=True)
+                    update_thread.start()
+                    logger.info("Model update triggered in background for duplicate CSV")
                 except Exception as e:
-                    logger.warning(f"Failed to trigger automatic model training: {e}")
+                    logger.warning(f"Failed to trigger model update: {e}")
+
             else:
-                logger.warning(f"Failed to save transactions to database: {db_error}")
+                # NORMAL MODE: Save to database
+                db_save_success, db_error = save_analyzed_transactions(
+                    transactions=fraud_result.get('transactions', []),
+                    batch_id=batch_id,
+                    analysis_id=analysis_id,
+                    model_type='transaction_fraud_model'
+                )
+
+                if db_save_success:
+                    logger.info(f"Successfully saved {len(fraud_result.get('transactions', []))} transactions to database (batch: {batch_id})")
+
+                    # Trigger automatic model training from database (in background)
+                    try:
+                        from real_time.model_trainer import train_model_from_database
+
+                        def train_in_background():
+                            """Train model from database in background thread"""
+                            try:
+                                logger.info("Starting automatic model training from database...")
+                                training_result = train_model_from_database(
+                                    limit=10000,
+                                    min_samples=100,
+                                    use_recent=True
+                                )
+                                if training_result.get('success'):
+                                    logger.info(f"Automatic model training completed successfully. AUC: {training_result.get('metrics', {}).get('auc', 0):.3f}")
+                                else:
+                                    logger.warning(f"Automatic model training failed: {training_result.get('error')}")
+                            except Exception as e:
+                                logger.error(f"Background model training error: {e}", exc_info=True)
+
+                        # Start training in background thread (non-blocking)
+                        training_thread = threading.Thread(target=train_in_background, daemon=True)
+                        training_thread.start()
+                        logger.info("Automatic model training triggered in background")
+                    except Exception as e:
+                        logger.warning(f"Failed to trigger automatic model training: {e}")
+                else:
+                    logger.warning(f"Failed to save transactions to database: {db_error}")
 
             # Clean up temp file
             if os.path.exists(filepath):
@@ -153,9 +240,32 @@ def handle_analyze_real_time_transactions(upload_folder):
                 'agent_analysis': agent_analysis.get('agent_analysis') if agent_analysis and agent_analysis.get('success') else None,
                 'batch_id': batch_id if db_save_success else None,
                 'analysis_id': analysis_id if db_save_success else None,
-                'database_status': 'saved' if db_save_success else 'failed',
-                'message': 'Real-time transaction analysis completed successfully'
+                'database_status': 'saved' if db_save_success else ('duplicate_skipped' if duplicate_mode else 'failed'),
+                'duplicate_detection': {
+                    'is_duplicate': is_duplicate,
+                    'duplicate_type': duplicate_type,
+                    'previous_upload': {
+                        'filename': prev_upload.get('filename') if prev_upload else None,
+                        'timestamp': prev_upload.get('timestamp') if prev_upload else None
+                    } if is_duplicate else None,
+                    'action_taken': 'model_update_only' if duplicate_mode else 'full_analysis',
+                    'cache_hit': False
+                },
+                'message': 'Duplicate CSV detected - Analysis varied, model updated, transactions not saved' if duplicate_mode else 'Real-time transaction analysis completed successfully'
             }
+
+            # Cache analysis result for future duplicate uploads (only for new files)
+            if not duplicate_mode and file_hash:
+                try:
+                    # Find cache entry by file hash and store result
+                    for cache_key, cache_entry in duplicate_detector.upload_cache.items():
+                        if cache_entry.get('file_hash') == file_hash:
+                            cache_entry['analysis_result'] = response_data
+                            duplicate_detector._save_cache()
+                            logger.info(f"Analysis result cached for future duplicates: {filename}")
+                            break
+                except Exception as e:
+                    logger.warning(f"Failed to cache analysis result: {e}")
 
             return jsonify(response_data)
 

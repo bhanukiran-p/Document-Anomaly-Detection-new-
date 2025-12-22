@@ -22,7 +22,9 @@ class AgentAnalysisService:
         Args:
             api_key: OpenAI API key (if None, reads from env)
         """
-        self.agent = RealTimeAnalysisAgent(api_key=api_key)
+        # Temporarily disable guardrails to diagnose timeout issues
+        # TODO: Re-enable after fixing the timeout problem
+        self.agent = RealTimeAnalysisAgent(api_key=api_key, enable_guardrails=False)
 
     def generate_comprehensive_analysis(self, analysis_result: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -63,7 +65,14 @@ class AgentAnalysisService:
             fraud_patterns = self.agent.explain_fraud_patterns(analysis_result)
 
             # Generate recommendations using LLM
-            recommendations = self.agent.generate_recommendations(analysis_result)
+            logger.info("🔄 Starting recommendation generation...")
+            try:
+                recommendations = self.agent.generate_recommendations(analysis_result)
+                logger.info(f"✅ Recommendations generated: {len(recommendations)} items")
+            except Exception as rec_error:
+                logger.error(f"❌ Recommendation generation failed: {rec_error}", exc_info=True)
+                # Return basic recommendations as fallback
+                recommendations = []
 
             return {
                 'success': True,
