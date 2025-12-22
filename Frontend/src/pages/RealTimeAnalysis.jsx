@@ -33,6 +33,52 @@ import {
 } from 'recharts';
 import { analyzeRealTimeTransactions, regeneratePlotsWithFilters } from '../services/api';
 
+// Custom Tooltip Component for Amount Cards
+const AmountTooltip = ({ children, tooltipText }) => {
+  const [isVisible, setIsVisible] = useState(false);
+
+  return (
+    <div
+      style={{ position: 'relative', display: 'inline-block', width: '100%' }}
+      onMouseEnter={() => setIsVisible(true)}
+      onMouseLeave={() => setIsVisible(false)}
+    >
+      {children}
+      {isVisible && (
+        <div style={{
+          position: 'absolute',
+          bottom: '100%',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          backgroundColor: '#1e293b',
+          color: '#fff',
+          padding: '8px 12px',
+          borderRadius: '6px',
+          fontSize: '0.9rem',
+          whiteSpace: 'nowrap',
+          marginBottom: '8px',
+          zIndex: 1000,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+          border: '1px solid rgba(255,255,255,0.1)'
+        }}>
+          {tooltipText}
+          <div style={{
+            position: 'absolute',
+            top: '100%',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: 0,
+            height: 0,
+            borderLeft: '6px solid transparent',
+            borderRight: '6px solid transparent',
+            borderTop: '6px solid #1e293b'
+          }} />
+        </div>
+      )}
+    </div>
+  );
+};
+
 const STANDARD_FRAUD_REASONS = [
   'Suspicious login',
   'Account takeover',
@@ -442,6 +488,25 @@ const RealTimeAnalysis = () => {
 
     return lines.map((line, idx) => {
       const cleanLine = line.replace(/\*\*/g, '');
+
+      // Check if it's a markdown header (### 1. or ### 2. etc)
+      const headerMatch = cleanLine.match(/^###\s*(\d+)\.\s*(.+)/);
+      if (headerMatch) {
+        return (
+          <div key={idx} style={{
+            marginTop: '1rem',
+            marginBottom: '0.5rem',
+            display: 'flex',
+            gap: '0.5rem',
+            alignItems: 'flex-start'
+          }}>
+            <span style={{ fontWeight: '900', fontSize: '1.1rem', color: primary }}>•</span>
+            <span style={{ fontWeight: '700', fontSize: '1rem', color: colors.foreground }}>
+              {headerMatch[2]}
+            </span>
+          </div>
+        );
+      }
 
       // Check if it's a bullet point
       if (cleanLine.trim().startsWith('-') || cleanLine.trim().startsWith('•')) {
@@ -2420,16 +2485,20 @@ const RealTimeAnalysis = () => {
               </div>
             </div>
             <div style={styles.statCard}>
-              <div style={styles.statLabel}>Total Amount</div>
-              <div style={{ ...styles.statValue, fontSize: '1.5rem' }}>
-                {formatAmountInMillions(analysisResult.fraud_detection.total_amount || 0)}
-              </div>
+              <AmountTooltip tooltipText={`$${(analysisResult.fraud_detection.total_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}>
+                <div style={styles.statLabel}>Total Amount</div>
+                <div style={{ ...styles.statValue, fontSize: '1.5rem' }}>
+                  {formatAmountInMillions(analysisResult.fraud_detection.total_amount || 0)}
+                </div>
+              </AmountTooltip>
             </div>
             <div style={styles.statCard}>
-              <div style={styles.statLabel}>Fraud Amount</div>
-              <div style={{ ...styles.statValue, ...styles.fraudStat, fontSize: '1.5rem' }}>
-                {formatAmountInMillions(analysisResult.fraud_detection.total_fraud_amount || 0)}
-              </div>
+              <AmountTooltip tooltipText={`$${(analysisResult.fraud_detection.total_fraud_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}>
+                <div style={styles.statLabel}>Fraud Amount</div>
+                <div style={{ ...styles.statValue, ...styles.fraudStat, fontSize: '1.5rem' }}>
+                  {formatAmountInMillions(analysisResult.fraud_detection.total_fraud_amount || 0)}
+                </div>
+              </AmountTooltip>
             </div>
             <div style={styles.statCard}>
               <div style={styles.statLabel}>Top Fraud Pattern</div>
