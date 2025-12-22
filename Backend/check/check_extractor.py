@@ -511,16 +511,11 @@ class CheckExtractor:
     ) -> str:
         """
         Determine final decision based on all collected issues
-        - REJECT if signature missing or critical issues exist
+        - AI handles missing signatures with escalation logic (1st time = ESCALATE, 2nd time = REJECT)
+        - REJECT only for critical issues (not signature - AI handles that)
         - Otherwise defer to AI or ML analysis
         """
-        # Check for signature (most critical)
-        has_signature = normalized_data.get('signature_detected', False)
-        if not has_signature:
-            logger.warning("Decision: REJECT due to missing signature")
-            return "REJECT"
-
-        # Check for other critical issues
+        # Check for critical issues (excluding signature - AI handles that)
         critical_keywords = [
             "unsupported bank",
             "missing check number",
@@ -540,7 +535,7 @@ class CheckExtractor:
             logger.warning("Decision: REJECT due to duplicate check")
             return "REJECT"
 
-        # Defer to AI analysis if available
+        # Defer to AI analysis if available (AI handles missing signatures)
         if ai_analysis:
             recommendation = ai_analysis.get('recommendation', 'ESCALATE').upper()
             logger.info(f"Decision: {recommendation} (from AI analysis)")

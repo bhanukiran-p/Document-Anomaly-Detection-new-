@@ -64,8 +64,9 @@ class DocumentModelRetrainer(ABC):
         # Initialize performance tracker
         self.performance_tracker = ModelPerformanceTracker(document_type)
 
-        # Set up output directory
-        self.models_dir = os.path.join(f"{document_type}/ml/models")
+        # Set up output directory - use absolute path to production location
+        backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.models_dir = os.path.join(backend_dir, f"{document_type}/ml/models")
         os.makedirs(self.models_dir, exist_ok=True)
 
         logger.info(f"Initialized {document_type} model retrainer")
