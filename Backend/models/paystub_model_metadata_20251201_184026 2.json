@@ -1,0 +1,20 @@
+{
+  "document_type": "paystub",
+  "model_type": "random_forest",
+  "feature_names": [
+    "has_company",
+    "has_employee",
+    "has_gross",
+    "has_net",
+    "has_date",
+    "gross_pay",
+    "net_pay",
+    "tax_error",
+    "text_quality",
+    "missing_fields_count"
+  ],
+  "model_path": "paystub_risk_model_20251201_184026.pkl",
+  "scaler_path": "paystub_scaler_20251201_184026.pkl",
+  "trained_at": "20251201_184026",
+  "feature_count": 10
+}

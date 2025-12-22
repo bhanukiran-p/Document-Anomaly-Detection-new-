@@ -1,0 +1,88 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "MoneyGram",
+    "serial_number": "9875647821",
+    "serial_secondary": "5109283746",
+    "amount": "$925.00",
+    "amount_in_words": null,
+    "payee": "MICHAEL JOHNSON",
+    "purchaser": "JENNIFER LEE",
+    "sender_address": "456 PINE ST, ANYTOWN, CA 91234",
+    "date": "01/15/2024",
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "low",
+      "type": "ml_indicator",
+      "message": "Money order is 686 days old (stale)"
+    },
+    {
+      "severity": "low",
+      "type": "ai_indicator",
+      "message": "None detected"
+    }
+  ],
+  "confidence_score": 85,
+  "raw_text": "M MONEYGRAM MONEY ORDER\nPAY TO: MICHAEL JOHNSON\nAMOUNT:\n$925.00\nDATE:\nNINE HUNDRED FISTY AND 00//100 DOLLARS\nFROM: JENNIFER LEE\n456 PINE ST, ANYTOWN, CA 91234\n9875647821\n5109283746\nJANUARY 15, 2024\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-12-01T23:19:19.750655",
+  "normalized_data": {
+    "issuer_name": "MoneyGram",
+    "serial_primary": "9875647821",
+    "serial_secondary": "5109283746",
+    "recipient": "MICHAEL JOHNSON",
+    "sender_name": "JENNIFER LEE",
+    "sender_address": "456 PINE ST, ANYTOWN, CA 91234",
+    "amount_numeric": {
+      "value": 925.0,
+      "currency": "USD"
+    },
+    "amount_written": null,
+    "date": "01-15-2024",
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 0.9,
+  "ml_analysis": {
+    "fraud_risk_score": 0.254,
+    "risk_level": "LOW",
+    "model_confidence": 0.965,
+    "model_scores": {
+      "random_forest": 0.245,
+      "xgboost": 0.227,
+      "ensemble": 0.254
+    },
+    "feature_importance": [
+      "Money order is 686 days old (stale)"
+    ],
+    "prediction_type": "mock"
+  },
+  "ai_analysis": {
+    "recommendation": "APPROVE",
+    "confidence_score": 0.9,
+    "summary": "",
+    "reasoning": [
+      "Fraud Risk Score is 0.0% (Model Confidence 0.0%), with both Random Forest (24.5%) and XGBoost (22.7%) far below typical fraud thresholds.",
+      "No ML-identified fraud indicators present (e.g., no amount mismatch, no altered fields).",
+      "Escalate_Count = 0 and Fraud_Count = 0, so no payer-based escalation override applies.",
+      "Issuer (MoneyGram) and serial number format are consistent with legitimate patterns.",
+      "Date/location fields are plausible and match known issuer distributions."
+    ],
+    "key_indicators": [
+      "None detected"
+    ],
+    "verification_notes": "",
+    "actionable_recommendations": [
+      "Verify the written amount against the numeric amount for consistency.",
+      "Request and inspect the purchaser\u2019s government-issued photo ID.",
+      "Cross-check the signature on file with a fresh specimen from MoneyGram."
+    ],
+    "training_insights": "",
+    "historical_comparison": "",
+    "analysis_type": "ai_enhanced",
+    "model_used": "o4-mini"
+  },
+  "analysis_id": "analysis_20251201_231919_750_9875647821",
+  "saved_timestamp": "2025-12-01T23:19:19.750982"
+}

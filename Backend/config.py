@@ -80,6 +80,10 @@ class Config:
     ENABLE_SIGNATURE_DETECTION = os.getenv('ENABLE_SIGNATURE_DETECTION', 'true').lower() == 'true'
     ENABLE_BANK_VALIDATION = os.getenv('ENABLE_BANK_VALIDATION', 'true').lower() == 'true'
     ENABLE_REAL_TIME_ANALYSIS = os.getenv('ENABLE_REAL_TIME_ANALYSIS', 'true').lower() == 'true'
+    ENABLE_AUTOMATED_RETRAINING = os.getenv('ENABLE_AUTOMATED_RETRAINING', 'true').lower() == 'true'
+
+    # ==================== AUTOMATED RETRAINING CONFIGURATION ====================
+    RETRAINING_CONFIG_PATH = os.getenv('RETRAINING_CONFIG_PATH', str(BASE_DIR / 'training' / 'retraining_config.json'))
 
     # ==================== CORS SETTINGS ====================
     CORS_ORIGINS = os.getenv('CORS_ORIGINS', '*').split(',')
