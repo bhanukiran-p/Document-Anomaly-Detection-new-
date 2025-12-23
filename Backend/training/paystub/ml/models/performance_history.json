@@ -41,6 +41,94 @@
       "xgb_mse": 42.45368710884023,
       "training_time_seconds": 0.154518
     },
+    "is_active": false
+  },
+  {
+    "version_id": "20251223_103724",
+    "timestamp": "2025-12-23T10:37:25.034233",
+    "data_source": "hybrid",
+    "training_data": {
+      "total_samples": 595,
+      "real_samples": 357,
+      "synthetic_samples": 238,
+      "fraud_count": 118,
+      "fraud_ratio": 0.19831932773109243
+    },
+    "metrics": {
+      "r2_score": 0.9013147470053683,
+      "mse": 132.61886486331542,
+      "rf_r2": 0.8990476640585381,
+      "rf_mse": 135.66550007816315,
+      "xgb_r2": 0.8954063607875081,
+      "xgb_mse": 140.55889085108169,
+      "training_time_seconds": 0.159709
+    },
     "is_active": true
+  },
+  {
+    "version_id": "20251223_115110",
+    "timestamp": "2025-12-23T11:51:10.626134",
+    "data_source": "hybrid",
+    "training_data": {
+      "total_samples": 588,
+      "real_samples": 353,
+      "synthetic_samples": 235,
+      "fraud_count": 277,
+      "fraud_ratio": 0.4710884353741497
+    },
+    "metrics": {
+      "r2_score": 0.34481199229050297,
+      "mse": 879.6295041044912,
+      "rf_r2": 0.41063727693058927,
+      "rf_mse": 791.2550805738805,
+      "xgb_r2": 0.271425572789059,
+      "xgb_mse": 978.155208229835,
+      "training_time_seconds": 0.193187
+    },
+    "is_active": false
+  },
+  {
+    "version_id": "20251223_115117",
+    "timestamp": "2025-12-23T11:51:17.644617",
+    "data_source": "hybrid",
+    "training_data": {
+      "total_samples": 588,
+      "real_samples": 353,
+      "synthetic_samples": 235,
+      "fraud_count": 277,
+      "fraud_ratio": 0.4710884353741497
+    },
+    "metrics": {
+      "r2_score": 0.34481199229050297,
+      "mse": 879.6295041044912,
+      "rf_r2": 0.41063727693058927,
+      "rf_mse": 791.2550805738805,
+      "xgb_r2": 0.271425572789059,
+      "xgb_mse": 978.155208229835,
+      "training_time_seconds": 0.163884
+    },
+    "is_active": false
+  },
+  {
+    "version_id": "20251223_115137",
+    "timestamp": "2025-12-23T11:51:38.041260",
+    "data_source": "hybrid",
+    "training_data": {
+      "total_samples": 588,
+      "real_samples": 353,
+      "synthetic_samples": 235,
+      "fraud_count": 277,
+      "fraud_ratio": 0.4710884353741497
+    },
+    "metrics": {
+      "r2_score": 0.34481199229050297,
+      "mse": 879.6295041044912,
+      "rf_r2": 0.41063727693058927,
+      "rf_mse": 791.2550805738805,
+      "xgb_r2": 0.271425572789059,
+      "xgb_mse": 978.155208229835,
+      "training_time_seconds": 0.156186
+    },
+    "is_active": false
   }
 ]

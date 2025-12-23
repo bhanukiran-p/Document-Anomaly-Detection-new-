@@ -122,7 +122,12 @@ class PaystubModelRetrainer(DocumentModelRetrainer):
             
             # Map recommendation to fraud score (0-100)
             recommendation = record.get('ai_recommendation', 'APPROVE').upper()
-            fraud_risk_score = record.get('risk_score', 0.0)
+            fraud_risk_score = record.get('fraud_risk_score', None)  # Correct column name
+
+            # Convert from 0-1 range to 0-100 range if needed
+            if fraud_risk_score is not None and fraud_risk_score <= 1.0:
+                fraud_risk_score = fraud_risk_score * 100.0
+
             if fraud_risk_score is None:
                 # Fallback: REJECT=80, ESCALATE=50, APPROVE=10
                 if recommendation == 'REJECT':

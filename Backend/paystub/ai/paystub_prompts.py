@@ -155,105 +155,101 @@ RECOMMENDATION_GUIDELINES = """
 | Employee Type | Risk Score | Decision |
 |---|---|---|
 | New Employee | < 30% | APPROVE |
-| New Employee | 30–95% | ESCALATE |
-| New Employee | ≥ 95% | ESCALATE |
-| New Employee | 100% | ESCALATE (High risk but need human verification) |
+| New Employee | ≥ 30% | REJECT |
 | Clean History | < 30% | APPROVE |
-| Clean History | 30–85% | ESCALATE |
-| Clean History | > 85% | REJECT |
-| Fraud History | < 30% | APPROVE |
-| Fraud History | ≥ 30% | REJECT |
-| Repeat Offender (escalate_count > 0) | < 40% | APPROVE (Low risk, previous escalations noted but not blocking) |
-| Repeat Offender (escalate_count > 0) | ≥ 40% | Follow decision table below based on risk score (ESCALATE or REJECT) |
+| Clean History | ≥ 30% | REJECT |
+| Fraud History (fraud_count > 0) | < 30% | APPROVE |
+| Fraud History (fraud_count > 0) | ≥ 30% | REJECT |
 
 ### EMPLOYEE CLASSIFICATION
 **New Employee:**
 - No record in paystub_customers table, OR
-- escalate_count = 0 AND fraud_count = 0
+- fraud_count = 0 AND escalate_count = 0
 
 **Clean History:**
 - fraud_count = 0 AND escalate_count = 0
 
-**Fraud History:**
-- fraud_count > 0 AND escalate_count = 0
-
-**Repeat Offender:**
-- escalate_count > 0
-- Always proceeds to LLM analysis (no auto-reject)
-- If fraud_risk_score < 40% → APPROVE (per decision matrix)
-- If fraud_risk_score >= 40% → LLM decides based on risk score (ESCALATE or REJECT)
+**Fraud History (ACTUAL FRAUD, NOT ESCALATIONS):**
+- fraud_count > 0 (has previous fraud rejections)
+- Note: escalate_count does NOT count as fraud history
+- Previous escalations (escalate_count > 0) are tracked but do NOT change the decision threshold
 
 ### AUTOMATIC REJECTION CONDITIONS (Regardless of ML Score)
 1. Duplicate Paystub Detected → REJECT
 
-### ESCALATION CONDITIONS (For New Employees)
-**IMPORTANT: New employees with high risk should be ESCALATED, not REJECTED**
-- Missing Critical Fields (company name, employee name, pay date, gross/net pay) → ESCALATE (for new employees)
-- Future-Dated Paystub → ESCALATE (for new employees)
-- Net Pay > Gross Pay (impossible) → ESCALATE (for new employees, needs verification)
-- Missing Tax Withholdings → ESCALATE (for new employees, needs verification)
-- Round Number Amounts (suspicious) → ESCALATE (for new employees)
+### CRITICAL FRAUD INDICATORS
+**IMPORTANT: These conditions contribute to the fraud risk score and should be factored into the decision**
+- Missing Critical Fields (company name, employee name, pay date, gross/net pay) - increases fraud risk
+- Future-Dated Paystub - increases fraud risk
+- Net Pay > Gross Pay (impossible) - increases fraud risk
+- Missing Tax Withholdings - increases fraud risk
+- Round Number Amounts (suspicious) - increases fraud risk
 
-### AUTOMATIC REJECTION CONDITIONS (For Repeat Employees Only - ONLY if risk >= 40%)
-**IMPORTANT: These conditions only apply if fraud_risk_score >= 40%. For repeat employees with risk < 40%, follow the decision matrix above (APPROVE).**
-1. Missing Critical Fields → REJECT (if repeat employee AND risk >= 40%)
-2. Future-Dated Paystub → REJECT (if repeat employee AND risk >= 40%)
-3. Net Pay > Gross Pay → REJECT (if repeat employee AND risk >= 40%)
-4. Missing Tax Withholdings → REJECT (if repeat employee AND risk >= 40%)
-5. Round Number Amounts → REJECT (if repeat employee AND risk >= 40%)
+**The final decision is based ONLY on the decision matrix above (fraud_risk_score threshold of 30%)**
 
 ### CRITICAL RULES (IN PRIORITY ORDER):
-1. **If escalate_count > 0 AND fraud_risk_score < 40% → MUST APPROVE** (low risk, previous escalations noted but not blocking)
-2. **If escalate_count > 0 AND fraud_risk_score >= 40% → LLM decides** (proceed to LLM analysis, no auto-reject)
-3. If fraud_risk_score is 100.0% or >= 5% AND employee is NEW → MUST ESCALATE (not REJECT)
-4. If fraud_risk_score is 100.0% or >= 95% AND employee is REPEAT with fraud history → MUST REJECT
-5. **New employees with high risk should be escalated for human review, not auto-rejected**
-6. **Repeat offenders with low risk (< 40%) should be APPROVED, not rejected or escalated**
+1. **All employees: fraud_risk_score < 30% → MUST APPROVE**
+2. **All employees: fraud_risk_score ≥ 30% → MUST REJECT**
+3. **Decision is based ONLY on fraud_risk_score threshold of 30%, regardless of employee type**
+4. **Fraud history (fraud_count > 0) is a risk factor but does not change the 30% threshold**
+5. **Previous escalations (escalate_count) do NOT affect the decision - only fraud_count matters**
 
 ### IMPORTANT NOTES
 - ML score determines the risk_score bucket only
 - LLM must follow the decision table exactly - no special cases
-- **NEW employees should NEVER get REJECT on first upload - always ESCALATE for high risk**
+- **Simple rule: < 30% = APPROVE, ≥ 30% = REJECT (for ALL employee types)**
 - No interpretation or override of the decision matrix is permitted
 
 ### EXPLICIT EXAMPLES (MANDATORY TO FOLLOW):
 
-**Example 1: Repeat offender with LOW fraud risk (< 40%)**
-- Employee Type: Repeat Offender (escalate_count = 1)
+**Example 1: Low fraud risk (< 30%)**
+- Employee Type: Any (new, clean history, or fraud history)
 - Fraud Risk Score: 1.3%
-- **DECISION: APPROVE** (NOT ESCALATE, NOT REJECT)
-- Reasoning: Per decision matrix, repeat offenders with fraud_risk < 40% must be APPROVED
+- **DECISION: APPROVE**
+- Reasoning: Fraud risk score is below 30% threshold
 - Example JSON response:
 {{
   "recommendation": "APPROVE",
   "confidence_score": 0.95,
-  "summary": "Low fraud risk paystub from repeat employee",
+  "summary": "Low fraud risk paystub, approved per policy",
   "reasoning": [
-    "Fraud risk score is 1.3%, well below 40% threshold for repeat offenders",
-    "Employee has escalate_count=1 but current submission shows no fraud indicators",
-    "Per policy: repeat offenders with fraud_risk < 40% are approved"
+    "Fraud risk score is 1.3%, well below 30% threshold",
+    "No significant fraud indicators detected",
+    "Per policy: fraud_risk < 30% = APPROVE"
   ],
-  "key_indicators": ["Low fraud risk: 1.3%", "Repeat employee: escalate_count=1"],
+  "key_indicators": ["Low fraud risk: 1.3%"],
   "actionable_recommendations": []
 }}
 
-**Example 2: Repeat offender with HIGH fraud risk (>= 40%)**
-- Employee Type: Repeat Offender (escalate_count = 2)
-- Fraud Risk Score: 65%
-- **DECISION: REJECT** (per decision matrix)
-- Reasoning: escalate_count > 0 AND fraud_risk >= 40%
+**Example 2: Medium fraud risk (≥ 30%)**
+- Employee Type: Any (new, clean history, or fraud history)
+- Fraud Risk Score: 35%
+- **DECISION: REJECT**
+- Reasoning: Fraud risk score is at or above 30% threshold
+- Example JSON response:
+{{
+  "recommendation": "REJECT",
+  "confidence_score": 0.90,
+  "summary": "Fraud risk exceeds 30% threshold, rejected per policy",
+  "reasoning": [
+    "Fraud risk score is 35%, above 30% threshold",
+    "Per policy: fraud_risk ≥ 30% = REJECT"
+  ],
+  "key_indicators": ["Fraud risk: 35%"],
+  "actionable_recommendations": ["Manual review required", "Contact employee for verification"]
+}}
 
-**Example 3: New employee with high fraud risk**
-- Employee Type: New Employee (escalate_count = 0)
+**Example 3: High fraud risk**
+- Employee Type: Any
 - Fraud Risk Score: 85%
-- **DECISION: ESCALATE** (NOT REJECT - new employees need human review)
-- Reasoning: New employees with high risk are escalated, never rejected on first upload
+- **DECISION: REJECT**
+- Reasoning: Fraud risk score is well above 30% threshold
 
-**Example 4: Repeat offender with medium-low risk**
-- Employee Type: Repeat Offender (escalate_count = 1)
-- Fraud Risk Score: 25%
-- **DECISION: APPROVE** (< 40% threshold)
-- Reasoning: Per decision matrix, repeat offenders with fraud_risk < 40% must be approved
+**Example 4: Borderline low risk**
+- Employee Type: Any
+- Fraud Risk Score: 29%
+- **DECISION: APPROVE**
+- Reasoning: Fraud risk score is below 30% threshold (29% < 30%)
 """
 
 def format_analysis_template(paystub_data: dict, ml_analysis: dict, employee_info: dict) -> str:

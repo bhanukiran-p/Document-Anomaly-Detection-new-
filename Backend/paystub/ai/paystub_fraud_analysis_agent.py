@@ -218,6 +218,12 @@ class PaystubFraudAnalysisAgent:
                 ai_response_cleaned = ai_response_cleaned[:-3]  # Remove trailing ```
             ai_response_cleaned = ai_response_cleaned.strip()
 
+            # Sanitize common LLM JSON errors (e.g., "0. ninety" -> "0.90")
+            import re
+            ai_response_cleaned = re.sub(r'"confidence_score":\s*0\.\s*ninety', '"confidence_score":0.90', ai_response_cleaned)
+            ai_response_cleaned = re.sub(r'"confidence_score":\s*0\.\s*eighty', '"confidence_score":0.80', ai_response_cleaned)
+            ai_response_cleaned = re.sub(r'"confidence_score":\s*0\.\s*seventy', '"confidence_score":0.70', ai_response_cleaned)
+
             # Try to parse as JSON
             try:
                 result = json.loads(ai_response_cleaned)
