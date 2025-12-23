@@ -572,9 +572,9 @@ const RealTimeAnalysis = () => {
 
   const topFraudCases = analysisResult?.transactions
     ? [...analysisResult.transactions]
-        .filter((t) => t.is_fraud === 1)
-        .sort((a, b) => (b.fraud_probability || 0) - (a.fraud_probability || 0))
-        .slice(0, 4)
+      .filter((t) => t.is_fraud === 1)
+      .sort((a, b) => (b.fraud_probability || 0) - (a.fraud_probability || 0))
+      .slice(0, 4)
     : [];
 
   const fraudReasonBreakdown =
@@ -939,7 +939,7 @@ const RealTimeAnalysis = () => {
     }
   };
 
-  
+
 
   const handleUrlSubmit = async (e) => {
     e.preventDefault();
@@ -986,9 +986,9 @@ const RealTimeAnalysis = () => {
         const merchant = (row.merchant || row.Merchant || '').toLowerCase();
 
         if (amount > 5000 ||
-            category.includes('gambling') ||
-            category.includes('cryptocurrency') ||
-            merchant.includes('unknown')) {
+          category.includes('gambling') ||
+          category.includes('cryptocurrency') ||
+          merchant.includes('unknown')) {
           fraudCount++;
         }
       });
@@ -1105,7 +1105,7 @@ const RealTimeAnalysis = () => {
 
   const handleFilterChange = (filterName, value) => {
     let processedValue = value;
-    
+
     // Validate fraud probability fields (must be between 0 and 1)
     if (filterName === 'fraudProbabilityMin' || filterName === 'fraudProbabilityMax') {
       const numValue = parseFloat(value);
@@ -1118,7 +1118,7 @@ const RealTimeAnalysis = () => {
         return; // Invalid input, don't update
       }
     }
-    
+
     setFilters(prev => ({
       ...prev,
       [filterName]: processedValue
@@ -1246,7 +1246,7 @@ const RealTimeAnalysis = () => {
         if (!t.timestamp) return true;
         const txnDate = new Date(t.timestamp);
         if (isNaN(txnDate.getTime())) return true;
-        
+
         let isWithinRange = true;
         if (filters.dateStart !== '') {
           const startDate = new Date(`${filters.dateStart}T00:00:00`);
@@ -1432,7 +1432,7 @@ const RealTimeAnalysis = () => {
         plotsCount: result.plots?.length || 0,
         error: result.error
       });
-      
+
       if (result.success) {
         console.log('Received filtered plots:', result.plots?.length || 0);
         if (result.plots && result.plots.length > 0) {
@@ -2506,8 +2506,8 @@ const RealTimeAnalysis = () => {
                 {analysisResult.fraud_detection.dominant_fraud_reason
                   ? formatFraudReason(analysisResult.fraud_detection.dominant_fraud_reason)
                   : analysisResult.fraud_detection.dominant_fraud_type
-                  ? formatFraudReason(analysisResult.fraud_detection.dominant_fraud_type)
-                  : 'N/A'}
+                    ? formatFraudReason(analysisResult.fraud_detection.dominant_fraud_type)
+                    : 'N/A'}
               </div>
             </div>
           </div>
@@ -2539,8 +2539,8 @@ const RealTimeAnalysis = () => {
                 (Hover to preview, click to enlarge)
               </span>
             </div>
-              <div style={styles.reasonLegendGrid}>
-                {fraudReasonChips.map((reason) => {
+            <div style={styles.reasonLegendGrid}>
+              {fraudReasonChips.map((reason) => {
                 const count = reasonCountMap[reason] || 0;
                 const isActive = count > 0;
                 const hasAIRecommendation = isActive && getRecommendationForPattern(reason);
@@ -2570,160 +2570,160 @@ const RealTimeAnalysis = () => {
 
                     {/* Recommendation Popover - positioned relative to this chip */}
                     {hoveredFraudPattern === reason && getRecommendationForPattern(reason) && (
-                <div>
-                  {(() => {
-                    const rec = getRecommendationForPattern(reason);
-                    const isCritical = (rec.title || '').includes('CRITICAL');
-                    const isHigh = (rec.title || '').includes('HIGH');
-                    const isMedium = (rec.title || '').includes('MEDIUM');
-                    const isLow = (rec.title || '').includes('LOW');
+                      <div>
+                        {(() => {
+                          const rec = getRecommendationForPattern(reason);
+                          const isCritical = (rec.title || '').includes('CRITICAL');
+                          const isHigh = (rec.title || '').includes('HIGH');
+                          const isMedium = (rec.title || '').includes('MEDIUM');
+                          const isLow = (rec.title || '').includes('LOW');
 
-                    // Define severity colors
-                    const severityColor = isCritical ? '#ef4444' : // Red for CRITICAL
-                                        isHigh ? '#f97316' : // Orange for HIGH
-                                        isMedium ? '#fb923c' : // Light orange for MEDIUM
-                                        isLow ? '#60a5fa' : // Blue for LOW
-                                        primary; // Default
+                          // Define severity colors
+                          const severityColor = isCritical ? '#ef4444' : // Red for CRITICAL
+                            isHigh ? '#f97316' : // Orange for HIGH
+                              isMedium ? '#fb923c' : // Light orange for MEDIUM
+                                isLow ? '#60a5fa' : // Blue for LOW
+                                  primary; // Default
 
-                    const severityBgColor = isCritical ? 'rgba(239, 68, 68, 0.1)' : // Red bg
-                                          isHigh ? 'rgba(249, 115, 22, 0.1)' : // Orange bg
-                                          isMedium ? 'rgba(251, 146, 60, 0.1)' : // Light orange bg
-                                          isLow ? 'rgba(96, 165, 250, 0.1)' : // Blue bg
-                                          'transparent';
+                          const severityBgColor = isCritical ? 'rgba(239, 68, 68, 0.1)' : // Red bg
+                            isHigh ? 'rgba(249, 115, 22, 0.1)' : // Orange bg
+                              isMedium ? 'rgba(251, 146, 60, 0.1)' : // Light orange bg
+                                isLow ? 'rgba(96, 165, 250, 0.1)' : // Blue bg
+                                  'transparent';
 
-                    return (
-                      <div 
-                        style={{
-                          position: 'absolute',
-                          bottom: '100%',
-                          left: '50%',
-                          transform: 'translateX(-50%)',
-                          marginBottom: '10px',
-                          backgroundColor: colors.card || colors.background,
-                          border: `3px solid ${severityColor}`,
-                          borderRadius: '8px',
-                          padding: '0.75rem 1rem',
-                          minWidth: '600px',
-                          maxWidth: '700px',
-                          boxShadow: `0 10px 40px rgba(0,0,0,0.3), 0 0 0 1px ${severityColor}20`,
-                          zIndex: 1000,
-                          animation: 'fadeIn 0.2s ease',
-                          cursor: 'pointer'
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEnlargedFraudPattern(reason);
-                        }}
-                      >
-                        {/* Arrow pointing down */}
-                        <div style={{
-                          position: 'absolute',
-                          bottom: '-12px',
-                          left: '50%',
-                          transform: 'translateX(-50%)',
-                          width: 0,
-                          height: 0,
-                          borderLeft: '12px solid transparent',
-                          borderRight: '12px solid transparent',
-                          borderTop: `12px solid ${severityColor}`
-                        }} />
+                          return (
+                            <div
+                              style={{
+                                position: 'absolute',
+                                bottom: '100%',
+                                left: '50%',
+                                transform: 'translateX(-50%)',
+                                marginBottom: '10px',
+                                backgroundColor: colors.card || colors.background,
+                                border: `3px solid ${severityColor}`,
+                                borderRadius: '8px',
+                                padding: '0.75rem 1rem',
+                                minWidth: '600px',
+                                maxWidth: '700px',
+                                boxShadow: `0 10px 40px rgba(0,0,0,0.3), 0 0 0 1px ${severityColor}20`,
+                                zIndex: 1000,
+                                animation: 'fadeIn 0.2s ease',
+                                cursor: 'pointer'
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEnlargedFraudPattern(reason);
+                              }}
+                            >
+                              {/* Arrow pointing down */}
+                              <div style={{
+                                position: 'absolute',
+                                bottom: '-12px',
+                                left: '50%',
+                                transform: 'translateX(-50%)',
+                                width: 0,
+                                height: 0,
+                                borderLeft: '12px solid transparent',
+                                borderRight: '12px solid transparent',
+                                borderTop: `12px solid ${severityColor}`
+                              }} />
 
-                        {/* Header */}
-                        <div style={{
-                          fontWeight: '600',
-                          color: colors.foreground,
-                          marginBottom: '0.5rem',
-                          fontSize: '0.95rem',
-                          borderBottom: `2px solid ${severityColor}`,
-                          paddingBottom: '0.5rem'
-                        }}>
-                          {rec.title}
-                        </div>
-
-                        {/* Description */}
-                        <div style={{
-                          fontSize: '0.85rem',
-                          color: colors.mutedForeground,
-                          marginBottom: '0.75rem',
-                          lineHeight: '1.4'
-                        }}>
-                          {rec.description}
-                        </div>
-
-                        {/* Stats */}
-                        {(rec.fraud_rate || rec.case_count || rec.total_amount) && (
-                          <div style={{
-                            display: 'flex',
-                            gap: '1rem',
-                            fontSize: '0.75rem',
-                            color: colors.mutedForeground,
-                            marginBottom: '0.75rem',
-                            padding: '0.5rem',
-                            backgroundColor: colors.muted,
-                            borderRadius: '4px'
-                          }}>
-                            {rec.case_count && <span>{rec.case_count}</span>}
-                            {rec.fraud_rate && <span>{rec.fraud_rate}</span>}
-                            {rec.total_amount && <span>{rec.total_amount}</span>}
-                          </div>
-                        )}
-
-                        {/* Two Column Layout for Actions and Prevention */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                          {/* Immediate Actions */}
-                          {rec.immediate_actions && rec.immediate_actions.length > 0 && (
-                            <div>
+                              {/* Header */}
                               <div style={{
                                 fontWeight: '600',
-                                fontSize: '0.8rem',
-                                marginBottom: '0.4rem',
-                                color: colors.foreground
-                              }}>
-                                Immediate Actions:
-                              </div>
-                              <ul style={{
-                                margin: 0,
-                                paddingLeft: '1.25rem',
-                                fontSize: '0.75rem',
                                 color: colors.foreground,
-                                lineHeight: '1.6'
+                                marginBottom: '0.5rem',
+                                fontSize: '0.95rem',
+                                borderBottom: `2px solid ${severityColor}`,
+                                paddingBottom: '0.5rem'
                               }}>
-                                {rec.immediate_actions.slice(0, 3).map((action, i) => (
-                                  <li key={i}>{action}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
+                                {rec.title}
+                              </div>
 
-                          {/* Prevention Steps */}
-                          {rec.prevention_steps && rec.prevention_steps.length > 0 && (
-                            <div>
+                              {/* Description */}
                               <div style={{
-                                fontWeight: '600',
-                                fontSize: '0.8rem',
-                                marginBottom: '0.4rem',
-                                color: colors.foreground
+                                fontSize: '0.85rem',
+                                color: colors.mutedForeground,
+                                marginBottom: '0.75rem',
+                                lineHeight: '1.4'
                               }}>
-                                Prevention Steps:
+                                {rec.description}
                               </div>
-                              <ul style={{
-                                margin: 0,
-                                paddingLeft: '1.25rem',
-                                fontSize: '0.75rem',
-                                color: colors.foreground,
-                                lineHeight: '1.6'
-                              }}>
-                                {rec.prevention_steps.slice(0, 3).map((step, i) => (
-                                  <li key={i}>{step}</li>
-                                ))}
-                              </ul>
+
+                              {/* Stats */}
+                              {(rec.fraud_rate || rec.case_count || rec.total_amount) && (
+                                <div style={{
+                                  display: 'flex',
+                                  gap: '1rem',
+                                  fontSize: '0.75rem',
+                                  color: colors.mutedForeground,
+                                  marginBottom: '0.75rem',
+                                  padding: '0.5rem',
+                                  backgroundColor: colors.muted,
+                                  borderRadius: '4px'
+                                }}>
+                                  {rec.case_count && <span>{rec.case_count}</span>}
+                                  {rec.fraud_rate && <span>{rec.fraud_rate}</span>}
+                                  {rec.total_amount && <span>{rec.total_amount}</span>}
+                                </div>
+                              )}
+
+                              {/* Two Column Layout for Actions and Prevention */}
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                {/* Immediate Actions */}
+                                {rec.immediate_actions && rec.immediate_actions.length > 0 && (
+                                  <div>
+                                    <div style={{
+                                      fontWeight: '600',
+                                      fontSize: '0.8rem',
+                                      marginBottom: '0.4rem',
+                                      color: colors.foreground
+                                    }}>
+                                      Immediate Actions:
+                                    </div>
+                                    <ul style={{
+                                      margin: 0,
+                                      paddingLeft: '1.25rem',
+                                      fontSize: '0.75rem',
+                                      color: colors.foreground,
+                                      lineHeight: '1.6'
+                                    }}>
+                                      {rec.immediate_actions.slice(0, 3).map((action, i) => (
+                                        <li key={i}>{action}</li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+
+                                {/* Prevention Steps */}
+                                {rec.prevention_steps && rec.prevention_steps.length > 0 && (
+                                  <div>
+                                    <div style={{
+                                      fontWeight: '600',
+                                      fontSize: '0.8rem',
+                                      marginBottom: '0.4rem',
+                                      color: colors.foreground
+                                    }}>
+                                      Prevention Steps:
+                                    </div>
+                                    <ul style={{
+                                      margin: 0,
+                                      paddingLeft: '1.25rem',
+                                      fontSize: '0.75rem',
+                                      color: colors.foreground,
+                                      lineHeight: '1.6'
+                                    }}>
+                                      {rec.prevention_steps.slice(0, 3).map((step, i) => (
+                                        <li key={i}>{step}</li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          )}
-                        </div>
+                          );
+                        })()}
                       </div>
-                    );
-                  })()}
-                </div>
                     )}
                   </div>
                 );
@@ -2814,25 +2814,25 @@ const RealTimeAnalysis = () => {
                     });
                     return uniqueTransactions.slice(0, 5).map((txn, idx) => (
                       <div key={`${txn.merchant || 'unknown'}-${txn.amount}-${idx}`} style={{
-                      backgroundColor: colors.muted,
-                      padding: '0.75rem',
-                      borderRadius: '0.5rem',
-                      border: `1px solid ${colors.border}`,
-                      borderLeft: `3px solid #ef4444`,
-                      marginBottom: '0.5rem'
-                    }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontWeight: '600', color: colors.foreground, fontSize: '0.9rem' }}>
-                          {txn.merchant || 'Unknown'}
-                        </span>
-                        <span style={{ fontWeight: '700', color: '#ef4444', fontSize: '0.95rem' }}>
-                          ${txn.amount.toFixed(2)}
-                        </span>
+                        backgroundColor: colors.muted,
+                        padding: '0.75rem',
+                        borderRadius: '0.5rem',
+                        border: `1px solid ${colors.border}`,
+                        borderLeft: `3px solid #ef4444`,
+                        marginBottom: '0.5rem'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontWeight: '600', color: colors.foreground, fontSize: '0.9rem' }}>
+                            {txn.merchant || 'Unknown'}
+                          </span>
+                          <span style={{ fontWeight: '700', color: '#ef4444', fontSize: '0.95rem' }}>
+                            ${txn.amount.toFixed(2)}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '0.8rem', color: colors.mutedForeground, marginTop: '0.25rem' }}>
+                          {txn.category || 'N/A'} • {(txn.fraud_probability * 100).toFixed(0)}% probability
+                        </div>
                       </div>
-                      <div style={{ fontSize: '0.8rem', color: colors.mutedForeground, marginTop: '0.25rem' }}>
-                        {txn.category || 'N/A'} • {(txn.fraud_probability * 100).toFixed(0)}% probability
-                      </div>
-                    </div>
                     ));
                   })()}
                 </div>
@@ -3129,20 +3129,20 @@ const RealTimeAnalysis = () => {
             )}
 
             {/* Reset Filters Button */}
-              <button
+            <button
               onClick={() => {
                 resetFilters();
                 setFilteredPlots(null);
               }}
-                style={{
+              style={{
                 padding: '8px 16px',
                 borderRadius: '4px',
                 border: `1px solid ${colors.border}`,
                 backgroundColor: colors.secondary || colors.card || colors.background,
-                  color: colors.foreground,
-                  cursor: 'pointer',
+                color: colors.foreground,
+                cursor: 'pointer',
                 fontSize: '14px',
-                  fontWeight: '600',
+                fontWeight: '600',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.5rem',
@@ -3174,100 +3174,100 @@ const RealTimeAnalysis = () => {
 
           {/* Apply Filters Button - REMOVED: Plots now auto-update with filters */}
           {/* Real-time plot updates enabled - filters apply automatically with 500ms debounce */}
-            
+
           {/* Old filter UI - Hidden */}
           {false && (
-              <div style={{
-                backgroundColor: colors.muted,
-                padding: '1.5rem',
-                borderRadius: '0.75rem',
-                border: `1px solid ${colors.border}`,
-                marginBottom: '1rem'
-              }}>
-                <div style={{ marginBottom: '1.5rem' }}>
-                  <h4 style={{ color: colors.foreground, fontSize: '0.95rem', fontWeight: '600', marginBottom: '0.5rem', marginTop: 0 }}>
-                    Filter Plots by Dataset Columns
-                  </h4>
-                  <p style={{ color: colors.mutedForeground, fontSize: '0.85rem', margin: 0 }}>
-                    Available filters are based on your dataset columns: {getDatasetColumns().join(', ')}
-                  </p>
-                </div>
+            <div style={{
+              backgroundColor: colors.muted,
+              padding: '1.5rem',
+              borderRadius: '0.75rem',
+              border: `1px solid ${colors.border}`,
+              marginBottom: '1rem'
+            }}>
+              <div style={{ marginBottom: '1.5rem' }}>
+                <h4 style={{ color: colors.foreground, fontSize: '0.95rem', fontWeight: '600', marginBottom: '0.5rem', marginTop: 0 }}>
+                  Filter Plots by Dataset Columns
+                </h4>
+                <p style={{ color: colors.mutedForeground, fontSize: '0.85rem', margin: 0 }}>
+                  Available filters are based on your dataset columns: {getDatasetColumns().join(', ')}
+                </p>
+              </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-                  {/* Amount Filters - Always available */}
-                  {hasColumn('amount') && (
-                    <>
-                  <div>
-                    <label style={styles.label}>Min Amount ($)</label>
-                    <input
-                      type="number"
-                      value={filters.amountMin}
-                      onChange={(e) => handleFilterChange('amountMin', e.target.value)}
-                      placeholder="0"
-                      style={styles.input}
-                    />
-                  </div>
-                  <div>
-                    <label style={styles.label}>Max Amount ($)</label>
-                    <input
-                      type="number"
-                      value={filters.amountMax}
-                      onChange={(e) => handleFilterChange('amountMax', e.target.value)}
-                      placeholder="∞"
-                      style={styles.input}
-                    />
-                  </div>
-                    </>
-                  )}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                {/* Amount Filters - Always available */}
+                {hasColumn('amount') && (
+                  <>
+                    <div>
+                      <label style={styles.label}>Min Amount ($)</label>
+                      <input
+                        type="number"
+                        value={filters.amountMin}
+                        onChange={(e) => handleFilterChange('amountMin', e.target.value)}
+                        placeholder="0"
+                        style={styles.input}
+                      />
+                    </div>
+                    <div>
+                      <label style={styles.label}>Max Amount ($)</label>
+                      <input
+                        type="number"
+                        value={filters.amountMax}
+                        onChange={(e) => handleFilterChange('amountMax', e.target.value)}
+                        placeholder="∞"
+                        style={styles.input}
+                      />
+                    </div>
+                  </>
+                )}
 
-                  {/* Fraud Probability Filters */}
-                  {hasColumn('fraud_probability') && (
-                    <>
-                  <div>
-                    <label style={styles.label}>Min Fraud Probability</label>
-                    <select
-                      value={filters.fraudProbabilityMin}
-                      onChange={(e) => handleFilterChange('fraudProbabilityMin', e.target.value)}
-                      style={styles.input}
-                    >
-                          <option value="">-- All --</option>
-                      <option value="0">0% (All)</option>
-                      <option value="0.1">10%</option>
-                      <option value="0.2">20%</option>
-                      <option value="0.3">30%</option>
-                      <option value="0.4">40%</option>
-                      <option value="0.5">50%</option>
-                      <option value="0.6">60%</option>
-                      <option value="0.7">70%</option>
-                      <option value="0.8">80%</option>
-                      <option value="0.9">90%</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={styles.label}>Max Fraud Probability</label>
-                    <select
-                      value={filters.fraudProbabilityMax}
-                      onChange={(e) => handleFilterChange('fraudProbabilityMax', e.target.value)}
-                      style={styles.input}
-                    >
-                          <option value="">-- All --</option>
-                      <option value="0.1">10%</option>
-                      <option value="0.2">20%</option>
-                      <option value="0.3">30%</option>
-                      <option value="0.4">40%</option>
-                      <option value="0.5">50%</option>
-                      <option value="0.6">60%</option>
-                      <option value="0.7">70%</option>
-                      <option value="0.8">80%</option>
-                      <option value="0.9">90%</option>
-                      <option value="1">100%</option>
-                    </select>
-                  </div>
-                    </>
-                  )}
+                {/* Fraud Probability Filters */}
+                {hasColumn('fraud_probability') && (
+                  <>
+                    <div>
+                      <label style={styles.label}>Min Fraud Probability</label>
+                      <select
+                        value={filters.fraudProbabilityMin}
+                        onChange={(e) => handleFilterChange('fraudProbabilityMin', e.target.value)}
+                        style={styles.input}
+                      >
+                        <option value="">-- All --</option>
+                        <option value="0">0% (All)</option>
+                        <option value="0.1">10%</option>
+                        <option value="0.2">20%</option>
+                        <option value="0.3">30%</option>
+                        <option value="0.4">40%</option>
+                        <option value="0.5">50%</option>
+                        <option value="0.6">60%</option>
+                        <option value="0.7">70%</option>
+                        <option value="0.8">80%</option>
+                        <option value="0.9">90%</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={styles.label}>Max Fraud Probability</label>
+                      <select
+                        value={filters.fraudProbabilityMax}
+                        onChange={(e) => handleFilterChange('fraudProbabilityMax', e.target.value)}
+                        style={styles.input}
+                      >
+                        <option value="">-- All --</option>
+                        <option value="0.1">10%</option>
+                        <option value="0.2">20%</option>
+                        <option value="0.3">30%</option>
+                        <option value="0.4">40%</option>
+                        <option value="0.5">50%</option>
+                        <option value="0.6">60%</option>
+                        <option value="0.7">70%</option>
+                        <option value="0.8">80%</option>
+                        <option value="0.9">90%</option>
+                        <option value="1">100%</option>
+                      </select>
+                    </div>
+                  </>
+                )}
 
-                  {/* Category Filter - Only if category column exists */}
-                  {hasColumn('category') && getAvailableCategories().length > 0 && (
+                {/* Category Filter - Only if category column exists */}
+                {hasColumn('category') && getAvailableCategories().length > 0 && (
                   <div>
                     <label style={styles.label}>Category</label>
                     <select
@@ -3283,127 +3283,127 @@ const RealTimeAnalysis = () => {
                       ))}
                     </select>
                   </div>
-                  )}
+                )}
 
-                  {/* Merchant Filter - Only if merchant column exists */}
-                  {hasColumn('merchant') && getAvailableMerchants().length > 0 && (
+                {/* Merchant Filter - Only if merchant column exists */}
+                {hasColumn('merchant') && getAvailableMerchants().length > 0 && (
+                  <div>
+                    <label style={styles.label}>Merchant</label>
+                    <select
+                      value={filters.merchant}
+                      onChange={(e) => handleFilterChange('merchant', e.target.value)}
+                      style={styles.input}
+                    >
+                      <option value="">-- All Merchants --</option>
+                      {getAvailableMerchants().map((merchant) => (
+                        <option key={merchant} value={merchant}>
+                          {merchant}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Date Filters - Only if timestamp column exists */}
+                {hasColumn('timestamp') && (
+                  <>
                     <div>
-                      <label style={styles.label}>Merchant</label>
-                      <select
-                        value={filters.merchant}
-                        onChange={(e) => handleFilterChange('merchant', e.target.value)}
+                      <label style={styles.label}>Start Date</label>
+                      <input
+                        type="date"
+                        value={filters.dateStart}
+                        onChange={(e) => handleFilterChange('dateStart', e.target.value)}
                         style={styles.input}
-                      >
-                        <option value="">-- All Merchants --</option>
-                        {getAvailableMerchants().map((merchant) => (
-                          <option key={merchant} value={merchant}>
-                            {merchant}
-                          </option>
-                        ))}
-                      </select>
+                      />
                     </div>
-                  )}
-
-                  {/* Date Filters - Only if timestamp column exists */}
-                  {hasColumn('timestamp') && (
-                    <>
-                  <div>
-                    <label style={styles.label}>Start Date</label>
-                    <input
-                      type="date"
-                      value={filters.dateStart}
-                      onChange={(e) => handleFilterChange('dateStart', e.target.value)}
-                      style={styles.input}
-                    />
-                  </div>
-                  <div>
-                    <label style={styles.label}>End Date</label>
-                    <input
-                      type="date"
-                      value={filters.dateEnd}
-                      onChange={(e) => handleFilterChange('dateEnd', e.target.value)}
-                      style={styles.input}
-                    />
-                  </div>
-                    </>
-                  )}
-                </div>
-                
-                <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: colors.foreground, cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={filters.fraudOnly}
-                      onChange={(e) => {
-                        handleFilterChange('fraudOnly', e.target.checked);
-                        if (e.target.checked) handleFilterChange('legitimateOnly', false);
-                      }}
-                      style={{ cursor: 'pointer' }}
-                    />
-                    Fraud Only
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: colors.foreground, cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={filters.legitimateOnly}
-                      onChange={(e) => {
-                        handleFilterChange('legitimateOnly', e.target.checked);
-                        if (e.target.checked) handleFilterChange('fraudOnly', false);
-                      }}
-                      style={{ cursor: 'pointer' }}
-                    />
-                    Legitimate Only
-                  </label>
-                </div>
-                
-                <div style={{ display: 'flex', gap: '1rem' }}>
-                  <button
-                    onClick={handleRegeneratePlots}
-                    disabled={regeneratingPlots}
-                    style={{
-                      backgroundColor: primary,
-                      color: 'white',
-                      padding: '0.75rem 2rem',
-                      borderRadius: '0.5rem',
-                      border: 'none',
-                      cursor: regeneratingPlots ? 'not-allowed' : 'pointer',
-                      fontSize: '0.95rem',
-                      fontWeight: '600',
-                      opacity: regeneratingPlots ? 0.6 : 1
-                    }}
-                  >
-                    {regeneratingPlots ? '⏳ Regenerating...' : '🔄 Apply Filters to Plots'}
-                  </button>
-                  <button
-                    onClick={() => {
-                      resetFilters();
-                      setFilteredPlots(null);
-                    }}
-                    style={{
-                      backgroundColor: 'transparent',
-                      color: colors.foreground,
-                      border: `2px solid ${colors.border}`,
-                      padding: '0.75rem 2rem',
-                      borderRadius: '0.5rem',
-                      cursor: 'pointer',
-                      fontSize: '0.95rem',
-                      fontWeight: '600',
-                      transition: 'all 0.3s'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.target.style.backgroundColor = colors.muted;
-                      e.target.style.borderColor = primary;
-                    }}
-                    onMouseLeave={(e) => {
-                      e.target.style.backgroundColor = 'transparent';
-                      e.target.style.borderColor = colors.border;
-                    }}
-                  >
-                    Reset Filters
-                  </button>
-                </div>
+                    <div>
+                      <label style={styles.label}>End Date</label>
+                      <input
+                        type="date"
+                        value={filters.dateEnd}
+                        onChange={(e) => handleFilterChange('dateEnd', e.target.value)}
+                        style={styles.input}
+                      />
+                    </div>
+                  </>
+                )}
               </div>
-            )}
+
+              <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: colors.foreground, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={filters.fraudOnly}
+                    onChange={(e) => {
+                      handleFilterChange('fraudOnly', e.target.checked);
+                      if (e.target.checked) handleFilterChange('legitimateOnly', false);
+                    }}
+                    style={{ cursor: 'pointer' }}
+                  />
+                  Fraud Only
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: colors.foreground, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={filters.legitimateOnly}
+                    onChange={(e) => {
+                      handleFilterChange('legitimateOnly', e.target.checked);
+                      if (e.target.checked) handleFilterChange('fraudOnly', false);
+                    }}
+                    style={{ cursor: 'pointer' }}
+                  />
+                  Legitimate Only
+                </label>
+              </div>
+
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <button
+                  onClick={handleRegeneratePlots}
+                  disabled={regeneratingPlots}
+                  style={{
+                    backgroundColor: primary,
+                    color: 'white',
+                    padding: '0.75rem 2rem',
+                    borderRadius: '0.5rem',
+                    border: 'none',
+                    cursor: regeneratingPlots ? 'not-allowed' : 'pointer',
+                    fontSize: '0.95rem',
+                    fontWeight: '600',
+                    opacity: regeneratingPlots ? 0.6 : 1
+                  }}
+                >
+                  {regeneratingPlots ? '⏳ Regenerating...' : '🔄 Apply Filters to Plots'}
+                </button>
+                <button
+                  onClick={() => {
+                    resetFilters();
+                    setFilteredPlots(null);
+                  }}
+                  style={{
+                    backgroundColor: 'transparent',
+                    color: colors.foreground,
+                    border: `2px solid ${colors.border}`,
+                    padding: '0.75rem 2rem',
+                    borderRadius: '0.5rem',
+                    cursor: 'pointer',
+                    fontSize: '0.95rem',
+                    fontWeight: '600',
+                    transition: 'all 0.3s'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.backgroundColor = colors.muted;
+                    e.target.style.borderColor = primary;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.backgroundColor = 'transparent';
+                    e.target.style.borderColor = colors.border;
+                  }}
+                >
+                  Reset Filters
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Plots */}
           {(() => {
@@ -3411,112 +3411,112 @@ const RealTimeAnalysis = () => {
             console.log('Plots to display:', plotsToDisplay);
             return plotsToDisplay?.length > 0;
           })() && (
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h3 style={{ color: colors.foreground, fontSize: '1.1rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  Visual Analytics
-                  {regeneratingPlots && (
-                    <span style={{
-                      fontSize: '0.85rem',
-                      color: '#f59e0b',
-                      fontWeight: '600',
-                      backgroundColor: '#fef3c7',
-                      padding: '0.25rem 0.75rem',
-                      borderRadius: '0.5rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.5rem'
-                    }}>
-                      <span className="spinner" style={{
-                        display: 'inline-block',
-                        width: '12px',
-                        height: '12px',
-                        border: '2px solid #f59e0b',
-                        borderTopColor: 'transparent',
-                        borderRadius: '50%',
-                        animation: 'spin 0.8s linear infinite'
-                      }} />
-                      Updating plots...
-                    </span>
-                  )}
-                  {!regeneratingPlots && filteredPlots && (
-                    <span style={{
-                      fontSize: '0.85rem',
-                      color: primary,
-                      marginLeft: '0.5rem',
-                      fontWeight: '600',
-                      backgroundColor: `${primary}20`,
-                      padding: '0.25rem 0.75rem',
-                      borderRadius: '0.5rem'
-                    }}>
-                      🔍 Filtered ({filteredPlots.length} plots)
-                    </span>
-                  )}
-                  {!regeneratingPlots && !filteredPlots && (
-                    <span style={{ fontSize: '0.85rem', color: colors.mutedForeground, marginLeft: '0.5rem' }}>
-                      (All Data)
-                    </span>
-                  )}
-                </h3>
-                {filteredPlots && (
-                  <button
-                    onClick={() => setFilteredPlots(null)}
-                    style={{
-                      backgroundColor: 'transparent',
-                      color: colors.foreground,
-                      border: `1px solid ${colors.border}`,
-                      padding: '0.5rem 1rem',
-                      borderRadius: '0.5rem',
-                      cursor: 'pointer',
-                      fontSize: '0.85rem',
-                      fontWeight: '600'
-                    }}
-                  >
-                    Show All Plots
-                  </button>
-                )}
-              </div>
-              <div style={styles.plotsGrid}>
-                {(filteredPlots || analysisResult.insights.plots).map((plot, idx) => {
-                  const isHovered = hoveredPlotIndex === idx;
-                  return (
-                    <div
-                      key={idx}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <h3 style={{ color: colors.foreground, fontSize: '1.1rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    Visual Analytics
+                    {regeneratingPlots && (
+                      <span style={{
+                        fontSize: '0.85rem',
+                        color: '#f59e0b',
+                        fontWeight: '600',
+                        backgroundColor: '#fef3c7',
+                        padding: '0.25rem 0.75rem',
+                        borderRadius: '0.5rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem'
+                      }}>
+                        <span className="spinner" style={{
+                          display: 'inline-block',
+                          width: '12px',
+                          height: '12px',
+                          border: '2px solid #f59e0b',
+                          borderTopColor: 'transparent',
+                          borderRadius: '50%',
+                          animation: 'spin 0.8s linear infinite'
+                        }} />
+                        Updating plots...
+                      </span>
+                    )}
+                    {!regeneratingPlots && filteredPlots && (
+                      <span style={{
+                        fontSize: '0.85rem',
+                        color: primary,
+                        marginLeft: '0.5rem',
+                        fontWeight: '600',
+                        backgroundColor: `${primary}20`,
+                        padding: '0.25rem 0.75rem',
+                        borderRadius: '0.5rem'
+                      }}>
+                        🔍 Filtered ({filteredPlots.length} plots)
+                      </span>
+                    )}
+                    {!regeneratingPlots && !filteredPlots && (
+                      <span style={{ fontSize: '0.85rem', color: colors.mutedForeground, marginLeft: '0.5rem' }}>
+                        (All Data)
+                      </span>
+                    )}
+                  </h3>
+                  {filteredPlots && (
+                    <button
+                      onClick={() => setFilteredPlots(null)}
                       style={{
-                        ...styles.plotCard,
-                        transform: isHovered ? 'translateY(-8px)' : 'translateY(0)',
-                        boxShadow: isHovered
-                          ? '0 30px 55px rgba(5, 7, 15, 0.6)'
-                          : styles.plotCard.boxShadow,
-                        cursor: 'zoom-in',
+                        backgroundColor: 'transparent',
+                        color: colors.foreground,
+                        border: `1px solid ${colors.border}`,
+                        padding: '0.5rem 1rem',
+                        borderRadius: '0.5rem',
+                        cursor: 'pointer',
+                        fontSize: '0.85rem',
+                        fontWeight: '600'
                       }}
-                      onMouseEnter={() => setHoveredPlotIndex(idx)}
-                      onMouseLeave={() => setHoveredPlotIndex(null)}
-                      onClick={() => setZoomedPlot(plot)}
                     >
-                      <div style={styles.plotTitle}>{plot.title}</div>
-                      <div style={styles.plotCanvas}>
-                        {renderPlotVisualization(plot)}
-                      </div>
-                      {plot.description && (
-                        <div style={styles.plotDescription}>{plot.description}</div>
-                      )}
-                      {plot.details?.length > 0 && (
-                        <div style={styles.plotDetailsRow}>
-                          {plot.details.slice(0, 3).map((detail, detailIdx) => (
-                            <div key={detailIdx} style={styles.plotDetailChip}>
-                              <span style={{ opacity: 0.65 }}>{detail.label}</span>
-                              <span style={{ fontWeight: 600 }}>{detail.value}</span>
-                            </div>
-                          ))}
+                      Show All Plots
+                    </button>
+                  )}
+                </div>
+                <div style={styles.plotsGrid}>
+                  {(filteredPlots || analysisResult.insights.plots).map((plot, idx) => {
+                    const isHovered = hoveredPlotIndex === idx;
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          ...styles.plotCard,
+                          transform: isHovered ? 'translateY(-8px)' : 'translateY(0)',
+                          boxShadow: isHovered
+                            ? '0 30px 55px rgba(5, 7, 15, 0.6)'
+                            : styles.plotCard.boxShadow,
+                          cursor: 'zoom-in',
+                        }}
+                        onMouseEnter={() => setHoveredPlotIndex(idx)}
+                        onMouseLeave={() => setHoveredPlotIndex(null)}
+                        onClick={() => setZoomedPlot(plot)}
+                      >
+                        <div style={styles.plotTitle}>{plot.title}</div>
+                        <div style={styles.plotCanvas}>
+                          {renderPlotVisualization(plot)}
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
+                        {plot.description && (
+                          <div style={styles.plotDescription}>{plot.description}</div>
+                        )}
+                        {plot.details?.length > 0 && (
+                          <div style={styles.plotDetailsRow}>
+                            {plot.details.slice(0, 3).map((detail, detailIdx) => (
+                              <div key={detailIdx} style={styles.plotDetailChip}>
+                                <span style={{ opacity: 0.65 }}>{detail.label}</span>
+                                <span style={{ fontWeight: 600 }}>{detail.value}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          )}
+            )}
         </div>
       )}
 
@@ -3569,13 +3569,13 @@ const RealTimeAnalysis = () => {
         const isLow = (rec.title || '').includes('LOW');
 
         const severityColor = isCritical ? '#ef4444' :
-                            isHigh ? '#f97316' :
-                            isMedium ? '#fb923c' :
-                            isLow ? '#60a5fa' :
-                            primary;
+          isHigh ? '#f97316' :
+            isMedium ? '#fb923c' :
+              isLow ? '#60a5fa' :
+                primary;
 
         return (
-          <div 
+          <div
             style={{
               position: 'fixed',
               top: 0,
@@ -3592,7 +3592,7 @@ const RealTimeAnalysis = () => {
             }}
             onClick={() => setEnlargedFraudPattern(null)}
           >
-            <div 
+            <div
               style={{
                 backgroundColor: colors.card || colors.background,
                 border: `3px solid ${severityColor}`,

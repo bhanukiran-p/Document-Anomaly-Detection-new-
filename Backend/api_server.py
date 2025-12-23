@@ -109,6 +109,22 @@ except Exception as e:
     logger.warning(f"Failed to initialize Supabase: {e}")
     supabase = None
 
+# Register Mock Bank Webhook Blueprint
+try:
+    from webhooks import webhook_bp
+    app.register_blueprint(webhook_bp)
+    logger.info("✅ Mock Bank Webhook registered at /webhook/bank/*")
+except Exception as e:
+    logger.warning(f"Failed to register mock bank webhook: {e}")
+
+# Register API Docs/Tester Blueprint
+try:
+    from api_docs import docs_bp
+    app.register_blueprint(docs_bp)
+    logger.info("✅ API Docs/Tester registered at /api/docs/test")
+except Exception as e:
+    logger.warning(f"Failed to register API docs: {e}")
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
