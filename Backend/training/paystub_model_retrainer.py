@@ -253,7 +253,7 @@ class PaystubModelRetrainer(DocumentModelRetrainer):
                     'tax_to_gross_ratio': total_tax / gross,
                     'net_to_gross_ratio': net / gross,
                     'deduction_percentage': total_tax / gross,
-                    'risk_score': np.random.uniform(70, 95)
+                    'risk_score': np.random.uniform(85, 99)
                 }
             
             elif fraud_type == 'inflated_income':
@@ -281,7 +281,7 @@ class PaystubModelRetrainer(DocumentModelRetrainer):
                     'tax_to_gross_ratio': min(total_tax / gross, 1.0),
                     'net_to_gross_ratio': min(net / gross, 1.0),
                     'deduction_percentage': min(total_tax / gross, 1.0),
-                    'risk_score': np.random.uniform(60, 85)
+                    'risk_score': np.random.uniform(75, 95)
                 }
             
             else:  # missing_fields
@@ -308,7 +308,7 @@ class PaystubModelRetrainer(DocumentModelRetrainer):
                     'tax_to_gross_ratio': 0.0,
                     'net_to_gross_ratio': net / gross,
                     'deduction_percentage': (gross - net) / gross,
-                    'risk_score': np.random.uniform(55, 80)
+                    'risk_score': np.random.uniform(70, 90)
                 }
             
             synthetic_data.append(features)
