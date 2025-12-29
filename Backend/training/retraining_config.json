@@ -1,6 +1,6 @@
 {
   "global_settings": {
-    "scheduled_retraining_enabled": true,
+    "scheduled_retraining_enabled": false,
     "schedule_day_of_week": "sun",
     "schedule_hour": 2,
     "schedule_minute": 0,
