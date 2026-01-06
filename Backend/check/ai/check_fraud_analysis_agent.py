@@ -203,15 +203,46 @@ class CheckFraudAnalysisAgent:
                     customer_info['is_duplicate'] = True
                     customer_info['duplicate_check_number'] = check_number
 
-            # Format the analysis prompt
+            # Apply LLM guardrails before formatting prompt
+            from real_time.guardrails import InputGuard
+            
+            # Sanitize all inputs before sending to LLM
+            sanitized_extracted_data = InputGuard.sanitize_dict(extracted_data)
+            sanitized_customer_info = InputGuard.sanitize_dict(customer_info)
+            
+            # Validate prompt length
+            import json
+            prompt_preview = json.dumps({
+                'extracted_data': sanitized_extracted_data,
+                'ml_analysis': ml_analysis,
+                'customer_info': sanitized_customer_info
+            })
+            
+            if not InputGuard.validate_length(prompt_preview, max_chars=15000):
+                logger.warning("Prompt data too long, truncating customer info")
+                # Truncate long strings in customer_info
+                sanitized_customer_info = {
+                    k: str(v)[:200] if isinstance(v, str) and len(str(v)) > 200 else v
+                    for k, v in sanitized_customer_info.items()
+                }
+            
+            logger.info("Applied LLM guardrails: sanitized PII and validated input length")
+            
+            # Format the analysis prompt with sanitized data
             analysis_prompt = format_analysis_template(
-                check_data=extracted_data,
+                check_data=sanitized_extracted_data,
                 ml_analysis=ml_analysis,
-                customer_info=customer_info
+                customer_info=sanitized_customer_info
             )
 
-            # Add recommendation guidelines
+            # Sanitize the full prompt before sending
             full_prompt = f"{analysis_prompt}\n\n{RECOMMENDATION_GUIDELINES}"
+            full_prompt = InputGuard.sanitize(full_prompt)
+            
+            # Validate final prompt length
+            if not InputGuard.validate_length(full_prompt, max_chars=15000):
+                logger.error("Final prompt exceeds length limit, truncating")
+                full_prompt = full_prompt[:15000]
 
             # Create LangChain prompt - full_prompt is already formatted, so pass it directly
             # Don't use .from_template() since full_prompt already has { } in JSON schema

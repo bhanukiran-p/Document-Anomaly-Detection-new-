@@ -116,7 +116,7 @@ class CheckExtractor:
         validation_issues = self._collect_validation_issues(normalized_data)
         logger.info(f"Validation issues found: {len(validation_issues)}")
 
-        # Stage 4: ML Fraud Detection
+        # Stage 4: ML Fraud Detection (with caching)
         ml_analysis = self._run_ml_fraud_detection(normalized_data, raw_text)
         logger.info(f"ML fraud analysis complete: {ml_analysis.get('risk_level')}")
 
@@ -160,9 +160,30 @@ class CheckExtractor:
         )
 
     def _extract_with_mindee(self, file_path: str) -> Tuple[Dict, str]:
-        """Extract check data using Mindee API only (no fallback)"""
+        """Extract check data using Mindee API only (no fallback, with caching)"""
         if not mindee_client:
             raise RuntimeError("Mindee client not initialized. Check API key and installation.")
+
+        # Check cache first
+        from utils.cache import get_cache_manager
+        from config import Config
+        import hashlib
+        
+        cache_key = None
+        if Config.CACHE_ENABLED:
+            try:
+                cache = get_cache_manager()
+                # Generate cache key from file hash
+                with open(file_path, 'rb') as f:
+                    file_hash = hashlib.md5(f.read()).hexdigest()
+                cache_key = f"ocr:check:{file_hash}"
+                
+                cached_result = cache.get(cache_key)
+                if cached_result:
+                    logger.info(f"OCR cache HIT for {file_path}")
+                    return cached_result
+            except Exception as e:
+                logger.warning(f"Cache check failed: {e}, proceeding with OCR")
 
         try:
             # Use ClientV2 API with InferenceParameters (as shown in Mindee API docs)
@@ -292,7 +313,19 @@ class CheckExtractor:
 
             logger.info(f"Successfully extracted {len(extracted)} fields from Mindee: {list(extracted.keys())}")
             logger.info(f"Extracted data summary: {extracted}")
-            return extracted, raw_text
+            
+            result = (extracted, raw_text)
+            
+            # Cache the result
+            if Config.CACHE_ENABLED and cache_key:
+                try:
+                    cache = get_cache_manager()
+                    cache.set(cache_key, result, ttl=7200)  # Cache OCR for 2 hours
+                    logger.info(f"OCR result cached for {file_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to cache OCR result: {e}")
+            
+            return result
 
         except Exception as e:
             logger.error(f"Mindee extraction failed: {e}", exc_info=True)
@@ -387,9 +420,35 @@ class CheckExtractor:
         return issues
 
     def _run_ml_fraud_detection(self, data: Dict, raw_text: str) -> Dict:
-        """Run ML fraud detection"""
+        """Run ML fraud detection (with caching)"""
+        from utils.cache import get_cache_manager
+        from config import Config
+        import hashlib
+        import json
+        
+        # Generate cache key from normalized data
+        if Config.CACHE_ENABLED:
+            cache = get_cache_manager()
+            cache_key_data = {
+                'data': {k: v for k, v in data.items() if k not in ['created_at', 'updated_at']},
+                'raw_text_hash': hashlib.md5(raw_text.encode()).hexdigest()[:16]
+            }
+            cache_key_str = json.dumps(cache_key_data, sort_keys=True)
+            cache_key = f"ml:check:{hashlib.md5(cache_key_str.encode()).hexdigest()}"
+            
+            cached_result = cache.get(cache_key)
+            if cached_result:
+                logger.info(f"ML cache HIT for check prediction")
+                return cached_result
+        
         try:
             ml_analysis = self.ml_detector.predict_fraud(data, raw_text)
+            
+            # Cache the result
+            if Config.CACHE_ENABLED:
+                cache.set(cache_key, ml_analysis, ttl=3600)  # Cache ML for 1 hour
+                logger.info(f"ML prediction cached")
+            
             return ml_analysis
         except Exception as e:
             logger.error(f"ML fraud detection failed: {e}", exc_info=True)
@@ -432,12 +491,31 @@ class CheckExtractor:
             return False
 
     def _run_ai_analysis(self, data: Dict, ml_analysis: Dict, customer_info: Dict) -> Optional[Dict]:
-        """Run AI fraud analysis"""
+        """Run AI fraud analysis (with guardrails)"""
         if not self.ai_agent:
             logger.info("AI agent not available - skipping AI analysis")
             return None
 
         try:
+            # Apply LLM guardrails before analysis
+            from real_time.guardrails import InputGuard
+            
+            # Sanitize extracted data before sending to LLM
+            sanitized_data = InputGuard.sanitize_dict(data)
+            
+            # Validate input length
+            import json
+            prompt_data = json.dumps(sanitized_data)
+            if not InputGuard.validate_length(prompt_data, max_chars=15000):
+                logger.warning("Input data too long for LLM, truncating")
+                # Truncate if needed
+                sanitized_data = {k: str(v)[:500] if isinstance(v, str) else v 
+                                for k, v in sanitized_data.items()}
+            
+            logger.info("Applied LLM guardrails: sanitized PII and validated input length")
+            
+            # Use sanitized data for analysis
+            data = sanitized_data
             payer_name = data.get('payer_name')
             ai_analysis = self.ai_agent.analyze_fraud(
                 extracted_data=data,
