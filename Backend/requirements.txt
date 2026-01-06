@@ -46,6 +46,9 @@ PyMuPDF==1.23.26  # PDF processing
 # Caching
 redis==5.0.1  # Distributed caching for OCR, ML, and API responses
 
+# Content Moderation & Guardrails
+better-profanity==0.7.0  # Profanity filtering and content moderation
+
 # Development dependencies (optional)
 pytest==8.1.1
 black==24.3.0
