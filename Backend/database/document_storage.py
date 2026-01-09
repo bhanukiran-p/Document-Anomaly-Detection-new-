@@ -10,6 +10,7 @@ import json
 from datetime import datetime
 from typing import Dict, Optional, Any
 from database.supabase_client import get_supabase
+from database.dynamic_schema_manager import get_schema_manager
 
 logger = logging.getLogger(__name__)
 
@@ -447,6 +448,57 @@ class DocumentStorage:
 
         except Exception as e:
             logger.warning(f"Error updating document status: {e}")
+    
+    def _add_unmapped_fields(self, prepared_data: Dict, extracted_data: Dict, document_type: str) -> Dict:
+        """
+        Add unmapped fields from extracted_data to prepared_data.
+        Only includes fields that don't already exist in prepared_data and aren't excluded.
+        
+        Args:
+            prepared_data: The prepared data dictionary ready for insertion
+            extracted_data: The raw extracted data dictionary
+            document_type: Type of document (for field mapping rules)
+            
+        Returns:
+            Updated prepared_data with unmapped fields added
+        """
+        from database.dynamic_schema_manager import get_schema_manager
+        
+        schema_manager = get_schema_manager()
+        flat_extracted = schema_manager._flatten_dict(extracted_data)
+        
+        # Get field mappings for this document type
+        mappings = schema_manager.FIELD_MAPPINGS.get(document_type, {})
+        
+        for field_name, value in flat_extracted.items():
+            # Normalize field name
+            normalized_name = schema_manager._normalize_field_name(field_name)
+            
+            # Skip if already in prepared_data
+            if normalized_name in prepared_data:
+                continue
+            
+            # Skip if excluded
+            if schema_manager._should_exclude_field(field_name, document_type):
+                continue
+            
+            # Skip if maps to existing field
+            if field_name.lower() in mappings:
+                continue
+            
+            # Add field with appropriate conversion
+            if isinstance(value, (list, dict)):
+                prepared_data[normalized_name] = json.dumps(value) if value else None
+            elif isinstance(value, (int, float)):
+                prepared_data[normalized_name] = value
+            elif isinstance(value, bool):
+                prepared_data[normalized_name] = value
+            elif isinstance(value, str):
+                prepared_data[normalized_name] = self._safe_string(value)
+            else:
+                prepared_data[normalized_name] = str(value) if value else None
+        
+        return prepared_data
 
     # ==================== MONEY ORDERS ====================
 
@@ -457,9 +509,13 @@ class DocumentStorage:
             extracted = analysis_data.get('extracted_data', {})
             ml_analysis = analysis_data.get('ml_analysis', {})
             ai_analysis = analysis_data.get('ai_analysis', {})
-
+            
             # Store document record
             document_id = self._store_document(user_id, 'money_order', file_name)
+            
+            # Ensure all extracted fields have corresponding columns
+            schema_manager = get_schema_manager()
+            schema_manager.ensure_columns_exist('money_order', extracted)
 
             # Extract institution
             institution_data = {
@@ -513,6 +569,9 @@ class DocumentStorage:
                 'anomaly_count': len(analysis_data.get('anomalies', [])),
                 'top_anomalies': json.dumps(analysis_data.get('anomalies', [])[:5])
             }
+            
+            # Add any unmapped fields from extracted data
+            money_order_data = self._add_unmapped_fields(money_order_data, extracted, 'money_order')
 
             # Insert money order record
             logger.info(f"Attempting to insert money order with data: {money_order_data}")
@@ -542,9 +601,13 @@ class DocumentStorage:
             extracted = analysis_data.get('extracted_data', {})
             ml_analysis = analysis_data.get('ml_analysis', {})
             ai_analysis = analysis_data.get('ai_analysis', {})
-
+            
             # Store document record
             document_id = self._store_document(user_id, 'bank_statement', file_name)
+            
+            # Ensure all extracted fields have corresponding columns
+            schema_manager = get_schema_manager()
+            schema_manager.ensure_columns_exist('bank_statement', extracted)
 
             # Get or create customer first (required for customer_id)
             # Try multiple sources for account holder name
@@ -666,6 +729,9 @@ class DocumentStorage:
                 'timestamp': datetime.utcnow().isoformat(),
                 'created_at': datetime.utcnow().isoformat()  # Keep for backward compatibility
             }
+            
+            # Add any unmapped fields from extracted data
+            statement_data = self._add_unmapped_fields(statement_data, extracted, 'bank_statement')
 
             # Insert bank statement record
             # Note: If customer_id is None, we'll try to insert without it (table may allow NULL)
@@ -714,9 +780,13 @@ class DocumentStorage:
             extracted = analysis_data.get('extracted_data', {})
             ml_analysis = analysis_data.get('ml_analysis', {})
             ai_analysis = analysis_data.get('ai_analysis', {})
-
+            
             # Store document record
             document_id = self._store_document(user_id, 'paystub', file_name)
+            
+            # Ensure all extracted fields have corresponding columns
+            schema_manager = get_schema_manager()
+            schema_manager.ensure_columns_exist('paystub', extracted)
 
             # Extract employer
             employer_data = {
@@ -798,6 +868,9 @@ class DocumentStorage:
                 'fraud_types': self._safe_string(primary_fraud_type_label),
                 'fraud_explanations': json.dumps(fraud_explanations) if fraud_explanations else '[]'
             }
+            
+            # Add any unmapped fields from extracted data
+            paystub_data = self._add_unmapped_fields(paystub_data, extracted, 'paystub')
 
             # Insert paystub record
             try:
@@ -828,9 +901,13 @@ class DocumentStorage:
             extracted = analysis_data.get('extracted_data', {})
             ml_analysis = analysis_data.get('ml_analysis', {})
             ai_analysis = analysis_data.get('ai_analysis', {})
-
+            
             # Store document record
             document_id = self._store_document(user_id, 'check', file_name)
+            
+            # Ensure all extracted fields have corresponding columns
+            schema_manager = get_schema_manager()
+            schema_manager.ensure_columns_exist('check', extracted)
 
             # Normalize bank_name to match approved bank list
             bank_name_raw = self._safe_string(extracted.get('bank_name'))
@@ -877,6 +954,9 @@ class DocumentStorage:
                 'top_anomalies': json.dumps(analysis_data.get('anomalies', [])[:5]),
                 'timestamp': datetime.utcnow().isoformat()
             }
+            
+            # Add any unmapped fields from extracted data
+            check_data = self._add_unmapped_fields(check_data, extracted, 'check')
 
             # Insert check record
             self.supabase.table('checks').insert([check_data]).execute()
