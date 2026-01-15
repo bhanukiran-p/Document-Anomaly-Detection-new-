@@ -342,7 +342,6 @@ const HomePage = () => {
             Analyze Bank Statements
           </button>
         </div>
-
       </div>
 
       <div style={insightsSection}>
