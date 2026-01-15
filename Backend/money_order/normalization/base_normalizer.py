@@ -112,9 +112,11 @@ class BaseNormalizer(ABC):
 
         # Extract currency (default to USD)
         currency = 'USD'
+        # Ensure amount_str is a string for string operations
+        amount_str_upper = str(amount_str).upper() if amount_str else ''
         currency_patterns = ['USD', 'US$', 'EUR', 'GBP', 'CAD']
         for curr in currency_patterns:
-            if curr in amount_str.upper():
+            if curr in amount_str_upper:
                 currency = curr.replace('US$', 'USD')
                 break
 
@@ -123,20 +125,34 @@ class BaseNormalizer(ABC):
             'currency': currency
         }
 
-    def _normalize_date(self, date_str: str) -> str:
+    def _normalize_date(self, date_str) -> str:
         """
         Normalize date to MM-DD-YYYY format
 
         Args:
-            date_str: Date string from OCR (various formats)
+            date_str: Date string from OCR (various formats) or date object/float
 
         Returns:
             Date string in MM-DD-YYYY format or None if parsing fails
         """
-        if not date_str:
+        if not date_str and date_str != 0:
             return None
 
-        date_str = date_str.strip()
+        # Convert to string if it's a number or date object (Mindee may return different types)
+        if isinstance(date_str, (int, float)):
+            # If it's a numeric value, it might be a timestamp - try to convert
+            try:
+                # datetime is already imported at module level
+                date_obj = datetime.fromtimestamp(date_str)
+                return date_obj.strftime('%m-%d-%Y')
+            except (ValueError, OSError, OverflowError):
+                # If conversion fails, treat as string
+                date_str = str(date_str).strip()
+        elif not isinstance(date_str, str):
+            date_str = str(date_str).strip()
+        else:
+            # Remove whitespace
+            date_str = date_str.strip()
 
         # Common date formats to try
         date_formats = [

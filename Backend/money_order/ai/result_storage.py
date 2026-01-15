@@ -190,11 +190,16 @@ class ResultStorage:
             # Fallback to extracted data
             if amount is None:
                 extracted_data = result.get('extracted_data', {})
-                amount_str = extracted_data.get('amount', '').replace('$', '').replace(',', '')
-                try:
-                    amount = float(amount_str) if amount_str else 0
-                except:
-                    amount = 0
+                amount_value = extracted_data.get('amount', '')
+                # Handle both string and float values from Mindee
+                if isinstance(amount_value, (int, float)):
+                    amount = float(amount_value)
+                else:
+                    amount_str = str(amount_value).replace('$', '').replace(',', '')
+                    try:
+                        amount = float(amount_str) if amount_str else 0
+                    except:
+                        amount = 0
 
             # Check if in range
             if min_amount <= amount <= max_amount:
