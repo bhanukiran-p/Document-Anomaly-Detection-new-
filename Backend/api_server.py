@@ -759,41 +759,38 @@ def analyze_bank_statement():
                     logger.error(f"PDF conversion failed: {e}")
                     raise
 
-            # Get raw text for document type detection
-            if vision_client is None:
-                raise RuntimeError("Vision API client not initialized. Check credentials.")
-
-            with open(filepath, 'rb') as image_file:
-                content = image_file.read()
-            image = vision.Image(content=content)
-            response = vision_client.text_detection(image=image)
-            raw_text = response.text_annotations[0].description if response.text_annotations else ""
-
-            # Validate document type
-            detected_type = detect_document_type(raw_text)
-            if detected_type != 'bank_statement' and detected_type != 'unknown':
-                # Clean up
-                if os.path.exists(filepath):
-                    os.remove(filepath)
-                return jsonify({
-                    'success': False,
-                    'error': f'Wrong document type detected. This appears to be a {detected_type}, not a bank statement. Please upload a bank statement document.',
-                    'message': 'Document type mismatch'
-                }), 400
-
-            # Use new bank statement extractor module
+            # Use bank statement extractor with Mindee (handles ML/AI analysis)
             try:
                 from bank_statement.bank_statement_extractor import BankStatementExtractor
                 extractor = BankStatementExtractor()
                 result = extractor.extract_and_analyze(filepath)
-                logger.info("Bank statement extracted and analyzed successfully")
+                logger.info("Bank statement extracted and analyzed successfully using Mindee")
+                
+                # Get raw text for document type detection
+                raw_text = result.get('raw_text', '')
+                
+                # Validate document type only if we have text
+                if raw_text:
+                    detected_type = detect_document_type(raw_text)
+                    if detected_type != 'bank_statement' and detected_type != 'unknown':
+                        # Clean up
+                        if os.path.exists(filepath):
+                            os.remove(filepath)
+                        return jsonify({
+                            'success': False,
+                            'error': f'Wrong document type detected. This appears to be a {detected_type}, not a bank statement. Please upload a bank statement document.',
+                            'message': 'Document type mismatch'
+                        }), 400
             except ImportError as e:
-                logger.warning(f"Bank statement extractor module not found: {e}. Returning basic analysis.")
-                result = {
-                    'raw_text': raw_text[:500],
-                    'status': 'partial',
-                    'message': 'Bank statement extractor not available. Using vision API text extraction only.'
-                }
+                logger.error(f"Bank statement extractor module not found: {e}")
+                # Clean up temp file
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+                return jsonify({
+                    'success': False,
+                    'error': f'Bank statement extractor not available: {str(e)}',
+                    'message': 'Failed to analyze bank statement'
+                }), 500
             except Exception as e:
                 logger.error(f"Bank statement extraction failed: {e}", exc_info=True)
                 # Clean up temp file
