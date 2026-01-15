@@ -1644,6 +1644,127 @@ def analyze_real_time_transactions():
     return handle_analyze_real_time_transactions(UPLOAD_FOLDER)
 
 
+@app.route('/api/real-time/analyze-bank', methods=['POST'])
+def analyze_bank_transactions():
+    """
+    Analyze bank transactions from mock webhook API
+    Supports date filtering, pagination, and caching
+    """
+    import time
+    from real_time.bank_api import BankAPIClient
+    from real_time.fraud_detector import detect_fraud_in_transactions
+    from real_time.insights_generator import generate_insights
+    from real_time import get_agent_service
+    
+    try:
+        start_time = time.time()
+        
+        # Get request parameters
+        data = request.get_json() or {}
+        date_from = data.get('date_from')
+        date_to = data.get('date_to')
+        limit = data.get('limit', 1000)  # Default max 1000 transactions
+        page = data.get('page', 1)  # Pagination support
+        per_page = data.get('per_page', 50)  # Results per page
+        
+        logger.info(f"Bank analysis request: date_from={date_from}, date_to={date_to}, limit={limit}, page={page}")
+        
+        # Initialize bank client
+        bank_client = BankAPIClient(base_url="http://localhost:5001")
+        
+        # Fetch enriched transactions (with caching!)
+        enriched_df = bank_client.get_enriched_transactions(
+            date_from=date_from,
+            date_to=date_to,
+            limit=limit
+        )
+        
+        if enriched_df.empty:
+            return jsonify({
+                'success': False,
+                'error': 'No transactions found for the specified criteria'
+            }), 404
+        
+        # Convert to list of dicts for fraud detector
+        transactions_list = enriched_df.to_dict('records')
+        
+        # Detect fraud using existing ML model
+        fraud_results = detect_fraud_in_transactions(transactions_list, auto_train=True)
+        
+        # Generate insights
+        insights = generate_insights(fraud_results)
+        
+        # Generate AI analysis - combine fraud_results and insights into analysis_result
+        analysis_result = {
+            **fraud_results,
+            'insights': insights
+        }
+        ai_service = get_agent_service()
+        ai_analysis = ai_service.generate_comprehensive_analysis(analysis_result)
+        
+        # Calculate summary statistics
+        total_transactions = len(transactions_list)
+        fraud_transactions = fraud_results.get('fraud_transactions', [])
+        fraud_count = len(fraud_transactions)
+        fraud_percentage = (fraud_count / total_transactions * 100) if total_transactions > 0 else 0
+        
+        total_amount = sum(t.get('amount', 0) for t in transactions_list)
+        fraud_amount = sum(t.get('amount', 0) for t in fraud_transactions)
+        
+        # Pag inate results
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        
+        paginated_fraud = fraud_transactions[start_idx:end_idx]
+        paginated_all = transactions_list[start_idx:end_idx]
+        
+        total_pages = (total_transactions + per_page - 1) // per_page
+        
+        elapsed_time = time.time() - start_time
+        
+        # Build response
+        response = {
+            'success': True,
+            'summary': {
+                'total_transactions': total_transactions,
+                'fraud_detected': fraud_count,
+                'fraud_percentage': round(fraud_percentage, 2),
+                'total_amount': round(total_amount, 2),
+                'fraud_amount': round(fraud_amount, 2),
+                'analysis_time_seconds': round(elapsed_time, 2),
+                'date_from': date_from,
+                'date_to': date_to,
+                'cache_stats': bank_client.get_cache_stats()
+            },
+            'results': {
+                'page': page,
+                'per_page': per_page,
+                'total_pages': total_pages,
+                'fraud_transactions': paginated_fraud,
+                'all_transactions': paginated_all
+            },
+            'insights': insights,
+            'ai_analysis': ai_analysis,
+            'fraud_by_type': fraud_results.get('fraud_by_type', {}),
+            'metrics': {
+                'total_fraud_count': fraud_count,
+                'total_legitimate_count': total_transactions - fraud_count
+            }
+        }
+        
+        logger.info(f"Bank analysis complete: {fraud_count}/{total_transactions} fraud detected in {elapsed_time:.2f}s")
+        
+        return jsonify(response)
+        
+    except Exception as e:
+        logger.error(f"Bank analysis failed: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to analyze bank transactions'
+        }), 500
+
+
 @app.route('/api/paystubs/insights', methods=['GET'])
 def get_paystubs_insights():
     """Fetch paystub insights data from v_paystub_insights_clean view"""
