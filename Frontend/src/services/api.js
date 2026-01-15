@@ -85,6 +85,7 @@ export const analyzeBankStatement = async (file) => {
   }
 };
 
+
 // Fraud Detection - PDF Validation API
 export const validatePDFForFraud = async (file) => {
   const formData = new FormData();

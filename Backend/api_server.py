@@ -115,35 +115,65 @@ def detect_document_type(text):
     if 'money order' in text_lower or 'western union' in text_lower or 'moneygram' in text_lower:
         return 'money_order'
 
+    # Check for paystub strong indicators (check BEFORE bank statement and check)
+    # Paystubs have very specific indicators that should take priority
+    paystub_strong_indicators = [
+        'gross pay', 'net pay', 'ytd', 'year to date',
+        'federal withholding', 'state withholding', 'social security tax',
+        'medicare tax', 'fica', 'pay period', 'pay date', 'pay stub',
+        'earnings statement', 'employee id', 'employee number',
+        'regular hours', 'overtime hours', 'hourly rate', 'salary',
+        'withholdings', 'deductions', '401k', 'health insurance'
+    ]
+    paystub_strong_count = sum(1 for indicator in paystub_strong_indicators if indicator in text_lower)
+    
     # Check for bank statement strong indicators
-    if ('statement period' in text_lower or 'account summary' in text_lower or
-        'beginning balance' in text_lower or 'transaction detail' in text_lower):
-        return 'bank_statement'
-
-    # Check for paystub strong indicators
-    if ('gross pay' in text_lower or 'net pay' in text_lower or
-        ('ytd' in text_lower and 'earnings' in text_lower)):
-        return 'paystub'
+    bank_statement_strong_indicators = [
+        'statement period', 'account summary', 'beginning balance',
+        'transaction detail', 'ending balance', 'account statement',
+        'checking account', 'savings account', 'account number',
+        'transaction history', 'deposits and credits', 'withdrawals and debits'
+    ]
+    bank_statement_strong_count = sum(1 for indicator in bank_statement_strong_indicators if indicator in text_lower)
 
     # Check for check strong indicators
-    if 'routing number' in text_lower or 'micr' in text_lower or 'check number' in text_lower:
+    check_strong_indicators = [
+        'routing number', 'micr', 'check number', 'pay to the order of',
+        'for', 'memo', 'void after', 'authorized signature'
+    ]
+    check_strong_count = sum(1 for indicator in check_strong_indicators if indicator in text_lower)
+
+    # If we have strong indicators, use them (paystub takes priority if multiple match)
+    if paystub_strong_count >= 2:
+        return 'paystub'
+    if bank_statement_strong_count >= 2:
+        return 'bank_statement'
+    if check_strong_count >= 2:
         return 'check'
 
     # Fallback: Use keyword counting for less obvious cases
     # Check for check-specific keywords
-    check_keywords = ['pay to the order of', 'account number', 'memo', 'void', 'dollars']
+    check_keywords = ['pay to the order of', 'account number', 'memo', 'void', 'dollars', 'routing']
     check_count = sum(1 for keyword in check_keywords if keyword in text_lower)
 
-    # Check for paystub-specific keywords
-    paystub_keywords = ['earnings', 'deductions', 'federal tax', 'state tax', 'social security', 'medicare', 'employee', 'employer', 'pay period', 'paycheck']
+    # Check for paystub-specific keywords (expanded list)
+    paystub_keywords = [
+        'earnings', 'deductions', 'federal tax', 'state tax', 'social security',
+        'medicare', 'employee', 'employer', 'pay period', 'paycheck', 'gross',
+        'net', 'withholding', 'fica', 'ytd', 'year to date', 'hourly', 'salary',
+        'regular', 'overtime', 'hours', 'rate', '401k', 'health', 'insurance'
+    ]
     paystub_count = sum(1 for keyword in paystub_keywords if keyword in text_lower)
 
     # Check for money order keywords
-    money_order_keywords = ['purchaser', 'serial number', 'receipt', 'remitter']
+    money_order_keywords = ['purchaser', 'serial number', 'receipt', 'remitter', 'money order']
     money_order_count = sum(1 for keyword in money_order_keywords if keyword in text_lower)
 
     # Check for bank statement keywords
-    bank_statement_keywords = ['ending balance', 'checking summary', 'deposits', 'withdrawals', 'daily balance']
+    bank_statement_keywords = [
+        'ending balance', 'checking summary', 'deposits', 'withdrawals',
+        'daily balance', 'transaction', 'statement', 'account summary'
+    ]
     bank_statement_count = sum(1 for keyword in bank_statement_keywords if keyword in text_lower)
 
     # Determine document type based on keyword matches
@@ -152,7 +182,10 @@ def detect_document_type(text):
     if max_count == 0:
         return 'unknown'
 
-    if check_count == max_count:
+    # Prioritize paystub if counts are close (within 1)
+    if paystub_count >= max_count - 1 and paystub_count >= 3:
+        return 'paystub'
+    elif check_count == max_count:
         return 'check'
     elif paystub_count == max_count:
         return 'paystub'
