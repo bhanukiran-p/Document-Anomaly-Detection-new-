@@ -521,48 +521,51 @@ def analyze_money_order():
                     logger.error(f"PDF conversion failed: {e}")
                     raise
 
-            # Get raw text for document type detection
-            raw_text = ""
-            if vision_client is not None:
-                try:
-                    with open(filepath, 'rb') as image_file:
-                        content = image_file.read()
-                    image = vision.Image(content=content)
-                    response = vision_client.text_detection(image=image)
-                    raw_text = response.text_annotations[0].description if response.text_annotations else ""
-                    logger.info("Successfully extracted text using Vision API")
-                except Exception as e:
-                    logger.warning(f"Vision API text extraction failed: {e}. Proceeding without OCR text.")
-                    raw_text = ""
-            else:
-                logger.warning("Vision API client not initialized. Proceeding without OCR text.")
-
-            # Validate document type only if we have text
-            if raw_text:
-                detected_type = detect_document_type(raw_text)
-                if detected_type != 'money_order' and detected_type != 'unknown':
+            # Use MoneyOrderExtractor with Mindee (handles ML/AI analysis)
+            try:
+                from money_order.extractor import MoneyOrderExtractor
+                extractor = MoneyOrderExtractor()  # No credentials needed - uses Mindee internally
+                result = extractor.extract_money_order(filepath)
+                logger.info(f"Money order extraction result status: {result.get('status')}")
+                
+                # Check if extraction failed
+                if result.get('status') == 'error':
+                    error_msg = result.get('message', 'Extraction failed')
+                    logger.error(f"Money order extraction returned error: {error_msg}")
                     # Clean up
                     if os.path.exists(filepath):
                         os.remove(filepath)
                     return jsonify({
                         'success': False,
-                        'error': f'Wrong document type detected. This appears to be a {detected_type}, not a money order. Please upload a money order document.',
-                        'message': 'Document type mismatch'
-                    }), 400
-
-            # Try to import and use money order extractor
-            try:
-                from money_order.extractor import MoneyOrderExtractor
-                extractor = MoneyOrderExtractor(CREDENTIALS_PATH)
-                result = extractor.extract_money_order(filepath)
-                logger.info("Money order extracted successfully")
-            except ImportError:
-                logger.warning("MoneyOrderExtractor module not found. Returning basic analysis.")
-                result = {
-                    'raw_text': raw_text[:500],
-                    'status': 'partial',
-                    'message': 'Money order extractor not available. Using vision API text extraction only.'
-                }
+                        'error': error_msg,
+                        'message': 'Money order extraction failed'
+                    }), 500
+                
+                # Get raw text for document type detection
+                raw_text = result.get('raw_text', '')
+                
+                # Validate document type only if we have text
+                if raw_text:
+                    detected_type = detect_document_type(raw_text)
+                    if detected_type != 'money_order' and detected_type != 'unknown':
+                        # Clean up
+                        if os.path.exists(filepath):
+                            os.remove(filepath)
+                        return jsonify({
+                            'success': False,
+                            'error': f'Wrong document type detected. This appears to be a {detected_type}, not a money order. Please upload a money order document.',
+                            'message': 'Document type mismatch'
+                        }), 400
+            except Exception as e:
+                logger.error(f"Money order extraction failed: {e}", exc_info=True)
+                # Clean up
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+                return jsonify({
+                    'success': False,
+                    'error': str(e),
+                    'message': f'Money order extraction failed: {str(e)}'
+                }), 500
 
             # Clean up temp file
             if os.path.exists(filepath):
@@ -584,6 +587,15 @@ def analyze_money_order():
                     return [convert_numpy_types(i) for i in obj]
                 return obj
 
+            # Check if result has required fields
+            if not result or result.get('status') != 'success':
+                logger.error(f"Invalid extraction result: {result}")
+                return jsonify({
+                    'success': False,
+                    'error': result.get('message', 'Extraction failed') if result else 'No result returned',
+                    'message': 'Money order extraction failed'
+                }), 500
+
             # Return full response
             analysis_id = result.get('analysis_id')
 
@@ -598,6 +610,24 @@ def analyze_money_order():
             # Extract fraud types and explanations for API response (similar to paystub/bank statement)
             ml_analysis = result.get('ml_analysis', {})
             ai_analysis = result.get('ai_analysis', {})
+            
+            # If no ML/AI analysis, provide defaults
+            if not ml_analysis:
+                logger.warning("No ML analysis available in result")
+                ml_analysis = {
+                    'fraud_risk_score': 0.0,
+                    'risk_level': 'UNKNOWN',
+                    'model_confidence': 0.0
+                }
+            
+            if not ai_analysis:
+                logger.warning("No AI analysis available in result")
+                ai_analysis = {
+                    'recommendation': 'UNKNOWN',
+                    'confidence_score': 0.0,
+                    'summary': 'Analysis incomplete',
+                    'key_indicators': []
+                }
             
             # Get AI recommendation first
             ai_recommendation = ai_analysis.get('recommendation', 'UNKNOWN') if ai_analysis else 'UNKNOWN'

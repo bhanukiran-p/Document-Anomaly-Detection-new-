@@ -19,7 +19,7 @@ _DEFAULT_MODELS = {
     "check": "046edc76-e8a4-4e11-a9a3-bb8632250446",
     "paystub": "ba548707-66d2-48c3-83f3-599484b078c8",
     "bank_statement": "2b6cc7a4-6b0b-4178-a8f8-00c626965d87",
-    "money_order": "7ecd4b47-c7a0-430c-ac68-a68b04960a39",
+    "money_order": "2bc6b632-9695-4e1a-bd3b-2dfaedf0844d",  # Correct money order model ID
 }
 
 MINDEE_MODEL_ID_GLOBAL = MINDEE_MODEL_ID_GLOBAL or _DEFAULT_MODELS["global"]
@@ -139,7 +139,15 @@ def extract_paystub(file_path: str) -> Dict[str, Any]:
 
 
 def extract_money_order(file_path: str) -> Dict[str, Any]:
-    out = _run_model(file_path, MINDEE_MODEL_ID_MONEY_ORDER)
+    # Try money order model first, fallback to global model if it fails
+    try:
+        out = _run_model(file_path, MINDEE_MODEL_ID_MONEY_ORDER)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Money order model failed, using global model: {e}")
+        # Fallback to global model
+        out = _run_model(file_path, MINDEE_MODEL_ID_GLOBAL)
     fields = out["fields"]
     extracted = {
         # Mindee doesn't return issuer field for money orders, use empty string as default

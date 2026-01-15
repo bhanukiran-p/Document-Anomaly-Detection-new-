@@ -78,21 +78,25 @@ class BaseNormalizer(ABC):
         # Create and return NormalizedMoneyOrder instance
         return NormalizedMoneyOrder.from_dict(normalized_data)
 
-    def _normalize_amount(self, amount_str: str) -> Dict:
+    def _normalize_amount(self, amount_str) -> Dict:
         """
         Normalize amount to {'value': float, 'currency': str} format
 
         Args:
-            amount_str: Amount string from OCR (e.g., '$750.00', '750.00 USD')
+            amount_str: Amount string from OCR (e.g., '$750.00', '750.00 USD') or float value
 
         Returns:
             Dictionary with 'value' and 'currency' keys
         """
-        if not amount_str:
+        if not amount_str and amount_str != 0:
             return None
 
-        # Remove whitespace
-        amount_str = amount_str.strip()
+        # Convert to string if it's a number (Mindee returns floats)
+        if isinstance(amount_str, (int, float)):
+            amount_str = str(amount_str)
+        else:
+            # Remove whitespace
+            amount_str = amount_str.strip()
 
         # Extract numeric value
         # Patterns: $750.00, 750.00 USD, USD 750.00, 750,00

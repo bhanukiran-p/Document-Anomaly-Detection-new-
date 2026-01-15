@@ -509,7 +509,7 @@ class DocumentStorage:
             extracted = analysis_data.get('extracted_data', {})
             ml_analysis = analysis_data.get('ml_analysis', {})
             ai_analysis = analysis_data.get('ai_analysis', {})
-            
+
             # Store document record
             document_id = self._store_document(user_id, 'money_order', file_name)
             
@@ -601,7 +601,7 @@ class DocumentStorage:
             extracted = analysis_data.get('extracted_data', {})
             ml_analysis = analysis_data.get('ml_analysis', {})
             ai_analysis = analysis_data.get('ai_analysis', {})
-            
+
             # Store document record
             document_id = self._store_document(user_id, 'bank_statement', file_name)
             
@@ -780,7 +780,7 @@ class DocumentStorage:
             extracted = analysis_data.get('extracted_data', {})
             ml_analysis = analysis_data.get('ml_analysis', {})
             ai_analysis = analysis_data.get('ai_analysis', {})
-            
+
             # Store document record
             document_id = self._store_document(user_id, 'paystub', file_name)
             
@@ -901,7 +901,7 @@ class DocumentStorage:
             extracted = analysis_data.get('extracted_data', {})
             ml_analysis = analysis_data.get('ml_analysis', {})
             ai_analysis = analysis_data.get('ai_analysis', {})
-            
+
             # Store document record
             document_id = self._store_document(user_id, 'check', file_name)
             
