@@ -1,0 +1,103 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "MoneyGram",
+    "serial_number": "9021056789",
+    "serial_secondary": null,
+    "amount": 450.0,
+    "amount_in_words": "FOUR HUNDRED FIFTY AND 00/100 DOLLARS",
+    "payee": "SARAH CHEN",
+    "purchaser": "MICHAEL LEE",
+    "sender_address": "456 PINE ST, ANYTOWN, CA 91234",
+    "date": "2025-11-24",
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "low",
+      "type": "ml_indicator",
+      "message": "Amount parsing confidence low"
+    },
+    {
+      "severity": "low",
+      "type": "ai_indicator",
+      "message": "Invalid serial format (“[PHONE]” instead of numeric sequence)"
+    }
+  ],
+  "confidence_score": 99,
+  "raw_text": "MoneyGram\nMONEYGRAM\nMONEY ORDER\n9021056789\nPAY TO: SARAH CHEN\nAMOUNT: $450.00\nDATE: NOVEMBER 24, 2025\nFOUR HUNDRED FIFTY AND 00/100 DOLLARS\nFROM: MICHAEL LEE\n456 PINE ST, ANYTOWN, CA 91234\n9835647821\nAlex Chen\nAGENT AUTHORIZED SIGNATURE\n",
+  "timestamp": "2026-01-15T15:16:03.837045",
+  "normalized_data": {
+    "issuer_name": "MoneyGram",
+    "serial_primary": "9021056789",
+    "serial_secondary": null,
+    "recipient": "SARAH CHEN",
+    "sender_name": "MICHAEL LEE",
+    "sender_address": "456 PINE ST, ANYTOWN, CA 91234",
+    "amount_numeric": {
+      "value": 450.0,
+      "currency": "USD"
+    },
+    "amount_written": "FOUR HUNDRED FIFTY AND 00/100 DOLLARS",
+    "date": "11-24-2025",
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 0.9,
+  "ml_analysis": {
+    "fraud_risk_score": 0.154,
+    "risk_level": "LOW",
+    "model_confidence": 0.7,
+    "model_scores": {
+      "random_forest": 0.332,
+      "xgboost": 0.035,
+      "ensemble": 0.154,
+      "adjusted": 0.154
+    },
+    "feature_importance": [
+      "Amount parsing confidence low"
+    ],
+    "fraud_indicators": [
+      "Amount parsing confidence low"
+    ],
+    "prediction_type": "model"
+  },
+  "ai_analysis": {
+    "recommendation": "REJECT",
+    "confidence_score": 0.8,
+    "summary": "Serial number format invalid, indicating possible counterfeit MoneyGram order.",
+    "reasoning": [
+      "The “Serial Number” field reads as “[PHONE]” rather than a valid numeric MoneyGram pattern, triggering a COUNTERFEIT_FORGERY flag.",
+      "Issuer is recognized (MoneyGram), but serial_format_valid == 0 is strong evidence of counterfeit (per taxonomy rules).",
+      "ML ensemble shows 0% risk, but serial-format validation is a higher‐confidence indicator than ML in this case.",
+      "Training data patterns indicate ~72% of counterfeit money orders have invalid or non‐standard serial numbers."
+    ],
+    "key_indicators": [
+      "Invalid serial format (“[PHONE]” instead of numeric sequence)"
+    ],
+    "verification_notes": "",
+    "actionable_recommendations": [
+      "Contact MoneyGram support to verify the serial number’s authenticity.",
+      "Request the customer present the original, unaltered money order for physical inspection.",
+      "Verify purchaser’s identity with a government‐issued ID and obtain a signed affidavit."
+    ],
+    "fraud_types": [
+      "COUNTERFEIT_FORGERY"
+    ],
+    "fraud_explanations": [
+      {
+        "type": "COUNTERFEIT_FORGERY",
+        "reasons": [
+          "Extracted serial “[PHONE]” does not conform to MoneyGram’s numeric serial format.",
+          "Non‐numeric placeholder suggests document tampering or OCR capturing a non‐standard imprint."
+        ]
+      }
+    ],
+    "training_insights": "",
+    "historical_comparison": "",
+    "analysis_type": "ai_enhanced",
+    "model_used": "o4-mini"
+  },
+  "analysis_id": "analysis_20260115_151603_837_9021056789",
+  "saved_timestamp": "2026-01-15T15:16:03.837354"
+}
