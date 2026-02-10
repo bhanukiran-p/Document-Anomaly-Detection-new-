@@ -1,0 +1,24 @@
+[
+  {
+    "version_id": "20251222_125158",
+    "timestamp": "2025-12-22T12:51:59.255348",
+    "data_source": "hybrid",
+    "training_data": {
+      "total_samples": 705,
+      "real_samples": 423,
+      "synthetic_samples": 282,
+      "fraud_count": 140,
+      "fraud_ratio": 0.19858156028368795
+    },
+    "metrics": {
+      "r2_score": 0.9683539146965541,
+      "mse": 41.6809247791734,
+      "rf_r2": 0.967521008437399,
+      "rf_mse": 42.77794208172628,
+      "xgb_r2": 0.9676598611426956,
+      "xgb_mse": 42.59505977229183,
+      "training_time_seconds": 0.188903
+    },
+    "is_active": true
+  }
+]

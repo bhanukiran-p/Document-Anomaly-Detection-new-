@@ -1,0 +1,151 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": "Western Union",
+    "serial_number": "9875647821",
+    "serial_secondary": "9875647821",
+    "amount": "$750.00",
+    "amount_in_words": null,
+    "payee": "JANE SMITH",
+    "purchaser": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "date": "10/26/2023",
+    "location": "ANYTOWN, CA 91234",
+    "signature": "Signature field present"
+  },
+  "anomalies": [
+    {
+      "severity": "critical",
+      "type": "fraud_risk_critical",
+      "message": "[REJECT] Missing signature detected on repeat upload (escalate_count=1). Automatic rejection per strict signature validation policy."
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Amount parsing confidence low"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Serial number doesn't match issuer pattern"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "CRITICAL: Missing signature - document rejected per mandatory validation policy"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Very old (778 days)"
+    },
+    {
+      "severity": "critical",
+      "type": "ai_indicator",
+      "message": "ML fraud detector flagged missing signature"
+    },
+    {
+      "severity": "critical",
+      "type": "ai_indicator",
+      "message": "Repeat offender (escalate_count=1)"
+    },
+    {
+      "severity": "critical",
+      "type": "ai_indicator",
+      "message": "Mandatory signature policy violation"
+    }
+  ],
+  "confidence_score": 85,
+  "raw_text": "WESTERN WESTERN UNION\u00ae\nUNION\nMONEY ORDER\nPAY TO: JANE SMITH\n987557821\nAMOUNT:\n$750.00\nDATE: OCTOBER 26, 2023\nSEVEN HUNDRED FISTY AND 00//100 DOLLARS\nFROM: JOHN DOE\n123 OAK ST, ANYTOWN, CA 91234\n9875647821\nAGENT AUTHORIZED SIGNATURE",
+  "timestamp": "2025-12-12T22:14:23.270890",
+  "normalized_data": {
+    "issuer_name": "Western Union",
+    "serial_primary": "9875647821",
+    "serial_secondary": null,
+    "recipient": "JANE SMITH",
+    "sender_name": "JOHN DOE",
+    "sender_address": "123 OAK ST, ANYTOWN, CA 91234",
+    "amount_numeric": {
+      "value": 750.0,
+      "currency": "USD"
+    },
+    "amount_written": null,
+    "date": "10-26-2023",
+    "signature": "Signature field present"
+  },
+  "normalization_completeness": 0.8,
+  "ml_analysis": {
+    "fraud_risk_score": 0.959,
+    "risk_level": "CRITICAL",
+    "model_confidence": 0.7,
+    "model_scores": {
+      "random_forest": 0.391,
+      "xgboost": 0.004,
+      "ensemble": 0.159,
+      "adjusted": 0.959
+    },
+    "feature_importance": [
+      "Amount parsing confidence low",
+      "Serial number doesn't match issuer pattern",
+      "CRITICAL: Missing signature - document rejected per mandatory validation policy",
+      "Very old (778 days)"
+    ],
+    "fraud_indicators": [
+      "Amount parsing confidence low",
+      "Serial number doesn't match issuer pattern",
+      "CRITICAL: Missing signature - document rejected per mandatory validation policy",
+      "Very old (778 days)"
+    ],
+    "prediction_type": "model"
+  },
+  "ai_analysis": {
+    "recommendation": "REJECT",
+    "confidence_score": 1.0,
+    "summary": "Missing signature detected on repeat upload (escalate_count=1). Automatic rejection per strict signature validation policy.",
+    "reasoning": [
+      "ML fraud detector identified missing signature",
+      "Customer has 1 previous escalation(s) - this is a repeat attempt",
+      "Per system policy: First missing signature \u2192 ESCALATE, repeat attempts \u2192 REJECT",
+      "Automatic rejection enforced to prevent repeat fraud attempts"
+    ],
+    "key_indicators": [
+      "ML fraud detector flagged missing signature",
+      "Repeat offender (escalate_count=1)",
+      "Mandatory signature policy violation"
+    ],
+    "verification_notes": "Document rejected due to missing signature on repeat upload. Customer was previously escalated for same issue.",
+    "actionable_recommendations": [
+      "Reject this transaction immediately - signature not present on repeat upload",
+      "Flag customer account for potential fraud pattern (repeat missing signature attempts)",
+      "Consider blocking future uploads from this customer"
+    ],
+    "fraud_types": [
+      "SIGNATURE_FORGERY",
+      "REPEAT_OFFENDER"
+    ],
+    "fraud_explanations": [
+      {
+        "type": "SIGNATURE_FORGERY",
+        "reasons": [
+          "ML fraud detector identified missing signature",
+          "Mandatory signature validation failed",
+          "Signature is required for all money orders per policy"
+        ]
+      },
+      {
+        "type": "REPEAT_OFFENDER",
+        "reasons": [
+          "Customer has 1 previous escalation(s)",
+          "Repeat attempt with missing signature indicates fraud pattern",
+          "Per payer-based fraud tracking policy: repeat offenders are automatically rejected"
+        ]
+      }
+    ],
+    "training_insights": "Repeat missing signature attempts indicate potential fraud pattern",
+    "historical_comparison": "Consistent with repeat offender policy",
+    "analysis_type": "policy_enforcement",
+    "model_used": "mandatory_signature_policy"
+  },
+  "analysis_id": "analysis_20251212_221423_271_9875647821",
+  "saved_timestamp": "2025-12-12T22:14:23.271143"
+}

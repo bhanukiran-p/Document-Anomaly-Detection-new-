@@ -1,0 +1,156 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": null,
+    "serial_number": "Professional",
+    "serial_secondary": null,
+    "amount": 4500.0,
+    "amount_in_words": null,
+    "payee": null,
+    "purchaser": "Lisa Anderson",
+    "sender_address": null,
+    "date": "2025-02-17",
+    "location": null,
+    "signature": null
+  },
+  "anomalies": [
+    {
+      "severity": "critical",
+      "type": "fraud_risk_critical",
+      "message": "[REJECT] Missing signature detected on repeat upload (escalate_count=1). Automatic rejection per strict signature validation policy."
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Amount parsing confidence low"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Missing critical fields (score: 0.30)"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Issuer-specific validation failed"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Serial number doesn't match issuer pattern"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Invalid address format"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "CRITICAL: Missing signature - document rejected per mandatory validation policy"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Invalid issuer: 'Unknown'"
+    },
+    {
+      "severity": "critical",
+      "type": "ai_indicator",
+      "message": "No signature detected in OCR extraction"
+    },
+    {
+      "severity": "critical",
+      "type": "ai_indicator",
+      "message": "Repeat offender (escalate_count=1)"
+    },
+    {
+      "severity": "critical",
+      "type": "ai_indicator",
+      "message": "Mandatory signature policy violation"
+    }
+  ],
+  "confidence_score": 48,
+  "raw_text": "Professional Services Corp\nLisa Anderson\nEmployee ID: EMP-006\nMiami, FL\nPay Period:\nFeb 1-15, 2025\nGross Pay:\nNet Pay:\nYTD Gross:\nDeduction Type\nPay Date:\nFeb 17, 2025\n$4,500.00\n$4,500.00 $4,500.00\n(100% of gross - no $4,500.00)\nYTD Net\nAmount\nNO deductions section - compliance violation\n",
+  "timestamp": "2026-01-15T14:33:06.418615",
+  "ml_analysis": {
+    "fraud_risk_score": 1.0,
+    "risk_level": "CRITICAL",
+    "model_confidence": 0.7,
+    "model_scores": {
+      "random_forest": 0.471,
+      "xgboost": 0.857,
+      "ensemble": 0.703,
+      "adjusted": 1.0
+    },
+    "feature_importance": [
+      "Amount parsing confidence low",
+      "Missing critical fields (score: 0.30)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "CRITICAL: Missing signature - document rejected per mandatory validation policy",
+      "Invalid issuer: 'Unknown'"
+    ],
+    "fraud_indicators": [
+      "Amount parsing confidence low",
+      "Missing critical fields (score: 0.30)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "CRITICAL: Missing signature - document rejected per mandatory validation policy",
+      "Invalid issuer: 'Unknown'"
+    ],
+    "prediction_type": "model"
+  },
+  "ai_analysis": {
+    "recommendation": "REJECT",
+    "confidence_score": 1.0,
+    "summary": "Missing signature detected on repeat upload (escalate_count=1). Automatic rejection per strict signature validation policy.",
+    "reasoning": [
+      "Signature field is missing or empty",
+      "Customer has 1 previous escalation(s) - this is a repeat attempt",
+      "Per system policy: First missing signature → ESCALATE, repeat attempts → REJECT",
+      "Automatic rejection enforced to prevent repeat fraud attempts"
+    ],
+    "key_indicators": [
+      "No signature detected in OCR extraction",
+      "Repeat offender (escalate_count=1)",
+      "Mandatory signature policy violation"
+    ],
+    "verification_notes": "Document rejected due to missing signature on repeat upload. Customer was previously escalated for same issue.",
+    "actionable_recommendations": [
+      "Reject this transaction immediately - signature not present on repeat upload",
+      "Flag customer account for potential fraud pattern (repeat missing signature attempts)",
+      "Consider blocking future uploads from this customer"
+    ],
+    "fraud_types": [
+      "SIGNATURE_FORGERY",
+      "REPEAT_OFFENDER"
+    ],
+    "fraud_explanations": [
+      {
+        "type": "SIGNATURE_FORGERY",
+        "reasons": [
+          "Signature field is missing or empty",
+          "Mandatory signature validation failed",
+          "Signature is required for all money orders per policy"
+        ]
+      },
+      {
+        "type": "REPEAT_OFFENDER",
+        "reasons": [
+          "Customer has 1 previous escalation(s)",
+          "Repeat attempt with missing signature indicates fraud pattern",
+          "Per payer-based fraud tracking policy: repeat offenders are automatically rejected"
+        ]
+      }
+    ],
+    "training_insights": "Repeat missing signature attempts indicate potential fraud pattern",
+    "historical_comparison": "Consistent with repeat offender policy",
+    "analysis_type": "policy_enforcement",
+    "model_used": "mandatory_signature_policy"
+  },
+  "analysis_id": "analysis_20260115_143306_418_Professional",
+  "saved_timestamp": "2026-01-15T14:33:06.418798"
+}

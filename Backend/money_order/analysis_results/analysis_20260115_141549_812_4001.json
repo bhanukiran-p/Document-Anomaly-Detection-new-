@@ -1,0 +1,141 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": null,
+    "serial_number": "4001",
+    "serial_secondary": null,
+    "amount": 3250.45,
+    "amount_in_words": "PAY TO THE ORDER OF Thomas Anderson Three Thousand Two Hundred Fifty and 45/100 DOLLARS",
+    "payee": "Thomas Anderson",
+    "purchaser": "PATRICIA MILLER",
+    "sender_address": "234 Lake Shore Drive",
+    "date": "2025-11-22",
+    "location": "Chicago, IL 60611",
+    "signature": "ORIGINAL DOCUMENT"
+  },
+  "anomalies": [
+    {
+      "severity": "critical",
+      "type": "fraud_risk_critical",
+      "message": "[REJECT] The issuer is unknown, indicating potential counterfeit money order. Serial number format could not be verified against any legitimate issuer patterns."
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "CRITICAL: Amount mismatch - numeric vs written"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Amount parsing confidence low"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Missing critical fields (score: 0.05)"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Issuer-specific validation failed"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Serial number doesn't match issuer pattern"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Invalid serial format: '4001'"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Invalid issuer: 'Unknown'"
+    },
+    {
+      "severity": "critical",
+      "type": "ai_indicator",
+      "message": "Unknown issuer"
+    },
+    {
+      "severity": "critical",
+      "type": "ai_indicator",
+      "message": "Invalid serial format"
+    }
+  ],
+  "confidence_score": 81,
+  "raw_text": "CHASE\nPATRICIA MILLER\n234 Lake Shore Drive\nChicago, IL 60611\nPAY TO THE\nORDER OF\nThomas Anderson\nThree Thousand Two Hundred Fifty and 45/100\nDOLLARS\nMEMO\nContract Payment\nVOID AFTER 180 DAYS\n322271627 6419852730 4001\nCHECK\n4001\nDate\n11/22/2025\n$ 3,250.45\nAuthorized Signature\nORIGINAL DOCUMENT\n",
+  "timestamp": "2026-01-15T14:15:49.812199",
+  "ml_analysis": {
+    "fraud_risk_score": 1.0,
+    "risk_level": "CRITICAL",
+    "model_confidence": 0.7,
+    "model_scores": {
+      "random_forest": 0.34,
+      "xgboost": 0.571,
+      "ensemble": 0.479,
+      "adjusted": 1.0
+    },
+    "feature_importance": [
+      "CRITICAL: Amount mismatch - numeric vs written",
+      "Amount parsing confidence low",
+      "Missing critical fields (score: 0.05)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid serial format: '4001'",
+      "Invalid issuer: 'Unknown'"
+    ],
+    "fraud_indicators": [
+      "CRITICAL: Amount mismatch - numeric vs written",
+      "Amount parsing confidence low",
+      "Missing critical fields (score: 0.05)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid serial format: '4001'",
+      "Invalid issuer: 'Unknown'"
+    ],
+    "prediction_type": "model"
+  },
+  "ai_analysis": {
+    "recommendation": "REJECT",
+    "confidence_score": 0.75,
+    "summary": "The issuer is unknown, indicating potential counterfeit money order. Serial number format could not be verified against any legitimate issuer patterns.",
+    "reasoning": [
+      "Issuer field is “Unknown” and does not match any verified money order issuers in our database (training data shows ~52% of counterfeit cases involve unrecognized issuers).",
+      "Serial number “4001” fails to conform to known issuer serial formats (serial_format_valid == 0), a strong counterfeit forgery indicator.",
+      "ML model scores are low (0.0% overall fraud risk) but rely heavily on known issuers; document analysis uncovers concrete signs of counterfeit.",
+      "No amount alteration detected (numeric and written amounts match; no spelling errors in raw OCR).",
+      "Signature field is present and non-empty, so no signature forgery issue."
+    ],
+    "key_indicators": [
+      "Unknown issuer",
+      "Invalid serial format"
+    ],
+    "verification_notes": "",
+    "actionable_recommendations": [
+      "Reach out to CHASE’s money order department to validate issuer authenticity.",
+      "Request supporting documentation from the purchaser (receipt, ID).",
+      "Hold funds and reject this money order pending further issuer confirmation."
+    ],
+    "fraud_types": [
+      "COUNTERFEIT_FORGERY"
+    ],
+    "fraud_explanations": [
+      {
+        "type": "COUNTERFEIT_FORGERY",
+        "reasons": [
+          "Issuer “Unknown” is not in the legitimate issuer database, a primary counterfeit indicator.",
+          "Serial number “4001” does not match any known CHASE money order serial number pattern."
+        ]
+      }
+    ],
+    "training_insights": "Training data indicates that ~45% of fraud cases involve unknown issuers or invalid serials; unknown-issuer cases have a high likelihood of counterfeit.",
+    "historical_comparison": "No directly similar past cases found, but prior counterfeit cases consistently involved unrecognized issuers and mismatched serial formats.",
+    "analysis_type": "ai_enhanced",
+    "model_used": "o4-mini"
+  },
+  "analysis_id": "analysis_20260115_141549_812_4001",
+  "saved_timestamp": "2026-01-15T14:15:49.812316"
+}
