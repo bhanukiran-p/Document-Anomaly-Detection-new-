@@ -3,6 +3,7 @@ import { useDropzone } from 'react-dropzone';
 import { analyzeMoneyOrder } from '../services/api';
 import { colors } from '../styles/colors';
 import MoneyOrderInsights from '../components/MoneyOrderInsights.jsx';
+import { generateMoneyOrderPDF } from '../utils/pdfReportGenerator';
 
 const MoneyOrderAnalysis = () => {
   const [file, setFile] = useState(null);
@@ -104,6 +105,18 @@ const MoneyOrderAnalysis = () => {
       link.href = url;
       link.download = `money_order_analysis_${new Date().getTime()}.json`;
       link.click();
+    }
+  };
+
+  const downloadPDF = () => {
+    if (!results) return;
+    try {
+      const doc = generateMoneyOrderPDF(results);
+      const timestamp = new Date().getTime();
+      doc.save(`money_order_analysis_${timestamp}.pdf`);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Failed to generate PDF report. Please try again.');
     }
   };
 
@@ -526,19 +539,33 @@ const MoneyOrderAnalysis = () => {
                   </p>
                 </div>
 
-                {/* Download Button */}
-                <button
-                  style={{
-                    ...buttonStyle,
-                    backgroundColor: primary,
-                    marginTop: '1.5rem',
-                  }}
-                  onClick={downloadJSON}
-                  onMouseEnter={(e) => e.target.style.backgroundColor = primary}
-                  onMouseLeave={(e) => e.target.style.backgroundColor = primary}
-                >
-                  Download Full Results (JSON)
-                </button>
+                {/* Download Buttons */}
+                <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
+                  <button
+                    style={{
+                      ...buttonStyle,
+                      backgroundColor: primary,
+                      flex: 1,
+                    }}
+                    onClick={downloadJSON}
+                    onMouseEnter={(e) => e.target.style.backgroundColor = primary}
+                    onMouseLeave={(e) => e.target.style.backgroundColor = primary}
+                  >
+                    Download Full Results (JSON)
+                  </button>
+                  <button
+                    style={{
+                      ...buttonStyle,
+                      backgroundColor: '#2c3e50',
+                      flex: 1,
+                    }}
+                    onClick={downloadPDF}
+                    onMouseEnter={(e) => e.target.style.backgroundColor = '#34495e'}
+                    onMouseLeave={(e) => e.target.style.backgroundColor = '#2c3e50'}
+                  >
+                    Download PDF Report
+                  </button>
+                </div>
               </div>
             )}
 
@@ -557,18 +584,32 @@ const MoneyOrderAnalysis = () => {
                   </p>
                 </div>
 
-                <button
-                  style={{
-                    ...buttonStyle,
-                    backgroundColor: primary,
-                    marginTop: '1.5rem',
-                  }}
-                  onClick={downloadJSON}
-                  onMouseEnter={(e) => e.target.style.backgroundColor = primary}
-                  onMouseLeave={(e) => e.target.style.backgroundColor = primary}
-                >
-                  Download Full Results (JSON)
-                </button>
+                <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
+                  <button
+                    style={{
+                      ...buttonStyle,
+                      backgroundColor: primary,
+                      flex: 1,
+                    }}
+                    onClick={downloadJSON}
+                    onMouseEnter={(e) => e.target.style.backgroundColor = primary}
+                    onMouseLeave={(e) => e.target.style.backgroundColor = primary}
+                  >
+                    Download Full Results (JSON)
+                  </button>
+                  <button
+                    style={{
+                      ...buttonStyle,
+                      backgroundColor: '#2c3e50',
+                      flex: 1,
+                    }}
+                    onClick={downloadPDF}
+                    onMouseEnter={(e) => e.target.style.backgroundColor = '#34495e'}
+                    onMouseLeave={(e) => e.target.style.backgroundColor = '#2c3e50'}
+                  >
+                    Download PDF Report
+                  </button>
+                </div>
               </div>
             )}
           </div>

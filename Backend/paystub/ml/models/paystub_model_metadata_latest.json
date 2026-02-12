@@ -31,5 +31,16 @@
     "xgboost": "paystub_xgboost.pkl"
   },
   "scaler_path": "paystub_feature_scaler.pkl",
-  "trained_at": "20251211_175342"
+  "trained_at": "20251223_104152",
+  "training_data": "synthetic_balanced",
+  "training_samples": 1000,
+  "metrics": {
+    "r2_score": 0.9733972903217891,
+    "mse": 35.21299930882004,
+    "rf_r2": 0.9736182284930055,
+    "rf_mse": 34.920551818904904,
+    "xgb_r2": 0.9726358830934683,
+    "xgb_mse": 36.22084522109384,
+    "training_time_seconds": 0.206756
+  }
 }

@@ -80,9 +80,22 @@ class Config:
     ENABLE_SIGNATURE_DETECTION = os.getenv('ENABLE_SIGNATURE_DETECTION', 'true').lower() == 'true'
     ENABLE_BANK_VALIDATION = os.getenv('ENABLE_BANK_VALIDATION', 'true').lower() == 'true'
     ENABLE_REAL_TIME_ANALYSIS = os.getenv('ENABLE_REAL_TIME_ANALYSIS', 'true').lower() == 'true'
+    ENABLE_AUTOMATED_RETRAINING = os.getenv('ENABLE_AUTOMATED_RETRAINING', 'true').lower() == 'true'
+    ENABLE_AUTO_COLUMN_ADDITION = os.getenv('ENABLE_AUTO_COLUMN_ADDITION', 'true').lower() == 'true'
+
+    # ==================== AUTOMATED RETRAINING CONFIGURATION ====================
+    RETRAINING_CONFIG_PATH = os.getenv('RETRAINING_CONFIG_PATH', str(BASE_DIR / 'training' / 'retraining_config.json'))
 
     # ==================== CORS SETTINGS ====================
     CORS_ORIGINS = os.getenv('CORS_ORIGINS', '*').split(',')
+
+    # ==================== CACHE CONFIGURATION ====================
+    REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
+    REDIS_PORT = int(os.getenv('REDIS_PORT', '6379'))
+    REDIS_DB = int(os.getenv('REDIS_DB', '0'))
+    REDIS_PASSWORD = os.getenv('REDIS_PASSWORD')
+    CACHE_TTL = int(os.getenv('CACHE_TTL', '3600'))  # Default 1 hour
+    CACHE_ENABLED = os.getenv('CACHE_ENABLED', 'true').lower() == 'true'
 
     @classmethod
     def validate(cls) -> list:

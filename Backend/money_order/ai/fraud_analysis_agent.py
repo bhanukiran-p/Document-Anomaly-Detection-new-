@@ -434,31 +434,57 @@ class FraudAnalysisAgent:
             if escalate_count > 0:
                 escalation_status += " | [WARNING] PAYER HAS BEEN ESCALATED BEFORE - MUST REJECT"
 
+        # Apply LLM guardrails before building prompt
+        from real_time.guardrails import InputGuard
+        
+        # Sanitize extracted data
+        sanitized_extracted_data = InputGuard.sanitize_dict(extracted_data)
+        
+        # Helper functions using sanitized data
+        def get_val_sanitized(keys, default='Unknown'):
+            for key in keys:
+                val = sanitized_extracted_data.get(key)
+                if val:
+                    return val
+            return default
+        
         prompt_vars = {
             "fraud_risk_score": ml_analysis.get('fraud_score', 0),
             "risk_level": ml_analysis.get('risk_level', 'UNKNOWN'),
             "model_confidence": ml_analysis.get('confidence_score', 0),
             "rf_score": ml_analysis.get('model_scores', {}).get('random_forest', 0),
             "xgb_score": ml_analysis.get('model_scores', {}).get('xgboost', 0),
-            "issuer": get_val(['issuer_name', 'issuer']),
-            "serial_number": get_val(['serial_primary', 'serial_number']),
-            "amount": format_amount(get_val(['amount_numeric', 'amount'])),
-            "amount_in_words": get_val(['amount_written', 'amount_in_words']),
-            "raw_ocr_text": extracted_data.get('raw_text', 'N/A'),
-            "payee": get_val(['recipient', 'payee', 'pay_to']),
-            "purchaser": get_val(['sender_name', 'purchaser', 'from', 'sender']),
-            "date": get_val(['date']),
-            "location": get_val(['sender_address', 'location']),
-            "signature": get_val(['signature']),
-            "fraud_indicators": str(ml_analysis.get('anomalies', [])),
+            "issuer": get_val_sanitized(['issuer_name', 'issuer']),
+            "serial_number": get_val_sanitized(['serial_primary', 'serial_number']),
+            "amount": format_amount(get_val_sanitized(['amount_numeric', 'amount'])),
+            "amount_in_words": get_val_sanitized(['amount_written', 'amount_in_words']),
+            "raw_ocr_text": InputGuard.sanitize(sanitized_extracted_data.get('raw_text', 'N/A')),
+            "payee": get_val_sanitized(['recipient', 'payee', 'pay_to']),
+            "purchaser": get_val_sanitized(['sender_name', 'purchaser', 'from', 'sender']),
+            "date": get_val_sanitized(['date']),
+            "location": get_val_sanitized(['sender_address', 'location']),
+            "signature": get_val_sanitized(['signature']),
+            "fraud_indicators": InputGuard.sanitize(str(ml_analysis.get('anomalies', []))),
             "customer_id": customer_id or "N/A",
             "customer_type": customer_type,
-            "escalation_status": escalation_status,
-            "customer_history": customer_history,
-            "similar_cases": similar_cases,
-            "training_patterns": training_patterns,
-            "past_similar_cases": past_similar_cases
+            "escalation_status": InputGuard.sanitize(escalation_status),
+            "customer_history": InputGuard.sanitize(customer_history),
+            "similar_cases": InputGuard.sanitize(similar_cases),
+            "training_patterns": InputGuard.sanitize(training_patterns),
+            "past_similar_cases": InputGuard.sanitize(past_similar_cases)
         }
+        
+        # Validate prompt length
+        import json
+        prompt_preview = json.dumps(prompt_vars)
+        if not InputGuard.validate_length(prompt_preview, max_chars=15000):
+            logger.warning("Prompt data too long, truncating long fields")
+            # Truncate long string fields
+            for key in ['customer_history', 'similar_cases', 'past_similar_cases', 'raw_ocr_text']:
+                if isinstance(prompt_vars.get(key), str) and len(prompt_vars[key]) > 500:
+                    prompt_vars[key] = prompt_vars[key][:500] + "..."
+        
+        logger.info("Applied LLM guardrails: sanitized PII and validated input length")
 
         # DEBUG: Log raw_text availability
         logger.info(f"[FRAUD_ANALYSIS] DEBUG: extracted_data keys: {list(extracted_data.keys())}")

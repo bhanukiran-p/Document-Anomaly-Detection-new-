@@ -434,39 +434,40 @@ class PaystubExtractor:
             employee_name=employee_name
         )
         
-        # UPDATED POLICY: Post-AI validation - Force REJECT only if escalate_count > 0 AND fraud risk >= 20%
-        # If fraud risk < 20%, allow approval even for repeat offenders
-        if employee_info and employee_info.get('escalate_count', 0) > 0:
-            escalate_count = employee_info.get('escalate_count', 0)
+        # UPDATED POLICY: Post-AI validation - Force REJECT ONLY for actual fraud history (fraud_count > 0)
+        # Previous escalations (manual reviews) should NOT trigger auto-rejection
+        # Only override if employee has fraud_count > 0 AND current fraud risk >= 50% (MEDIUM or higher)
+        if employee_info and employee_info.get('fraud_count', 0) > 0:
+            fraud_count = employee_info.get('fraud_count', 0)
             fraud_risk_score = ml_analysis.get('fraud_risk_score', 0.0)
             fraud_risk_percent = fraud_risk_score * 100
-            
-            if fraud_risk_percent >= 20:
+
+            if fraud_risk_percent >= 50:
                 if ai_analysis and ai_analysis.get('recommendation') != 'REJECT':
                     logger.warning(
-                        f"[POST_AI_VALIDATION] Employee {employee_name} has escalate_count={escalate_count} "
-                        f"and fraud_risk_score={fraud_risk_percent:.1f}% (>= 20%) "
+                        f"[POST_AI_VALIDATION] Employee {employee_name} has fraud_count={fraud_count} "
+                        f"(documented fraud history) and fraud_risk_score={fraud_risk_percent:.1f}% (>= 50%) "
                         f"but AI returned {ai_analysis.get('recommendation')}. "
-                        f"Overriding to REJECT per updated repeat offender policy."
+                        f"Overriding to REJECT per repeat fraud offender policy."
                     )
-                    # Force REJECT for repeat offenders with high fraud risk
+                    # Force REJECT for repeat FRAUD offenders with medium/high fraud risk
                     ai_analysis['recommendation'] = 'REJECT'
                     ai_analysis['confidence_score'] = 1.0
                     if 'reasoning' not in ai_analysis:
                         ai_analysis['reasoning'] = []
-                    ai_analysis['reasoning'].insert(0, 
-                        f"CRITICAL: Overridden to REJECT because employee has escalate_count={escalate_count} "
-                        f"and fraud risk score ({fraud_risk_percent:.1f}%) >= 20%. "
-                        f"Repeat offenders with elevated fraud risk are automatically rejected per policy."
+                    ai_analysis['reasoning'].insert(0,
+                        f"CRITICAL: Overridden to REJECT because employee has fraud_count={fraud_count} "
+                        f"(previous fraud rejections) and current fraud risk score ({fraud_risk_percent:.1f}%) >= 50%. "
+                        f"Repeat fraud offenders with elevated fraud risk are automatically rejected per policy."
                     )
                     if 'key_indicators' not in ai_analysis:
                         ai_analysis['key_indicators'] = []
-                    ai_analysis['key_indicators'].insert(0, f"Repeat offender detected (escalate_count: {escalate_count}, fraud risk: {fraud_risk_percent:.1f}%)")
+                    ai_analysis['key_indicators'].insert(0, f"Repeat fraud offender detected (fraud_count: {fraud_count}, fraud risk: {fraud_risk_percent:.1f}%)")
             else:
                 logger.info(
-                    f"[POST_AI_VALIDATION] Employee {employee_name} has escalate_count={escalate_count} "
-                    f"but fraud_risk_score={fraud_risk_percent:.1f}% (< 20%). "
-                    f"Allowing AI recommendation to proceed per updated policy."
+                    f"[POST_AI_VALIDATION] Employee {employee_name} has fraud_count={fraud_count} "
+                    f"but fraud_risk_score={fraud_risk_percent:.1f}% (< 50%). "
+                    f"Allowing AI recommendation to proceed."
                 )
         
         return ai_analysis

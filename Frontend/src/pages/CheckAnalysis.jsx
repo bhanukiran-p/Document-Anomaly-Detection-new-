@@ -4,6 +4,7 @@ import { analyzeCheck } from '../services/api';
 import { colors } from '../styles/colors';
 import { FaExclamationTriangle, FaLandmark, FaCog } from 'react-icons/fa';
 import CheckInsights from '../components/CheckInsights.jsx';
+import { generateCheckPDF } from '../utils/pdfReportGenerator';
 
 const buildCheckSections = (data) => ({
   'Bank Information': [
@@ -191,6 +192,18 @@ const CheckAnalysis = () => {
     link.href = url;
     link.download = `check_analysis_${new Date().getTime()}.json`;
     link.click();
+  };
+
+  const downloadPDF = () => {
+    if (!results) return;
+    try {
+      const doc = generateCheckPDF(results);
+      const timestamp = new Date().getTime();
+      doc.save(`check_analysis_${timestamp}.pdf`);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Failed to generate PDF report. Please try again.');
+    }
   };
 
   const downloadCSV = () => {
@@ -697,18 +710,32 @@ const CheckAnalysis = () => {
                   </p>
                 </div>
 
-                <button
-                  style={{
-                    ...buttonStyle,
-                    backgroundColor: primary,
-                    marginTop: '1.5rem',
-                  }}
-                  onClick={downloadJSON}
-                  onMouseEnter={(e) => e.target.style.backgroundColor = primary}
-                  onMouseLeave={(e) => e.target.style.backgroundColor = primary}
-                >
-                  Download Full Results (JSON)
-                </button>
+                <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
+                  <button
+                    style={{
+                      ...buttonStyle,
+                      backgroundColor: primary,
+                      flex: 1,
+                    }}
+                    onClick={downloadJSON}
+                    onMouseEnter={(e) => e.target.style.backgroundColor = primary}
+                    onMouseLeave={(e) => e.target.style.backgroundColor = primary}
+                  >
+                    Download Full Results (JSON)
+                  </button>
+                  <button
+                    style={{
+                      ...buttonStyle,
+                      backgroundColor: '#2c3e50',
+                      flex: 1,
+                    }}
+                    onClick={downloadPDF}
+                    onMouseEnter={(e) => e.target.style.backgroundColor = '#34495e'}
+                    onMouseLeave={(e) => e.target.style.backgroundColor = '#2c3e50'}
+                  >
+                    Download PDF Report
+                  </button>
+                </div>
               </div>
             )}
           </div>

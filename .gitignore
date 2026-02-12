@@ -46,3 +46,5 @@ ml_models/**/*.joblib
 # Frontend
 Frontend/node_modules/
 Frontend/build/
+node_modules/
+venv/

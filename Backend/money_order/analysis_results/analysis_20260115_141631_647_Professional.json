@@ -1,0 +1,147 @@
+{
+  "status": "success",
+  "extracted_data": {
+    "issuer": null,
+    "serial_number": "Professional",
+    "serial_secondary": null,
+    "amount": 4500.0,
+    "amount_in_words": null,
+    "payee": null,
+    "purchaser": "Lisa Anderson",
+    "sender_address": null,
+    "date": "2025-02-17",
+    "location": null,
+    "signature": null
+  },
+  "anomalies": [
+    {
+      "severity": "critical",
+      "type": "fraud_risk_critical",
+      "message": "[ESCALATE] Missing signature detected on first upload. Escalating for human review per signature validation policy."
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Amount parsing confidence low"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Missing critical fields (score: 0.30)"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Issuer-specific validation failed"
+    },
+    {
+      "severity": "medium",
+      "type": "ml_indicator",
+      "message": "Serial number doesn't match issuer pattern"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Invalid address format"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "CRITICAL: Missing signature - document rejected per mandatory validation policy"
+    },
+    {
+      "severity": "high",
+      "type": "ml_indicator",
+      "message": "Invalid issuer: 'Unknown'"
+    },
+    {
+      "severity": "critical",
+      "type": "ai_indicator",
+      "message": "No signature detected in OCR extraction"
+    },
+    {
+      "severity": "critical",
+      "type": "ai_indicator",
+      "message": "First-time payer"
+    },
+    {
+      "severity": "critical",
+      "type": "ai_indicator",
+      "message": "Mandatory signature policy - requires human verification"
+    }
+  ],
+  "confidence_score": 48,
+  "raw_text": "Professional Services Corp\nLisa Anderson\nEmployee ID: EMP-006\nMiami, FL\nPay Period:\nFeb 1-15, 2025\nGross Pay:\nNet Pay:\nYTD Gross:\nDeduction Type\nPay Date:\nFeb 17, 2025\n$4,500.00\n$4,500.00 $4,500.00\n(100% of gross - no $4,500.00)\nYTD Net\nAmount\nNO deductions section - compliance violation\n",
+  "timestamp": "2026-01-15T14:16:31.647200",
+  "ml_analysis": {
+    "fraud_risk_score": 1.0,
+    "risk_level": "CRITICAL",
+    "model_confidence": 0.7,
+    "model_scores": {
+      "random_forest": 0.471,
+      "xgboost": 0.857,
+      "ensemble": 0.703,
+      "adjusted": 1.0
+    },
+    "feature_importance": [
+      "Amount parsing confidence low",
+      "Missing critical fields (score: 0.30)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "CRITICAL: Missing signature - document rejected per mandatory validation policy",
+      "Invalid issuer: 'Unknown'"
+    ],
+    "fraud_indicators": [
+      "Amount parsing confidence low",
+      "Missing critical fields (score: 0.30)",
+      "Issuer-specific validation failed",
+      "Serial number doesn't match issuer pattern",
+      "Invalid address format",
+      "CRITICAL: Missing signature - document rejected per mandatory validation policy",
+      "Invalid issuer: 'Unknown'"
+    ],
+    "prediction_type": "model"
+  },
+  "ai_analysis": {
+    "recommendation": "ESCALATE",
+    "confidence_score": 1.0,
+    "summary": "Missing signature detected on first upload. Escalating for human review per signature validation policy.",
+    "reasoning": [
+      "Signature field is missing or empty",
+      "This is the first upload from this payer (escalate_count=0)",
+      "Per system policy: First missing signature → ESCALATE for human review",
+      "Escalation allows verification of potential OCR error or legitimate missing signature"
+    ],
+    "key_indicators": [
+      "No signature detected in OCR extraction",
+      "First-time payer",
+      "Mandatory signature policy - requires human verification"
+    ],
+    "verification_notes": "Document escalated due to missing signature on first upload. Verify if signature is truly missing or if OCR failed to detect it.",
+    "actionable_recommendations": [
+      "Manually verify if signature is present on the physical document",
+      "If signature is present, approve and note OCR limitation",
+      "If signature is truly missing, reject and flag customer for future uploads"
+    ],
+    "fraud_types": [
+      "SIGNATURE_FORGERY"
+    ],
+    "fraud_explanations": [
+      {
+        "type": "SIGNATURE_FORGERY",
+        "reasons": [
+          "Signature field is missing or empty",
+          "Mandatory signature validation failed",
+          "First-time upload requires human verification to rule out OCR error"
+        ]
+      }
+    ],
+    "training_insights": "First-time missing signatures may be OCR errors or legitimate issues requiring human judgment",
+    "historical_comparison": "Consistent with first-time escalation policy",
+    "analysis_type": "policy_enforcement",
+    "model_used": "mandatory_signature_policy"
+  },
+  "analysis_id": "analysis_20260115_141631_647_Professional",
+  "saved_timestamp": "2026-01-15T14:16:31.647401"
+}

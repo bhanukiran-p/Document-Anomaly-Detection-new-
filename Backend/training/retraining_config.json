@@ -1,0 +1,104 @@
+{
+  "global_settings": {
+    "scheduled_retraining_enabled": false,
+    "schedule_day_of_week": "sun",
+    "schedule_hour": 2,
+    "schedule_minute": 0,
+    "keep_n_versions": 5,
+    "rollback_threshold_drop": 0.15,
+    "min_samples_for_training": 50,
+    "min_samples_per_class": 20
+  },
+  "data_blending": {
+    "min_real_samples_for_hybrid": 100,
+    "min_real_samples_for_real_only": 500,
+    "synthetic_weight_hybrid": 0.4,
+    "real_weight_hybrid": 0.6,
+    "synthetic_sample_count": 2000
+  },
+  "data_quality": {
+    "min_confidence_score": 0.80,
+    "require_high_confidence_only": true,
+    "confidence_score_field": "model_confidence",
+    "min_fraud_ratio": 0.10,
+    "max_fraud_ratio": 0.60
+  },
+  "document_types": {
+    "paystub": {
+      "enabled": true,
+      "feature_count": 18,
+      "db_table": "paystubs",
+      "label_mapping": {
+        "APPROVE": 0,
+        "REJECT": 1,
+        "ESCALATE": null
+      },
+      "model_types": [
+        "random_forest",
+        "xgboost",
+        "feature_scaler"
+      ],
+      "ensemble_weights": {
+        "random_forest": 0.4,
+        "xgboost": 0.6
+      }
+    },
+    "check": {
+      "enabled": true,
+      "feature_count": 30,
+      "db_table": "checks",
+      "label_mapping": {
+        "APPROVE": 0,
+        "REJECT": 1,
+        "ESCALATE": null
+      },
+      "model_types": [
+        "random_forest",
+        "xgboost",
+        "feature_scaler"
+      ],
+      "ensemble_weights": {
+        "random_forest": 0.4,
+        "xgboost": 0.6
+      }
+    },
+    "money_order": {
+      "enabled": true,
+      "feature_count": 30,
+      "db_table": "money_orders",
+      "label_mapping": {
+        "APPROVE": 0,
+        "REJECT": 1,
+        "ESCALATE": null
+      },
+      "model_types": [
+        "random_forest",
+        "xgboost",
+        "feature_scaler"
+      ],
+      "ensemble_weights": {
+        "random_forest": 0.4,
+        "xgboost": 0.6
+      }
+    },
+    "bank_statement": {
+      "enabled": true,
+      "feature_count": 35,
+      "db_table": "bank_statements",
+      "label_mapping": {
+        "APPROVE": 0,
+        "REJECT": 1,
+        "ESCALATE": null
+      },
+      "model_types": [
+        "random_forest",
+        "xgboost",
+        "feature_scaler"
+      ],
+      "ensemble_weights": {
+        "random_forest": 0.4,
+        "xgboost": 0.6
+      }
+    }
+  }
+}

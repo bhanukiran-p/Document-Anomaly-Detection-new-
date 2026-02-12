@@ -34,6 +34,7 @@ from .agent_prompts import (
     RECOMMENDATIONS_PROMPT
 )
 from .fraud_detector import STANDARD_FRAUD_REASONS
+from .guardrails import InputGuard
 
 
 class RealTimeAnalysisAgent:
@@ -449,13 +450,19 @@ JSON OUTPUT TEMPLATE:
     def _llm_plot_explanation(self, plot_data: Dict[str, Any]) -> str:
         """Generate plot explanation using LLM"""
 
-        plot_title = plot_data.get('title', 'Unknown Plot')
-        plot_type = plot_data.get('type', 'unknown')
+        plot_title = InputGuard.sanitize(plot_data.get('title', 'Unknown Plot'))
+        plot_type = InputGuard.sanitize(plot_data.get('type', 'unknown'))
         plot_details = plot_data.get('details', [])
-        plot_description = plot_data.get('description', '')
+        plot_description = InputGuard.sanitize(plot_data.get('description', ''))
 
         # Format details
-        details_text = "\n".join([f"- {d['label']}: {d['value']}" for d in plot_details])
+        sanitized_details = []
+        for d in plot_details:
+            label = InputGuard.sanitize(str(d.get('label', '')))
+            value = InputGuard.sanitize(str(d.get('value', '')))
+            sanitized_details.append(f"- {label}: {value}")
+            
+        details_text = "\n".join(sanitized_details)
 
         # Create prompt
         system_message = SystemMessagePromptTemplate.from_template(SYSTEM_PROMPT)
@@ -486,8 +493,8 @@ JSON OUTPUT TEMPLATE:
             amount = txn.get('amount', 0)
             prob = txn.get('fraud_probability', 0)
             reason = txn.get('fraud_reason', 'Unknown')
-            merchant = txn.get('merchant', 'N/A')
-            category = txn.get('category', 'N/A')
+            merchant = InputGuard.sanitize(str(txn.get('merchant', 'N/A')))
+            category = InputGuard.sanitize(str(txn.get('category', 'N/A')))
 
             formatted.append(
                 f"{i}. Amount: ${amount:.2f} | Probability: {prob*100:.1f}% | "
@@ -503,7 +510,9 @@ JSON OUTPUT TEMPLATE:
 
         features = []
         for col in columns:
-            features.append(f"- {col['name']} ({col['type']}): {col['non_null_count']} non-null values")
+            col_name = InputGuard.sanitize(str(col['name']))
+            col_type = InputGuard.sanitize(str(col['type']))
+            features.append(f"- {col_name} ({col_type}): {col['non_null_count']} non-null values")
 
         return f"Total rows: {total_count}\nColumns:\n" + "\n".join(features)
 
@@ -589,8 +598,9 @@ JSON OUTPUT TEMPLATE:
         """Format fraud pattern entries for the LLM prompt."""
         lines = []
         for idx, entry in enumerate(entries, 1):
+            name = InputGuard.sanitize(str(entry['name']))
             lines.append(
-                f"{idx}. {entry['name']}\n"
+                f"{idx}. {name}\n"
                 f"   - Cases: {entry['count']} ({entry['percentage']:.1f}% of all fraud)\n"
                 f"   - Total Amount: ${entry['total_amount']:,.2f}\n"
                 f"   - Average Amount: ${entry['avg_amount']:,.2f}"
@@ -741,7 +751,7 @@ JSON OUTPUT TEMPLATE:
         # Category patterns
         categories = {}
         for t in fraud_transactions:
-            cat = t.get('category', 'Unknown')
+            cat = InputGuard.sanitize(str(t.get('category', 'Unknown')))
             categories[cat] = categories.get(cat, 0) + 1
 
         if categories:

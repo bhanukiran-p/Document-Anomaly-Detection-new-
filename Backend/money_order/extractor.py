@@ -1,5 +1,5 @@
 """
-Money Order Extractor using Google Vision API + ML Fraud Detection + AI Analysis
+Money Order Extractor using Mindee API + ML Fraud Detection + AI Analysis
 Extracts key information from money order documents and provides fraud risk assessment
 """
 
@@ -7,10 +7,8 @@ import os
 import sys
 import io
 import re
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 from datetime import datetime
-from google.cloud import vision
-from google.oauth2 import service_account
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -18,6 +16,35 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 # Import centralized config and logging
 from config import Config
 logger = Config.get_logger(__name__)
+
+# Import Mindee - use ClientV2 API (same as checks/paystubs)
+try:
+    from mindee import ClientV2, InferenceParameters, PathInput
+    MINDEE_AVAILABLE = True
+except ImportError as e:
+    logger.error(f"Mindee library not properly installed: {e}")
+    logger.error("Requires mindee>=4.31.0. Install with: pip install --upgrade 'mindee>=4.31.0'")
+    MINDEE_AVAILABLE = False
+    ClientV2 = None
+    InferenceParameters = None
+    PathInput = None
+
+# Mindee configuration
+MINDEE_API_KEY = os.getenv("MINDEE_API_KEY", "").strip()
+MINDEE_MODEL_ID_MONEY_ORDER = os.getenv("MINDEE_MODEL_ID_MONEY_ORDER", "2bc6b632-9695-4e1a-bd3b-2dfaedf0844d").strip()
+
+logger.info(f"Mindee API Key loaded: {MINDEE_API_KEY[:20]}..." if MINDEE_API_KEY else "Mindee API Key NOT SET")
+logger.info(f"Mindee Model ID: {MINDEE_MODEL_ID_MONEY_ORDER}")
+
+if not MINDEE_API_KEY:
+    logger.warning("MINDEE_API_KEY is not set - money order extraction may fail")
+    mindee_client = None
+elif not MINDEE_AVAILABLE:
+    logger.error("Mindee library not available")
+    mindee_client = None
+else:
+    mindee_client = ClientV2(api_key=MINDEE_API_KEY)
+    logger.info("Mindee ClientV2 initialized successfully")
 
 # Import ML models and AI agent
 try:
@@ -46,26 +73,18 @@ except ImportError as e:
 
 class MoneyOrderExtractor:
     """
-    Extract information from money order documents using Google Vision API
+    Extract information from money order documents using Mindee API
     """
 
     def __init__(self, credentials_path: Optional[str] = None):
         """
-        Initialize Vision API client, ML fraud detector, and AI analysis agent
+        Initialize Mindee client, ML fraud detector, and AI analysis agent
 
         Args:
-            credentials_path: Path to Google Cloud service account JSON file
+            credentials_path: Not used (kept for compatibility)
         """
-        # Set up Google Vision API credentials
-        if credentials_path and os.path.exists(credentials_path):
-            credentials = service_account.Credentials.from_service_account_file(
-                credentials_path
-            )
-            self.client = vision.ImageAnnotatorClient(credentials=credentials)
-        elif 'GOOGLE_APPLICATION_CREDENTIALS' in os.environ:
-            self.client = vision.ImageAnnotatorClient()
-        else:
-            self.client = vision.ImageAnnotatorClient()
+        # Mindee client is initialized at module level (like checks/paystubs)
+        # No need to initialize here
 
         # Initialize ML fraud detector and AI agent
         if ML_AVAILABLE:
@@ -98,60 +117,132 @@ class MoneyOrderExtractor:
             self.data_tools = None
             print("ML and AI components not available - using basic extraction only")
 
-    def extract_text_from_image(self, image_path: str) -> str:
+    def _extract_with_mindee(self, file_path: str) -> Tuple[Dict, str]:
         """
-        Extract text using Google Vision API
-
+        Extract money order data using Mindee API directly (same pattern as checks/paystubs)
+        
         Returns:
-            full_text: Complete text extracted from the image
+            Tuple of (extracted_data dict, raw_text string)
         """
-        with io.open(image_path, 'rb') as image_file:
-            content = image_file.read()
-
-        image = vision.Image(content=content)
-        response = self.client.text_detection(image=image)
-
-        if response.error.message:
-            raise Exception(f'Vision API Error: {response.error.message}')
-
-        texts = response.text_annotations
-
-        if not texts:
-            return ""
-
-        return texts[0].description
+        if not mindee_client:
+            raise RuntimeError("Mindee client not initialized. Check API key and installation.")
+        
+        try:
+            logger.info(f"Extracting with Mindee using model ID: {MINDEE_MODEL_ID_MONEY_ORDER}")
+            
+            # Create inference parameters with the model ID
+            params = InferenceParameters(model_id=MINDEE_MODEL_ID_MONEY_ORDER, raw_text=True)
+            input_source = PathInput(file_path)
+            
+            # Parse document using ClientV2
+            logger.info(f"Calling Mindee API with model ID...")
+            response = mindee_client.enqueue_and_get_inference(input_source, params)
+            
+            # Extract fields from the response
+            if not response or not hasattr(response, 'inference'):
+                raise ValueError("Invalid Mindee API response: missing inference object")
+            
+            if not response.inference or not hasattr(response.inference, 'result'):
+                raise ValueError("Invalid Mindee API response: missing result object")
+            
+            result = response.inference.result
+            fields = result.fields or {}
+            
+            logger.info(f"Extracted {len(fields)} fields from Mindee response")
+            
+            # Get raw text
+            raw_text = getattr(result, "raw_text", "") or ""
+            if raw_text and not isinstance(raw_text, str):
+                raw_text = str(raw_text)
+            
+            # Convert Mindee fields to simple dict
+            simple_fields: Dict[str, any] = {}
+            for name, field in fields.items():
+                if hasattr(field, "value"):
+                    simple_fields[name] = field.value
+                elif hasattr(field, "items"):
+                    values = []
+                    for item in field.items:
+                        if hasattr(item, "value"):
+                            values.append(item.value)
+                        elif hasattr(item, "fields"):
+                            values.append({k: v.value for k, v in item.fields.items()})
+                    simple_fields[name] = values
+                elif hasattr(field, "fields"):
+                    simple_fields[name] = {k: v.value for k, v in field.fields.items()}
+            
+            # Map Mindee field names to our schema
+            extracted = {
+                'issuer': simple_fields.get('issuer') or "",
+                'purchaser': simple_fields.get('payer') or simple_fields.get('purchaser'),
+                'payee': simple_fields.get('payee'),
+                'amount': simple_fields.get('amount'),
+                'date': simple_fields.get('issue_date') or simple_fields.get('date'),
+                'serial_number': simple_fields.get('money_order_number') or simple_fields.get('serial_number'),
+                'money_order_number': simple_fields.get('money_order_number'),
+                'address': simple_fields.get('address'),
+                'city': simple_fields.get('city'),
+                'state': simple_fields.get('state'),
+                'zip_code': simple_fields.get('zip_code'),
+            }
+            
+            logger.info(f"Successfully extracted {len(extracted)} fields from Mindee")
+            return extracted, raw_text
+            
+        except Exception as e:
+            logger.error(f"Mindee extraction failed: {e}", exc_info=True)
+            raise
 
     def extract_money_order(self, image_path: str) -> Dict:
         """
-        Extract money order details from image
+        Extract money order details from image using Mindee (same pattern as checks/paystubs)
 
         Returns:
             Dictionary containing extracted money order information
         """
-        # Get OCR text
-        text = self.extract_text_from_image(image_path)
-
-        if not text:
+        try:
+            # Use Mindee to extract structured fields (same as checks/paystubs)
+            mindee_data, text = self._extract_with_mindee(image_path)
+            
+            # Start with Mindee extracted fields
+            extracted_data = {
+                'issuer': mindee_data.get('issuer') or self._extract_issuer(text) if text else None,
+                'serial_number': mindee_data.get('serial_number') or mindee_data.get('money_order_number'),
+                'serial_secondary': self._extract_secondary_serial(text) if text else None,
+                'amount': mindee_data.get('amount'),
+                'amount_in_words': self._extract_amount_in_words(text) if text else None,
+                'payee': mindee_data.get('payee'),
+                'purchaser': mindee_data.get('purchaser'),
+                'sender_address': mindee_data.get('address') or self._extract_sender_address(text) if text else None,
+                'date': mindee_data.get('date'),
+                'location': self._extract_location(text) if text else None,
+                'signature': self._extract_signature(text) if text else None,
+            }
+            
+            # Fill in missing fields from text parsing if needed
+            if text:
+                if not extracted_data.get('issuer'):
+                    extracted_data['issuer'] = self._extract_issuer(text)
+                if not extracted_data.get('serial_number'):
+                    extracted_data['serial_number'] = self._extract_serial_number(text)
+                if not extracted_data.get('amount'):
+                    extracted_data['amount'] = self._extract_amount(text)
+                if not extracted_data.get('amount_in_words'):
+                    extracted_data['amount_in_words'] = self._extract_amount_in_words(text)
+                if not extracted_data.get('payee'):
+                    extracted_data['payee'] = self._extract_payee(text)
+                if not extracted_data.get('purchaser'):
+                    extracted_data['purchaser'] = self._extract_purchaser(text)
+                if not extracted_data.get('date'):
+                    extracted_data['date'] = self._extract_date(text)
+        except Exception as e:
+            logger.error(f"Error extracting money order with Mindee: {e}", exc_info=True)
+            # Return error status
             return {
                 'status': 'error',
-                'message': 'No text detected in image',
+                'message': f'Extraction failed: {str(e)}. Please check Mindee API key and model IDs.',
                 'extracted_data': {}
             }
-
-        # Extract money order fields (OCR - issuer-specific)
-        extracted_data = {
-            'issuer': self._extract_issuer(text),
-            'serial_number': self._extract_serial_number(text),
-            'serial_secondary': self._extract_secondary_serial(text),
-            'amount': self._extract_amount(text),
-            'amount_in_words': self._extract_amount_in_words(text),
-            'payee': self._extract_payee(text),
-            'purchaser': self._extract_purchaser(text),
-            'sender_address': self._extract_sender_address(text),
-            'date': self._extract_date(text),
-            'location': self._extract_location(text),
-            'signature': self._extract_signature(text),
-        }
 
         # Normalize data to standardized schema
         normalized_data = None
