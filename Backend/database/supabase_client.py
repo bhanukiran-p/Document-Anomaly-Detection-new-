@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 # Supabase credentials from environment variables
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
 # Initialize Supabase client
@@ -27,21 +28,36 @@ supabase_client: Client = None
 def initialize_supabase() -> Client:
     """
     Initialize and return the Supabase client.
-    Uses the anon key for client-side operations.
+    Prefer service role key for backend server operations.
+    Fallback to SUPABASE_KEY/SUPABASE_ANON_KEY when needed.
     """
     global supabase_client
 
     if supabase_client is not None:
         return supabase_client
 
-    if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+    selected_key = SUPABASE_SERVICE_ROLE_KEY or SUPABASE_KEY or SUPABASE_ANON_KEY
+    selected_key_name = (
+        "SUPABASE_SERVICE_ROLE_KEY"
+        if SUPABASE_SERVICE_ROLE_KEY
+        else "SUPABASE_KEY"
+        if SUPABASE_KEY
+        else "SUPABASE_ANON_KEY"
+        if SUPABASE_ANON_KEY
+        else None
+    )
+
+    if not SUPABASE_URL or not selected_key:
         raise ValueError(
-            "SUPABASE_URL and SUPABASE_ANON_KEY must be set in environment variables"
+            "SUPABASE_URL and one of SUPABASE_SERVICE_ROLE_KEY/SUPABASE_KEY/SUPABASE_ANON_KEY must be set in environment variables"
         )
 
     try:
-        supabase_client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-        logger.info("Successfully initialized Supabase client")
+        supabase_client = create_client(SUPABASE_URL, selected_key)
+        logger.info(
+            "Successfully initialized Supabase client using %s",
+            selected_key_name
+        )
         return supabase_client
     except Exception as e:
         logger.error(f"Failed to initialize Supabase client: {str(e)}")
