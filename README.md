@@ -1,4 +1,4 @@
-# XFORIA Document Anomaly Detection (DAD)
+ # XFORIA Document Anomaly Detection (DAD)
 
 **AI-Powered Fraud Detection System for Financial Documents**
 
