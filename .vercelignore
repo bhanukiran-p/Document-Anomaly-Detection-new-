@@ -3,4 +3,5 @@ momeyordersamples/
 paystub Samples/
 sample bank statement/
 *.pdf
-*.png
+Backend/**/*.png
+Backend/*.png
