@@ -75,8 +75,12 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = Config.SECRET_KEY
 app.config['MAX_CONTENT_LENGTH'] = Config.MAX_CONTENT_LENGTH
 
-# Enable CORS with configured origins
-CORS(app, origins=Config.CORS_ORIGINS)
+# Enable CORS - allow all origins with full method support (including OPTIONS preflight)
+CORS(app, resources={r"/api/*": {
+    "origins": "*",
+    "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    "allow_headers": ["Content-Type", "Authorization"]
+}})
 
 # Configuration from centralized config
 UPLOAD_FOLDER = Config.UPLOAD_FOLDER
@@ -1801,5 +1805,6 @@ if __name__ == '__main__':
     print(f"  - GET  /api/paystubs/insights")
     print("=" * 60)
 
-    app.run(debug=False, host='0.0.0.0', port=5001, use_reloader=False)
+    port = int(os.environ.get('PORT', 5001))
+    app.run(debug=False, host='0.0.0.0', port=port, use_reloader=False)
 
