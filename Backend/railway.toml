@@ -6,3 +6,7 @@ buildCommand = "pip install -r requirements.txt"
 startCommand = "python api_server.py"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
+
+[[deploy.healthchecks]]
+type = "path"
+path = "/api/health"
