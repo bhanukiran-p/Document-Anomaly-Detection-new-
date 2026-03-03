@@ -3,6 +3,9 @@ Flask>=3.0.0
 flask-cors>=4.0.0
 Werkzeug>=3.0.0
 
+# Google Cloud
+google-cloud-vision>=3.4.0
+
 # Document AI / OCR
 mindee>=4.31.0
 PyMuPDF>=1.23.0
