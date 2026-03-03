@@ -1815,6 +1815,6 @@ if __name__ == '__main__':
     print(f"  - GET  /api/paystubs/insights")
     print("=" * 60)
 
-    port = int(os.environ.get('PORT', 5001))
+    port = int(os.environ.get('PORT', 8080))
     app.run(debug=False, host='0.0.0.0', port=port, use_reloader=False)
 
