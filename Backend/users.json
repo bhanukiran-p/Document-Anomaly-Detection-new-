@@ -28,5 +28,11 @@
     "email": "vikram@test.com",
     "password_hash": "6251ae5b46e997f76f9178ac9d2e1445$638d2ccab0ef5f75b970d7f229b524bf64ff83b8486705f519a63fb9345dbf43",
     "created_at": "2025-11-27T20:12:20.130269"
+  },
+  "test_1@xforia.com": {
+    "user_id": "b56f38894aabc4ae",
+    "email": "test_1@xforia.com",
+    "password_hash": "b6f7e037c62106295c8c56133438ee94$d3fca46a38d789a0479070af3359b2ea2336db81e75316bff81d262ad64bdeea",
+    "created_at": "2026-02-26T21:51:35.669143"
   }
 }
