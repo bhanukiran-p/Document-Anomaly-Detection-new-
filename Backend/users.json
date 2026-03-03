@@ -34,5 +34,11 @@
     "email": "test_1@xforia.com",
     "password_hash": "b6f7e037c62106295c8c56133438ee94$d3fca46a38d789a0479070af3359b2ea2336db81e75316bff81d262ad64bdeea",
     "created_at": "2026-02-26T21:51:35.669143"
+  },
+  "falcon_test@testmail.com": {
+    "user_id": "1369170387bb1f6a",
+    "email": "falcon_test@testmail.com",
+    "password_hash": "c3da8cce55881af6166fd646dd158a46$b773a96f997c636db89574bcb19fb98cc8a8731010cba94f5d1966e5d625f6af",
+    "created_at": "2026-03-03T04:05:23.880546"
   }
 }
