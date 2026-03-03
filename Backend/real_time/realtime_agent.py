@@ -76,7 +76,7 @@ class RealTimeAnalysisAgent:
                 # Only set max_tokens for older models that support it
                 # Newer models (o4, o1) don't support max_tokens or max_completion_tokens in LangChain
                 if not (self.model_name.startswith('o4') or self.model_name.startswith('o1')):
-                    llm_kwargs['max_tokens'] = 8000  # Increased for large recommendation lists
+                    llm_kwargs['max_tokens'] = 4096
 
                 self.llm = ChatOpenAI(**llm_kwargs)
                 logger.info(f"Initialized LangChain agent with {self.model_name} - GPT-4 mode active!")
