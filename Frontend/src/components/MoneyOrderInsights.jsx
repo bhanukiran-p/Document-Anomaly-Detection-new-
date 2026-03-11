@@ -8,6 +8,10 @@ import {
 } from 'recharts';
 import { FaUpload, FaCog, FaRedo } from 'react-icons/fa';
 
+const API_BASE = process.env.REACT_APP_API_URL
+  ? process.env.REACT_APP_API_URL.replace(/\/api$/, '')
+  : '';
+
 // Custom Tooltip Component
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
@@ -378,7 +382,7 @@ const MoneyOrderInsights = () => {
     setError(null);
     setCsvData(null);
     try {
-      let url = '/api/money-orders/list';
+      let url = `${API_BASE}/api/money-orders/list`;
 
       const params = new URLSearchParams();
 
@@ -447,7 +451,7 @@ const MoneyOrderInsights = () => {
     setError(null);
     setCsvData(null);
     try {
-      const response = await fetch(`/api/money-orders/search?q=${encodeURIComponent(query)}&limit=20`);
+      const response = await fetch(`${API_BASE}/api/money-orders/search?q=${encodeURIComponent(query)}&limit=20`);
       const data = await response.json();
       if (data.success) {
         setMoneyOrdersList(data.data);

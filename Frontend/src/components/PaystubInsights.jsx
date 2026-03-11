@@ -8,6 +8,10 @@ import {
 } from 'recharts';
 import { FaUpload, FaCog, FaRedo } from 'react-icons/fa';
 
+const API_BASE = process.env.REACT_APP_API_URL
+  ? process.env.REACT_APP_API_URL.replace(/\/api$/, '')
+  : '';
+
 // Custom Tooltip Component
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
@@ -527,7 +531,7 @@ const PaystubInsights = () => {
     setLoadingPaystubsList(true);
     setError(null);
     try {
-      const response = await fetch('/api/paystubs/insights');
+      const response = await fetch(`${API_BASE}/api/paystubs/insights`);
       if (!response.ok) throw new Error('Failed to fetch paystubs');
 
       const data = await response.json();

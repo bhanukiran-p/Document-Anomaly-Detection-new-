@@ -8,6 +8,10 @@ import {
 } from 'recharts';
 import { FaUpload, FaCog, FaRedo } from 'react-icons/fa';
 
+const API_BASE = process.env.REACT_APP_API_URL
+  ? process.env.REACT_APP_API_URL.replace(/\/api$/, '')
+  : '';
+
 // Custom Tooltip Component
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
@@ -492,7 +496,7 @@ const BankStatementInsights = () => {
     setCsvData(null);
     try {
       // Use relative URL to leverage proxy in package.json
-      let url = '/api/bank-statements/list';
+      let url = `${API_BASE}/api/bank-statements/list`;
 
       // Build query parameters
       const params = new URLSearchParams();
@@ -587,7 +591,7 @@ const BankStatementInsights = () => {
     setError(null);
     setCsvData(null);
     try {
-      const response = await fetch(`/api/bank-statements/search?q=${encodeURIComponent(query)}&limit=20`);
+      const response = await fetch(`${API_BASE}/api/bank-statements/search?q=${encodeURIComponent(query)}&limit=20`);
       const data = await response.json();
       if (data.success) {
         setBankStatementsList(data.data);
