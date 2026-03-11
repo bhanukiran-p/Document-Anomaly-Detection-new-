@@ -79,17 +79,42 @@ import numpy as np
 import json
 from flask.json.provider import DefaultJSONProvider
 
+def _convert_numpy(obj):
+    if isinstance(obj, np.integer):
+        return int(obj)
+    if isinstance(obj, np.floating):
+        return float(obj)
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+def sanitize_for_json(obj):
+    if isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [sanitize_for_json(i) for i in obj]
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    if isinstance(obj, (np.floating,)):
+        return float(obj)
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    return obj
+
 class NumpyJSONProvider(DefaultJSONProvider):
     def default(self, obj):
-        if isinstance(obj, np.integer):
-            return int(obj)
-        elif isinstance(obj, np.floating):
-            return float(obj)
-        elif isinstance(obj, np.ndarray):
-            return obj.tolist()
-        elif isinstance(obj, np.bool_):
-            return bool(obj)
-        return super().default(obj)
+        try:
+            return _convert_numpy(obj)
+        except TypeError:
+            return super().default(obj)
+
+    def dumps(self, obj, **kwargs):
+        obj = sanitize_for_json(obj)
+        return super().dumps(obj, **kwargs)
 
 app.json_provider_class = NumpyJSONProvider
 app.json = NumpyJSONProvider(app)
