@@ -123,10 +123,8 @@ const addSummaryBox = (doc, y, riskScore, riskLevel, recommendation, confidence)
   const riskColor = getRiskColor(riskLevel);
   
   // Background box
-  doc.setFillColor(riskColor[0], riskColor[1], riskColor[2]);
-  doc.setGlobalAlpha(0.1);
+  doc.setFillColor(245, 245, 245);
   doc.rect(15, y, 180, boxHeight, 'F');
-  doc.setGlobalAlpha(1.0);
   
   // Border
   doc.setDrawColor(riskColor[0], riskColor[1], riskColor[2]);
