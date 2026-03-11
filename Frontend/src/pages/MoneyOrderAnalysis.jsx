@@ -1,6 +1,8 @@
 import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { analyzeMoneyOrder } from '../services/api';
+
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
 import { colors } from '../styles/colors';
 import MoneyOrderInsights from '../components/MoneyOrderInsights.jsx';
 import { generateMoneyOrderPDF } from '../utils/pdfReportGenerator';
@@ -77,7 +79,7 @@ const MoneyOrderAnalysis = () => {
 
     // Download complete JSON from server
     try {
-      const response = await fetch(`http://localhost:5001/api/analysis/download/${results.analysis_id}`);
+      const response = await fetch(`${API_BASE_URL}/analysis/download/${results.analysis_id}`);
       if (response.ok) {
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);

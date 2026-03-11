@@ -1,6 +1,10 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { colors } from '../styles/colors';
+
+const API_BASE = process.env.REACT_APP_API_URL
+  ? process.env.REACT_APP_API_URL.replace(/\/api$/, '')
+  : '';
 import {
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Sector,
@@ -375,8 +379,7 @@ const CheckInsights = () => {
     setError(null);
     setCsvData(null);
     try {
-      // Use relative URL to leverage proxy in package.json
-      let url = '/api/checks/list';
+      let url = `${API_BASE}/api/checks/list`;
 
       // Build query parameters
       const params = new URLSearchParams();
@@ -451,7 +454,7 @@ const CheckInsights = () => {
     setCsvData(null);
     try {
       // Use relative URL to leverage proxy in package.json
-      const response = await fetch(`/api/checks/search?q=${encodeURIComponent(query)}&limit=20`);
+      const response = await fetch(`${API_BASE}/api/checks/search?q=${encodeURIComponent(query)}&limit=20`);
       const data = await response.json();
       if (data.success) {
         setChecksList(data.data);
