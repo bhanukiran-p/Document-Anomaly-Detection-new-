@@ -1,16 +1,16 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { colors } from '../styles/colors';
-
-const API_BASE = process.env.REACT_APP_API_URL
-  ? process.env.REACT_APP_API_URL.replace(/\/api$/, '')
-  : '';
 import {
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Sector,
   ComposedChart, ScatterChart, Scatter, ZAxis
 } from 'recharts';
 import { FaUpload, FaCog, FaRedo } from 'react-icons/fa';
+
+const API_BASE = process.env.REACT_APP_API_URL
+  ? process.env.REACT_APP_API_URL.replace(/\/api$/, '')
+  : '';
 
 // Custom Tooltip Component
 const CustomTooltip = ({ active, payload, label }) => {
