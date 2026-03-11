@@ -4,7 +4,7 @@
 
 // // Try multiple sources for the geo JSON file
 // const LOCAL_MAP_URL = `${process.env.PUBLIC_URL || ''}/custom.geo.json`;
-// const BACKEND_MAP_URL = 'http://localhost:5001/custom.geo.json'; // Backend route serves this file
+// const BACKEND_MAP_URL = 'http://localhost:8080/custom.geo.json'; // Backend route serves this file
 // const REMOTE_MAP_URL = 'https://cdn.jsdelivr.net/npm/echarts@5/map/json/world.json';
 // const LOCAL_MAP_NAME = 'custom_world';
 
@@ -369,7 +369,7 @@ import * as echarts from 'echarts';
 
 // Try multiple sources for the geo JSON file
 const LOCAL_MAP_URL = `${process.env.PUBLIC_URL || ''}/custom.geo.json`;
-const BACKEND_MAP_URL = 'http://localhost:5001/custom.geo.json'; // Backend route serves this file
+const BACKEND_MAP_URL = 'http://localhost:8080/custom.geo.json'; // Backend route serves this file
 const REMOTE_MAP_URL = 'https://cdn.jsdelivr.net/npm/echarts@5/map/json/world.json';
 const LOCAL_MAP_NAME = 'custom_world';
 

@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { analyzeMoneyOrder } from '../services/api';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
 import { colors } from '../styles/colors';
 import MoneyOrderInsights from '../components/MoneyOrderInsights.jsx';
 import { generateMoneyOrderPDF } from '../utils/pdfReportGenerator';
