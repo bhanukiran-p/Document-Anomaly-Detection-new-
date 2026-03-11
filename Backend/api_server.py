@@ -75,6 +75,25 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = Config.SECRET_KEY
 app.config['MAX_CONTENT_LENGTH'] = Config.MAX_CONTENT_LENGTH
 
+import numpy as np
+import json
+from flask.json.provider import DefaultJSONProvider
+
+class NumpyJSONProvider(DefaultJSONProvider):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, np.bool_):
+            return bool(obj)
+        return super().default(obj)
+
+app.json_provider_class = NumpyJSONProvider
+app.json = NumpyJSONProvider(app)
+
 # Enable CORS - allow all origins with full method support (including OPTIONS preflight)
 CORS(app, resources={r"/api/*": {
     "origins": "*",
